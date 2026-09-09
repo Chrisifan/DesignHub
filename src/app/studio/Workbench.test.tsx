@@ -1,0 +1,191 @@
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
+
+import { Workbench, type WorkbenchProps } from './Workbench';
+import type { Project } from './types';
+
+const project: Project = {
+  id: 'spring-market',
+  name: '春间市集',
+  enName: 'Spring Market',
+  description: '城市周末市集的系列视觉。',
+  enDescription: 'A visual series for an urban weekend market.',
+  designers: ['林夏'],
+  artwork: 'market',
+  documents: 3,
+};
+
+const makeProps = (
+  overrides: Partial<WorkbenchProps> = {},
+): WorkbenchProps => ({
+  locale: 'zh-CN',
+  project,
+  onBack: vi.fn(),
+  onExport: vi.fn(),
+  onConnections: vi.fn(),
+  notify: vi.fn(),
+  ...overrides,
+});
+
+it('exposes the design canvas and routes project and export actions', () => {
+  const props = makeProps();
+  render(<Workbench {...props} />);
+
+  expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
+  expect(screen.getByText('预览未保存')).toBeInTheDocument();
+  expect(screen.getByText('1080 × 1440 px')).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: '标题文字' })).toHaveValue(
+    '春间市集',
+  );
+  fireEvent.click(screen.getByRole('button', { name: '返回项目' }));
+  fireEvent.click(screen.getByRole('button', { name: '导出' }));
+
+  expect(props.onBack).toHaveBeenCalledOnce();
+  expect(props.onExport).toHaveBeenCalledOnce();
+});
+
+it('makes layer visibility and text properties observable on the example preview', () => {
+  render(<Workbench {...makeProps()} />);
+  const canvas = screen.getByRole('region', { name: '设计画布' });
+
+  fireEvent.click(screen.getByRole('button', { name: '标题文字' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '标题文字' }), {
+    target: { value: '周末花市' },
+  });
+  fireEvent.change(screen.getByRole('slider', { name: '不透明度' }), {
+    target: { value: '42' },
+  });
+  fireEvent.change(screen.getByRole('spinbutton', { name: 'X 坐标' }), {
+    target: { value: '18' },
+  });
+  fireEvent.change(screen.getByRole('spinbutton', { name: 'Y 坐标' }), {
+    target: { value: '-12' },
+  });
+
+  const previewTitle = within(canvas).getByText('周末花市');
+  expect(previewTitle).toHaveStyle({
+    opacity: '0.42',
+    transform: 'translate(18px, -12px)',
+  });
+  expect(canvas.querySelector('.workbench-selection')).toHaveStyle({
+    transform: 'translate(18px, -12px)',
+  });
+
+  fireEvent.click(screen.getByRole('button', { name: '隐藏标题文字' }));
+  expect(canvas).toHaveAttribute('data-text-visible', 'false');
+  expect(
+    screen.getByRole('button', { name: '显示标题文字' }),
+  ).toBeInTheDocument();
+});
+
+it('does not expose title transforms as editable properties for non-text layers', () => {
+  render(<Workbench {...makeProps()} />);
+  fireEvent.change(screen.getByRole('textbox', { name: '标题文字' }), {
+    target: { value: '保留标题' },
+  });
+
+  fireEvent.click(screen.getByRole('button', { name: '装饰图形' }));
+
+  expect(screen.getByText('此示例仅开放文字属性')).toBeInTheDocument();
+  expect(
+    screen.queryByRole('textbox', { name: '标题文字' }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('spinbutton', { name: 'X 坐标' }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('slider', { name: '不透明度' }),
+  ).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '标题文字' }));
+  expect(screen.getByRole('textbox', { name: '标题文字' })).toHaveValue(
+    '保留标题',
+  );
+});
+
+it('prevents edits while the selected text layer is locked', () => {
+  render(<Workbench {...makeProps()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '锁定标题文字' }));
+
+  expect(screen.getByRole('textbox', { name: '标题文字' })).toBeDisabled();
+  expect(screen.getByRole('spinbutton', { name: 'X 坐标' })).toBeDisabled();
+  expect(screen.getByRole('spinbutton', { name: 'Y 坐标' })).toBeDisabled();
+  expect(screen.getByRole('slider', { name: '不透明度' })).toBeDisabled();
+  expect(screen.getByText('解锁图层后可继续编辑')).toBeInTheDocument();
+});
+
+it('only offers a shape layer when the artwork has a shape target', () => {
+  render(
+    <Workbench {...makeProps({ project: { ...project, artwork: 'type' } })} />,
+  );
+
+  expect(
+    screen.queryByRole('button', { name: '装饰图形' }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: '形状工具' }),
+  ).not.toBeInTheDocument();
+});
+
+it('uses the select tool to reopen properties and the compact layer selector', () => {
+  render(<Workbench {...makeProps()} />);
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+
+  fireEvent.click(screen.getByRole('button', { name: '选择工具' }));
+
+  expect(
+    screen.getByRole('complementary', { name: '属性' }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '图层' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+});
+
+it('keeps one context panel open and preserves a prompt when connection setup is required', () => {
+  const props = makeProps();
+  render(<Workbench {...props} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  const panel = screen.getByRole('complementary', { name: '对话' });
+  const prompt = within(panel).getByRole('textbox', { name: '修改说明' });
+  fireEvent.change(prompt, { target: { value: '保留标题，只调整背景层次' } });
+  fireEvent.click(within(panel).getByRole('button', { name: '发送' }));
+
+  expect(props.onConnections).toHaveBeenCalledOnce();
+  expect(prompt).toHaveValue('保留标题，只调整背景层次');
+  expect(within(panel).getByText('尚未连接模型')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  expect(
+    screen.queryByRole('complementary', { name: '对话' }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('complementary', { name: '历史' }),
+  ).toBeInTheDocument();
+});
+
+it('updates preview zoom and grid without changing the document', () => {
+  render(<Workbench {...makeProps()} />);
+  const canvas = screen.getByRole('region', { name: '设计画布' });
+
+  fireEvent.click(screen.getByRole('button', { name: '放大' }));
+  expect(screen.getByText('76%')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '网格' }));
+  expect(canvas).toHaveAttribute('data-grid-visible', 'true');
+  fireEvent.click(screen.getByRole('button', { name: '重置缩放' }));
+  expect(screen.getByText('68%')).toBeInTheDocument();
+});
+
+it('provides the exact English canvas and back labels', () => {
+  render(<Workbench {...makeProps({ locale: 'en' })} />);
+
+  expect(
+    screen.getByRole('region', { name: 'Design canvas' }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'Back to project' }),
+  ).toBeInTheDocument();
+  expect(screen.getByText('Unsaved preview')).toBeInTheDocument();
+});

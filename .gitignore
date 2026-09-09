@@ -1,6 +1,6 @@
 .DS_Store
 .superpowers/
-node_modules/
+node_modules
 .pnpm-store/
 dist/
 out/
