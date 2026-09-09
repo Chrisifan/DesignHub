@@ -65,7 +65,7 @@ Tauri 的资料和 macOS 一次性结果保留在 [旧报告](M01-runtime-result
 
 ## 一次性 Electron 主机探针（未取得宿主实证）
 
-探针位于 [electron-probe](../../experiments/runtime/electron-probe)，只锁定 Electron `44.3.0` 和 Playwright `1.63.0`，有自己的 `pnpm-lock.yaml`，不进入产品源码。探针定义了一个非透明、可调整尺寸、隐藏标题栏的 `BrowserWindow`，设置 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true`、macOS `vibrancy: 'sidebar'`，并准备通过窄 `contextBridge` 验证 renderer 没有 `require`/`process`、以及调整尺寸、最大化和全屏转换。每个自写 MJS 函数/回调为箭头；`node_modules` 中的 Electron/Playwright 是明确排除的第三方源码。
+探针位于 [electron-probe](../../experiments/runtime/electron-probe)，只锁定 Electron `44.3.0` 和 Playwright `1.63.0`，有自己的 `pnpm-lock.yaml`，不进入产品源码。探针定义了一个非透明、可调整尺寸、隐藏标题栏的 `BrowserWindow`，设置 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true`、macOS `vibrancy: 'sidebar'`，并通过沙箱可用的 CommonJS preload 仅暴露一个 `contextBridge` 操作。自动化会验证 renderer 没有 `require`/`process`、精确 bridge allowlist、drag/no-drag fixture、调整尺寸、最大化和事件有上限的全屏转换；`probe:automation:solid` 明确请求实色 fallback。requested configuration 与实际视觉效果分离，vibrancy/Mica/Acrylic 只能由真宿主人工证据确认。每个自写 JS 函数/回调为箭头；`node_modules` 中的 Electron/Playwright 是明确排除的第三方源码。
 
 | 命令 | 退出码 / 结果 | 可得结论 |
 | --- | --- | --- |

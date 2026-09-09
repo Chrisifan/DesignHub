@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.23.0",
   "scripts": {
     "probe:automation": "node scripts/run-automation.mjs",
+    "probe:automation:solid": "DESIGNHUB_PROBE_FORCE_SOLID=1 node scripts/run-automation.mjs",
     "probe:arrow-check": "node scripts/check-arrows.mjs"
   },
   "devDependencies": {

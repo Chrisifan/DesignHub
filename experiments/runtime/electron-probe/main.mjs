@@ -1,6 +1,14 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 
 let probeWindow = null;
+const useSolidFallback = process.env.DESIGNHUB_PROBE_FORCE_SOLID === '1';
+const requestedWindowConfiguration = {
+  titleBarStyle: 'hidden',
+  trafficLightPosition: { x: 12, y: 12 },
+  requestedMacOSVibrancy: 'sidebar',
+  solidFallbackBackground: '#17181c',
+  transparent: false
+};
 
 const createProbeWindow = () => {
   probeWindow = new BrowserWindow({
@@ -9,17 +17,17 @@ const createProbeWindow = () => {
     minWidth: 640,
     minHeight: 480,
     show: false,
-    titleBarStyle: 'hidden',
-    trafficLightPosition: { x: 12, y: 12 },
-    vibrancy: 'sidebar',
+    titleBarStyle: requestedWindowConfiguration.titleBarStyle,
+    trafficLightPosition: requestedWindowConfiguration.trafficLightPosition,
+    vibrancy: process.platform === 'darwin' && !useSolidFallback ? requestedWindowConfiguration.requestedMacOSVibrancy : undefined,
     visualEffectState: 'active',
-    backgroundColor: '#17181c',
-    transparent: false,
+    backgroundColor: requestedWindowConfiguration.solidFallbackBackground,
+    transparent: requestedWindowConfiguration.transparent,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
-      preload: new URL('./preload.mjs', import.meta.url).pathname
+      preload: new URL('./preload.cjs', import.meta.url).pathname
     }
   });
 
@@ -44,9 +52,8 @@ ipcMain.handle('probe:get-security-snapshot', (event) => {
     nodeIntegration: probeWindow.webContents.getLastWebPreferences().nodeIntegration,
     contextIsolation: probeWindow.webContents.getLastWebPreferences().contextIsolation,
     sandbox: probeWindow.webContents.getLastWebPreferences().sandbox,
-    titleBarStyle: 'hidden',
-    transparent: false,
-    vibrancy: process.platform === 'darwin' ? probeWindow.getVibrancy() : null
+    requestedWindowConfiguration,
+    activeMaterialMode: useSolidFallback ? 'solid-fallback-requested' : 'platform-material-requested'
   };
 });
 

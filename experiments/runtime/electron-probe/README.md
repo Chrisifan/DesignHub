@@ -1,6 +1,6 @@
 # Electron disposable host probe
 
-This directory is a throwaway M01 evidence probe, not application source. It contains no product UI, project files, SQLite code, credentials, diagnostics upload, or Tauri code. Its self-authored `.mjs` callbacks use arrow syntax; Electron and Playwright code in `node_modules` is third-party and excluded from that rule.
+This directory is a throwaway M01 evidence probe, not application source. It contains no product UI, project files, SQLite code, credentials, diagnostics upload, or Tauri code. Its self-authored JS callbacks use arrow syntax; Electron and Playwright code in `node_modules` is third-party and excluded from that rule.
 
 ## Locked probe inputs
 
@@ -18,9 +18,10 @@ From the repository root:
 pnpm install --dir experiments/runtime/electron-probe --frozen-lockfile=false
 pnpm --dir experiments/runtime/electron-probe probe:arrow-check
 pnpm --dir experiments/runtime/electron-probe probe:automation
+pnpm --dir experiments/runtime/electron-probe probe:automation:solid
 ```
 
-`probe:automation` launches Electron using Playwright, verifies the isolated preload bridge and no renderer `require`/`process`, then checks a visible, opaque, hidden-title-bar macOS window for resize, maximize/unmaximize and full-screen transitions. On a successful run it writes the ignored `result.json` evidence file and always closes the launched Electron process.
+`probe:automation` launches Electron using Playwright, verifies the isolated CommonJS sandbox preload bridge and no renderer `require`/`process`, then checks a visible, opaque, hidden-title-bar macOS window for resize, maximize/unmaximize and event-bounded full-screen transitions. It asserts the exact one-operation bridge allowlist and fails nonzero when any required outcome fails. The drag/no-drag fixture includes a clickable no-drag button. `probe:automation:solid` sets `DESIGNHUB_PROBE_FORCE_SOLID=1` to exercise the alternate opaque solid-fallback configuration; visual material confirmation remains manual real-host evidence. On a successful run either command writes the ignored `result.json` evidence file and always closes the launched Electron process.
 
 ## 2026-09-09 execution result
 

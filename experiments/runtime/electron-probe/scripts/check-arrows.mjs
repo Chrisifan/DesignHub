@@ -16,7 +16,7 @@ const collectFiles = async (directory) => {
       return collectFiles(entryPath);
     }
 
-    return /\.(?:mjs|html)$/.test(entry.name) ? [entryPath] : [];
+    return /\.(?:mjs|cjs|html)$/.test(entry.name) ? [entryPath] : [];
   }));
 
   return childLists.flat();
@@ -27,9 +27,14 @@ const violations = [];
 for (const filePath of files) {
   const source = await readFile(filePath, 'utf8');
   const functionMatches = source.match(/\bfunction\b/g) ?? [];
+  const methodMatches = source.match(/(?:^|[,{])\s*(?!(?:if|for|while|switch|catch)\s*\()(?:async\s+)?[A-Za-z_$][\w$]*\s*\([^)]*\)\s*\{/gm) ?? [];
 
   if (functionMatches.length > 0) {
     violations.push(`${path.relative(sourceRoot, filePath)}: ${functionMatches.length} disallowed declaration marker occurrence(s)`);
+  }
+
+  if (methodMatches.length > 0) {
+    violations.push(`${path.relative(sourceRoot, filePath)}: ${methodMatches.length} disallowed method shorthand occurrence(s)`);
   }
 }
 
