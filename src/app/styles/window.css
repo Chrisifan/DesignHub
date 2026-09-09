@@ -1,0 +1,24 @@
+* { box-sizing: border-box; }
+html, body, #root { min-width: 1024px; min-height: 720px; height: 100%; margin: 0; }
+body { background: var(--background); color: var(--on-surface); }
+button { font: inherit; }
+.app-shell { min-height: 100%; background: var(--background); }
+.window-bar { height: 40px; display: flex; align-items: center; border-bottom: 1px solid var(--outline-variant); background: var(--surface-container-low); }
+.window-bar-drag-region { flex: 1; height: 100%; display: flex; align-items: center; padding: 0 16px; -webkit-app-region: drag; user-select: none; }
+.window-bar-title { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.window-control-safe-area { height: 40px; -webkit-app-region: no-drag; }
+.window-control-safe-area--left { width: 84px; flex: 0 0 84px; }
+.window-control-safe-area--right { width: 138px; flex: 0 0 138px; }
+.welcome { max-width: 560px; margin: 0 auto; padding: 20vh 24px 48px; }
+.eyebrow { margin: 0 0 12px; color: var(--primary); font: 500 11px/15px "JetBrains Mono", monospace; letter-spacing: 0; text-transform: uppercase; }
+h1 { margin: 0; font: 600 24px/32px Geist, "PingFang SC", sans-serif; }
+.welcome-description { margin: 12px 0 24px; max-width: 42ch; color: var(--on-surface-variant); font-size: 13px; line-height: 18px; }
+.welcome-actions { display: flex; gap: 12px; }
+.button { min-height: 32px; padding: 0 16px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.button:focus-visible, .language-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.button-primary { background: var(--primary-container); color: #061016; }
+.button-secondary { background: var(--surface-container-high); border-color: var(--outline-variant); color: var(--on-surface); }
+.language-toggle { margin-top: 32px; min-height: 28px; padding: 0 8px; border: 1px solid var(--outline-variant); border-radius: 4px; background: transparent; color: var(--on-surface-variant); cursor: pointer; white-space: nowrap; }
+.theme-select-label { display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; color: var(--on-surface-variant); font-size: 12px; white-space: nowrap; }
+.theme-select { min-height: 28px; border: 1px solid var(--outline-variant); border-radius: 4px; background: var(--surface-container); color: var(--on-surface); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }

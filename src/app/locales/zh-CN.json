@@ -1,0 +1,16 @@
+{
+  "appName": "DesignHub",
+  "welcomeTitle": "开始本地创作",
+  "welcomeDescription": "无需登录，离线即可进入工作区。",
+  "newWorkspace": "新建",
+  "openWorkspace": "打开",
+  "newWorkspaceLabel": "新建工作区",
+  "openWorkspaceLabel": "打开工作区",
+  "windowMinimize": "最小化",
+  "windowMaximize": "最大化",
+  "windowClose": "关闭"
+  ,"themeLabel": "主题"
+  ,"themeSystem": "跟随系统"
+  ,"themeDark": "深色"
+  ,"themeLight": "浅色"
+}

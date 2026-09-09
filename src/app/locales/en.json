@@ -1,0 +1,16 @@
+{
+  "appName": "DesignHub",
+  "welcomeTitle": "Start creating locally",
+  "welcomeDescription": "Enter your workspace offline without signing in.",
+  "newWorkspace": "New",
+  "openWorkspace": "Open",
+  "newWorkspaceLabel": "New workspace",
+  "openWorkspaceLabel": "Open workspace",
+  "windowMinimize": "Minimize",
+  "windowMaximize": "Maximize",
+  "windowClose": "Close"
+  ,"themeLabel": "Theme"
+  ,"themeSystem": "System"
+  ,"themeDark": "Dark"
+  ,"themeLight": "Light"
+}

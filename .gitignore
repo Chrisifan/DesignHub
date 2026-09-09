@@ -1,10 +1,14 @@
 .DS_Store
 .superpowers/
 node_modules/
+.pnpm-store/
 dist/
 out/
 coverage/
 .vite/
+playwright-report/
+test-results/
+.playwright/
 *.log
 .env
 .env.*
