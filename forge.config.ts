@@ -1,3 +1,4 @@
+import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 
 const config = {
@@ -5,6 +6,7 @@ const config = {
   rebuildConfig: {},
   makers: [],
   plugins: [
+    new AutoUnpackNativesPlugin({}),
     new VitePlugin({
       build: [
         { entry: 'src/desktop/main.ts', config: 'vite.main.config.ts' },

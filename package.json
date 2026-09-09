@@ -11,7 +11,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "build": "vite build --config vite.config.ts && vite build --config vite.main.config.ts && vite build --config vite.preload.config.ts",
-    "test:unit": "vitest run --config vitest.config.ts",
+    "test:unit": "vitest run --config vitest.config.ts src",
     "test:integration": "vitest run --config vitest.config.ts tests/integration",
     "test:e2e": "playwright test --config playwright.config.ts",
     "test:native": "playwright test --config playwright.native.config.ts",
@@ -19,14 +19,17 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "better-sqlite3": "13.0.3",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",
+    "@electron-forge/plugin-auto-unpack-natives": "7.11.2",
     "@electron-forge/plugin-vite": "7.11.2",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.3",
+    "@types/better-sqlite3": "9.6.0",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "electron": "44.3.0",
