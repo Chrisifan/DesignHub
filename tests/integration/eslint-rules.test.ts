@@ -39,8 +39,10 @@ it('rejects desktop runtime and Node imports from renderer application code', as
     "import '../../../desktop/window-options';",
     "import './feature/../desktop/window-options';",
     "import '../platform/desktop';",
+    "import '../platform/desktop/../../desktop/window-options';",
+    "import './feature/../../platform/desktop/../../desktop/window-options';",
   ].join('\n');
   const [result] = await eslint.lintText(source, { filePath: 'src/app/renderer-boundary.ts' });
 
-  expect(result.messages.filter(({ ruleId }) => ruleId === 'no-restricted-imports')).toHaveLength(7);
+  expect(result.messages.filter(({ ruleId }) => ruleId === 'no-restricted-imports')).toHaveLength(9);
 });

@@ -92,7 +92,7 @@ export default tseslint.config(
           patterns: [
             { regex: nodeBuiltinRegex, message: 'Renderer code cannot import Node built-ins.' },
             { regex: '^electron(?:/.*)?$', message: 'Renderer code must use the typed preload facade.' },
-            { regex: '^\\.\\.?/(?!.*platform/desktop)(?:.*/)?desktop(?:/.*)?$', message: 'Renderer code cannot import desktop implementation modules.' },
+            { regex: '^\\.\\.?/(?!platform/desktop$)(?:.*/)?desktop(?:/.*)?$', message: 'Renderer code cannot import desktop implementation modules.' },
             { regex: '^src/desktop(?:/.*)?$', message: 'Renderer code cannot import desktop implementation modules.' },
           ],
         },
