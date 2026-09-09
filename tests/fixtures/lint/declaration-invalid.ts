@@ -6,6 +6,10 @@ export const expressedFunction = function () {
   return true;
 };
 
+export let mutableArrow = () => true;
+
+declare function declaredTypeOnly(): void;
+
 export const objectWithMethod = {
   method() {
     return true;
@@ -18,4 +22,8 @@ export class ClassWithMethods {
   method() {
     return true;
   }
+}
+
+abstract class AbstractClass {
+  abstract run(): void;
 }

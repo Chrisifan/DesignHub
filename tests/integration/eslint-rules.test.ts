@@ -19,6 +19,7 @@ it('allows arrow functions and rejects other self-authored function forms', asyn
   expect(invalidMessages.map(({ message }) => message)).toEqual(expect.arrayContaining([
     'Use a const arrow function instead of a function declaration.',
     'Use an arrow function instead of a function expression.',
+    'Arrow functions must be assigned with const.',
     'Use arrow-function properties instead of object method shorthand.',
     'Class methods and constructors are not allowed in self-authored code.',
   ]));
@@ -28,10 +29,13 @@ it('rejects desktop runtime and Node imports from renderer application code', as
   const eslint = new ESLint({ overrideConfigFile: 'eslint.config.mjs' });
   const source = [
     "import { ipcRenderer } from 'electron';",
+    "import 'electron/main';",
     "import { readFile } from 'node:fs/promises';",
+    "import 'fs';",
     "import { createWindowOptions } from '../desktop/window-options';",
+    "import '../../../desktop/window-options';",
   ].join('\n');
   const [result] = await eslint.lintText(source, { filePath: 'src/app/renderer-boundary.ts' });
 
-  expect(result.messages.filter(({ ruleId }) => ruleId === 'no-restricted-imports')).toHaveLength(3);
+  expect(result.messages.filter(({ ruleId }) => ruleId === 'no-restricted-imports')).toHaveLength(6);
 });

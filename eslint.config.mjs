@@ -1,3 +1,5 @@
+import { builtinModules } from 'node:module';
+
 import tseslint from 'typescript-eslint';
 
 /** @type {import('eslint').Rule.RuleModule} */
@@ -11,6 +13,7 @@ export const arrowFunctionRule = {
       functionExpression: 'Use an arrow function instead of a function expression.',
       objectMethod: 'Use arrow-function properties instead of object method shorthand.',
       classMethod: 'Class methods and constructors are not allowed in self-authored code.',
+      mutableArrow: 'Arrow functions must be assigned with const.',
     },
   },
   create: (context) => ({
@@ -28,22 +31,36 @@ export const arrowFunctionRule = {
     MethodDefinition: (node) => {
       context.report({ node, messageId: 'classMethod' });
     },
+    TSDeclareFunction: (node) => {
+      context.report({ node, messageId: 'functionDeclaration' });
+    },
+    TSAbstractMethodDefinition: (node) => {
+      context.report({ node, messageId: 'classMethod' });
+    },
+    VariableDeclaration: (node) => {
+      if (node.kind !== 'const' && node.declarations.some(({ init }) => init?.type === 'ArrowFunctionExpression')) {
+        context.report({ node, messageId: 'mutableArrow' });
+      }
+    },
   }),
 };
 
-const arrowFunctionConfig = {
+const projectRules = {
   plugins: { designhub: { rules: { 'arrow-functions': arrowFunctionRule } } },
   rules: { 'designhub/arrow-functions': 'error' },
 };
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const nodeBuiltinRegex = `^(?:node:)?(?:${builtinModules.map(escapeRegex).join('|')})(?:/.*)?$`;
+
 export default tseslint.config(
-  { ignores: ['.vite', 'node_modules', 'dist', 'out', '.superpowers', 'tests/fixtures/lint'] },
+  { ignores: ['.vite', 'node_modules', 'dist', 'out', '.superpowers', 'tests/fixtures/lint/declaration-invalid.ts'] },
   tseslint.configs.recommended,
   {
     files: ['src/**/*.{ts,tsx}', 'tests/**/*.{ts,tsx}', '*.config.ts', '*.config.mjs', 'eslint.config.mjs', 'forge.config.ts'],
-    ...arrowFunctionConfig,
+    ...projectRules,
     rules: {
-      ...arrowFunctionConfig.rules,
+      ...projectRules.rules,
       '@typescript-eslint/no-explicit-any': 'error',
     },
   },
@@ -53,10 +70,11 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
-          paths: [{ name: 'electron', message: 'Renderer code must use the typed preload facade.' }],
           patterns: [
-            { group: ['node:*'], message: 'Renderer code cannot import Node built-ins.' },
-            { group: ['../desktop/**', '../../desktop/**', 'src/desktop/**'], message: 'Renderer code cannot import desktop implementation modules.' },
+            { regex: nodeBuiltinRegex, message: 'Renderer code cannot import Node built-ins.' },
+            { regex: '^electron(?:/.*)?$', message: 'Renderer code must use the typed preload facade.' },
+            { regex: '^\\.{1,2}(?:/\\.{1,2})*/desktop(?:/.*)?$', message: 'Renderer code cannot import desktop implementation modules.' },
+            { regex: '^src/desktop(?:/.*)?$', message: 'Renderer code cannot import desktop implementation modules.' },
           ],
         },
       ],
