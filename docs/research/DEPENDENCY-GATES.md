@@ -1,6 +1,6 @@
 # 依赖研究与桌面运行时验证门槛
 
-创建：2026-09-08；更新：2026-09-09。状态：Electron 已按用户决定选为桌面基础框架；官方资料核验已完成，Electron 工程与双平台样例尚未完成。Tauri 的历史探针见 [Tauri 报告](M01-runtime-results.md)，Electron 当前记录见 [M01 Electron 报告](M01-electron-runtime-results.md)。
+创建：2026-09-08；更新：2026-09-09。状态：Electron 已按用户决定选为桌面基础框架；M01 已锁定版本级候选与一次性 Electron 44.3.0 probe 源码，但官方 darwin-arm64 binary 下载失败，未获得 Electron 工程或双平台样例实证。Tauri 的历史探针见 [Tauri 报告](M01-runtime-results.md)，Electron 当前记录见 [M01 Electron 报告](M01-electron-runtime-results.md)。
 
 ## 1. 统一采用步骤
 
@@ -26,7 +26,7 @@
 | G10 测试 | M01/M08 | [Vitest](https://github.com/vitest-dev/vitest)、[Testing Library](https://github.com/testing-library/react-testing-library)、[Playwright Electron](https://playwright.dev/docs/api/class-electron)、[WebdriverIO Electron](https://webdriver.io/docs/desktop-testing/electron)、[axe-core](https://github.com/dequelabs/axe-core) | 原生 Electron 覆盖与浏览器替身分离，中文 IME、文件对话框和主进程边界单独验证 |
 | G11 本地检索 | M08 | [SQLite FTS5](https://sqlite.org/fts5.html)、先评估本地普通查询 | 中文分词/子串匹配样本必须通过；不能仅英文测试判定中文全文可用 |
 
-G01/G07/G10 补充（2026-09-09）：Electron 官方文档确认进程/桥接模型、safeStorage 的系统加密保护与原生模块适配方法；自动化给出 WebdriverIO 和仍标 experimental 的 Playwright Electron。main 分支文档的新 API 需要再次核对目标稳定版本。本轮未执行 Electron 样例。
+G01/G02/G03/G07/G10 补充（2026-09-09）：锁定 Electron `44.3.0`、Forge `7.11.2`、Vite `8.2.2`、TypeScript `5.9.3`、ESLint `9.39.2`、Zod `4.5.4`、React `19.2.8`、Radix/shadcn/Tailwind/Lucide 候选、`@napi-rs/keyring` `2.0.0`、Vitest `5.0.0`、Playwright `1.63.0` 等准确版本及许可。Vitest 明示兼容 Vite 8 / Node 22.12+；TypeScript 7 与 ESLint 10 没有在本轮仅凭 latest 采用。Electron 官方文档确认进程/桥接模型、safeStorage 的系统加密保护与原生模块适配方法；自动化给出 WebdriverIO 和仍标 experimental 的 Playwright Electron。探针源码和 lock 已创建，但 Electron binary 下载 `TypeError: fetch failed`，没有运行 Electron 样例；不把配置或 browser mock 记为平台通过。
 
 模型供应商品牌尚未确定；不将某个商业 SDK 锁进基础实体。每项能力至少一个真实验证路径才可称支持；其中基本离线画布/尺寸/格式操作不得要求云 Key。
 

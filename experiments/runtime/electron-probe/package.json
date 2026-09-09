@@ -1,0 +1,15 @@
+{
+  "name": "designhub-electron-probe",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.23.0",
+  "scripts": {
+    "probe:automation": "node scripts/run-automation.mjs",
+    "probe:arrow-check": "node scripts/check-arrows.mjs"
+  },
+  "devDependencies": {
+    "electron": "44.3.0",
+    "playwright": "1.63.0"
+  }
+}

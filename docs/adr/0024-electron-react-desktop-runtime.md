@@ -1,6 +1,6 @@
 # Electron and React desktop runtime
 
-> Status: accepted; selected on 2026-09-09 at the user's direction, with implementation versions and platform gates still recorded as delivery prerequisites.
+> Status: accepted; selected on 2026-09-09 at the user's direction. M01 locks Electron 44.3.0 and its toolchain candidates, while platform gates remain delivery prerequisites.
 
 DesignHub will use Electron as its macOS and Windows desktop runtime with React/TypeScript in the renderer. Electron lets application code remain in JavaScript/TypeScript, provides a Node-capable main process for local files, SQLite and credential-bearing provider requests, and avoids introducing a Rust exception to the project's arrow-function rule. The renderer remains isolated and receives only narrow preload/contextBridge APIs. A credential entered by the user is sent to the main process and cleared from the form; stored secrets are never read back into the renderer.
 
@@ -16,3 +16,9 @@ DesignHub will use Electron as its macOS and Windows desktop runtime with React/
 Tauri ADR 0018 is superseded by this decision. Its disposable macOS probe remains historical evidence and is not an Electron acceptance test. Electron still requires the same R01–R08 workload, with Windows and signed packaging evidence before release claims.
 
 Sources and remaining work: [Electron research record](../research/M01-electron-runtime-results.md), [module verification](../verification/M01.md).
+
+## M01 version and host-probe update
+
+Electron `44.3.0` (MIT) is the locked host version, with pnpm `10.23.0` and Node `22.19.0`. Forge `7.11.2` / Vite `8.2.2`, TypeScript `5.9.3`, ESLint `9.39.2`, Zod `4.5.4`, the renderer candidates and test versions are recorded in the research record; Task 2 must use the same lock and prove the Forge/Vite build before an engineering-adoption claim.
+
+The disposable probe has an explicit safe BrowserWindow configuration and a Playwright Electron `1.63.0` automation harness, but Electron's official darwin-arm64 binary downloader failed in this environment (`TypeError: fetch failed`, exit 1). The harness consequently never opened a real Electron window. This ADR does not claim macOS window/security success, Windows Mica/Acrylic behavior, snapping, native traffic-light interaction, signing or distribution. Those remain required evidence, not accepted-by-configuration facts.
