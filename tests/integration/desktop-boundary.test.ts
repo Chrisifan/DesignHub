@@ -34,3 +34,13 @@ it('returns null after a directory dialog is cancelled without accepting rendere
   expect(showOpenDialog).toHaveBeenCalledOnce();
   expect(showOpenDialog).toHaveBeenCalledWith({});
 });
+
+it('accepts only canonical equivalents of the intended development URL', () => {
+  const mainFrame = { url: 'http://127.0.0.1:5173/' };
+  const window = { webContents: { mainFrame, getURL: () => mainFrame.url } };
+  const event = { sender: window.webContents, senderFrame: mainFrame };
+
+  expect(isTrustedWorkspaceRequest(event, window, 'http://127.0.0.1:5173')).toBe(true);
+  expect(isTrustedWorkspaceRequest(event, window, 'http://127.0.0.1:5173/other')).toBe(false);
+  expect(isTrustedWorkspaceRequest(event, window, 'http://localhost:5173/')).toBe(false);
+});
