@@ -1,0 +1,136 @@
+[
+  {
+    "id": "tauri-readme",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri/blob/tauri-v2.11.5/README.md",
+    "blobSha": "80556b42f74ede3cd1a246f339c4d22e8d4be6ef"
+  },
+  {
+    "id": "sql-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/plugin/sql.mdx",
+    "blobSha": "22d8748a612e2d00f553f0cad5cd25cc5c734515"
+  },
+  {
+    "id": "sql-api",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/plugins-workspace/blob/v2/plugins/sql/guest-js/index.ts",
+    "blobSha": "11d39e70b4b1738e6bb0368eeb36b62d4efa0033"
+  },
+  {
+    "id": "sql-src",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/plugins-workspace/blob/v2/plugins/sql/src/wrapper.rs",
+    "blobSha": "d47b2d1cbeca7a6c8b001151055ef84fee788854"
+  },
+  {
+    "id": "stronghold-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/plugin/stronghold.mdx",
+    "blobSha": "7137b837673cbba7a8f98417619bf0c018113442"
+  },
+  {
+    "id": "keyring-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/charlesportwoodii/tauri-plugin-keyring/blob/master/README.md",
+    "blobSha": "c294be9f047f53948801b4109b415baa9cbe85a9"
+  },
+  {
+    "id": "webview-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/reference/webview-versions.md",
+    "blobSha": "4be4232383aa7a941d4e2a57efd61fe9922e2da1"
+  },
+  {
+    "id": "webdriver-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/develop/Tests/WebDriver/index.mdx",
+    "blobSha": "6608f21b70691a37e78a9f590f5bd73e05568b30"
+  },
+  {
+    "id": "wdio-readme",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/webdriverio/desktop-mobile/blob/main/packages/tauri-service/README.md",
+    "blobSha": "af8910a10b25ca1d79ad2f7608918b89731237cb"
+  },
+  {
+    "id": "wdio-setup",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/webdriverio/desktop-mobile/blob/main/packages/tauri-service/docs/plugin-setup.md",
+    "blobSha": "ac5cd4ecaf50d917c00aa4f6052dadfd343a2706"
+  },
+  {
+    "id": "sidecar-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/develop/sidecar.mdx",
+    "blobSha": "b8afec9ffd644f6b1a4337825372ed7120a2a1ef"
+  },
+  {
+    "id": "mac-sign-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/distribute/Sign/macos.mdx",
+    "blobSha": "134ee070cf2b0075a5ed5e0cc8eed6d4f5da883f"
+  },
+  {
+    "id": "updater-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/plugin/updater.mdx",
+    "blobSha": "94af3061f32c535bc01dd9fa89f87c2b6ad80a43"
+  },
+  {
+    "id": "windows-doc",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/distribute/windows-installer.mdx",
+    "blobSha": "c35519930edbe4d9bc49cafc6c455a632dc5a63e"
+  },
+  {
+    "id": "electron-repo",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/electron/electron",
+    "apiUrl": "https://api.github.com/repos/electron/electron",
+    "snapshot": { "archived": false, "license": "MIT", "default_branch": "main", "pushed_at": "2026-09-09T04:42:34Z" }
+  },
+  {
+    "id": "electron-release",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/electron/electron/releases/tag/v44.3.0",
+    "apiUrl": "https://api.github.com/repos/electron/electron/releases/latest",
+    "snapshot": { "tag_name": "v44.3.0", "published_at": "2026-09-08T19:21:28Z", "prerelease": false, "draft": false }
+  },
+  {
+    "id": "electron-process",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/electron/electron/blob/main/docs/tutorial/process-model.md",
+    "blobSha": "b2e0451a488bdeac7c1aea666f1e2cce22b4198f"
+  },
+  {
+    "id": "electron-security",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/electron/electron/blob/main/docs/tutorial/security.md",
+    "blobSha": "71b1e96021761feb94923eea7b93982c836c12d6"
+  },
+  {
+    "id": "electron-safe-storage",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/electron/electron/blob/main/docs/api/safe-storage.md",
+    "blobSha": "30d76a8b9bd888f988d95be3feb0927a12037d49"
+  },
+  {
+    "id": "electron-native",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/electron/electron/blob/main/docs/tutorial/using-native-node-modules.md",
+    "blobSha": "51a983b0ec74c7ab9f26662171bc90aa3e13db25"
+  },
+  {
+    "id": "electron-test",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/electron/electron/blob/main/docs/tutorial/automated-testing.md",
+    "blobSha": "740f79c39361803b0397177f4d3157f10efb9641"
+  },
+  {
+    "id": "electron-distribution",
+    "checkedOn": "2026-09-09",
+    "url": "https://github.com/electron/electron/blob/main/docs/tutorial/application-distribution.md",
+    "blobSha": "734aad1cd961d2b3c90c609ff8be667cccd08c5f"
+  }
+]

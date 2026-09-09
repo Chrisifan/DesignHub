@@ -1,0 +1,14 @@
+{
+  "productName": "DesignHub Runtime Probe",
+  "version": "0.0.0",
+  "identifier": "dev.designhub.runtime-probe",
+  "build": {
+    "devUrl": "http://127.0.0.1:18764",
+    "frontendDist": "ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [{ "title": "DesignHub disposable runtime probe", "width": 1200, "height": 800 }]
+  },
+  "bundle": { "active": false }
+}

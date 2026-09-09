@@ -1,0 +1,18 @@
+[package]
+name = "designhub-runtime-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "designhub-runtime-probe"
+path = "main.rs"
+
+[build-dependencies]
+tauri-build = "=2.6.3"
+
+[dependencies]
+tauri = "=2.11.5"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

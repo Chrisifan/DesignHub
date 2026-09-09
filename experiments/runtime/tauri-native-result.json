@@ -1,0 +1,79 @@
+{
+  "status": "pass",
+  "greeting": "Hello DesignHub 探针, You have been greeted from Rust!",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+  "devicePixelRatio": 2,
+  "screen": {
+    "width": 1512,
+    "height": 982
+  },
+  "workload": "6000x4000 synthetic PNG; 1 raster + 18 rectangles + 1 Chinese text layer; 10 worker decode/composite/PNG-export/decode cycles; 120 synthetic pan/zoom frames",
+  "metrics": {
+    "frameGapP95Ms": 18,
+    "frameGapMaxMs": 19,
+    "drawCallP95Ms": 0,
+    "heartbeatMaxMs": 23
+  },
+  "workerFailureDelivered": true,
+  "cycles": [
+    {
+      "cycle": 1,
+      "elapsedMs": 1594.0000000000005,
+      "pngBytes": 26149558
+    },
+    {
+      "cycle": 2,
+      "elapsedMs": 1503.000000000001,
+      "pngBytes": 26100693
+    },
+    {
+      "cycle": 3,
+      "elapsedMs": 1484.000000000001,
+      "pngBytes": 26119938
+    },
+    {
+      "cycle": 4,
+      "elapsedMs": 1469.000000000001,
+      "pngBytes": 26128753
+    },
+    {
+      "cycle": 5,
+      "elapsedMs": 2487,
+      "pngBytes": 26141942
+    },
+    {
+      "cycle": 6,
+      "elapsedMs": 1468,
+      "pngBytes": 26118082
+    },
+    {
+      "cycle": 7,
+      "elapsedMs": 1491,
+      "pngBytes": 26112823
+    },
+    {
+      "cycle": 8,
+      "elapsedMs": 1477,
+      "pngBytes": 26110039
+    },
+    {
+      "cycle": 9,
+      "elapsedMs": 1481.0000000000036,
+      "pngBytes": 26109353
+    },
+    {
+      "cycle": 10,
+      "elapsedMs": 1499,
+      "pngBytes": 26149196
+    }
+  ],
+  "exclusions": [
+    "Real pointer/keyboard/IME input",
+    "Editable canvas library",
+    "20 full-resolution raster layers",
+    "Whole-app/GPU memory recovery",
+    "Filesystem export",
+    "Windows",
+    "Production credentials and task history"
+  ]
+}

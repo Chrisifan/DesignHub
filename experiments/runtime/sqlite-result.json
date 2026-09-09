@@ -1,0 +1,34 @@
+{
+  "probe": "SQLite engine only; not Tauri plugin",
+  "node": "v22.19.0",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "root": "/var/folders/yr/bqszq38n05b4y6g9m44krsgw0000gn/T/designhub-sqlite-lb8O4y",
+  "results": [
+    {
+      "id": "P01a-unicode-path-live-wal-backup",
+      "status": "pass"
+    },
+    {
+      "id": "P01b-failed-migration-rollback",
+      "status": "pass"
+    },
+    {
+      "id": "P01c-abrupt-migration-process-exit",
+      "status": "pass"
+    },
+    {
+      "id": "P02-two-connection-write-contention",
+      "status": "pass"
+    },
+    {
+      "id": "P03-cross-connection-rollback-counterexample",
+      "status": "pass"
+    },
+    {
+      "id": "P01d-move-closed-project-and-reopen",
+      "status": "pass"
+    }
+  ],
+  "retained": "Disposable synthetic database files retained for inspection; no user data accessed."
+}
