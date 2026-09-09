@@ -8,6 +8,11 @@ export const expressedFunction = function () {
 
 export let mutableArrow = () => true;
 
+export let deferredArrow: () => boolean;
+deferredArrow = () => true;
+
+export let { destructuredArrow = () => true } = {};
+
 declare function declaredTypeOnly(): void;
 
 export const objectWithMethod = {

@@ -2,6 +2,22 @@ import { builtinModules } from 'node:module';
 
 import tseslint from 'typescript-eslint';
 
+const isArrowFunction = (node) => {
+  if (!node) return false;
+  if (node.type === 'ArrowFunctionExpression') return true;
+  if (node.type === 'TSAsExpression' || node.type === 'TSTypeAssertion' || node.type === 'ChainExpression') return isArrowFunction(node.expression);
+  return false;
+};
+
+const hasArrowDefault = (node) => {
+  if (!node) return false;
+  if (node.type === 'AssignmentPattern') return isArrowFunction(node.right) || hasArrowDefault(node.left);
+  if (node.type === 'ObjectPattern') return node.properties.some((property) => property.type === 'Property' ? hasArrowDefault(property.value) : property.type === 'RestElement' && hasArrowDefault(property.argument));
+  if (node.type === 'ArrayPattern') return node.elements.some((element) => hasArrowDefault(element));
+  if (node.type === 'RestElement') return hasArrowDefault(node.argument);
+  return false;
+};
+
 /** @type {import('eslint').Rule.RuleModule} */
 export const arrowFunctionRule = {
   meta: {
@@ -38,9 +54,12 @@ export const arrowFunctionRule = {
       context.report({ node, messageId: 'classMethod' });
     },
     VariableDeclaration: (node) => {
-      if (node.kind !== 'const' && node.declarations.some(({ init }) => init?.type === 'ArrowFunctionExpression')) {
+      if (node.kind !== 'const' && node.declarations.some(({ id, init }) => isArrowFunction(init) || hasArrowDefault(id))) {
         context.report({ node, messageId: 'mutableArrow' });
       }
+    },
+    AssignmentExpression: (node) => {
+      if (node.left.type === 'Identifier' && isArrowFunction(node.right)) context.report({ node, messageId: 'mutableArrow' });
     },
   }),
 };
@@ -73,7 +92,7 @@ export default tseslint.config(
           patterns: [
             { regex: nodeBuiltinRegex, message: 'Renderer code cannot import Node built-ins.' },
             { regex: '^electron(?:/.*)?$', message: 'Renderer code must use the typed preload facade.' },
-            { regex: '^\\.{1,2}(?:/\\.{1,2})*/desktop(?:/.*)?$', message: 'Renderer code cannot import desktop implementation modules.' },
+            { regex: '^\\.\\.?/(?!.*platform/desktop)(?:.*/)?desktop(?:/.*)?$', message: 'Renderer code cannot import desktop implementation modules.' },
             { regex: '^src/desktop(?:/.*)?$', message: 'Renderer code cannot import desktop implementation modules.' },
           ],
         },
