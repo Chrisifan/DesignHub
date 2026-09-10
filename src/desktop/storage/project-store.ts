@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -74,14 +74,25 @@ type TrashEntry = {
 
 type TrashMetadata = Omit<TrashEntry, 'state'> & {
   kind: typeof trashMetadataKind;
+  transition?: 'restoring';
+  restoreRelativePath?: string;
 };
 
 type ProjectStoreOptions = {
   failAt?: ProjectStoreFault;
   getLiveReferenceCount?: (projectId: string) => number;
+  onRestoreDestinationReserved?: (directory: string) => void;
 };
 
-export type ProjectStoreFault = 'database-write' | 'publish' | 'index-update';
+export type ProjectStoreFault = 'database-write'
+  | 'publish'
+  | 'index-update'
+  | 'trash-after-metadata'
+  | 'trash-after-rename'
+  | 'restore-after-reservation'
+  | 'restore-after-copy'
+  | 'restore-after-source-delete'
+  | 'purge-after-delete';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
@@ -176,6 +187,18 @@ const validateProjectOperation = (value: unknown): ProjectOperation => {
   return value;
 };
 
+const getManagedRootDirectory = (workspaceDirectory: string, name: string): string => {
+  const directory = join(workspaceDirectory, name);
+  let status: ReturnType<typeof lstatSync>;
+  try {
+    status = lstatSync(directory);
+  } catch {
+    throw new Error('INVALID_WORKSPACE_PATH');
+  }
+  if (!status.isDirectory() || status.isSymbolicLink() || realpathSync(directory) !== directory) throw new Error('INVALID_WORKSPACE_PATH');
+  return directory;
+};
+
 const validateWorkspace = (workspace: WorkspaceDescriptor, workspaceId: string): { directory: string; projectsDirectory: string; trashDirectory: string; indexDirectory: string } => {
   if (workspace.openMode !== 'writable') throw new Error('WORKSPACE_NOT_WRITABLE');
   if (workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
@@ -186,10 +209,9 @@ const validateWorkspace = (workspace: WorkspaceDescriptor, workspaceId: string):
   if (manifest.workspaceId !== workspace.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   if (manifest.formatVersion !== workspace.formatVersion) throw new Error('WORKSPACE_FORMAT_CHANGED');
 
-  const projectsDirectory = realpathSync(join(directory, 'projects'));
-  const trashDirectory = realpathSync(join(directory, 'trash'));
-  const indexDirectory = realpathSync(join(directory, internalDirectoryName));
-  if (dirname(projectsDirectory) !== directory || dirname(trashDirectory) !== directory || dirname(indexDirectory) !== directory) throw new Error('INVALID_WORKSPACE_PATH');
+  const projectsDirectory = getManagedRootDirectory(directory, 'projects');
+  const trashDirectory = getManagedRootDirectory(directory, 'trash');
+  const indexDirectory = getManagedRootDirectory(directory, internalDirectoryName);
   return { directory, projectsDirectory, trashDirectory, indexDirectory };
 };
 
@@ -243,6 +265,30 @@ const getOriginalRelativePath = (directoryName: string, projectId: string): stri
   return `projects/${directoryName}`;
 };
 
+const getManagedProjectDirectory = (rootDirectory: string, directoryName: string): string => {
+  const directory = join(rootDirectory, directoryName);
+  let status: ReturnType<typeof lstatSync>;
+  try {
+    status = lstatSync(directory);
+  } catch {
+    throw new Error('UNMANAGED_PROJECT_DIRECTORY');
+  }
+  if (!status.isDirectory() || status.isSymbolicLink()) throw new Error('UNMANAGED_PROJECT_DIRECTORY');
+  const canonicalDirectory = realpathSync(directory);
+  if (canonicalDirectory !== directory || dirname(canonicalDirectory) !== rootDirectory) throw new Error('UNMANAGED_PROJECT_DIRECTORY');
+  return canonicalDirectory;
+};
+
+const pathEntryExists = (path: string): boolean => {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return false;
+    throw error;
+  }
+};
+
 const isOriginalRelativePath = (value: unknown, projectId: string): value is string => {
   if (typeof value !== 'string' || !value.startsWith('projects/')) return false;
   const directoryName = value.slice('projects/'.length);
@@ -255,7 +301,9 @@ const isTrashMetadata = (value: unknown): value is TrashMetadata => isRecord(val
   && uuidPattern.test(value.projectId)
   && isOriginalRelativePath(value.originalRelativePath, value.projectId)
   && typeof value.deletedAt === 'string'
-  && !Number.isNaN(Date.parse(value.deletedAt));
+  && !Number.isNaN(Date.parse(value.deletedAt))
+  && (value.transition === undefined || value.transition === 'restoring')
+  && (value.restoreRelativePath === undefined || isOriginalRelativePath(value.restoreRelativePath, value.projectId));
 
 const readTrashMetadata = (projectDirectory: string): TrashMetadata | null => {
   let metadata: unknown;
@@ -269,32 +317,39 @@ const readTrashMetadata = (projectDirectory: string): TrashMetadata | null => {
 };
 
 const scanPublishedProjects = (projectsDirectory: string): Array<{ manifest: ProjectManifest; directoryName: string }> => readdirSync(projectsDirectory, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+  .filter((entry) => !entry.name.startsWith('.'))
+  .filter((entry) => {
+    if (entry.isSymbolicLink()) throw new Error('UNMANAGED_PROJECT_DIRECTORY');
+    return entry.isDirectory();
+  })
   .flatMap((entry) => {
-    const projectDirectory = join(projectsDirectory, entry.name);
+    const projectDirectory = getManagedProjectDirectory(projectsDirectory, entry.name);
     const manifest = readValidPublishedProject(projectDirectory);
     if (!manifest || !isProjectDirectoryName(entry.name, manifest.projectId)) return [];
     return [{ manifest, directoryName: entry.name }];
   });
 
 const scanTrashedProjects = (trashDirectory: string): TrashMetadata[] => readdirSync(trashDirectory, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && uuidPattern.test(entry.name))
+  .filter((entry) => uuidPattern.test(entry.name))
+  .filter((entry) => {
+    if (entry.isSymbolicLink()) throw new Error('UNMANAGED_PROJECT_DIRECTORY');
+    return entry.isDirectory();
+  })
   .flatMap((entry) => {
-    const projectDirectory = join(trashDirectory, entry.name);
+    const projectDirectory = getManagedProjectDirectory(trashDirectory, entry.name);
     const manifest = readValidPublishedProject(projectDirectory);
     const metadata = readTrashMetadata(projectDirectory);
     if (!manifest || !metadata || manifest.projectId !== entry.name || metadata.projectId !== manifest.projectId) return [];
     return [metadata];
   });
 
-const reconcileTrashedProjects = (database: Database.Database, trashDirectory: string): Set<string> => {
+const reconcileTrashedProjects = (database: Database.Database, metadata: TrashMetadata[]): Set<string> => {
   const insertTrash = database.prepare("INSERT INTO trash_entries (project_id, original_relative_path, deleted_at, state) VALUES (?, ?, ?, 'trashed') ON CONFLICT(project_id) DO UPDATE SET original_relative_path = excluded.original_relative_path, deleted_at = excluded.deleted_at, state = 'trashed'");
   const removeProject = database.prepare('DELETE FROM projects WHERE project_id = ?');
   const reconcile = database.transaction((metadata: TrashMetadata): void => {
     insertTrash.run(metadata.projectId, metadata.originalRelativePath, metadata.deletedAt);
     removeProject.run(metadata.projectId);
   });
-  const metadata = scanTrashedProjects(trashDirectory);
   metadata.forEach((entry) => reconcile(entry));
   const present = new Set(metadata.map((entry) => entry.projectId));
   const clearMissing = database.prepare('DELETE FROM trash_entries WHERE project_id = ?');
@@ -319,7 +374,15 @@ const reconcilePublishedProjects = (database: Database.Database, projectsDirecto
 };
 
 const reconcileIndex = (database: Database.Database, projectsDirectory: string, trashDirectory: string): void => {
-  const trashedProjectIds = reconcileTrashedProjects(database, trashDirectory);
+  const publishedProjects = scanPublishedProjects(projectsDirectory);
+  const trashedProjects = scanTrashedProjects(trashDirectory);
+  const activeProjectIds = new Set<string>();
+  publishedProjects.forEach(({ manifest }) => {
+    if (activeProjectIds.has(manifest.projectId)) throw new Error('DUPLICATE_PROJECT_IDENTITY');
+    activeProjectIds.add(manifest.projectId);
+  });
+  if (trashedProjects.some((entry) => activeProjectIds.has(entry.projectId))) throw new Error('DUPLICATE_PROJECT_IDENTITY');
+  const trashedProjectIds = reconcileTrashedProjects(database, trashedProjects);
   reconcilePublishedProjects(database, projectsDirectory, trashedProjectIds);
 };
 
@@ -392,8 +455,9 @@ const getPublishedProject = (database: Database.Database, projectsDirectory: str
       if (indexedProject.projectId !== operation.projectId || !isProjectDirectoryName(indexedProject.directoryName, operation.projectId)) throw new Error('INVALID_PROJECT_INDEX');
       return indexedProject.directoryName;
     })();
-  const projectDirectory = join(projectsDirectory, directoryName);
-  if (!existsSync(projectDirectory)) return null;
+  const candidateDirectory = join(projectsDirectory, directoryName);
+  if (!pathEntryExists(candidateDirectory)) return null;
+  const projectDirectory = getManagedProjectDirectory(projectsDirectory, directoryName);
   const manifest = readValidPublishedProject(projectDirectory);
   if (!manifest || manifest.projectId !== operation.projectId || manifest.operationId !== operationId) return null;
   return manifest;
@@ -496,7 +560,7 @@ const getActiveProject = (database: Database.Database, projectsDirectory: string
     throw new Error('PROJECT_NOT_FOUND');
   }
   if (!isProjectDirectoryName(value.directoryName, projectId)) throw new Error('INVALID_PROJECT_INDEX');
-  const projectDirectory = join(projectsDirectory, value.directoryName);
+  const projectDirectory = getManagedProjectDirectory(projectsDirectory, value.directoryName);
   const manifest = readValidPublishedProject(projectDirectory);
   if (!manifest || manifest.projectId !== projectId) throw new Error('PROJECT_NOT_FOUND');
   return { projectId, directoryName: value.directoryName, displayName: value.displayName };
@@ -536,7 +600,7 @@ const listTrashedProjects = (handle: WorkspaceHandle): TrashedProject[] => {
   }
 };
 
-const moveProjectToTrash = (handle: WorkspaceHandle, input: TrashProjectInput): TrashedProject => {
+const moveProjectToTrash = (handle: WorkspaceHandle, options: ProjectStoreOptions, input: TrashProjectInput): TrashedProject => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
   validateProjectId(input.projectId);
@@ -544,9 +608,9 @@ const moveProjectToTrash = (handle: WorkspaceHandle, input: TrashProjectInput): 
   const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
   try {
     const activeProject = getActiveProject(index, paths.projectsDirectory, input.projectId);
-    const projectDirectory = join(paths.projectsDirectory, activeProject.directoryName);
+    const projectDirectory = getManagedProjectDirectory(paths.projectsDirectory, activeProject.directoryName);
     const trashDirectory = join(paths.trashDirectory, input.projectId);
-    if (existsSync(trashDirectory)) throw new Error('TRASH_DIRECTORY_CONFLICT');
+    if (pathEntryExists(trashDirectory)) throw new Error('TRASH_DIRECTORY_CONFLICT');
     removeTrashMetadata(projectDirectory);
     const entry: TrashedProject = {
       projectId: input.projectId,
@@ -556,7 +620,9 @@ const moveProjectToTrash = (handle: WorkspaceHandle, input: TrashProjectInput): 
     index.prepare("INSERT INTO trash_entries (project_id, original_relative_path, deleted_at, state) VALUES (?, ?, ?, 'trashing')").run(entry.projectId, entry.originalRelativePath, entry.deletedAt);
     try {
       writeTrashMetadata(projectDirectory, entry);
+      if (options.failAt === 'trash-after-metadata') throw new Error('INJECTED_TRASH_AFTER_METADATA');
       renameSync(projectDirectory, trashDirectory);
+      if (options.failAt === 'trash-after-rename') throw new Error('INJECTED_TRASH_AFTER_RENAME');
       const markTrashed = index.transaction((): void => {
         index.prepare("UPDATE trash_entries SET state = 'trashed' WHERE project_id = ?").run(entry.projectId);
         index.prepare('DELETE FROM projects WHERE project_id = ?').run(entry.projectId);
@@ -564,7 +630,7 @@ const moveProjectToTrash = (handle: WorkspaceHandle, input: TrashProjectInput): 
       markTrashed();
       return entry;
     } catch (error) {
-      if (existsSync(projectDirectory)) {
+      if (pathEntryExists(projectDirectory) && options.failAt !== 'trash-after-metadata') {
         removeTrashMetadata(projectDirectory);
         index.prepare('DELETE FROM trash_entries WHERE project_id = ?').run(entry.projectId);
       }
@@ -575,7 +641,7 @@ const moveProjectToTrash = (handle: WorkspaceHandle, input: TrashProjectInput): 
   }
 };
 
-const restoreProjectFromTrash = (handle: WorkspaceHandle, input: TrashProjectInput): RestoreProjectResult => {
+const restoreProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOptions, input: TrashProjectInput): RestoreProjectResult => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
   validateProjectId(input.projectId);
@@ -584,26 +650,44 @@ const restoreProjectFromTrash = (handle: WorkspaceHandle, input: TrashProjectInp
   try {
     const entry = getTrashedProject(index, input.projectId);
     if (entry.state !== 'trashed') throw new Error('TRASH_ENTRY_NOT_READY');
-    const trashProjectDirectory = join(paths.trashDirectory, entry.projectId);
+    const trashProjectDirectory = getManagedProjectDirectory(paths.trashDirectory, entry.projectId);
     const manifest = readValidPublishedProject(trashProjectDirectory);
     const metadata = readTrashMetadata(trashProjectDirectory);
     if (!manifest || !metadata || manifest.projectId !== entry.projectId || metadata.projectId !== entry.projectId) throw new Error('TRASH_ENTRY_NOT_FOUND');
     const originalDirectoryName = entry.originalRelativePath.slice('projects/'.length);
+    index.prepare("UPDATE trash_entries SET state = 'restoring' WHERE project_id = ?").run(entry.projectId);
     let restoredDirectoryName = originalDirectoryName;
     let restoredDirectory = join(paths.projectsDirectory, restoredDirectoryName);
-    while (existsSync(restoredDirectory)) {
-      restoredDirectoryName = `${entry.projectId}-restored-${randomUUID()}`;
-      restoredDirectory = join(paths.projectsDirectory, restoredDirectoryName);
+    while (true) {
+      try {
+        mkdirSync(restoredDirectory);
+        break;
+      } catch (error) {
+        if (errorCode(error) !== 'EEXIST') throw error;
+        restoredDirectoryName = `${entry.projectId}-restored-${randomUUID()}`;
+        restoredDirectory = join(paths.projectsDirectory, restoredDirectoryName);
+      }
     }
-    index.prepare("UPDATE trash_entries SET state = 'restoring' WHERE project_id = ?").run(entry.projectId);
-    renameSync(trashProjectDirectory, restoredDirectory);
-    removeTrashMetadata(restoredDirectory);
-    const markRestored = index.transaction((): void => {
-      index.prepare('DELETE FROM trash_entries WHERE project_id = ?').run(entry.projectId);
-      index.prepare('INSERT OR REPLACE INTO projects (project_id, directory_name, display_name) VALUES (?, ?, ?)').run(entry.projectId, restoredDirectoryName, manifest.name);
-    });
-    markRestored();
-    return { projectId: entry.projectId, restoredRelativePath: `projects/${restoredDirectoryName}` };
+    try {
+      options.onRestoreDestinationReserved?.(restoredDirectory);
+      if (options.failAt === 'restore-after-reservation') throw new Error('INJECTED_RESTORE_AFTER_RESERVATION');
+      cpSync(trashProjectDirectory, restoredDirectory, { recursive: true, force: false, errorOnExist: true });
+      if (options.failAt === 'restore-after-copy') throw new Error('INJECTED_RESTORE_AFTER_COPY');
+      removeTrashMetadata(restoredDirectory);
+      rmSync(trashProjectDirectory, { recursive: true, force: false });
+      if (options.failAt === 'restore-after-source-delete') throw new Error('INJECTED_RESTORE_AFTER_SOURCE_DELETE');
+      const markRestored = index.transaction((): void => {
+        index.prepare('DELETE FROM trash_entries WHERE project_id = ?').run(entry.projectId);
+        index.prepare('INSERT INTO projects (project_id, directory_name, display_name) VALUES (?, ?, ?)').run(entry.projectId, restoredDirectoryName, manifest.name);
+      });
+      markRestored();
+      return { projectId: entry.projectId, restoredRelativePath: `projects/${restoredDirectoryName}` };
+    } catch (error) {
+      if (pathEntryExists(trashProjectDirectory)) {
+        index.prepare("UPDATE trash_entries SET state = 'trashed' WHERE project_id = ?").run(entry.projectId);
+      }
+      throw error;
+    }
   } finally {
     index.close();
   }
@@ -622,11 +706,12 @@ const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOpt
     const liveReferences = options.getLiveReferenceCount(entry.projectId);
     if (!Number.isInteger(liveReferences) || liveReferences < 0) throw new Error('INVALID_LIVE_REFERENCE_COUNT');
     if (!canPurge(liveReferences)) throw new Error('PROJECT_HAS_LIVE_REFERENCES');
-    const trashProjectDirectory = join(paths.trashDirectory, entry.projectId);
+    const trashProjectDirectory = getManagedProjectDirectory(paths.trashDirectory, entry.projectId);
     const manifest = readValidPublishedProject(trashProjectDirectory);
     const metadata = readTrashMetadata(trashProjectDirectory);
     if (!manifest || !metadata || manifest.projectId !== entry.projectId || metadata.projectId !== entry.projectId) throw new Error('TRASH_ENTRY_NOT_FOUND');
     rmSync(trashProjectDirectory, { recursive: true, force: false });
+    if (options.failAt === 'purge-after-delete') throw new Error('INJECTED_PURGE_AFTER_DELETE');
     index.prepare('DELETE FROM trash_entries WHERE project_id = ?').run(entry.projectId);
   } finally {
     index.close();
@@ -635,8 +720,8 @@ const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOpt
 
 export const createProjectStore = (handle: WorkspaceHandle, options: ProjectStoreOptions = {}): ProjectStore => ({
   createProjectContainer: async (input): Promise<CreateProjectContainerResult> => createProject(handle, options, input),
-  moveProjectToTrash: async (input): Promise<TrashedProject> => moveProjectToTrash(handle, input),
+  moveProjectToTrash: async (input): Promise<TrashedProject> => moveProjectToTrash(handle, options, input),
   listTrashedProjects: async (): Promise<TrashedProject[]> => listTrashedProjects(handle),
-  restoreProjectFromTrash: async (input): Promise<RestoreProjectResult> => restoreProjectFromTrash(handle, input),
+  restoreProjectFromTrash: async (input): Promise<RestoreProjectResult> => restoreProjectFromTrash(handle, options, input),
   purgeProjectFromTrash: async (input): Promise<void> => purgeProjectFromTrash(handle, options, input),
 });

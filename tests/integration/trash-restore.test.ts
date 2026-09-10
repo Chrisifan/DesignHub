@@ -1,11 +1,13 @@
 // @vitest-environment node
 
-import { existsSync } from 'node:fs';
-import { mkdtemp, mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { existsSync, writeFileSync } from 'node:fs';
+import { cp, mkdtemp, mkdir, readFile, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 
 import { createProjectStore, projectManifestName, workspaceProjectIndexName } from '../../src/desktop/storage/project-store';
 import { createWorkspace, openWorkspace } from '../../src/desktop/storage/workspace-store';
@@ -128,5 +130,198 @@ it('accepts only the live writable handle and reconciles trashed metadata after 
     await expect(readFile(join(directory, 'workspace', 'projects', created.projectId, projectManifestName), 'utf8')).rejects.toThrow('ENOENT');
   } finally {
     workspace.close();
+  }
+});
+
+it('rejects a symlinked active container without touching the external project', async () => {
+  const { directory, workspace, store } = await createWritableStore();
+  const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'trash-symlink', name: 'Trash symlink' });
+  const managedProject = join(workspace.workspace.directory, 'projects', created.projectId);
+  const externalProject = join(directory, 'external-project');
+
+  try {
+    await rename(managedProject, externalProject);
+    await symlink(externalProject, managedProject);
+
+    await expect(store.moveProjectToTrash({ workspaceId: workspace.workspace.workspaceId, projectId: created.projectId })).rejects.toThrow('UNMANAGED_PROJECT_DIRECTORY');
+    expect(existsSync(join(externalProject, '.designhub-trash.json'))).toBe(false);
+    await expect(readFile(join(externalProject, projectManifestName), 'utf8')).resolves.toContain(created.projectId);
+  } finally {
+    workspace.close();
+  }
+});
+
+it('rejects a symlinked trash container before touching the external project or index', async () => {
+  const { directory, workspace, store } = await createWritableStore();
+  const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'restore-symlink', name: 'Restore symlink' });
+  const input = { workspaceId: workspace.workspace.workspaceId, projectId: created.projectId };
+  const managedTrash = join(workspace.workspace.directory, 'trash', created.projectId);
+  const externalTrash = join(directory, 'external-trash-project');
+  const indexPath = join(workspace.workspace.directory, '.designhub', workspaceProjectIndexName);
+
+  try {
+    await store.moveProjectToTrash(input);
+    await rename(managedTrash, externalTrash);
+    await symlink(externalTrash, managedTrash);
+
+    await expect(store.restoreProjectFromTrash(input)).rejects.toThrow('UNMANAGED_PROJECT_DIRECTORY');
+    await expect(readFile(join(externalTrash, projectManifestName), 'utf8')).resolves.toContain(created.projectId);
+    expect(existsSync(join(externalTrash, '.designhub-trash.json'))).toBe(true);
+
+    const index = new Database(indexPath, { readonly: true, fileMustExist: true });
+    try {
+      expect(index.prepare('SELECT COUNT(*) AS count FROM trash_entries WHERE project_id = ?').get(created.projectId)).toEqual({ count: 1 });
+    } finally {
+      index.close();
+    }
+  } finally {
+    workspace.close();
+  }
+});
+
+it('does not overwrite a destination entry created after restore reservation', async () => {
+  const { workspace, store } = await createWritableStore();
+  const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'trash-race', name: 'Trash race' });
+  const input = { workspaceId: workspace.workspace.workspaceId, projectId: created.projectId };
+  let reservedDirectory = '';
+  const racingStore = createProjectStore(workspace, {
+    onRestoreDestinationReserved: (directory) => {
+      reservedDirectory = directory;
+      writeFileSync(join(directory, projectManifestName), 'user content wins');
+    },
+  });
+
+  try {
+    await store.moveProjectToTrash(input);
+    await expect(racingStore.restoreProjectFromTrash(input)).rejects.toThrow();
+    await expect(racingStore.listTrashedProjects()).resolves.toMatchObject([{ projectId: created.projectId }]);
+    await expect(readFile(join(reservedDirectory, projectManifestName), 'utf8')).resolves.toBe('user content wins');
+    const restored = await store.restoreProjectFromTrash(input);
+    expect(restored.projectId).toBe(created.projectId);
+    expect(restored.restoredRelativePath).not.toBe(`projects/${created.projectId}`);
+  } finally {
+    workspace.close();
+  }
+});
+
+it('fails closed when reconstruction finds duplicate active project identities', async () => {
+  const { workspace, store } = await createWritableStore();
+  const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'trash-duplicate-active', name: 'Trash duplicate active' });
+  const projectsDirectory = join(workspace.workspace.directory, 'projects');
+  const duplicateDirectory = join(projectsDirectory, `${created.projectId}-restored-${randomUUID()}`);
+  const indexPath = join(workspace.workspace.directory, '.designhub', workspaceProjectIndexName);
+
+  try {
+    await cp(join(projectsDirectory, created.projectId), duplicateDirectory, { recursive: true });
+    workspace.close();
+    await unlink(indexPath);
+
+    const reopened = await openWorkspace(workspace.workspace.directory);
+    try {
+      await expect(createProjectStore(reopened).listTrashedProjects()).rejects.toThrow('DUPLICATE_PROJECT_IDENTITY');
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    workspace.close();
+  }
+});
+
+it('fails closed instead of purging or reactivating an active and trashed identity collision', async () => {
+  const { workspace, store } = await createWritableStore();
+  const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'trash-duplicate-roots', name: 'Trash duplicate roots' });
+  const input = { workspaceId: workspace.workspace.workspaceId, projectId: created.projectId };
+  const indexPath = join(workspace.workspace.directory, '.designhub', workspaceProjectIndexName);
+
+  try {
+    await store.moveProjectToTrash(input);
+    await cp(join(workspace.workspace.directory, 'trash', created.projectId), join(workspace.workspace.directory, 'projects', created.projectId), { recursive: true });
+    workspace.close();
+    await unlink(indexPath);
+
+    let reopened = await openWorkspace(workspace.workspace.directory);
+    try {
+      const reopenedStore = createProjectStore(reopened, { getLiveReferenceCount: () => 0 });
+      await expect(reopenedStore.purgeProjectFromTrash({ workspaceId: reopened.workspace.workspaceId, projectId: created.projectId })).rejects.toThrow('DUPLICATE_PROJECT_IDENTITY');
+      await expect(reopenedStore.listTrashedProjects()).rejects.toThrow('DUPLICATE_PROJECT_IDENTITY');
+      reopened.close();
+      reopened = await openWorkspace(workspace.workspace.directory);
+      await expect(createProjectStore(reopened).listTrashedProjects()).rejects.toThrow('DUPLICATE_PROJECT_IDENTITY');
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    workspace.close();
+  }
+});
+
+it('recovers or fails closed across injected trash, restore, and purge transition gaps', async () => {
+  const { workspace } = await createWritableStore();
+  let activeWorkspace = workspace;
+  const create = async (operationId: string) => createProjectStore(activeWorkspace).createProjectContainer({ workspaceId: activeWorkspace.workspace.workspaceId, operationId, name: operationId });
+  const reopen = async () => {
+    activeWorkspace.close();
+    activeWorkspace = await openWorkspace(workspace.workspace.directory);
+    return createProjectStore(activeWorkspace);
+  };
+
+  try {
+    const beforeRename = await create('gap-before-rename');
+    const beforeRenameInput = { workspaceId: activeWorkspace.workspace.workspaceId, projectId: beforeRename.projectId };
+    await expect(createProjectStore(activeWorkspace, { failAt: 'trash-after-metadata' }).moveProjectToTrash(beforeRenameInput)).rejects.toThrow('INJECTED_TRASH_AFTER_METADATA');
+    let recoveredStore = await reopen();
+    await expect(recoveredStore.listTrashedProjects()).resolves.toEqual([]);
+    await expect(recoveredStore.moveProjectToTrash({ workspaceId: activeWorkspace.workspace.workspaceId, projectId: beforeRename.projectId })).resolves.toMatchObject({ projectId: beforeRename.projectId });
+
+    const afterRename = await create('gap-after-rename');
+    const afterRenameInput = { workspaceId: activeWorkspace.workspace.workspaceId, projectId: afterRename.projectId };
+    await expect(createProjectStore(activeWorkspace, { failAt: 'trash-after-rename' }).moveProjectToTrash(afterRenameInput)).rejects.toThrow('INJECTED_TRASH_AFTER_RENAME');
+    recoveredStore = await reopen();
+    await expect(recoveredStore.listTrashedProjects()).resolves.toMatchObject([{ projectId: beforeRename.projectId }, { projectId: afterRename.projectId }]);
+
+    const reservation = await create('gap-restore-reservation');
+    const reservationInput = { workspaceId: activeWorkspace.workspace.workspaceId, projectId: reservation.projectId };
+    await recoveredStore.moveProjectToTrash(reservationInput);
+    await expect(createProjectStore(activeWorkspace, { failAt: 'restore-after-reservation' }).restoreProjectFromTrash(reservationInput)).rejects.toThrow('INJECTED_RESTORE_AFTER_RESERVATION');
+    recoveredStore = await reopen();
+    await expect(recoveredStore.listTrashedProjects()).resolves.toMatchObject([{ projectId: beforeRename.projectId }, { projectId: afterRename.projectId }, { projectId: reservation.projectId }]);
+
+    await expect(createProjectStore(activeWorkspace, { failAt: 'restore-after-copy' }).restoreProjectFromTrash(reservationInput)).rejects.toThrow('INJECTED_RESTORE_AFTER_COPY');
+    recoveredStore = await reopen();
+    await expect(recoveredStore.listTrashedProjects()).rejects.toThrow('DUPLICATE_PROJECT_IDENTITY');
+  } finally {
+    activeWorkspace.close();
+  }
+});
+
+it('reconciles restore source deletion and purge index-cleanup gaps after restart', async () => {
+  const { workspace } = await createWritableStore();
+  let activeWorkspace = workspace;
+  const reopen = async () => {
+    activeWorkspace.close();
+    activeWorkspace = await openWorkspace(workspace.workspace.directory);
+    return createProjectStore(activeWorkspace, { getLiveReferenceCount: () => 0 });
+  };
+
+  try {
+    const restoreStore = createProjectStore(activeWorkspace);
+    const restored = await restoreStore.createProjectContainer({ workspaceId: activeWorkspace.workspace.workspaceId, operationId: 'gap-after-source-delete', name: 'gap-after-source-delete' });
+    const restoredInput = { workspaceId: activeWorkspace.workspace.workspaceId, projectId: restored.projectId };
+    await restoreStore.moveProjectToTrash(restoredInput);
+    await expect(createProjectStore(activeWorkspace, { failAt: 'restore-after-source-delete' }).restoreProjectFromTrash(restoredInput)).rejects.toThrow('INJECTED_RESTORE_AFTER_SOURCE_DELETE');
+    let recoveredStore = await reopen();
+    await expect(recoveredStore.listTrashedProjects()).resolves.toEqual([]);
+    await expect(recoveredStore.moveProjectToTrash({ workspaceId: activeWorkspace.workspace.workspaceId, projectId: restored.projectId })).resolves.toMatchObject({ projectId: restored.projectId });
+
+    const purged = await recoveredStore.createProjectContainer({ workspaceId: activeWorkspace.workspace.workspaceId, operationId: 'gap-after-purge-delete', name: 'gap-after-purge-delete' });
+    const purgedInput = { workspaceId: activeWorkspace.workspace.workspaceId, projectId: purged.projectId };
+    await recoveredStore.moveProjectToTrash(purgedInput);
+    await expect(createProjectStore(activeWorkspace, { getLiveReferenceCount: () => 0, failAt: 'purge-after-delete' }).purgeProjectFromTrash(purgedInput)).rejects.toThrow('INJECTED_PURGE_AFTER_DELETE');
+    recoveredStore = await reopen();
+    await expect(recoveredStore.listTrashedProjects()).resolves.toMatchObject([{ projectId: restored.projectId }]);
+    expect(existsSync(join(activeWorkspace.workspace.directory, 'projects', purged.projectId))).toBe(false);
+    expect(existsSync(join(activeWorkspace.workspace.directory, 'trash', purged.projectId))).toBe(false);
+  } finally {
+    activeWorkspace.close();
   }
 });
