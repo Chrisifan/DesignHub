@@ -128,3 +128,47 @@ it('releases the operating-system writer lock after the owning process crashes',
   expect(recovered.workspace.openMode).toBe('writable');
   recovered.close();
 });
+
+it('does not clean writable staging while an older format requires migration', async () => {
+  const parent = await createTemporaryDirectory();
+  const created = await createWorkspace({ parentDirectory: parent, name: '待迁移' });
+  created.close();
+  const staging = join(created.workspace.directory, 'projects', '.00000000-0000-4000-8000-000000000000.creating-00000000-0000-4000-8000-000000000001');
+  await mkdir(staging);
+
+  const migration = await openWorkspace(created.workspace.directory, 2);
+  expect(migration.workspace.openMode).toBe('migration-required');
+  expect(await realpath(staging)).toBe(staging);
+  migration.close();
+});
+
+it('releases the writer lock when writable staging cleanup fails', async () => {
+  const parent = await createTemporaryDirectory();
+  const created = await createWorkspace({ parentDirectory: parent, name: '清理失败' });
+  created.close();
+  const projectsDirectory = join(created.workspace.directory, 'projects');
+  await rm(projectsDirectory, { recursive: true });
+
+  await expect(openWorkspace(created.workspace.directory)).rejects.toThrow('ENOENT');
+  await mkdir(projectsDirectory);
+
+  const reopened = await openWorkspace(created.workspace.directory);
+  expect(reopened.workspace.openMode).toBe('writable');
+  reopened.close();
+});
+
+it('rejects project storage when the workspace manifest changes after opening', async () => {
+  const parent = await createTemporaryDirectory();
+  const workspace = await createWorkspace({ parentDirectory: parent, name: '格式漂移' });
+  const manifestPath = join(workspace.workspace.directory, workspaceManifestName);
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+  await writeFile(manifestPath, `${JSON.stringify({ ...manifest, formatVersion: 2 }, null, 2)}\n`);
+
+  const { createProjectStore } = await import('../../src/desktop/storage/project-store');
+  await expect(createProjectStore(workspace).createProjectContainer({
+    workspaceId: workspace.workspace.workspaceId,
+    operationId: 'format-drift',
+    name: 'Format drift',
+  })).rejects.toThrow('WORKSPACE_FORMAT_CHANGED');
+  workspace.close();
+});

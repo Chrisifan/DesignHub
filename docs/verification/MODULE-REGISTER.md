@@ -1,11 +1,11 @@
 # 模块测试、checklist 与回归登记
 
-创建：2026-09-08；更新：2026-09-09。本文件是实施与回归协议。Electron 框架已选；M01 基础工程已实现，M02 Task 1 已进入部分验证，未覆盖的原生、平台和 UI 前提继续单列。
+创建：2026-09-08；更新：2026-09-10。本文件是实施与回归协议。Electron 框架已选；M01 基础工程已实现，M02 Tasks 1–2 已完成计划内实现，未覆盖的平台和 UI 前提继续单列。
 
 | 模块 | 当前状态 | 实现前测试/清单文件 | 必须回归的直接消费者 |
 | --- | --- | --- | --- |
 | M01 | 部分验证；基础外壳、bridge、规则、构建与 macOS 原生 smoke 已完成，双平台/发布门禁开放 | [M01 记录](M01.md) | M02–M08 |
-| M02 | 实施中；Task 1 格式、创建/移动、单写者锁在普通 Node 下部分验证，UI/打包/双平台开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
+| M02 | 实施中；Tasks 1–2 工作区格式、单写者锁、原子项目存储与恢复已完成；Tasks 3–4、UI、Windows 与发布验证开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
 | M03 | 计划已写，分析依赖 M06 | `docs/verification/M03.md` | M04、M06、M07、M08 |
 | M04 | 计划已写，对话依赖 M06 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
 | M05 | 计划已写，待上游 | `docs/verification/M05.md` | M06、M07、M08 |
@@ -49,6 +49,8 @@
 2026-09-09：用户确认 Q1–Q66 冻结为 DesignHub V1 实施基线。依赖版本和工程实验继续按 G01–G11 与模块门槛选择，不视为重新打开产品范围；新增或修改产品能力必须先登记基线变更、受影响模块、测试与回归范围。
 
 2026-09-09：M02 Task 1 引入 `better-sqlite3`、Forge native-unpack 插件并收窄 unit 测试扫描范围，影响 M01 构建、打包配置和测试入口。M01 unit/integration/lint/typecheck/build 全部回归通过，macOS Playwright Electron smoke 1/1 通过；Forge package 仍在 GitHub Electron artifact 获取阶段因 `ENOTFOUND` 失败，Windows、安装与发布状态不恢复为已验证。证据见 [M01](M01.md) 与 [M02](M02.md)。
+
+2026-09-10：M02 Task 2 增加 main-only 项目存储、Electron storage smoke、Vite native external 和 Forge 精确保留规则，影响 M01 main/build/package。unit 13/13、integration 29/29、lint/typecheck/build 通过；本地镜像下 macOS arm64 package 与 source/packaged storage smoke 2/2 曾通过，并确认 `.node` 位于 `app.asar.unpacked`。随后只增加项目完整性校验与回归测试，最终树重打包和 native 套件请求被审批策略拒绝，因此 Windows、最终 artifact、签名安装和 UI 仍保持开放，未伪记为已验证。
 
 选择回归范围的规则：
 

@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import { constants, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
 
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { WorkspaceDescriptor, WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getOpenMode } from '../../features/workspace/open-mode';
 
 export const workspaceManifestName = 'designhub.workspace.json';
@@ -13,6 +13,14 @@ const workspaceKind = 'designhub-workspace';
 const workspaceFormatVersion = 1;
 const internalDirectoryName = '.designhub';
 const writerLockName = 'writer-lock.sqlite';
+const staleProjectStagingName = /^\.[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.creating-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+type WritableWorkspaceLease = {
+  workspace: WorkspaceDescriptor;
+  active: boolean;
+};
+
+const writableWorkspaceLeases = new WeakMap<WorkspaceHandle, WritableWorkspaceLease>();
 
 type WorkspaceManifest = {
   kind: typeof workspaceKind;
@@ -83,6 +91,18 @@ const acquireWriterLock = (directory: string): Database.Database | null => {
   }
 };
 
+const cleanupStaleProjectStaging = (directory: string): void => {
+  const projectsDirectory = join(directory, 'projects');
+  readdirSync(projectsDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && staleProjectStagingName.test(entry.name))
+    .forEach((entry) => rmSync(join(projectsDirectory, entry.name), { recursive: true, force: true }));
+};
+
+export const getWritableWorkspaceLease = (handle: WorkspaceHandle): WorkspaceDescriptor | null => {
+  const lease = writableWorkspaceLeases.get(handle);
+  return lease?.active ? lease.workspace : null;
+};
+
 const createHandle = (directory: string, manifest: WorkspaceManifest, supportedFormat: number): WorkspaceHandle => {
   if (manifest.formatVersion > supportedFormat) {
     return {
@@ -98,24 +118,35 @@ const createHandle = (directory: string, manifest: WorkspaceManifest, supportedF
   }
 
   const writerLock = acquireWriterLock(directory);
+  const workspace: WorkspaceDescriptor = {
+    workspaceId: manifest.workspaceId,
+    name: manifest.name,
+    directory,
+    formatVersion: manifest.formatVersion,
+    openMode: getOpenMode(manifest.formatVersion, supportedFormat, writerLock === null),
+  };
+  const lease = writerLock === null ? null : { workspace: Object.freeze({ ...workspace }), active: true };
   let closed = false;
   const close = () => {
     if (closed || !writerLock) return;
     closed = true;
+    if (lease) lease.active = false;
     writerLock.exec('ROLLBACK');
     writerLock.close();
   };
-
-  return {
-    workspace: {
-      workspaceId: manifest.workspaceId,
-      name: manifest.name,
-      directory,
-      formatVersion: manifest.formatVersion,
-      openMode: getOpenMode(manifest.formatVersion, supportedFormat, writerLock === null),
-    },
-    close,
-  };
+  const handle = { workspace, close };
+  if (lease && writerLock) {
+    if (workspace.openMode === 'writable') {
+      try {
+        cleanupStaleProjectStaging(directory);
+      } catch (error) {
+        close();
+        throw error;
+      }
+    }
+    writableWorkspaceLeases.set(handle, lease);
+  }
+  return handle;
 };
 
 export const createWorkspace = async (input: { parentDirectory: string; name: string }): Promise<WorkspaceHandle> => {
