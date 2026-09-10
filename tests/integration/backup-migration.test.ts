@@ -190,6 +190,46 @@ it('rejects a managed source file replaced by an external symlink after enumerat
   }
 });
 
+it('rejects a backup staging root replaced by a symlink before creating any external content', async () => {
+  const sourceParent = await createTemporaryDirectory('designhub-backup-staging-race-source-');
+  const destinationParent = await createTemporaryDirectory('designhub-backup-staging-race-target-');
+  const externalDirectory = await createTemporaryDirectory('designhub-backup-staging-race-external-');
+  const externalSentinel = join(externalDirectory, 'sentinel.txt');
+  await writeFile(externalSentinel, 'external sentinel');
+  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Backup staging replacement' });
+  await writeFile(join(workspace.workspace.directory, 'shared-assets', 'asset.txt'), 'managed content');
+
+  try {
+    await expect(createWorkspaceBackupStore(workspace, {
+      onBackupStagingReserved: (directory) => {
+        rmSync(directory, { recursive: true });
+        symlinkSync(externalDirectory, directory, 'dir');
+      },
+    }).createBackup({ destinationParentDirectory: destinationParent })).rejects.toThrow('INVALID_BACKUP_DESTINATION');
+    expect(await readdir(destinationParent)).toEqual([]);
+    expect(await readdir(externalDirectory)).toEqual(['sentinel.txt']);
+    await expect(readFile(externalSentinel, 'utf8')).resolves.toBe('external sentinel');
+  } finally {
+    workspace.close();
+  }
+});
+
+it('rejects non-M02 credential-like files inside the internal directory', async () => {
+  const sourceParent = await createTemporaryDirectory('designhub-backup-internal-policy-source-');
+  const destinationParent = await createTemporaryDirectory('designhub-backup-internal-policy-target-');
+  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Internal policy' });
+  const credentialContent = 'api-key=do-not-back-up';
+  await writeFile(join(workspace.workspace.directory, '.designhub', 'credentials.json'), credentialContent);
+
+  try {
+    await expect(createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory: destinationParent })).rejects.toThrow('UNMANAGED_INTERNAL_FILE');
+    expect(await readdir(destinationParent)).toEqual([]);
+    await expect(readFile(join(workspace.workspace.directory, '.designhub', 'credentials.json'), 'utf8')).resolves.toBe(credentialContent);
+  } finally {
+    workspace.close();
+  }
+});
+
 it('rejects incomplete, tampered, and internally corrupt backup artifacts without publishing a restored workspace', async () => {
   const sourceParent = await createTemporaryDirectory('designhub-invalid-backup-source-');
   const backupParent = await createTemporaryDirectory('designhub-invalid-backup-artifacts-');

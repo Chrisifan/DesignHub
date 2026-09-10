@@ -45,6 +45,7 @@ export type WorkspaceBackupFault = 'file-copy'
 type WorkspaceBackupStoreOptions = {
   failAt?: WorkspaceBackupFault;
   onBackupSourceEnumerated?: () => void;
+  onBackupStagingReserved?: (directory: string) => void;
   onRestoreStagingPrepared?: (directory: string) => void;
   onRestoreDestinationReserved?: (directory: string) => void;
 };
@@ -68,6 +69,7 @@ const backupCompletionKind = 'designhub-backup-complete';
 const backupWorkspaceDirectoryName = 'workspace';
 const internalDirectoryName = '.designhub';
 const managedDirectoryNames = [internalDirectoryName, 'projects', 'shared-assets', 'trash'] as const;
+const projectIndexPath = `${internalDirectoryName}/project-index.sqlite`;
 const writerLockPrefix = `${internalDirectoryName}/writer-lock.sqlite`;
 const sqliteSidecarPattern = /-(?:journal|shm|wal)$/u;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -227,8 +229,16 @@ const isManagedSqlitePath = (relativePath: string): boolean => (relativePath.sta
   && extname(relativePath) === '.sqlite')
   || /^(?:projects|trash)\/[^/]+\/project\.sqlite$/u.test(relativePath);
 
+const isSqliteSidecarOf = (relativePath: string, databasePath: string): boolean => sqliteSidecarPattern.test(relativePath)
+  && relativePath.replace(sqliteSidecarPattern, '') === databasePath;
+
+const isManagedInternalSourceFile = (relativePath: string): boolean => relativePath === projectIndexPath
+  || relativePath === writerLockPrefix
+  || isSqliteSidecarOf(relativePath, projectIndexPath)
+  || isSqliteSidecarOf(relativePath, writerLockPrefix);
+
 const shouldSkipSourceFile = (relativePath: string): boolean => relativePath === writerLockPrefix
-  || relativePath.startsWith(`${writerLockPrefix}-`)
+  || isSqliteSidecarOf(relativePath, writerLockPrefix)
   || (sqliteSidecarPattern.test(relativePath) && isManagedSqlitePath(relativePath.replace(sqliteSidecarPattern, '')));
 
 const collectManagedContent = (workspaceDirectory: string): { directories: string[]; files: string[] } => {
@@ -248,6 +258,9 @@ const collectManagedContent = (workspaceDirectory: string): { directories: strin
         const entrySegments = [...segments, entry.name];
         const relativePath = toManifestPath(entrySegments);
         const absolutePath = join(absoluteDirectory, entry.name);
+        if (entrySegments[0] === internalDirectoryName && (!entry.isFile() || !isManagedInternalSourceFile(relativePath))) {
+          throw new Error('UNMANAGED_INTERNAL_FILE');
+        }
         if (entry.isSymbolicLink()) throw new Error('UNMANAGED_BACKUP_SOURCE');
         if (entry.isDirectory()) {
           visitDirectory(absolutePath, entrySegments);
@@ -444,18 +457,37 @@ const createBackup = async (
   const createdAt = new Date().toISOString();
   const finalDirectory = join(destinationParent, `${source.manifest.workspaceId}-${createdAt.replace(/[:.]/gu, '-')}-${operationId}.designhub-backup`);
   const stagingWorkspace = join(stagingDirectory, backupWorkspaceDirectoryName);
+  const assertOwnedStagingDirectory = (): void => {
+    assertCanonicalChildDirectory(stagingDirectory, destinationParent, 'INVALID_BACKUP_DESTINATION');
+  };
+  const assertOwnedStagingWorkspace = (): void => {
+    assertOwnedStagingDirectory();
+    assertCanonicalChildDirectory(stagingWorkspace, stagingDirectory, 'INVALID_BACKUP_DESTINATION');
+  };
 
   mkdirSync(stagingDirectory);
   try {
+    options.onBackupStagingReserved?.(stagingDirectory);
+    assertOwnedStagingDirectory();
     mkdirSync(stagingWorkspace);
+    assertOwnedStagingWorkspace();
     const content = collectManagedContent(source.directory);
-    content.directories.forEach((relativePath) => mkdirSync(join(stagingWorkspace, ...manifestPathSegments(relativePath)), { recursive: true }));
+    content.directories.forEach((relativePath) => {
+      assertOwnedStagingWorkspace();
+      const directory = join(stagingWorkspace, ...manifestPathSegments(relativePath));
+      mkdirSync(directory, { recursive: true });
+      const canonicalDirectory = getCanonicalDirectory(directory, 'INVALID_BACKUP_DESTINATION');
+      if (canonicalDirectory !== directory || !isContainedPath(stagingWorkspace, canonicalDirectory)) {
+        throw new Error('INVALID_BACKUP_DESTINATION');
+      }
+    });
     options.onBackupSourceEnumerated?.();
 
     let fileFailureInjected = false;
     let databaseFailureInjected = false;
     for (const relativePath of content.files) {
       const sourcePath = getManagedSourceFile(source.directory, relativePath, 'UNMANAGED_BACKUP_SOURCE');
+      assertOwnedStagingWorkspace();
       const destinationPath = getManagedDestinationFile(stagingWorkspace, relativePath, 'INVALID_BACKUP_DESTINATION');
       if (isManagedSqlitePath(relativePath)) {
         if (options.failAt === 'database-backup' && !databaseFailureInjected) {
@@ -471,6 +503,7 @@ const createBackup = async (
         copyFileSync(sourcePath, destinationPath, constants.COPYFILE_EXCL);
       }
       assertManagedCopiedFile(source.directory, relativePath, 'UNMANAGED_BACKUP_SOURCE');
+      assertOwnedStagingWorkspace();
       assertManagedCopiedFile(stagingWorkspace, relativePath, 'INVALID_BACKUP_DESTINATION');
     }
 
@@ -482,18 +515,25 @@ const createBackup = async (
       workspaceFormatVersion: source.manifest.formatVersion,
       createdAt,
       directories: content.directories,
-      files: content.files.map((relativePath) => describeFile(stagingWorkspace, relativePath)),
+      files: content.files.map((relativePath) => {
+        assertOwnedStagingWorkspace();
+        return describeFile(stagingWorkspace, relativePath);
+      }),
     };
     const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`;
+    assertOwnedStagingDirectory();
     writeFileSync(join(stagingDirectory, backupManifestName), manifestContent, { encoding: 'utf8', flag: 'wx' });
     if (options.failAt === 'backup-publish') throw new Error('INJECTED_BACKUP_PUBLISH_FAILURE');
+    assertOwnedStagingDirectory();
     writeFileSync(join(stagingDirectory, backupCompletionName), `${JSON.stringify({
       kind: backupCompletionKind,
       manifestSha256: sha256(manifestContent),
     }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+    assertOwnedStagingDirectory();
     verifyBackup(stagingDirectory);
-    assertCanonicalChildDirectory(stagingDirectory, destinationParent, 'INVALID_BACKUP_DESTINATION');
+    assertOwnedStagingDirectory();
     if (existsSync(finalDirectory)) throw new Error('BACKUP_DIRECTORY_CONFLICT');
+    assertOwnedStagingDirectory();
     renameSync(stagingDirectory, finalDirectory);
     return { directory: finalDirectory, workspaceId: manifest.workspaceId, createdAt };
   } catch (error) {
