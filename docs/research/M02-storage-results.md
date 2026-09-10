@@ -1,6 +1,6 @@
 # M02 storage dependency record
 
-Date: 2026-09-09. Scope: local workspace format, single-writer lock and later backup candidates.
+Date: 2026-09-10. Scope: local workspace format, single-writer lock, application trash and later backup candidates.
 
 | Capability | Candidate / evidence | Decision |
 | --- | --- | --- |
@@ -9,8 +9,12 @@ Date: 2026-09-09. Scope: local workspace format, single-writer lock and later ba
 | Workspace locking | `proper-lockfile` `4.1.2` is MIT and maintained, but its lock-directory/staleness design does not meet the plan's requirement for a real OS lock that is released by process death. `fs-ext` is native and old. | Use a dedicated SQLite database with an exclusive transaction held by the owning process. SQLite supplies the OS file lock; a child-process crash test must prove release. |
 | Backup archive | `fflate` `0.8.3`, MIT, active and not archived; typed Node/browser exports. | Keep as a Task 4 candidate. Do not install before the backup format and streaming tests exist. |
 | Native packaging | Forge already brings `@electron/rebuild` `3.7.2`; `4.2.0` was checked as the current direct tool. `better-sqlite3` 13 uses Node-API rather than a V8 ABI binding. Forge `plugin-auto-unpack-natives` `7.11.2` is registered to keep `.node` files outside ASAR. | The local Electron mirror produced a macOS arm64 app: main/package metadata and `better-sqlite3` JS were in `app.asar`, while native prebuilds were in `app.asar.unpacked`; the packaged storage smoke passed. The final validation-only source amendments were not repackaged after the approval policy rejected that rerun, and no Windows package is verified. |
+| OS trash | GitHub `sindresorhus/trash` is MIT, cross-platform and active (2.7k stars and 176 commits observed on 2026-09-10). Its public API moves paths to the OS trash and explicitly notes that unmatched/nonexistent paths are silently ignored; it does not expose DesignHub item metadata or an application-controlled restore protocol. | Reject for M02 Task 3. OS trash cannot provide the required local list, stable project identity, original workspace-relative location, deletion timestamp, reference-aware purge, or deterministic restore conflict handling. |
+| General file move | GitHub `jprichardson/node-fs-extra` is mature (9.6k stars and 1,141 commits observed on 2026-09-10). `move` supports cross-device moves and defaults `overwrite` to `false`. Node's maintained `fsPromises.rename` API has been stable since Node 10. | Do not add `fs-extra`. Trash entries stay inside one workspace filesystem, so the existing Node filesystem API is sufficient and avoids cross-device copy/delete semantics. Destination names are host-generated, checked within managed roots, and never caller-provided absolute paths. |
 
 Registry metadata and GitHub repository APIs were queried on 2026-09-09. Popularity or an available prebuild is not a product verification result.
+
+Task 3 repository pages and maintained API documentation were inspected in Chrome on 2026-09-10: `https://github.com/sindresorhus/trash`, `https://github.com/jprichardson/node-fs-extra/blob/master/docs/move.md`, and `https://nodejs.org/api/fs.html#fspromisesrenameoldpath-newpath`. No new dependency is required for Task 3, so `package.json` remains unchanged.
 
 ## Task 1 format boundary
 
