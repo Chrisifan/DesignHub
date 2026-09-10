@@ -66,7 +66,7 @@ const readManifest = async (directory: string): Promise<WorkspaceManifest> => {
   return value;
 };
 
-const initializeWriterLock = (directory: string): void => {
+export const initializeWorkspaceWriterLock = (directory: string): void => {
   const database = new Database(join(directory, internalDirectoryName, writerLockName));
   try {
     database.pragma('journal_mode = DELETE');
@@ -174,7 +174,7 @@ export const createWorkspace = async (input: { parentDirectory: string; name: st
       createdAt: new Date().toISOString(),
     };
     await writeFile(join(directory, workspaceManifestName), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
-    initializeWriterLock(directory);
+    initializeWorkspaceWriterLock(directory);
     return createHandle(directory, manifest, workspaceFormatVersion);
   } catch (error) {
     if (created) await rm(directory, { recursive: true, force: true });
