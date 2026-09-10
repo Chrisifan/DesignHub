@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { cp, mkdtemp, mkdir, readFile, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -204,6 +204,43 @@ it('does not overwrite a destination entry created after restore reservation', a
   }
 });
 
+it('rejects a restore destination replaced by an external symlink before copying or deleting trash', async () => {
+  const { directory, workspace, store } = await createWritableStore();
+  const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'restore-destination-symlink', name: 'Restore destination symlink' });
+  const input = { workspaceId: workspace.workspace.workspaceId, projectId: created.projectId };
+  const trashDirectory = join(workspace.workspace.directory, 'trash', created.projectId);
+  const externalDirectory = join(directory, 'external-restore-target');
+  let reservedDirectory = '';
+
+  try {
+    await mkdir(externalDirectory);
+    await writeFile(join(externalDirectory, 'keep.txt'), 'external content stays');
+    await store.moveProjectToTrash(input);
+    const replacingStore = createProjectStore(workspace, {
+      onRestoreDestinationReserved: (directory) => {
+        reservedDirectory = directory;
+        rmSync(directory, { recursive: true, force: false });
+        symlinkSync(externalDirectory, directory, 'dir');
+      },
+    });
+
+    await expect(replacingStore.restoreProjectFromTrash(input)).rejects.toThrow('UNMANAGED_PROJECT_DIRECTORY');
+    await expect(readFile(join(externalDirectory, 'keep.txt'), 'utf8')).resolves.toBe('external content stays');
+    expect(existsSync(join(externalDirectory, projectManifestName))).toBe(false);
+    expect(existsSync(join(trashDirectory, projectManifestName))).toBe(true);
+    await expect(replacingStore.listTrashedProjects()).rejects.toThrow('UNMANAGED_PROJECT_DIRECTORY');
+
+    await unlink(reservedDirectory);
+    await expect(store.listTrashedProjects()).resolves.toMatchObject([{ projectId: created.projectId }]);
+    await expect(store.restoreProjectFromTrash(input)).resolves.toEqual({
+      projectId: created.projectId,
+      restoredRelativePath: `projects/${created.projectId}`,
+    });
+  } finally {
+    workspace.close();
+  }
+});
+
 it('fails closed when reconstruction finds duplicate active project identities', async () => {
   const { workspace, store } = await createWritableStore();
   const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'trash-duplicate-active', name: 'Trash duplicate active' });
@@ -247,6 +284,66 @@ it('fails closed instead of purging or reactivating an active and trashed identi
       reopened.close();
       reopened = await openWorkspace(workspace.workspace.directory);
       await expect(createProjectStore(reopened).listTrashedProjects()).rejects.toThrow('DUPLICATE_PROJECT_IDENTITY');
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    workspace.close();
+  }
+});
+
+it.each(['missing', 'malformed'] as const)('fails closed for an active duplicate with %s trash metadata after index loss', async (metadataState) => {
+  const { workspace, store } = await createWritableStore();
+  const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: `trash-ambiguous-${metadataState}`, name: `Trash ambiguous ${metadataState}` });
+  const input = { workspaceId: workspace.workspace.workspaceId, projectId: created.projectId };
+  const activeDirectory = join(workspace.workspace.directory, 'projects', created.projectId);
+  const trashDirectory = join(workspace.workspace.directory, 'trash', created.projectId);
+  const indexPath = join(workspace.workspace.directory, '.designhub', workspaceProjectIndexName);
+
+  try {
+    await store.moveProjectToTrash(input);
+    await cp(trashDirectory, activeDirectory, { recursive: true });
+    if (metadataState === 'missing') {
+      await unlink(join(trashDirectory, '.designhub-trash.json'));
+    } else {
+      await writeFile(join(trashDirectory, '.designhub-trash.json'), '{not-json');
+    }
+    workspace.close();
+    await unlink(indexPath);
+
+    let reopened = await openWorkspace(workspace.workspace.directory);
+    try {
+      const reopenedStore = createProjectStore(reopened, { getLiveReferenceCount: () => 0 });
+      await expect(reopenedStore.listTrashedProjects()).rejects.toThrow('INVALID_TRASH_PROJECT_METADATA');
+      await expect(reopenedStore.purgeProjectFromTrash({ workspaceId: reopened.workspace.workspaceId, projectId: created.projectId })).rejects.toThrow('INVALID_TRASH_PROJECT_METADATA');
+      expect(existsSync(activeDirectory)).toBe(true);
+      expect(existsSync(trashDirectory)).toBe(true);
+
+      reopened.close();
+      reopened = await openWorkspace(workspace.workspace.directory);
+      await expect(createProjectStore(reopened).listTrashedProjects()).rejects.toThrow('INVALID_TRASH_PROJECT_METADATA');
+      expect(existsSync(activeDirectory)).toBe(true);
+      expect(existsSync(trashDirectory)).toBe(true);
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    workspace.close();
+  }
+});
+
+it('ignores an unrelated invalid directory in the managed trash root', async () => {
+  const { workspace } = await createWritableStore();
+  const junkDirectory = join(workspace.workspace.directory, 'trash', randomUUID());
+
+  try {
+    await mkdir(junkDirectory);
+    await writeFile(join(junkDirectory, projectManifestName), '{not-json');
+    workspace.close();
+
+    const reopened = await openWorkspace(workspace.workspace.directory);
+    try {
+      await expect(createProjectStore(reopened).listTrashedProjects()).resolves.toEqual([]);
     } finally {
       reopened.close();
     }

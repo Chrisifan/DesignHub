@@ -338,8 +338,9 @@ const scanTrashedProjects = (trashDirectory: string): TrashMetadata[] => readdir
   .flatMap((entry) => {
     const projectDirectory = getManagedProjectDirectory(trashDirectory, entry.name);
     const manifest = readValidPublishedProject(projectDirectory);
+    if (!manifest) return [];
     const metadata = readTrashMetadata(projectDirectory);
-    if (!manifest || !metadata || manifest.projectId !== entry.name || metadata.projectId !== manifest.projectId) return [];
+    if (!metadata || manifest.projectId !== entry.name || metadata.projectId !== manifest.projectId) throw new Error('INVALID_TRASH_PROJECT_METADATA');
     return [metadata];
   });
 
@@ -358,7 +359,11 @@ const reconcileTrashedProjects = (database: Database.Database, metadata: TrashMe
   return present;
 };
 
-const reconcilePublishedProjects = (database: Database.Database, projectsDirectory: string, trashedProjectIds: Set<string>): void => {
+const reconcilePublishedProjects = (
+  database: Database.Database,
+  publishedProjects: Array<{ manifest: ProjectManifest; directoryName: string }>,
+  trashedProjectIds: Set<string>,
+): void => {
   const insertProject = database.prepare('INSERT OR IGNORE INTO projects (project_id, directory_name, display_name) VALUES (?, ?, ?)');
   const insertOperation = database.prepare("INSERT OR IGNORE INTO project_operations (operation_id, project_id, directory_name, state) VALUES (?, ?, ?, 'published')");
   const getOperation = database.prepare('SELECT project_id as projectId, directory_name as directoryName FROM project_operations WHERE operation_id = ?');
@@ -368,7 +373,7 @@ const reconcilePublishedProjects = (database: Database.Database, projectsDirecto
     const operation = getOperation.get(manifest.operationId) as Pick<ProjectOperation, 'projectId' | 'directoryName'> | undefined;
     if (!operation || operation.projectId !== manifest.projectId || operation.directoryName !== manifest.projectId) throw new Error('INDEX_MANIFEST_CONFLICT');
   });
-  scanPublishedProjects(projectsDirectory)
+  publishedProjects
     .filter(({ manifest }) => !trashedProjectIds.has(manifest.projectId))
     .forEach((project) => reconcile(project));
 };
@@ -383,7 +388,7 @@ const reconcileIndex = (database: Database.Database, projectsDirectory: string, 
   });
   if (trashedProjects.some((entry) => activeProjectIds.has(entry.projectId))) throw new Error('DUPLICATE_PROJECT_IDENTITY');
   const trashedProjectIds = reconcileTrashedProjects(database, trashedProjects);
-  reconcilePublishedProjects(database, projectsDirectory, trashedProjectIds);
+  reconcilePublishedProjects(database, publishedProjects, trashedProjectIds);
 };
 
 const rebuildCorruptIndex = (indexPath: string, projectsDirectory: string, trashDirectory: string): Database.Database => {
@@ -671,10 +676,13 @@ const restoreProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreO
     try {
       options.onRestoreDestinationReserved?.(restoredDirectory);
       if (options.failAt === 'restore-after-reservation') throw new Error('INJECTED_RESTORE_AFTER_RESERVATION');
-      cpSync(trashProjectDirectory, restoredDirectory, { recursive: true, force: false, errorOnExist: true });
+      const copyDestinationDirectory = getManagedProjectDirectory(paths.projectsDirectory, restoredDirectoryName);
+      cpSync(trashProjectDirectory, copyDestinationDirectory, { recursive: true, force: false, errorOnExist: true });
       if (options.failAt === 'restore-after-copy') throw new Error('INJECTED_RESTORE_AFTER_COPY');
-      removeTrashMetadata(restoredDirectory);
-      rmSync(trashProjectDirectory, { recursive: true, force: false });
+      removeTrashMetadata(getManagedProjectDirectory(paths.projectsDirectory, restoredDirectoryName));
+      const sourceDirectory = getManagedProjectDirectory(paths.trashDirectory, entry.projectId);
+      getManagedProjectDirectory(paths.projectsDirectory, restoredDirectoryName);
+      rmSync(sourceDirectory, { recursive: true, force: false });
       if (options.failAt === 'restore-after-source-delete') throw new Error('INJECTED_RESTORE_AFTER_SOURCE_DELETE');
       const markRestored = index.transaction((): void => {
         index.prepare('DELETE FROM trash_entries WHERE project_id = ?').run(entry.projectId);
