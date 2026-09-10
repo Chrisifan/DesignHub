@@ -13,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 
 import Database from 'better-sqlite3';
 
@@ -26,15 +26,27 @@ import type {
   WorkspaceBackupStore,
 } from '../../features/workspace/backup';
 import { canMigrate } from '../../features/workspace/migration-policy';
-import { getWritableWorkspaceLease, initializeWorkspaceWriterLock, workspaceManifestName } from './workspace-store';
+import {
+  getWritableWorkspaceLease,
+  initializeWorkspaceWriterLock,
+  workspaceManifestName,
+  workspaceMigrationStateName,
+} from './workspace-store';
 
 export const backupManifestName = 'backup.manifest.json';
 export const backupCompletionName = 'backup.complete.json';
 
-export type WorkspaceBackupFault = 'file-copy' | 'database-backup' | 'backup-publish' | 'migration-publish';
+export type WorkspaceBackupFault = 'file-copy'
+  | 'database-backup'
+  | 'backup-publish'
+  | 'migration-after-original-move'
+  | 'migration-publish';
 
 type WorkspaceBackupStoreOptions = {
   failAt?: WorkspaceBackupFault;
+  onBackupSourceEnumerated?: () => void;
+  onRestoreStagingPrepared?: (directory: string) => void;
+  onRestoreDestinationReserved?: (directory: string) => void;
 };
 
 type WorkspaceManifest = {
@@ -62,6 +74,8 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const hashPattern = /^[0-9a-f]{64}$/u;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+
+const errorCode = (error: unknown): string | null => isRecord(error) && typeof error.code === 'string' ? error.code : null;
 
 const sha256 = (content: string | Buffer): string => createHash('sha256').update(content).digest('hex');
 
@@ -139,6 +153,63 @@ const getCanonicalDirectory = (directory: string, errorMessage: string): string 
   }
   if (!status.isDirectory() || status.isSymbolicLink()) throw new Error(errorMessage);
   return canonicalDirectory;
+};
+
+const isContainedPath = (rootDirectory: string, candidatePath: string): boolean => {
+  const relativePath = relative(rootDirectory, candidatePath);
+  return relativePath === '' || (!isAbsolute(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${sep}`));
+};
+
+const assertCanonicalChildDirectory = (directory: string, parentDirectory: string, errorMessage: string): void => {
+  const canonicalDirectory = getCanonicalDirectory(directory, errorMessage);
+  if (canonicalDirectory !== directory || dirname(directory) !== parentDirectory) throw new Error(errorMessage);
+};
+
+const getManagedSourceFile = (rootDirectory: string, relativePath: string, errorMessage: string): string => {
+  const canonicalRoot = getCanonicalDirectory(rootDirectory, errorMessage);
+  if (canonicalRoot !== rootDirectory) throw new Error(errorMessage);
+  const filePath = join(rootDirectory, ...manifestPathSegments(relativePath));
+  let status: ReturnType<typeof lstatSync>;
+  let canonicalFile: string;
+  try {
+    status = lstatSync(filePath);
+    canonicalFile = realpathSync(filePath);
+  } catch {
+    throw new Error(errorMessage);
+  }
+  if (!status.isFile() || status.isSymbolicLink() || canonicalFile !== filePath || !isContainedPath(rootDirectory, canonicalFile)) {
+    throw new Error(errorMessage);
+  }
+  return filePath;
+};
+
+const getManagedDestinationFile = (rootDirectory: string, relativePath: string, errorMessage: string): string => {
+  const canonicalRoot = getCanonicalDirectory(rootDirectory, errorMessage);
+  if (canonicalRoot !== rootDirectory) throw new Error(errorMessage);
+  const filePath = join(rootDirectory, ...manifestPathSegments(relativePath));
+  const parentDirectory = dirname(filePath);
+  const canonicalParent = getCanonicalDirectory(parentDirectory, errorMessage);
+  if (canonicalParent !== parentDirectory || !isContainedPath(rootDirectory, canonicalParent)) throw new Error(errorMessage);
+  try {
+    lstatSync(filePath);
+    throw new Error(errorMessage);
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') throw error;
+  }
+  return filePath;
+};
+
+const assertManagedCopiedFile = (rootDirectory: string, relativePath: string, errorMessage: string): void => {
+  getManagedSourceFile(rootDirectory, relativePath, errorMessage);
+};
+
+const removeOwnedPath = (path: string): void => {
+  try {
+    const status = lstatSync(path);
+    rmSync(path, status.isSymbolicLink() ? { force: true } : { recursive: true, force: true });
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') throw error;
+  }
 };
 
 const validateWritableSource = (handle: WorkspaceHandle): { directory: string; manifest: WorkspaceManifest } => {
@@ -329,15 +400,35 @@ const verifyBackup = (backupDirectory: string): { directory: string; manifest: B
   return { directory, manifest: manifestValue };
 };
 
-const copyStoredWorkspace = (sourceDirectory: string, destinationDirectory: string, manifest: BackupManifest, includeManifest: boolean): void => {
+const assertStoredWorkspaceDirectories = (destinationDirectory: string, manifest: BackupManifest, errorMessage: string): void => {
+  manifest.directories.forEach((relativePath) => {
+    const directory = join(destinationDirectory, ...manifestPathSegments(relativePath));
+    const canonicalDirectory = getCanonicalDirectory(directory, errorMessage);
+    if (canonicalDirectory !== directory || !isContainedPath(destinationDirectory, canonicalDirectory)) throw new Error(errorMessage);
+  });
+};
+
+const prepareStoredWorkspace = (destinationDirectory: string, manifest: BackupManifest, errorMessage: string): void => {
   manifest.directories.forEach((relativePath) => mkdirSync(join(destinationDirectory, ...manifestPathSegments(relativePath)), { recursive: true }));
+  assertStoredWorkspaceDirectories(destinationDirectory, manifest, errorMessage);
+};
+
+const copyStoredWorkspaceFiles = (
+  sourceDirectory: string,
+  destinationDirectory: string,
+  manifest: BackupManifest,
+  includeManifest: boolean,
+  destinationError: string,
+): void => {
   manifest.files
     .filter(({ path }) => includeManifest || path !== workspaceManifestName)
-    .forEach(({ path }) => copyFileSync(
-      join(sourceDirectory, ...manifestPathSegments(path)),
-      join(destinationDirectory, ...manifestPathSegments(path)),
-      constants.COPYFILE_EXCL,
-    ));
+    .forEach(({ path }) => {
+      const sourcePath = getManagedSourceFile(sourceDirectory, path, 'INVALID_BACKUP_CONTENT');
+      const destinationPath = getManagedDestinationFile(destinationDirectory, path, destinationError);
+      copyFileSync(sourcePath, destinationPath, constants.COPYFILE_EXCL);
+      assertManagedCopiedFile(sourceDirectory, path, 'INVALID_BACKUP_CONTENT');
+      assertManagedCopiedFile(destinationDirectory, path, destinationError);
+    });
 };
 
 const createBackup = async (
@@ -359,12 +450,13 @@ const createBackup = async (
     mkdirSync(stagingWorkspace);
     const content = collectManagedContent(source.directory);
     content.directories.forEach((relativePath) => mkdirSync(join(stagingWorkspace, ...manifestPathSegments(relativePath)), { recursive: true }));
+    options.onBackupSourceEnumerated?.();
 
     let fileFailureInjected = false;
     let databaseFailureInjected = false;
     for (const relativePath of content.files) {
-      const sourcePath = join(source.directory, ...manifestPathSegments(relativePath));
-      const destinationPath = join(stagingWorkspace, ...manifestPathSegments(relativePath));
+      const sourcePath = getManagedSourceFile(source.directory, relativePath, 'UNMANAGED_BACKUP_SOURCE');
+      const destinationPath = getManagedDestinationFile(stagingWorkspace, relativePath, 'INVALID_BACKUP_DESTINATION');
       if (isManagedSqlitePath(relativePath)) {
         if (options.failAt === 'database-backup' && !databaseFailureInjected) {
           databaseFailureInjected = true;
@@ -378,6 +470,8 @@ const createBackup = async (
         }
         copyFileSync(sourcePath, destinationPath, constants.COPYFILE_EXCL);
       }
+      assertManagedCopiedFile(source.directory, relativePath, 'UNMANAGED_BACKUP_SOURCE');
+      assertManagedCopiedFile(stagingWorkspace, relativePath, 'INVALID_BACKUP_DESTINATION');
     }
 
     const manifest: BackupManifest = {
@@ -398,16 +492,20 @@ const createBackup = async (
       manifestSha256: sha256(manifestContent),
     }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
     verifyBackup(stagingDirectory);
+    assertCanonicalChildDirectory(stagingDirectory, destinationParent, 'INVALID_BACKUP_DESTINATION');
     if (existsSync(finalDirectory)) throw new Error('BACKUP_DIRECTORY_CONFLICT');
     renameSync(stagingDirectory, finalDirectory);
     return { directory: finalDirectory, workspaceId: manifest.workspaceId, createdAt };
   } catch (error) {
-    rmSync(stagingDirectory, { recursive: true, force: true });
+    removeOwnedPath(stagingDirectory);
     throw error;
   }
 };
 
-const restoreBackup = async (input: { backupDirectory: string; destinationParentDirectory: string }): Promise<RestoreBackupResult> => {
+const restoreBackup = async (
+  input: { backupDirectory: string; destinationParentDirectory: string },
+  options: WorkspaceBackupStoreOptions,
+): Promise<RestoreBackupResult> => {
   const backup = verifyBackup(input.backupDirectory);
   const sourceWorkspace = join(backup.directory, backupWorkspaceDirectoryName);
   const destinationParent = getCanonicalDirectory(input.destinationParentDirectory, 'INVALID_RESTORE_DESTINATION');
@@ -419,18 +517,37 @@ const restoreBackup = async (input: { backupDirectory: string; destinationParent
 
   mkdirSync(stagingDirectory);
   try {
-    copyStoredWorkspace(sourceWorkspace, stagingDirectory, backup.manifest, true);
+    assertCanonicalChildDirectory(stagingDirectory, destinationParent, 'UNMANAGED_RESTORE_DESTINATION');
+    prepareStoredWorkspace(stagingDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
+    options.onRestoreStagingPrepared?.(stagingDirectory);
+    assertCanonicalChildDirectory(stagingDirectory, destinationParent, 'UNMANAGED_RESTORE_DESTINATION');
+    assertStoredWorkspaceDirectories(stagingDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
+    copyStoredWorkspaceFiles(sourceWorkspace, stagingDirectory, backup.manifest, true, 'UNMANAGED_RESTORE_DESTINATION');
     verifyWorkspaceContent(stagingDirectory, backup.manifest);
     mkdirSync(finalDirectory);
     ownsFinalDirectory = true;
-    copyStoredWorkspace(stagingDirectory, finalDirectory, backup.manifest, false);
+    assertCanonicalChildDirectory(finalDirectory, destinationParent, 'UNMANAGED_RESTORE_DESTINATION');
+    prepareStoredWorkspace(finalDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
+    options.onRestoreDestinationReserved?.(finalDirectory);
+    assertCanonicalChildDirectory(finalDirectory, destinationParent, 'UNMANAGED_RESTORE_DESTINATION');
+    assertStoredWorkspaceDirectories(finalDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
+    copyStoredWorkspaceFiles(stagingDirectory, finalDirectory, backup.manifest, false, 'UNMANAGED_RESTORE_DESTINATION');
+    getManagedDestinationFile(finalDirectory, `${internalDirectoryName}/writer-lock.sqlite`, 'UNMANAGED_RESTORE_DESTINATION');
     initializeWorkspaceWriterLock(finalDirectory);
-    copyFileSync(join(stagingDirectory, workspaceManifestName), join(finalDirectory, workspaceManifestName), constants.COPYFILE_EXCL);
-    rmSync(stagingDirectory, { recursive: true, force: true });
+    assertManagedCopiedFile(finalDirectory, `${internalDirectoryName}/writer-lock.sqlite`, 'UNMANAGED_RESTORE_DESTINATION');
+    const sourceManifest = getManagedSourceFile(stagingDirectory, workspaceManifestName, 'INVALID_BACKUP_CONTENT');
+    const destinationManifest = getManagedDestinationFile(finalDirectory, workspaceManifestName, 'UNMANAGED_RESTORE_DESTINATION');
+    copyFileSync(sourceManifest, destinationManifest, constants.COPYFILE_EXCL);
+    assertManagedCopiedFile(finalDirectory, workspaceManifestName, 'UNMANAGED_RESTORE_DESTINATION');
+    assertCanonicalChildDirectory(stagingDirectory, destinationParent, 'UNMANAGED_RESTORE_DESTINATION');
+    assertCanonicalChildDirectory(finalDirectory, destinationParent, 'UNMANAGED_RESTORE_DESTINATION');
+    assertStoredWorkspaceDirectories(stagingDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
+    assertStoredWorkspaceDirectories(finalDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
+    removeOwnedPath(stagingDirectory);
     return { directory: finalDirectory, workspaceId: backup.manifest.workspaceId };
   } catch (error) {
-    rmSync(stagingDirectory, { recursive: true, force: true });
-    if (ownsFinalDirectory) rmSync(finalDirectory, { recursive: true, force: true });
+    removeOwnedPath(stagingDirectory);
+    if (ownsFinalDirectory) removeOwnedPath(finalDirectory);
     throw error;
   }
 };
@@ -456,23 +573,41 @@ const migrateMetadata = async (
   const temporaryPath = join(source.directory, `.${workspaceManifestName}.migration-${migrationId}`);
   const rollbackPath = join(source.directory, `.${workspaceManifestName}.rollback-${migrationId}`);
   const nextManifest = { ...source.manifest, formatVersion: input.toFormatVersion };
-  let rollbackAvailable = false;
+  const statePath = join(source.directory, internalDirectoryName, workspaceMigrationStateName);
+  const originalManifestContent = readFileSync(manifestPath, 'utf8');
+  const migrationState = {
+    kind: 'designhub-workspace-migration',
+    migrationId,
+    workspaceId: source.manifest.workspaceId,
+    fromFormatVersion: source.manifest.formatVersion,
+    toFormatVersion: input.toFormatVersion,
+    originalManifestSha256: sha256(originalManifestContent),
+  };
 
-  writeFileSync(temporaryPath, `${JSON.stringify(nextManifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
   try {
+    writeFileSync(statePath, `${JSON.stringify(migrationState, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+    writeFileSync(temporaryPath, `${JSON.stringify(nextManifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
     renameSync(manifestPath, rollbackPath);
-    rollbackAvailable = true;
+  } catch (error) {
+    removeOwnedPath(temporaryPath);
+    removeOwnedPath(statePath);
+    throw error;
+  }
+  if (options.failAt === 'migration-after-original-move') throw new Error('INJECTED_MIGRATION_INTERRUPTION');
+
+  try {
     renameSync(temporaryPath, manifestPath);
     if (options.failAt === 'migration-publish') throw new Error('INJECTED_MIGRATION_PUBLISH_FAILURE');
+    rmSync(statePath);
     rmSync(rollbackPath);
-    rollbackAvailable = false;
     return { fromFormatVersion: source.manifest.formatVersion, toFormatVersion: input.toFormatVersion };
   } catch (error) {
-    rmSync(temporaryPath, { force: true });
-    if (rollbackAvailable) {
-      rmSync(manifestPath, { force: true });
+    removeOwnedPath(temporaryPath);
+    if (existsSync(rollbackPath)) {
+      removeOwnedPath(manifestPath);
       renameSync(rollbackPath, manifestPath);
     }
+    removeOwnedPath(statePath);
     throw error;
   }
 };
@@ -482,6 +617,6 @@ export const createWorkspaceBackupStore = (
   options: WorkspaceBackupStoreOptions = {},
 ): WorkspaceBackupStore => ({
   createBackup: (input) => createBackup(handle, options, input),
-  restoreBackup: (input) => restoreBackup(input),
+  restoreBackup: (input) => restoreBackup(input, options),
   migrateMetadata: (input) => migrateMetadata(handle, options, input),
 });

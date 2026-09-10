@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -166,6 +166,30 @@ it.each(['file-copy', 'database-backup', 'backup-publish'] as const)('does not p
   }
 });
 
+it('rejects a managed source file replaced by an external symlink after enumeration', async () => {
+  const sourceParent = await createTemporaryDirectory('designhub-backup-source-race-');
+  const destinationParent = await createTemporaryDirectory('designhub-backup-source-race-target-');
+  const externalDirectory = await createTemporaryDirectory('designhub-backup-source-race-external-');
+  const externalFile = join(externalDirectory, 'external.txt');
+  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Source replacement' });
+  const managedAsset = join(workspace.workspace.directory, 'shared-assets', 'asset.txt');
+  await writeFile(managedAsset, 'managed content');
+  await writeFile(externalFile, 'external sentinel');
+
+  try {
+    await expect(createWorkspaceBackupStore(workspace, {
+      onBackupSourceEnumerated: () => {
+        rmSync(managedAsset);
+        symlinkSync(externalFile, managedAsset);
+      },
+    }).createBackup({ destinationParentDirectory: destinationParent })).rejects.toThrow('UNMANAGED_BACKUP_SOURCE');
+    expect(await readdir(destinationParent)).toEqual([]);
+    await expect(readFile(externalFile, 'utf8')).resolves.toBe('external sentinel');
+  } finally {
+    workspace.close();
+  }
+});
+
 it('rejects incomplete, tampered, and internally corrupt backup artifacts without publishing a restored workspace', async () => {
   const sourceParent = await createTemporaryDirectory('designhub-invalid-backup-source-');
   const backupParent = await createTemporaryDirectory('designhub-invalid-backup-artifacts-');
@@ -219,6 +243,39 @@ it('rejects incomplete, tampered, and internally corrupt backup artifacts withou
   }
 });
 
+it.each(['staging', 'final'] as const)('rejects a %s restore directory replaced by a symlink without touching the external target', async (phase) => {
+  const sourceParent = await createTemporaryDirectory(`designhub-restore-${phase}-source-`);
+  const backupParent = await createTemporaryDirectory(`designhub-restore-${phase}-backup-`);
+  const restoreParent = await createTemporaryDirectory(`designhub-restore-${phase}-target-`);
+  const externalDirectory = await createTemporaryDirectory(`designhub-restore-${phase}-external-`);
+  const externalSentinel = join(externalDirectory, 'sentinel.txt');
+  await writeFile(externalSentinel, 'external sentinel');
+  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: `Restore ${phase}` });
+  await writeFile(join(workspace.workspace.directory, 'shared-assets', 'asset.txt'), 'managed content');
+
+  try {
+    const artifact = await createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory: backupParent });
+    const replaceWithSymlink = (directory: string): void => {
+      const replacementPath = phase === 'final' ? join(directory, 'trash') : directory;
+      rmSync(replacementPath, { recursive: true });
+      symlinkSync(externalDirectory, replacementPath, 'dir');
+    };
+    const options = phase === 'staging'
+      ? { onRestoreStagingPrepared: replaceWithSymlink }
+      : { onRestoreDestinationReserved: replaceWithSymlink };
+
+    await expect(createWorkspaceBackupStore(workspace, options).restoreBackup({
+      backupDirectory: artifact.directory,
+      destinationParentDirectory: restoreParent,
+    })).rejects.toThrow('UNMANAGED_RESTORE_DESTINATION');
+    expect(await readdir(restoreParent)).toEqual([]);
+    await expect(readFile(externalSentinel, 'utf8')).resolves.toBe('external sentinel');
+    expect(await readdir(externalDirectory)).toEqual(['sentinel.txt']);
+  } finally {
+    workspace.close();
+  }
+});
+
 it('requires a verified matching backup and rolls back a failed metadata-format publication', async () => {
   const sourceParent = await createTemporaryDirectory('designhub-migration-source-');
   const backupParent = await createTemporaryDirectory('designhub-migration-backup-');
@@ -266,5 +323,41 @@ it('requires a verified matching backup and rolls back a failed metadata-format 
 
   const reopened = await openWorkspace(created.workspace.directory, 2);
   expect(reopened.workspace.openMode).toBe('writable');
+  reopened.close();
+});
+
+it('recovers the original manifest after interruption between its move and migration publication', async () => {
+  const sourceParent = await createTemporaryDirectory('designhub-migration-interruption-source-');
+  const backupParent = await createTemporaryDirectory('designhub-migration-interruption-backup-');
+  const created = await createWorkspace({ parentDirectory: sourceParent, name: 'Migration interruption' });
+  created.close();
+  const migrating = await openWorkspace(created.workspace.directory, 2);
+  const manifestPath = join(migrating.workspace.directory, workspaceManifestName);
+  const originalManifest = await readFile(manifestPath, 'utf8');
+
+  const artifact = await createWorkspaceBackupStore(migrating).createBackup({ destinationParentDirectory: backupParent });
+  await expect(createWorkspaceBackupStore(migrating, { failAt: 'migration-after-original-move' }).migrateMetadata({
+    backupDirectory: artifact.directory,
+    toFormatVersion: 2,
+  })).rejects.toThrow('INJECTED_MIGRATION_INTERRUPTION');
+  expect(existsSync(manifestPath)).toBe(false);
+  expect((await readdir(migrating.workspace.directory)).some((name) => name.includes('.rollback-'))).toBe(true);
+  migrating.close();
+
+  const recovered = await openWorkspace(created.workspace.directory, 2);
+  try {
+    expect(recovered.workspace).toMatchObject({
+      workspaceId: created.workspace.workspaceId,
+      formatVersion: 1,
+      openMode: 'migration-required',
+    });
+    await expect(readFile(manifestPath, 'utf8')).resolves.toBe(originalManifest);
+    expect((await readdir(recovered.workspace.directory)).some((name) => name.includes('.rollback-') || name.includes('.migration-'))).toBe(false);
+  } finally {
+    recovered.close();
+  }
+
+  const reopened = await openWorkspace(created.workspace.directory, 2);
+  expect(reopened.workspace.formatVersion).toBe(1);
   reopened.close();
 });

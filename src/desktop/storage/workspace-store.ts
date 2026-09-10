@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import { constants, readdirSync, rmSync } from 'node:fs';
+import { constants, existsSync, lstatSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -9,6 +9,7 @@ import type { WorkspaceDescriptor, WorkspaceHandle } from '../../features/worksp
 import { getOpenMode } from '../../features/workspace/open-mode';
 
 export const workspaceManifestName = 'designhub.workspace.json';
+export const workspaceMigrationStateName = 'workspace-migration.json';
 const workspaceKind = 'designhub-workspace';
 const workspaceFormatVersion = 1;
 const internalDirectoryName = '.designhub';
@@ -30,6 +31,18 @@ type WorkspaceManifest = {
   createdAt: string;
 };
 
+type WorkspaceMigrationState = {
+  kind: 'designhub-workspace-migration';
+  migrationId: string;
+  workspaceId: string;
+  fromFormatVersion: number;
+  toFormatVersion: number;
+  originalManifestSha256: string;
+};
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const hashPattern = /^[0-9a-f]{64}$/u;
+
 const errorCode = (error: unknown): string | null => {
   if (typeof error !== 'object' || error === null || !('code' in error)) return null;
   return String(error.code);
@@ -46,13 +59,51 @@ const isWorkspaceManifest = (value: unknown): value is WorkspaceManifest => {
   const manifest = value as Record<string, unknown>;
   return manifest.kind === workspaceKind
     && typeof manifest.workspaceId === 'string'
-    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(manifest.workspaceId)
+    && uuidPattern.test(manifest.workspaceId)
     && typeof manifest.name === 'string'
     && manifest.name.length > 0
     && Number.isInteger(manifest.formatVersion)
     && Number(manifest.formatVersion) > 0
     && typeof manifest.createdAt === 'string'
     && !Number.isNaN(Date.parse(manifest.createdAt));
+};
+
+const isWorkspaceMigrationState = (value: unknown): value is WorkspaceMigrationState => {
+  if (typeof value !== 'object' || value === null) return false;
+  const state = value as Record<string, unknown>;
+  return state.kind === 'designhub-workspace-migration'
+    && typeof state.migrationId === 'string'
+    && uuidPattern.test(state.migrationId)
+    && typeof state.workspaceId === 'string'
+    && uuidPattern.test(state.workspaceId)
+    && Number.isInteger(state.fromFormatVersion)
+    && Number(state.fromFormatVersion) > 0
+    && Number.isInteger(state.toFormatVersion)
+    && Number(state.toFormatVersion) > Number(state.fromFormatVersion)
+    && typeof state.originalManifestSha256 === 'string'
+    && hashPattern.test(state.originalManifestSha256);
+};
+
+const readRegularFile = (path: string, errorMessage: string): string => {
+  try {
+    const status = lstatSync(path);
+    if (!status.isFile() || status.isSymbolicLink()) throw new Error(errorMessage);
+    return readFileSync(path, 'utf8');
+  } catch {
+    throw new Error(errorMessage);
+  }
+};
+
+const readWorkspaceManifestFile = (path: string): { content: string; manifest: WorkspaceManifest } => {
+  const content = readRegularFile(path, 'INVALID_WORKSPACE_MANIFEST');
+  let value: unknown;
+  try {
+    value = JSON.parse(content) as unknown;
+  } catch {
+    throw new Error('INVALID_WORKSPACE_MANIFEST');
+  }
+  if (!isWorkspaceManifest(value)) throw new Error('INVALID_WORKSPACE_MANIFEST');
+  return { content, manifest: value };
 };
 
 const readManifest = async (directory: string): Promise<WorkspaceManifest> => {
@@ -88,6 +139,66 @@ const acquireWriterLock = (directory: string): Database.Database | null => {
     database.close();
     if (errorCode(error)?.startsWith('SQLITE_BUSY')) return null;
     throw error;
+  }
+};
+
+const closeWriterLock = (writerLock: Database.Database): void => {
+  writerLock.exec('ROLLBACK');
+  writerLock.close();
+};
+
+const removeMigrationFile = (path: string): void => {
+  if (!existsSync(path)) return;
+  const status = lstatSync(path);
+  if (!status.isFile() || status.isSymbolicLink()) throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
+  rmSync(path);
+};
+
+const recoverInterruptedWorkspaceMigration = (directory: string): void => {
+  const statePath = join(directory, internalDirectoryName, workspaceMigrationStateName);
+  if (!existsSync(statePath)) return;
+
+  let stateValue: unknown;
+  try {
+    stateValue = JSON.parse(readRegularFile(statePath, 'INVALID_WORKSPACE_MIGRATION_STATE')) as unknown;
+  } catch {
+    throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
+  }
+  if (!isWorkspaceMigrationState(stateValue)) throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
+
+  const writerLock = acquireWriterLock(directory);
+  const manifestPath = join(directory, workspaceManifestName);
+  if (!writerLock) {
+    if (!existsSync(manifestPath)) throw new Error('WORKSPACE_MIGRATION_IN_PROGRESS');
+    return;
+  }
+
+  const temporaryPath = join(directory, `.${workspaceManifestName}.migration-${stateValue.migrationId}`);
+  const rollbackPath = join(directory, `.${workspaceManifestName}.rollback-${stateValue.migrationId}`);
+  const matchesOriginal = ({ content, manifest }: { content: string; manifest: WorkspaceManifest }): boolean => manifest.workspaceId === stateValue.workspaceId
+    && manifest.formatVersion === stateValue.fromFormatVersion
+    && createHash('sha256').update(content).digest('hex') === stateValue.originalManifestSha256;
+
+  try {
+    if (!existsSync(manifestPath)) {
+      if (!existsSync(rollbackPath) || !matchesOriginal(readWorkspaceManifestFile(rollbackPath))) {
+        throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
+      }
+      renameSync(rollbackPath, manifestPath);
+    } else {
+      const current = readWorkspaceManifestFile(manifestPath);
+      const published = current.manifest.workspaceId === stateValue.workspaceId
+        && current.manifest.formatVersion === stateValue.toFormatVersion;
+      if (!published && !matchesOriginal(current)) throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
+      if (existsSync(rollbackPath) && !matchesOriginal(readWorkspaceManifestFile(rollbackPath))) {
+        throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
+      }
+    }
+    removeMigrationFile(temporaryPath);
+    removeMigrationFile(rollbackPath);
+    removeMigrationFile(statePath);
+  } finally {
+    closeWriterLock(writerLock);
   }
 };
 
@@ -131,8 +242,7 @@ const createHandle = (directory: string, manifest: WorkspaceManifest, supportedF
     if (closed || !writerLock) return;
     closed = true;
     if (lease) lease.active = false;
-    writerLock.exec('ROLLBACK');
-    writerLock.close();
+    closeWriterLock(writerLock);
   };
   const handle = { workspace, close };
   if (lease && writerLock) {
@@ -186,6 +296,7 @@ export const createWorkspace = async (input: { parentDirectory: string; name: st
 export const openWorkspace = async (directory: string, supportedFormat = workspaceFormatVersion): Promise<WorkspaceHandle> => {
   if (!Number.isInteger(supportedFormat) || supportedFormat < 1) throw new Error('INVALID_SUPPORTED_FORMAT');
   const canonicalDirectory = await realpath(directory);
+  recoverInterruptedWorkspaceMigration(canonicalDirectory);
   const manifest = await readManifest(canonicalDirectory);
   return createHandle(canonicalDirectory, manifest, supportedFormat);
 };
