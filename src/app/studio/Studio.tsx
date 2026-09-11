@@ -145,7 +145,13 @@ export const Studio = ({
     <>
       <WindowBar
         copy={getMessages(locale)}
+        locale={locale}
+        theme={theme}
         nativeControlSide={nativeControlSide}
+        onLocaleChange={onLocaleChange}
+        onThemeChange={onThemeChange}
+        previewLabel={t(locale, '示例预览', 'Example preview')}
+        themeLabel={t(locale, '切换主题', 'Switch theme')}
         workspace={{
           name: t(locale, '我的设计空间', 'My design studio'),
           detail: t(locale, '示例工作区', 'Example workspace'),
@@ -228,40 +234,6 @@ export const Studio = ({
             <span className="breadcrumb-current">
               {selected ? projectName(selected) : t(locale, title.zh, title.en)}
             </span>
-          </div>
-          <div className="toolbar-actions">
-            <span className="preview-label">
-              <span />
-              {t(locale, '示例预览', 'Example preview')}
-            </span>
-            <IconButton
-              name={
-                theme === 'light'
-                  ? 'sun'
-                  : theme === 'dark'
-                    ? 'moon'
-                    : 'monitor'
-              }
-              label={t(locale, '切换主题', 'Switch theme')}
-              onClick={() =>
-                onThemeChange(
-                  theme === 'system'
-                    ? 'dark'
-                    : theme === 'dark'
-                      ? 'light'
-                      : 'system',
-                )
-              }
-            />
-            <button
-              className="locale-switch"
-              aria-label={locale === 'zh-CN' ? 'Switch to English' : '切换中文'}
-              onClick={() =>
-                onLocaleChange(locale === 'zh-CN' ? 'en' : 'zh-CN')
-              }
-            >
-              {locale === 'zh-CN' ? 'EN' : '中'}
-            </button>
           </div>
         </header>
         <div className="studio-body">

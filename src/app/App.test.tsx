@@ -46,9 +46,7 @@ it('changes only the theme token mode without remounting or moving focus', () =>
   const openWorkspace = screen.getByRole('button', { name: '打开工作区' });
   openWorkspace.focus();
 
-  fireEvent.change(screen.getByLabelText('主题'), {
-    target: { value: 'dark' },
-  });
+  fireEvent.click(screen.getByRole('button', { name: '切换主题' }));
 
   expect(screen.getByRole('main')).toHaveAttribute('data-theme', 'dark');
   expect(document.documentElement).toHaveAttribute('data-theme', 'dark');

@@ -105,7 +105,15 @@ export const App = () => {
   return (
     <main className="app-shell" aria-label={copy.appName} data-theme={theme}>
       {!entered && (
-        <WindowBar copy={copy} nativeControlSide={nativeControlSide} />
+        <WindowBar
+          copy={copy}
+          locale={locale}
+          theme={theme}
+          nativeControlSide={nativeControlSide}
+          onLocaleChange={changeLocale}
+          onThemeChange={changeTheme}
+          themeLabel={t(locale, '切换主题', 'Switch theme')}
+        />
       )}
       {entered ? (
         <Studio
@@ -138,26 +146,6 @@ export const App = () => {
               {copy.openWorkspace}
             </button>
           </div>
-          <button
-            type="button"
-            className="language-toggle"
-            onClick={() => changeLocale(locale === 'zh-CN' ? 'en' : 'zh-CN')}
-            aria-label={locale === 'zh-CN' ? 'Switch to English' : '切换中文'}
-          >
-            {locale === 'zh-CN' ? 'EN' : '中文'}
-          </button>
-          <label className="theme-select-label">
-            <span>{copy.themeLabel}</span>
-            <select
-              className="theme-select"
-              value={theme}
-              onChange={(event) => changeTheme(event.target.value as Theme)}
-            >
-              <option value="system">{copy.themeSystem}</option>
-              <option value="dark">{copy.themeDark}</option>
-              <option value="light">{copy.themeLight}</option>
-            </select>
-          </label>
           <div className="welcome-preview">
             <span className="welcome-preview-rule" />
             <p>

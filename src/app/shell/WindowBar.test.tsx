@@ -5,7 +5,17 @@ import { getMessages } from '../i18n';
 import { WindowBar } from './WindowBar';
 
 it('reserves a non-draggable safe area for native window controls', () => {
-  const { container } = render(<WindowBar copy={getMessages('zh-CN')} nativeControlSide="left" />);
+  const { container } = render(
+    <WindowBar
+      copy={getMessages('zh-CN')}
+      locale="zh-CN"
+      theme="system"
+      nativeControlSide="left"
+      onLocaleChange={() => undefined}
+      onThemeChange={() => undefined}
+      themeLabel="切换主题"
+    />,
+  );
   const safeArea = container.querySelector('.window-control-safe-area--left');
   const dragRegion = container.querySelector('.window-bar-drag-region');
 
@@ -18,7 +28,12 @@ it('keeps the product identity and workspace switch in the top bar', () => {
   render(
     <WindowBar
       copy={getMessages('zh-CN')}
+      locale="zh-CN"
+      theme="system"
       nativeControlSide="left"
+      onLocaleChange={() => undefined}
+      onThemeChange={() => undefined}
+      themeLabel="切换主题"
       workspace={{
         name: '我的设计空间',
         detail: '示例工作区',
@@ -34,4 +49,12 @@ it('keeps the product identity and workspace switch in the top bar', () => {
   expect(bar).toContainElement(
     screen.getByRole('button', { name: '切换工作区' }),
   );
+  expect(bar).toContainElement(
+    screen.getByRole('button', { name: '切换主题' }),
+  );
+  expect(bar).toContainElement(
+    screen.getByRole('button', { name: 'Switch to English' }),
+  );
+  expect(screen.getByText('我的设计空间')).toBeInTheDocument();
+  expect(screen.getByText('· 示例工作区')).toBeInTheDocument();
 });

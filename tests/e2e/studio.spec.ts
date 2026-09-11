@@ -32,6 +32,22 @@ for (const width of [1280, 1024]) {
             exact: true,
           }),
         ).toBeVisible();
+        await expect(
+          windowBar.getByRole('button', {
+            name: english ? 'Switch theme' : '切换主题',
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(
+          windowBar.getByRole('button', {
+            name: english ? '切换中文' : 'Switch to English',
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(windowBar.locator('.window-workspace-name')).toHaveCSS(
+          'height',
+          '17px',
+        );
         await expect(page.locator('.studio-sidebar .sidebar-create')).toHaveCount(0);
         await page
           .getByRole('button', {

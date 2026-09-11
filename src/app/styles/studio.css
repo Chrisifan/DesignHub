@@ -200,8 +200,7 @@ button:disabled {
   backdrop-filter: var(--shell-backdrop);
   -webkit-backdrop-filter: var(--shell-backdrop);
 }
-.toolbar-location,
-.toolbar-actions {
+.toolbar-location {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -225,33 +224,6 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.toolbar-actions {
-  flex-shrink: 0;
-  gap: 8px;
-}
-.preview-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  color: var(--on-surface-variant);
-  font-size: 11px;
-  margin-right: 8px;
-}
-.preview-label > span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--secondary);
-}
-.locale-switch {
-  width: 32px;
-  height: 28px;
-  font-size: 11px;
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
 }
 .studio-body {
   position: relative;
