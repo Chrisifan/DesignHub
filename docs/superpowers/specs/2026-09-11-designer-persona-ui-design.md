@@ -1,6 +1,6 @@
 # Designer Persona UI Design
 
-Date: 2026-09-11. Status: approved in conversation; pending written-spec review.
+Date: 2026-09-11. Status: approved in conversation; Persona Repository reference incorporated.
 
 ## Goal
 
@@ -10,7 +10,7 @@ Reimplement the example workspace's design display and new-design surfaces aroun
 
 - Update the example design gallery and project detail presentation (P02/P05) so every design shows its contributing designer through an avatar, name, and immutable profile version.
 - Replace the current compact new-project modal with a P03/P04 creation surface where the active designer's persona is the principal supporting visual.
-- Rework the P10/P12 designer library and detail view around persona cards.
+- Rework the P10/P12 designer library and detail view into a Persona Repository list and inspector.
 - Add a P11 create-designer flow with description and portfolio-analysis entry points, three selectable persona candidates, review, and explicit publish intent.
 - Keep all new behavior session-only. It must be labeled as example UI until M03 profile persistence and M06 model execution are connected.
 
@@ -27,6 +27,17 @@ The selected direction is **character hero**. The new-design screen uses a full-
 Persona artwork is stylized character portraiture, comparable to an MBTI character system rather than a photorealistic person. A selected source image supports avatar, half-body, and full-body crops. The crop container has a fixed aspect ratio so names, translated text, and image loading cannot reflow cards.
 
 Existing dark/light semantic tokens remain the only color source. Primary represents selection, secondary represents AI and candidate generation, tertiary represents ready/published, and error represents failure. The character image itself is not recolored by theme.
+
+### Persona Repository Reference Update
+
+The user provided a visual reference on 2026-09-11 for the designer destination. It supersedes the earlier generic persona-card grid treatment for P10/P12 only. The designer destination becomes a dense **Persona Repository** workstation:
+
+- A compact page header exposes repository scope, filters, search, archive state, and one create action.
+- The left column is a scrollable profile repository. Each row has a small character portrait, name, creative-persona code, version, status, short style tags, local model preference label when configured, and project-reference count. It is a selectable list, not a second navigation rail.
+- The right inspector starts with a profile identity card: a larger illustrated persona, creative-persona code, profile/version, summary, default-state indicator, and actions to set the session default, start a derived draft, or use the profile for a new design.
+- Below it, separate high-density panels show Style DNA, negative rules, curated portfolio sheets, and published/draft status. Style DNA is descriptive profile data (palette, typography, composition, texture); it is not a psychometric score. Negative rules are explicit designer constraints. Portfolio sheets are user-selected references, not silently collected sources.
+- The screenshot's MBTI-like labels are presented as a **creative persona code** for an AI profile. The UI must not diagnose or describe a person’s actual psychology.
+- Hardware, model-engine, cloud-state, GPU memory, fake progress percentages, and fictional performance data from the reference are not implemented. Existing product truthfulness boundaries still apply.
 
 ## Page Behavior
 
@@ -46,9 +57,11 @@ Existing dark/light semantic tokens remain the only color source. Primary repres
 
 ### Designer Library and Detail: P10/P12
 
-- The library presents stable persona cards with full portrait, name, style tags, version, status, and signature.
-- Detail retains profile rules, version, signature, references, default scope, and projects using the profile. Persona art supports a larger inspection view.
-- Cards use text, an icon, and a border for selected/published/default states. They do not communicate state through color alone.
+- The library uses the Persona Repository split layout: a scrollable left profile list and a right detail inspector that remains bound to the selected profile.
+- Repository rows expose an avatar, creative-persona code, short tags, version, status, signature, and reference count without wrapping or losing full accessible text.
+- The detail inspector retains profile rules, version, signature, references, default scope, and projects using the profile. It adds structured Style DNA, negative rules, and curated portfolio sheets. Persona art supports a larger inspection view.
+- Inspector actions may change example-session selection/default/draft state only. They must not claim to write a profile, submit a model task, or apply a profile to a persisted project.
+- Rows and panels use text, an icon, and a border for selected/published/default states. They do not communicate state through color alone.
 
 ### Create Designer: P11
 
@@ -82,6 +95,25 @@ type PersonaDraft = {
   selectedCandidateId?: string;
   publishState: 'draft' | 'published';
 };
+
+type PersonaProfile = {
+  id: string;
+  personaCode: string;
+  referenceCount: number;
+  styleDna: {
+    palette: string[];
+    typography: LocalizedText;
+    composition: LocalizedText;
+    texture: LocalizedText;
+  };
+  negativeRules: LocalizedText[];
+  portfolioSheets: Array<{
+    id: string;
+    artwork: Artwork;
+    title: LocalizedText;
+    note: LocalizedText;
+  }>;
+};
 ```
 
 The current UI uses an in-memory example adapter. M03 replaces draft/profile data with versioned profile storage. M06 supplies candidate generation and portfolio analysis. A real candidate must preserve source, prompt/analysis summary, selected image asset, and model task reference without exposing connection secrets to the renderer.
@@ -89,11 +121,13 @@ The current UI uses an in-memory example adapter. M03 replaces draft/profile dat
 ## Component Boundaries
 
 - `PersonaArtwork`: fixed-ratio image/crop frame, alt text, loading and unavailable states.
-- `PersonaCard`: library and candidate presentation; consumes a persona view model and emits select/inspect events.
+- `PersonaCard`: fixed-ratio candidate presentation; consumes a persona view model and emits selection events.
 - `DesignerHero`: new-design companion visual and active-designer strip.
 - `NewDesignPage`: manual/conversation creation draft and active-designer selection.
 - `CreateDesignerPage`: description/portfolio modes, candidate review, and preview mapping.
-- `DesignerLibrary`: owns local example list selection only; it must not own project creation state.
+- `PersonaRepository`: P10 repository header, filters, search, and selectable compact profile rows.
+- `PersonaInspector`: selected P12 identity card, Style DNA, negative rules, curated portfolio sheets, and session-only actions.
+- `DesignerLibrary`: owns local example profile, creation, candidate, and session-default state. It receives an `onUseForNewDesign(personaId)` callback from Studio; it must not own project creation state.
 
 Existing generic button, icon, dialog, field, localization, and theme primitives are reused. No additional UI or animation package is introduced. All authored functions and components use arrow functions.
 
@@ -120,9 +154,9 @@ Existing generic button, icon, dialog, field, localization, and theme primitives
 2. Observe the intended Red failures against the current UI, then implement the smallest behavior to turn them Green.
 3. Re-run affected existing Studio, LibraryPages, Workbench, window-shell, theme, and localization tests because the navigation and creation routes change.
 4. Run `pnpm test:unit`, `pnpm test:integration`, `pnpm lint`, `pnpm typecheck`, and `pnpm build`.
-5. Run the available browser suite at 1280x800 and 1024x720 in Chinese/English and dark/light. Verify candidate keyboard selection, dialog focus return, long-name truncation, no horizontal overflow, reduced-motion behavior, and persona image rendering.
+5. Run the available browser suite at 1280x800 and 1024x720 in Chinese/English and dark/light. Verify repository filter/search, selected-row/inspector synchronization, session-default messaging, candidate keyboard selection, dialog focus return, long-name truncation, no horizontal overflow, reduced-motion behavior, and persona image rendering.
 6. Capture browser screenshots for visual review. Native Electron material/window evidence remains a separate M01 acceptance boundary.
 
 ## Research Record
 
-The task will reuse current React, existing local icon assets, and browser-native dialog behavior. No new implementation dependency is justified in scope. Figma MCP is configured, but the request to read `15Uu5xrn45sTsHAV5Mlpz4` returned HTTP 429 because the account's API quota is exhausted; the already approved repository UI foundations for P02/P03/P10/P11 remain the visual source until Figma quota recovers.
+The task will reuse current React, existing local icon assets, and browser-native dialog behavior. A GitHub search on 2026-09-11 found `Abdilar/react-master-detail`, but it has low adoption and no updates since 2021; introducing it would duplicate the project's existing responsive CSS Grid and theme contracts. No new implementation dependency is justified in scope. Figma MCP is configured, but the request to read `15Uu5xrn45sTsHAV5Mlpz4` returned HTTP 429 because the account's API quota is exhausted; the already approved repository UI foundations for P02/P03/P10/P11 remain the visual source until Figma quota recovers.

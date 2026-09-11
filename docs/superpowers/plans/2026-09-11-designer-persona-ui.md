@@ -16,11 +16,15 @@
 - Create `src/app/studio/personas.test.ts`: profile/candidate invariants and localization tests.
 - Create `src/app/studio/PersonaArtwork.tsx`: stable avatar/half/full crop renderer with loading fallback.
 - Create `src/app/studio/PersonaArtwork.test.tsx`: semantic image and fallback contract.
-- Create `src/app/studio/PersonaCard.tsx`: library/candidate card presentation with accessible selection state.
+- Create `src/app/studio/PersonaCard.tsx`: candidate card presentation with accessible selection state.
 - Create `src/app/studio/DesignerHero.tsx`: active-designer hero for project details and new-design surface.
 - Create `src/app/studio/NewDesignPage.tsx`: manual and conversation creation modes with a character hero.
 - Create `src/app/studio/NewDesignPage.test.tsx`: draft retention, designer switching, and unavailable-model behavior.
-- Create `src/app/studio/DesignerLibrary.tsx`: P10/P11 session UI, two creation modes, three-candidate selection, and explicit preview publish.
+- Create `src/app/studio/PersonaRepository.tsx`: P10 compact profile rows, repository filter/search, and selected-profile handoff.
+- Create `src/app/studio/PersonaRepository.test.tsx`: repository filtering and accessible selected-row coverage.
+- Create `src/app/studio/PersonaInspector.tsx`: P12 identity, Style DNA, negative rules, curated sheets, and session-only action surface.
+- Create `src/app/studio/PersonaInspector.test.tsx`: inspector details, default, derive, and new-design handoff coverage.
+- Create `src/app/studio/DesignerLibrary.tsx`: P10/P11 session coordinator, two creation modes, three-candidate selection, and explicit preview publish.
 - Create `src/app/studio/DesignerLibrary.test.tsx`: candidate selection, rights gate, and session-only publish behavior.
 - Create `src/app/studio/persona.css`: persona card, artwork, hero, creation-page, candidate-grid, responsive, focus, and reduced-motion rules.
 - Create `public/personas/paper-type.png`, `public/personas/clear-commerce.png`, `public/personas/natural-story.png`: generated example character portraits for the local UI only.
@@ -94,6 +98,8 @@ Expected: FAIL because the new modules do not exist. Do not count an asset-gener
 - [ ] **Step 4: Implement the smallest complete session-only model and artwork primitive.**
 
 ```ts
+import type { Artwork } from './types';
+
 export type LocalizedText = { zh: string; en: string };
 export type PersonaCrop = 'avatar' | 'half' | 'full';
 export type PersonaCandidateStatus = 'idle' | 'generating' | 'ready' | 'failed';
@@ -104,11 +110,26 @@ export type PersonaProfile = {
   signature: LocalizedText;
   summary: LocalizedText;
   principle: LocalizedText;
+  personaCode: string;
   version: string;
   status: 'built-in' | 'published' | 'draft';
   artworkUrl: string;
   artworkAlt: LocalizedText;
   tags: LocalizedText[];
+  referenceCount: number;
+  styleDna: {
+    palette: string[];
+    typography: LocalizedText;
+    composition: LocalizedText;
+    texture: LocalizedText;
+  };
+  negativeRules: LocalizedText[];
+  portfolioSheets: Array<{
+    id: string;
+    artwork: Artwork;
+    title: LocalizedText;
+    note: LocalizedText;
+  }>;
 };
 
 export type PersonaCandidate = {
@@ -333,7 +354,7 @@ export const NewDesignPage = ({ locale, draft, onDraftChange, onCreate, onBack }
 );
 ```
 
-In `Studio`, retain one `NewDesignDraft` state through locale/theme changes. Replace every project-creation trigger with `openNewDesign(mode)`, render `NewDesignPage` only for `surface === 'new-design'`, and have the existing preview-project creator consume the same draft. Its success path must reset only after it creates the in-memory project, select that project, return to `projects`, and show the existing session-only notice.
+In `Studio`, retain one `NewDesignDraft` state through locale/theme changes. Replace every project-creation trigger with `openNewDesign(mode, personaId?)`, render `NewDesignPage` only for `surface === 'new-design'`, and have the existing preview-project creator consume the same draft. Its success path must reset only after it creates the in-memory project, select that project, return to `projects`, and show the existing session-only notice. Pass `onUseForNewDesign={(personaId) => openNewDesign('manual', personaId)}` through `LibraryPages` so the P12 action selects the profile for a new in-memory draft rather than mutating a project.
 
 - [ ] **Step 4: Implement desktop and narrow layouts without changing shell geometry.**
 
@@ -360,29 +381,185 @@ git add src/app/studio/NewDesignPage.tsx src/app/studio/NewDesignPage.test.tsx s
 git commit -m "feat(ui): add persona-led new design surface"
 ```
 
-### Task 4: Designer Library, Candidate Review, and Preview Publish
+### Task 4: Persona Repository, Inspector, Candidate Review, and Preview Publish
 
 **Files:**
+- Create: `src/app/studio/PersonaRepository.tsx`
+- Create: `src/app/studio/PersonaRepository.test.tsx`
+- Create: `src/app/studio/PersonaInspector.tsx`
+- Create: `src/app/studio/PersonaInspector.test.tsx`
 - Create: `src/app/studio/DesignerLibrary.tsx`
 - Create: `src/app/studio/DesignerLibrary.test.tsx`
-- Modify: `src/app/studio/LibraryPages.tsx:1-420`
+- Modify: `src/app/studio/personas.ts`
+- Modify: `src/app/studio/personas.test.ts`
+- Modify: `src/app/studio/LibraryPages.tsx:1-420,1353-1496`
 - Modify: `src/app/studio/LibraryPages.test.tsx`
+- Modify: `src/app/studio/Studio.tsx:49-143,580-610`
 - Modify: `src/app/studio/persona.css`
 - Modify: `tests/e2e/studio.spec.ts`
 
-- [ ] **Step 1: Write failing designer-creation tests.**
+- [ ] **Step 1: Extend the profile contract and write failing repository/inspector tests.**
+
+First extend `personas.test.ts` with a data assertion for the structured inspection fields. Then create the following component tests before creating either production component:
 
 ```tsx
+it('keeps a creative-persona code, Style DNA, rules, and curated sheets for each example profile', () => {
+  const profile = getPersona('paper-type');
+  expect(profile?.personaCode).toBe('INTP-A');
+  expect(profile?.styleDna.palette).toHaveLength(3);
+  expect(profile?.negativeRules).toHaveLength(3);
+  expect(profile?.portfolioSheets).toHaveLength(3);
+});
+```
+
+```tsx
+it('filters compact profile rows and identifies the selected profile without making a second navigation rail', () => {
+  render(
+    <PersonaRepository
+      locale="zh-CN"
+      profiles={personaProfiles}
+      selectedId="paper-type"
+      sessionDefaultId="paper-type"
+      onSelect={vi.fn()}
+    />,
+  );
+  expect(screen.getByLabelText('设计师档案库')).toHaveTextContent('纸感排版');
+  expect(screen.getByRole('button', { name: /纸感排版/ })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索档案' }), { target: { value: '商业' } });
+  expect(screen.getByRole('button', { name: /清晰商业/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /纸感排版/ })).not.toBeInTheDocument();
+});
+```
+
+```tsx
+it('shows the selected profile as a creative identity and only emits session actions', () => {
+  const onSetDefault = vi.fn();
+  const onUseForNewDesign = vi.fn();
+  render(
+    <PersonaInspector
+      locale="zh-CN"
+      profile={getPersona('paper-type')!}
+      isSessionDefault={false}
+      onSetDefault={onSetDefault}
+      onDeriveDraft={vi.fn()}
+      onUseForNewDesign={onUseForNewDesign}
+    />,
+  );
+  expect(screen.getByText('创意代号')).toBeInTheDocument();
+  expect(screen.getByLabelText('风格 DNA')).toHaveTextContent('排版');
+  expect(screen.getByLabelText('禁用规则')).toHaveTextContent('霓虹');
+  expect(screen.getByLabelText('精选作品')).toHaveTextContent('春生特刊');
+  expect(screen.queryByText(/GPU|云端任务|完成率/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '设默认' }));
+  fireEvent.click(screen.getByRole('button', { name: '用于新建' }));
+  expect(onSetDefault).toHaveBeenCalledWith('paper-type');
+  expect(onUseForNewDesign).toHaveBeenCalledWith('paper-type');
+});
+```
+
+- [ ] **Step 2: Run the repository/inspector assertions and observe Red.**
+
+Run: `pnpm exec vitest run --config vitest.config.ts src/app/studio/personas.test.ts src/app/studio/PersonaRepository.test.tsx src/app/studio/PersonaInspector.test.tsx`
+
+Expected: FAIL because the profile contract has no structured inspector data and the repository/inspector modules do not exist. The failure must be about the missing behavior, not a missing test setup dependency.
+
+- [ ] **Step 3: Implement the presentation data and two focused P10/P12 components.**
+
+Add `personaCode`, localizable `styleDna`, exactly three localizable `negativeRules`, and exactly three curated `portfolioSheets` to each `PersonaProfile`. The sheet artwork must reuse the existing example artwork kinds and be labeled as bundled example references. Do not add a model name, source URL fetch, hardware metric, progress percentage, or generated-result claim.
+
+```tsx
+type PersonaRepositoryProps = {
+  locale: Locale;
+  profiles: PersonaProfile[];
+  selectedId: string;
+  sessionDefaultId: string;
+  onSelect: (personaId: string) => void;
+};
+
+export const PersonaRepository = ({ locale, profiles, selectedId, sessionDefaultId, onSelect }: PersonaRepositoryProps) => {
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'published' | 'built-in'>('all');
+  const visibleProfiles = profiles.filter((profile) => {
+    const matchesFilter = filter === 'all' || profile.status === filter;
+    const queryText = `${localize(locale, profile.name)} ${profile.personaCode} ${profile.tags.map((tag) => localize(locale, tag)).join(' ')}`;
+    return matchesFilter && queryText.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  });
+  return (
+    <section className="persona-repository" aria-label={t(locale, '设计师档案库', 'Persona repository')}>
+      <header className="persona-repository__header">
+        <p className="panel-label">{t(locale, '创意档案库', 'Persona repository')}</p>
+        <div className="persona-repository__controls" role="group" aria-label={t(locale, '档案筛选', 'Profile filters')}>
+          {(['all', 'published', 'built-in'] as const).map((value) => (
+            <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>
+              {value === 'all' ? t(locale, '全部', 'All') : value === 'published' ? t(locale, '已发布', 'Published') : t(locale, '内置', 'Built-in')}
+            </button>
+          ))}
+        </div>
+        <label className="search-input"><Icon name="search" size={16} /><span className="sr-only">{t(locale, '搜索档案', 'Search profiles')}</span><input type="search" aria-label={t(locale, '搜索档案', 'Search profiles')} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+      </header>
+      <div className="persona-repository__list">
+        {visibleProfiles.map((profile) => <button type="button" key={profile.id} className="persona-repository__row" aria-pressed={profile.id === selectedId} onClick={() => onSelect(profile.id)} title={`${localize(locale, profile.name)} · ${profile.personaCode}`}>
+          <PersonaArtwork personaId={profile.id} crop="avatar" />
+          <span className="persona-repository__copy"><strong>{localize(locale, profile.name)}</strong><span className="persona-repository__meta">{profile.personaCode} · {profile.version} · {profile.status === 'built-in' ? t(locale, '内置', 'Built-in') : profile.status === 'published' ? t(locale, '已发布', 'Published') : t(locale, '草稿', 'Draft')}</span><span className="persona-repository__tags">{profile.tags.map((tag) => localize(locale, tag)).join(' · ')}</span><span className="persona-repository__meta">{profile.id === sessionDefaultId && <><Icon name="check" size={12} />{t(locale, '本次默认', 'Session default')} · </>}{t(locale, `${profile.referenceCount} 个关联项目`, `${profile.referenceCount} linked projects`)}</span></span>
+        </button>)}
+      </div>
+    </section>
+  );
+};
+```
+
+Each repository row is a native `button` with a `PersonaArtwork` avatar, localized name, `personaCode`, version/status, one-line tag list, and local example-project reference count. Apply `aria-pressed`, a check icon plus text for the session default, and a full `title` for clipped labels. The filter labels are `全部`, `已发布`, `内置`; the search has a `<label>` and uses the existing search icon. Do not add a second global navigation rail.
+
+```tsx
+type PersonaInspectorProps = {
+  locale: Locale;
+  profile: PersonaProfile;
+  isSessionDefault: boolean;
+  onSetDefault: (personaId: string) => void;
+  onDeriveDraft: (personaId: string) => void;
+  onUseForNewDesign: (personaId: string) => void;
+};
+
+export const PersonaInspector = ({ profile, isSessionDefault, onSetDefault, onDeriveDraft, onUseForNewDesign, locale }: PersonaInspectorProps) => (
+  <aside className="persona-inspector" aria-label={t(locale, '设计师详情', 'Persona details')}>
+    <section className="persona-inspector__identity">
+      <PersonaArtwork personaId={profile.id} crop="half" />
+      <div><p className="section-kicker">{t(locale, '创意代号', 'Creative persona code')} · {profile.personaCode}</p><h2>{localize(locale, profile.name)} · {profile.version}</h2><p>{localize(locale, profile.summary)}</p><p>{isSessionDefault ? t(locale, '本次会话默认', 'Session default') : t(locale, '未设为本次默认', 'Not this session default')}</p><div className="persona-inspector__actions"><Button type="button" icon="check" variant="secondary" disabled={isSessionDefault} onClick={() => onSetDefault(profile.id)}>{t(locale, '设默认', 'Set default')}</Button><Button type="button" icon="copy" variant="ghost" onClick={() => onDeriveDraft(profile.id)}>{t(locale, '派生', 'Derive')}</Button><Button type="button" icon="plus" variant="primary" onClick={() => onUseForNewDesign(profile.id)}>{t(locale, '用于新建', 'Use for new')}</Button></div></div>
+    </section>
+    <div className="persona-inspector__detail-grid">
+      <section className="persona-inspector__panel" aria-label={t(locale, '风格 DNA', 'Style DNA')}><h3>{t(locale, '风格 DNA', 'Style DNA')}</h3><dl><dt>{t(locale, '色彩', 'Palette')}</dt><dd>{profile.styleDna.palette.join(' · ')}</dd><dt>{t(locale, '排版', 'Typography')}</dt><dd>{localize(locale, profile.styleDna.typography)}</dd><dt>{t(locale, '构图', 'Composition')}</dt><dd>{localize(locale, profile.styleDna.composition)}</dd><dt>{t(locale, '质感', 'Texture')}</dt><dd>{localize(locale, profile.styleDna.texture)}</dd></dl></section>
+      <section className="persona-inspector__panel" aria-label={t(locale, '禁用规则', 'Negative rules')}><h3>{t(locale, '禁用规则', 'Negative rules')}</h3><ul>{profile.negativeRules.map((rule) => <li key={rule.zh}><Icon name="circle-alert" size={14} />{localize(locale, rule)}</li>)}</ul></section>
+    </div>
+    <section className="persona-inspector__sheets" aria-label={t(locale, '精选作品', 'Curated portfolio')}><h3>{t(locale, '精选作品', 'Curated portfolio')}</h3><div className="persona-sheet-grid">{profile.portfolioSheets.map((sheet) => <article key={sheet.id}><ArtworkPreview kind={sheet.artwork} /><strong>{localize(locale, sheet.title)}</strong><p>{localize(locale, sheet.note)}</p></article>)}</div></section>
+    <p className="panel-note">{t(locale, '动作仅在本次示例会话中生效，不会写入磁盘。', 'Actions affect this example session only; nothing is written to disk.')}</p>
+  </aside>
+);
+```
+
+`PersonaInspector` uses short actions `设默认`, `派生`, and `用于新建` (`Set default`, `Derive`, `Use for new`). The default action changes only the local session marker. The derive action opens a prefilled designer draft in the library. The new-design action calls an injected callback; it does not create or alter a persisted project.
+
+- [ ] **Step 4: Write failing orchestration tests for the P10/P11 handoffs.**
+
+```tsx
+it('synchronizes a selected repository row with its inspector and changes only the session default', () => {
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} onUseForNewDesign={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: /清晰商业/ }));
+  expect(screen.getByLabelText('设计师详情')).toHaveTextContent('清晰商业');
+  fireEvent.click(screen.getByRole('button', { name: '设默认' }));
+  expect(screen.getByLabelText('设计师详情')).toHaveTextContent('本次会话默认');
+  expect(screen.getByText(/不会写入磁盘/)).toBeInTheDocument();
+});
+
 it('requires portfolio rights confirmation before entering candidate review', () => {
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} onUseForNewDesign={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: '创建' }));
   fireEvent.click(screen.getByRole('button', { name: '作品集' }));
   fireEvent.click(screen.getByRole('button', { name: '生成' }));
   expect(screen.getByText('请先确认拥有分析这些来源的权利。')).toBeInTheDocument();
 });
 
-it('presents exactly three candidates, supports keyboard selection, and marks preview publish as session-only', () => {
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+it('presents exactly three candidates, supports selection, and marks preview publish as session-only', () => {
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} onUseForNewDesign={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: '创建' }));
   fireEvent.change(screen.getByRole('textbox', { name: '风格描述' }), { target: { value: '纸张、城市与留白' } });
   fireEvent.click(screen.getByRole('button', { name: '生成' }));
@@ -395,30 +572,43 @@ it('presents exactly three candidates, supports keyboard selection, and marks pr
 });
 ```
 
-- [ ] **Step 2: Run focused tests and observe Red.**
+- [ ] **Step 5: Run the orchestration assertions and observe Red.**
 
-Run: `pnpm exec vitest run --config vitest.config.ts src/app/studio/DesignerLibrary.test.tsx src/app/studio/LibraryPages.test.tsx -t "portfolio rights|three candidates|preview publish"`
+Run: `pnpm exec vitest run --config vitest.config.ts src/app/studio/DesignerLibrary.test.tsx src/app/studio/LibraryPages.test.tsx -t "session default|portfolio rights|three candidates|preview publish"`
 
-Expected: FAIL because the library has only a generic dialog form and no candidate-review state.
+Expected: FAIL because `DesignerLibrary` does not exist and `LibraryPages` still owns the obsolete generic designer dialog.
 
-- [ ] **Step 3: Move designer-only state from `LibraryPages` into `DesignerLibrary`.**
+- [ ] **Step 6: Compose P10/P11 state and route the cross-page action through Studio.**
 
 ```tsx
-export const DesignerLibrary = ({ locale, notify }: DesignerLibraryProps) => {
-  const [screen, setScreen] = useState<'library' | 'create' | 'detail'>('library');
+type DesignerLibraryProps = {
+  locale: Locale;
+  notify: (message: string) => void;
+  onUseForNewDesign: (personaId: string) => void;
+};
+
+export const DesignerLibrary = ({ locale, notify, onUseForNewDesign }: DesignerLibraryProps) => {
+  const [selectedId, setSelectedId] = useState('paper-type');
+  const [sessionDefaultId, setSessionDefaultId] = useState('paper-type');
+  const [screen, setScreen] = useState<'library' | 'create'>('library');
   const [source, setSource] = useState<'description' | 'portfolio'>('description');
   const [candidatePhase, setCandidatePhase] = useState<'form' | 'review'>('form');
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>();
   const [publishedInSession, setPublishedInSession] = useState(false);
+  const [derivedPersonaId, setDerivedPersonaId] = useState<string>();
   const [error, setError] = useState('');
+  const selectedProfile = getPersona(selectedId) ?? personaProfiles[0]!;
+  const setSessionDefault = (personaId: string) => {
+    setSessionDefaultId(personaId);
+    notify(t(locale, '已设为本次会话默认，不会写入磁盘。', 'Set as this session default; nothing was written to disk.'));
+  };
   const requestCandidates = () => {
     if (source === 'portfolio' && !rightsConfirmed) {
       setError(t(locale, '请先确认拥有分析这些来源的权利。', 'Confirm rights before analysing these sources.'));
       return;
     }
     setError('');
-    setScreen('create');
     setCandidatePhase('review');
   };
   const publishPreview = () => {
@@ -426,55 +616,88 @@ export const DesignerLibrary = ({ locale, notify }: DesignerLibraryProps) => {
       setError(t(locale, '请先选用一个候选。', 'Select a candidate first.'));
       return;
     }
+    setError('');
     setPublishedInSession(true);
     notify(t(locale, '已在本次示例会话中发布，不会写入磁盘。', 'Published in this example session only; nothing was written to disk.'));
   };
+  return screen === 'library' ? (
+    <section className="page-content library-page">
+      <PageHeader title={t(locale, '设计师', 'Designers')} eyebrow={t(locale, '创意档案', 'Creative profiles')} description={t(locale, '管理示例中的创作身份、规则与版本。', 'Manage example creative identities, rules, and versions.')}><Button type="button" variant="primary" icon="plus" onClick={() => { setDerivedPersonaId(undefined); setCandidatePhase('form'); setScreen('create'); }}>{t(locale, '创建', 'Create')}</Button></PageHeader>
+      <div className="persona-repository-shell"><PersonaRepository locale={locale} profiles={personaProfiles} selectedId={selectedProfile.id} sessionDefaultId={sessionDefaultId} onSelect={setSelectedId} /><PersonaInspector locale={locale} profile={selectedProfile} isSessionDefault={selectedProfile.id === sessionDefaultId} onSetDefault={setSessionDefault} onDeriveDraft={(personaId) => { setDerivedPersonaId(personaId); setCandidatePhase('form'); setScreen('create'); }} onUseForNewDesign={onUseForNewDesign} /></div>
+    </section>
+  ) : (
+    <section className="page-content designer-creation" aria-labelledby="create-designer-title"><header><Button type="button" variant="ghost" icon="arrow-left" onClick={() => setScreen('library')}>{t(locale, '返回', 'Back')}</Button><h1 id="create-designer-title">{t(locale, '创建设计师', 'Create designer')}</h1></header><div role="group" aria-label={t(locale, '来源方式', 'Source mode')}><button type="button" aria-pressed={source === 'description'} onClick={() => setSource('description')}>{t(locale, '描述', 'Description')}</button><button type="button" aria-pressed={source === 'portfolio'} onClick={() => setSource('portfolio')}>{t(locale, '作品集', 'Portfolio')}</button></div>{candidatePhase === 'form' ? <DesignerSourceForm key={derivedPersonaId ?? 'new'} locale={locale} source={source} initialDescription={derivedPersonaId ? localize(locale, getPersona(derivedPersonaId)!.summary) : ''} rightsConfirmed={rightsConfirmed} error={error} onRightsConfirmed={setRightsConfirmed} onRequestCandidates={requestCandidates} /> : <CandidateReview locale={locale} selectedCandidateId={selectedCandidateId} publishedInSession={publishedInSession} error={error} onSelect={setSelectedCandidateId} onPublish={publishPreview} />}</section>
+  );
 };
 ```
 
-Render description and portfolio as equal tabs. Portfolio mode accepts illustrative source labels/links in the session UI but performs no file upload or network fetch. Candidate generation must be labeled `示例候选` / `Example candidates`; it must not display a fake progress percent or claim a model request was submitted.
-
-- [ ] **Step 4: Build the three-card review and preview mapping.**
-
 ```tsx
-<div className="persona-candidate-grid" role="group" aria-label={t(locale, '人物候选', 'Persona candidates')}>
-  {personaCandidates.map((candidate) => (
-    <PersonaCard
-      key={candidate.id}
-      personaId={candidate.personaId}
-      label={t(locale, `候选 ${candidate.ordinal}`, `Candidate ${candidate.ordinal}`)}
-      selected={selectedCandidateId === candidate.id}
-      onSelect={() => setSelectedCandidateId(candidate.id)}
-    />
-  ))}
-</div>
+type DesignerSourceFormProps = {
+  locale: Locale;
+  source: 'description' | 'portfolio';
+  initialDescription: string;
+  rightsConfirmed: boolean;
+  error: string;
+  onRightsConfirmed: (value: boolean) => void;
+  onRequestCandidates: () => void;
+};
+
+type CandidateReviewProps = {
+  locale: Locale;
+  selectedCandidateId?: string;
+  publishedInSession: boolean;
+  error: string;
+  onSelect: (candidateId: string) => void;
+  onPublish: () => void;
+};
+
+const DesignerSourceForm = ({ locale, source, initialDescription, rightsConfirmed, error, onRightsConfirmed, onRequestCandidates }: DesignerSourceFormProps) => {
+  const [description, setDescription] = useState(initialDescription);
+  const [sources, setSources] = useState('');
+  return <form className="designer-source-form" onSubmit={(event) => { event.preventDefault(); onRequestCandidates(); }}><Field label={t(locale, '风格描述', 'Style description')}><textarea value={description} onChange={(event) => setDescription(event.target.value)} required={source === 'description'} rows={5} /></Field>{source === 'portfolio' && <><Field label={t(locale, '作品来源', 'Portfolio sources')}><textarea value={sources} onChange={(event) => setSources(event.target.value)} rows={4} /></Field><label className="check-row"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => onRightsConfirmed(event.target.checked)} />{t(locale, '我确认拥有分析这些来源的权利', 'I confirm I have rights to analyse these sources')}</label></>}{error && <p className="form-error" role="alert">{error}</p>}<Button type="submit" variant="ai" icon="sparkles">{t(locale, '生成', 'Generate')}</Button><p className="panel-note">{t(locale, '仅显示示例候选，不会发起模型任务。', 'Example candidates only; no model task is started.')}</p></form>;
+};
+
+const CandidateReview = ({ locale, selectedCandidateId, publishedInSession, error, onSelect, onPublish }: CandidateReviewProps) => (
+  <section className="candidate-review" aria-labelledby="candidate-review-title"><p className="section-kicker">{t(locale, '示例候选', 'Example candidates')}</p><h2 id="candidate-review-title">{t(locale, '选择人物形象', 'Choose a persona')}</h2><div className="persona-candidate-grid" role="group" aria-label={t(locale, '人物候选', 'Persona candidates')}>{personaCandidates.map((candidate) => <PersonaCard key={candidate.id} personaId={candidate.personaId} label={t(locale, `候选 ${candidate.ordinal}`, `Candidate ${candidate.ordinal}`)} selected={selectedCandidateId === candidate.id} onSelect={() => onSelect(candidate.id)} />)}</div>{error && <p className="form-error" role="alert">{error}</p>}<Button type="button" variant="primary" icon="check" disabled={!selectedCandidateId || publishedInSession} onClick={onPublish}>{t(locale, '发布预览', 'Publish preview')}</Button>{publishedInSession && <p className="panel-note">{t(locale, '已在本次示例会话中发布，不会写入磁盘。', 'Published in this example session only; nothing was written to disk.')}</p>}</section>
+);
 ```
 
-`PersonaCard` uses a native `<button type="button">`, `aria-pressed`, `onKeyDown` Enter/Space compatibility from the button, visible check icon, and concise candidate label. The adjacent review panel renders the selected persona once as `full` new-design hero and once as `avatar` attribution. The publish button is disabled until a candidate is selected, then uses `发布预览` / `Publish preview` and maintains a visible session-only disclosure.
+Move only designer-specific state and components out of `LibraryPages`; leave assets, brands, connections, delivery, storage, and settings untouched. Delete the old `DesignerProfile`, `DesignerDraft`, `designers`, `DesignerDraftModal`, and `DesignersPage` declarations once the imports compile. Extend `LibraryPagesProps` with `onUseForNewDesign`, then render `<DesignerLibrary locale={locale} notify={notify} onUseForNewDesign={onUseForNewDesign} />` for the designers view.
 
-- [ ] **Step 5: Add card and responsive CSS.**
+In `Studio`, `openNewDesign(mode, personaId?)` must set the draft persona before moving to the existing `new-design` surface. Pass `(personaId) => openNewDesign('manual', personaId)` through `LibraryPages`. This activates only a new in-memory design draft and must preserve the selected profile/version disclosure. Update the Task 3 route implementation if necessary so the same `NewDesignDraft` field is used by project creation and the persona switcher.
+
+Render description and portfolio as equal tabs. Portfolio mode accepts session-only illustrative source labels/links but performs no upload, network fetch, or analysis. Candidate generation must be labeled `示例候选` / `Example candidates`; it must not display fake progress percentages or claim that a model request was submitted. `PersonaCard` remains a native `<button type="button">` with `aria-pressed`, a visible check icon, and browser-native Enter/Space behavior. Publish is disabled until selection and uses `发布预览` / `Publish preview` with a visible session-only disclosure.
+
+- [ ] **Step 7: Add repository, inspector, candidate, and responsive CSS.**
 
 ```css
-.persona-library-grid,.persona-candidate-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
-.persona-card { min-width:0; overflow:hidden; border:1px solid var(--border-subtle); background:var(--surface-container); text-align:left; }
-.persona-card[aria-pressed='true'] { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
-.persona-card:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
-.persona-card__name,.persona-card__meta { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-@media (max-width:1279px) { .persona-library-grid,.persona-candidate-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media (max-width:720px) { .persona-library-grid,.persona-candidate-grid { grid-template-columns:1fr; } }
+.persona-repository-shell { display:grid; grid-template-columns:minmax(272px,0.38fr) minmax(0,1fr); min-height:620px; overflow:hidden; border:1px solid var(--border-subtle); border-radius:6px; }
+.persona-repository { min-width:0; overflow:auto; border-right:1px solid var(--border-subtle); background:var(--surface-container-lowest); }
+.persona-repository__row { display:grid; grid-template-columns:48px minmax(0,1fr); gap:12px; min-width:0; padding:12px; border-bottom:1px solid var(--border-subtle); text-align:left; }
+.persona-repository__row[aria-pressed='true'] { border-left:3px solid var(--primary); background:var(--surface-container); }
+.persona-repository__meta,.persona-repository__tags,.persona-repository__row strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.persona-inspector { min-width:0; overflow:auto; padding:20px; background:var(--surface-container-low); }
+.persona-inspector__identity { display:grid; grid-template-columns:minmax(168px,0.42fr) minmax(0,1fr); gap:20px; }
+.persona-inspector__detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:12px; }
+.persona-sheet-grid,.persona-candidate-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.persona-repository__row:focus-visible,.persona-card:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
+@media (max-width:1279px) { .persona-repository-shell { grid-template-columns:minmax(0,1fr); } .persona-repository { max-height:290px; border-right:0; border-bottom:1px solid var(--border-subtle); } }
+@media (max-width:720px) { .persona-inspector__identity,.persona-inspector__detail-grid { grid-template-columns:minmax(0,1fr); } .persona-sheet-grid,.persona-candidate-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 ```
 
-- [ ] **Step 6: Run the designer tests and retained library coverage.**
+Use no border radius above the project's existing 6px surface norm. Each dense section has a heading, visible text status, and a stable grid or `aspect-ratio`; no button/tag may wrap. Existing `prefers-reduced-motion` and reduced-transparency rules apply to the new surfaces without introducing continuous motion.
 
-Run: `pnpm exec vitest run --config vitest.config.ts src/app/studio/DesignerLibrary.test.tsx src/app/studio/LibraryPages.test.tsx`
+- [ ] **Step 8: Run the designer tests and retained library coverage.**
 
-Expected: three-candidate selection, rights gate, preview-publish disclosure, asset library, delivery, settings, and existing navigation tests pass.
+Run: `pnpm exec vitest run --config vitest.config.ts src/app/studio/personas.test.ts src/app/studio/PersonaRepository.test.tsx src/app/studio/PersonaInspector.test.tsx src/app/studio/DesignerLibrary.test.tsx src/app/studio/LibraryPages.test.tsx`
 
-- [ ] **Step 7: Commit the P10/P11 slice.**
+Expected: structured profile data, selected-row/inspector synchronization, session-default disclosure, description/portfolio rights gate, exactly three candidates, preview-publish disclosure, asset library, delivery, settings, and existing navigation tests pass.
+
+- [ ] **Step 9: Commit the P10/P11 slice.**
 
 ```bash
-git add src/app/studio/DesignerLibrary.tsx src/app/studio/DesignerLibrary.test.tsx src/app/studio/LibraryPages.tsx src/app/studio/LibraryPages.test.tsx src/app/studio/PersonaCard.tsx src/app/studio/persona.css tests/e2e/studio.spec.ts
-git commit -m "feat(ui): add persona candidate review for designers"
+git add src/app/studio/personas.ts src/app/studio/personas.test.ts src/app/studio/PersonaRepository.tsx src/app/studio/PersonaRepository.test.tsx src/app/studio/PersonaInspector.tsx src/app/studio/PersonaInspector.test.tsx src/app/studio/DesignerLibrary.tsx src/app/studio/DesignerLibrary.test.tsx src/app/studio/LibraryPages.tsx src/app/studio/LibraryPages.test.tsx src/app/studio/Studio.tsx src/app/studio/PersonaCard.tsx src/app/studio/persona.css tests/e2e/studio.spec.ts
+git commit -m "feat(ui): add designer persona repository"
 ```
 
 ### Task 5: Cross-Page Browser Coverage, Regression Gate, and Evidence
@@ -508,6 +731,20 @@ test('designer candidate selection is keyboard reachable and honest about exampl
   await page.keyboard.press('Enter');
   await expect(candidates.nth(0)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText('示例候选', { exact: true })).toBeVisible();
+});
+
+test('persona repository keeps the selected archive row and inspector synchronized without fabricated runtime data', async ({ page }) => {
+  await page.goto('/?preview=1');
+  await page.getByRole('button', { name: '设计师', exact: true }).click();
+  await page.getByRole('button', { name: /清晰商业/ }).click();
+  await expect(page.getByLabel('设计师详情')).toContainText('清晰商业');
+  await expect(page.getByLabel('风格 DNA')).toBeVisible();
+  await expect(page.getByLabel('禁用规则')).toBeVisible();
+  await expect(page.getByLabel('精选作品')).toBeVisible();
+  await expect(page.getByText(/GPU|云端任务|完成率/)).toHaveCount(0);
+  await page.getByRole('button', { name: '设默认', exact: true }).click();
+  await expect(page.getByText('已设为本次会话默认，不会写入磁盘。')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
 });
 ```
 
@@ -552,7 +789,8 @@ git commit -m "test(ui): verify designer persona flows"
 
 - [ ] P02/P05 keep design images primary while designer contribution is visible and versioned.
 - [ ] P03/P04 uses the selected persona as the character hero without making model connection mandatory.
-- [ ] P10/P11 uses full persona cards, description/portfolio entry modes, exactly three candidates, accessible selection, and explicit session-only preview publish.
+- [ ] P10/P12 uses a filterable Persona Repository and a synchronized inspector with creative code, Style DNA, negative rules, curated bundled sheets, session-only default/derive/new-design actions, and no fabricated runtime data.
+- [ ] P11 supports description/portfolio entry modes, exactly three candidates, accessible selection, and explicit session-only preview publish.
 - [ ] No new package, provider, storage, workspace, native-window, or real network/image-generation claim is introduced.
 - [ ] New artwork is bundled example artwork with meaningful alt text; no individual is represented as a real employee or legal author.
 - [ ] All project-authored functions are arrows; no button labels wrap or exceed the Chinese action-length boundary.
