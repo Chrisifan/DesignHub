@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 
 beforeEach(() => {
   localStorage.clear();
+  Reflect.deleteProperty(window, 'designhub');
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 it('未连接模型也能进入本地工作区入口', () => {
@@ -69,4 +74,16 @@ it('preserves workspace input when the native folder chooser fails', async () =>
   expect(screen.getByRole('textbox', { name: '工作区名称' })).toHaveValue(
     '我的空间',
   );
+});
+
+it('opens the desktop application directly in the workspace shell', () => {
+  vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
+    'DesignHub Electron/44.3.0',
+  );
+  window.designhub = { chooseWorkspaceDirectory: async () => null };
+
+  render(<App />);
+
+  expect(screen.getByRole('heading', { name: '项目库' })).toBeVisible();
+  expect(screen.queryByRole('heading', { name: '开始本地创作' })).toBeNull();
 });

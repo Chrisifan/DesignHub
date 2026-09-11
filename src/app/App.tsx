@@ -24,6 +24,10 @@ const savePreference = (key: string, value: string): void => {
   }
 };
 
+const opensStudioOnLaunch = (): boolean =>
+  new URLSearchParams(window.location.search).get('preview') === '1' ||
+  (navigator.userAgent.includes('Electron/') && Boolean(window.designhub));
+
 export const App = () => {
   const [locale, setLocale] = useState<Locale>(() =>
     readPreference('designhub.ui.locale') === 'en' ? 'en' : 'zh-CN',
@@ -32,9 +36,7 @@ export const App = () => {
     const value = readPreference('designhub.ui.theme');
     return value === 'dark' || value === 'light' ? value : 'system';
   });
-  const [entered, setEntered] = useState(
-    () => new URLSearchParams(window.location.search).get('preview') === '1',
-  );
+  const [entered, setEntered] = useState(opensStudioOnLaunch);
   const [workspaceForm, setWorkspaceForm] = useState(false);
   const [workspaceName, setWorkspaceName] = useState('');
   const [directory, setDirectory] = useState('');
