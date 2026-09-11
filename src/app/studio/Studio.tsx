@@ -631,6 +631,7 @@ export const Studio = ({
                   deliveryProject={deliveryProject}
                   notify={notify}
                   navigate={navigate}
+                  onUseForNew={(personaId) => openNewDesign('manual', personaId)}
                   theme={theme}
                   onThemeChange={onThemeChange}
                   onLocaleChange={onLocaleChange}
