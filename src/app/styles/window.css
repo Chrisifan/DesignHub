@@ -24,8 +24,17 @@ button { font: inherit; }
   backdrop-filter: var(--shell-backdrop);
   -webkit-backdrop-filter: var(--shell-backdrop);
 }
-.window-bar-drag-region { flex: 1; height: 100%; display: flex; align-items: center; padding: 0 16px; -webkit-app-region: drag; user-select: none; }
+.window-bar-drag-region { flex: 1; height: 100%; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 0 16px; -webkit-app-region: drag; user-select: none; }
+.window-brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.window-brand-mark { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); font: 600 15px/1 Geist, 'PingFang SC', sans-serif; letter-spacing: -1px; }
 .window-bar-title { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.window-bar-separator { width: 1px; height: 18px; flex: 0 0 1px; background: var(--shell-glass-border); }
+.window-workspace-switch { display: inline-flex; align-items: center; gap: 10px; min-width: 0; min-height: 30px; padding: 2px 8px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; -webkit-app-region: no-drag; }
+.window-workspace-switch:hover { background: color-mix(in srgb, var(--on-surface) 7%, transparent); }
+.window-workspace-switch > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.window-workspace-switch strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.window-workspace-switch small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--on-surface-variant); font-size: 10px; line-height: 12px; }
+.window-workspace-switch > .ui-icon { color: var(--on-surface-variant); }
 .window-control-safe-area { height: 40px; -webkit-app-region: no-drag; }
 .window-control-safe-area--left { width: 84px; flex: 0 0 84px; }
 .window-control-safe-area--right { width: 138px; flex: 0 0 138px; }

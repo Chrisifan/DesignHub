@@ -53,21 +53,6 @@ button:disabled {
   backdrop-filter: var(--shell-backdrop);
   -webkit-backdrop-filter: var(--shell-backdrop);
 }
-.workspace-switch {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  width: 100%;
-  min-height: 88px;
-  padding: 20px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-.workspace-switch > .ui-icon {
-  margin-left: auto;
-  color: var(--on-surface-variant);
-}
 .workspace-monogram {
   position: relative;
   display: grid;
@@ -91,12 +76,6 @@ button:disabled {
   background: currentColor;
   border-radius: 2px;
 }
-.workspace-switch strong {
-  font-weight: 500;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.workspace-switch small,
 .operator small,
 .local-note small,
 .workspace-choice small {
@@ -1203,14 +1182,9 @@ button:disabled {
   grid-template-columns: 64px minmax(0, 1fr);
 }
 .studio--compact .sidebar-label,
-.studio--compact .workspace-switch > .ui-icon,
 .studio--compact .operator > .ui-icon,
 .studio--compact .local-note {
   display: none;
-}
-.studio--compact .workspace-switch {
-  padding: 16px 14px;
-  min-height: 76px;
 }
 .studio--compact .sidebar-create {
   padding: 0 12px 16px;
@@ -1265,14 +1239,9 @@ button:disabled {
     grid-template-columns: 64px minmax(0, 1fr);
   }
   .studio .sidebar-label,
-  .studio .workspace-switch > .ui-icon,
   .studio .operator > .ui-icon,
   .studio .local-note {
     display: none;
-  }
-  .studio .workspace-switch {
-    padding: 16px 14px;
-    min-height: 76px;
   }
   .studio .sidebar-create {
     padding: 0 12px 16px;

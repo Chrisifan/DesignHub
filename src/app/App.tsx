@@ -104,7 +104,9 @@ export const App = () => {
 
   return (
     <main className="app-shell" aria-label={copy.appName} data-theme={theme}>
-      <WindowBar copy={copy} nativeControlSide={nativeControlSide} />
+      {!entered && (
+        <WindowBar copy={copy} nativeControlSide={nativeControlSide} />
+      )}
       {entered ? (
         <Studio
           locale={locale}

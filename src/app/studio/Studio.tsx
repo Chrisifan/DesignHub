@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Locale } from '../i18n';
+import { getMessages, type Locale } from '../i18n';
+import { WindowBar } from '../shell/WindowBar';
 import { exampleProjects } from './examples';
 import { LibraryPages } from './LibraryPages';
 import { Workbench } from './Workbench';
@@ -78,6 +79,9 @@ export const Studio = ({
     return () => window.clearTimeout(timeout);
   }, [notice]);
   const title = navigation.find((item) => item.view === view)!;
+  const nativeControlSide = navigator.userAgent.includes('Mac')
+    ? 'left'
+    : 'right';
   const visibleProjects = projects.filter(
     (project) =>
       (filter === 'all' ||
@@ -138,25 +142,19 @@ export const Studio = ({
     navigate('delivery');
   };
   return (
-    <div
-      className={`studio ${collapsed ? 'studio--compact' : ''}`}
-    >
-      <aside className="studio-sidebar">
-        <button
-          className="workspace-switch"
-          onClick={() => setDialog('workspace')}
-          title={t(locale, '切换工作区', 'Switch workspace')}
-          aria-label={t(locale, '切换工作区', 'Switch workspace')}
-        >
-          <span className="workspace-monogram">
-            D<span />
-          </span>
-          <span className="sidebar-label">
-            <strong>{t(locale, '我的设计空间', 'My design studio')}</strong>
-            <small>{t(locale, '示例工作区', 'Example workspace')}</small>
-          </span>
-          <Icon name="chevron-down" size={14} />
-        </button>
+    <>
+      <WindowBar
+        copy={getMessages(locale)}
+        nativeControlSide={nativeControlSide}
+        workspace={{
+          name: t(locale, '我的设计空间', 'My design studio'),
+          detail: t(locale, '示例工作区', 'Example workspace'),
+          label: t(locale, '切换工作区', 'Switch workspace'),
+          onClick: () => setDialog('workspace'),
+        }}
+      />
+      <div className={`studio ${collapsed ? 'studio--compact' : ''}`}>
+        <aside className="studio-sidebar">
         <div className="sidebar-create">
           <Button
             icon="plus"
@@ -228,8 +226,8 @@ export const Studio = ({
             <Icon name="settings" size={15} />
           </button>
         </div>
-      </aside>
-      <div className="studio-main">
+        </aside>
+        <div className="studio-main">
         <header className="studio-toolbar">
           <div className="toolbar-location">
             <IconButton
@@ -667,6 +665,7 @@ export const Studio = ({
             DesignHub <span className="mono">0.1</span>
           </span>
         </footer>
+        </div>
       </div>
       {notice && (
         <div role="status" className="studio-toast">
@@ -886,6 +885,6 @@ export const Studio = ({
           )}
         </Modal>
       )}
-    </div>
+    </>
   );
 };
