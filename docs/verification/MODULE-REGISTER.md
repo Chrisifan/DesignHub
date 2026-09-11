@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | M01 | 部分验证；基础外壳、bridge、规则、构建与 macOS 原生 smoke 已完成，双平台/发布门禁开放 | [M01 记录](M01.md) | M02–M08 |
 | M02 | 实施中；Tasks 1–5 工作区格式、单写者锁、项目/废纸篓/备份存储与 Electron 工作区入口已完成；项目持久化 UI、Windows 与发布验证开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
-| M03 | 实施中；Task 1 发布档案与 Task 2 默认/归档纯策略已完成，持久化、历史集成与分析依赖 M06 仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
+| M03 | 实施中；Task 1 发布档案、Task 2 默认/归档纯策略与 Task 3 权利确认作品集来源选择已完成，持久化、历史集成与真实分析依赖 M06 仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
 | M04 | 计划已写，对话依赖 M06 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
 | M05 | 计划已写，待上游 | `docs/verification/M05.md` | M06、M07、M08 |
 | M06 | 计划已写，待上游 | `docs/verification/M06.md` | M03、M04、M07、M08 |
