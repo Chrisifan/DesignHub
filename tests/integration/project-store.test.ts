@@ -2,7 +2,7 @@
 
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -10,7 +10,7 @@ import Database from 'better-sqlite3';
 import { afterEach, expect, it } from 'vitest';
 
 import { createProjectStore, projectContentManifestName, projectDatabaseName, projectManifestName, workspaceProjectIndexName } from '../../src/desktop/storage/project-store';
-import { createWorkspace, openWorkspace } from '../../src/desktop/storage/workspace-store';
+import { createWorkspace, openWorkspace, workspaceManifestName } from '../../src/desktop/storage/workspace-store';
 
 const temporaryDirectories: string[] = [];
 
@@ -185,9 +185,41 @@ it('rejects project writes when the opened workspace path is replaced by another
       workspaceId: workspace.workspace.workspaceId,
       operationId: 'replaced-path',
       name: 'Replaced path',
-    })).rejects.toThrow('INVALID_WORKSPACE_PATH');
+    })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
     await expect(readdir(join(replacementDirectory, 'projects'))).resolves.toEqual(['.unrelated-temp']);
     expect(existsSync(join(replacementDirectory, '.designhub', workspaceProjectIndexName))).toBe(false);
+  } finally {
+    workspace.close();
+  }
+});
+
+it('rejects project writes when the opened workspace path is replaced by a new real directory', async () => {
+  const { directory, workspace, store } = await createWritableStore();
+  const originalDirectory = workspace.workspace.directory;
+  const movedDirectory = join(directory, 'moved-real-workspace');
+  const replacementStaging = join(originalDirectory, 'projects', '.unrelated-temp');
+  const manifestPath = join(originalDirectory, workspaceManifestName);
+  const manifest = await readFile(manifestPath, 'utf8');
+
+  try {
+    await rename(originalDirectory, movedDirectory);
+    await mkdir(originalDirectory);
+    await Promise.all([
+      mkdir(join(originalDirectory, '.designhub')),
+      cp(join(movedDirectory, 'projects'), join(originalDirectory, 'projects'), { recursive: true }),
+      cp(join(movedDirectory, 'shared-assets'), join(originalDirectory, 'shared-assets'), { recursive: true }),
+      cp(join(movedDirectory, 'trash'), join(originalDirectory, 'trash'), { recursive: true }),
+    ]);
+    await writeFile(manifestPath, manifest);
+    await mkdir(replacementStaging);
+
+    await expect(store.createProjectContainer({
+      workspaceId: workspace.workspace.workspaceId,
+      operationId: 'replaced-real-path',
+      name: 'Replaced real path',
+    })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
+    await expect(readdir(join(originalDirectory, 'projects'))).resolves.toEqual(['.unrelated-temp']);
+    expect(existsSync(join(originalDirectory, '.designhub', workspaceProjectIndexName))).toBe(false);
   } finally {
     workspace.close();
   }

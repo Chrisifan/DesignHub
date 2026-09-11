@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import { constants, existsSync, lstatSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
+import { constants, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -18,10 +18,16 @@ const staleProjectStagingName = /^\.[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89
 
 type WritableWorkspaceLease = {
   workspace: WorkspaceDescriptor;
+  directoryIdentity: DirectoryIdentity;
   active: boolean;
 };
 
 const writableWorkspaceLeases = new WeakMap<WorkspaceHandle, WritableWorkspaceLease>();
+
+type DirectoryIdentity = {
+  dev: bigint;
+  ino: bigint;
+};
 
 type WorkspaceManifest = {
   kind: typeof workspaceKind;
@@ -47,6 +53,18 @@ const errorCode = (error: unknown): string | null => {
   if (typeof error !== 'object' || error === null || !('code' in error)) return null;
   return String(error.code);
 };
+
+const readDirectoryIdentity = (directory: string): DirectoryIdentity | null => {
+  try {
+    const status = lstatSync(directory, { bigint: true });
+    if (!status.isDirectory() || status.isSymbolicLink() || realpathSync(directory) !== directory) return null;
+    return { dev: status.dev, ino: status.ino };
+  } catch {
+    return null;
+  }
+};
+
+const sameDirectoryIdentity = (left: DirectoryIdentity, right: DirectoryIdentity): boolean => left.dev === right.dev && left.ino === right.ino;
 
 const isValidWorkspaceName = (name: string): boolean => {
   if (!name || name === '.' || name === '..' || /[<>:"/\\|?*\u0000-\u001F]/u.test(name)) return false;
@@ -230,7 +248,10 @@ const cleanupStaleProjectStaging = (directory: string): void => {
 
 export const getWritableWorkspaceLease = (handle: WorkspaceHandle): WorkspaceDescriptor | null => {
   const lease = writableWorkspaceLeases.get(handle);
-  return lease?.active ? lease.workspace : null;
+  if (!lease?.active) return null;
+  const currentIdentity = readDirectoryIdentity(lease.workspace.directory);
+  if (!currentIdentity || !sameDirectoryIdentity(currentIdentity, lease.directoryIdentity)) return null;
+  return lease.workspace;
 };
 
 const createHandle = (directory: string, manifest: WorkspaceManifest, supportedFormat: number): WorkspaceHandle => {
@@ -255,7 +276,12 @@ const createHandle = (directory: string, manifest: WorkspaceManifest, supportedF
     formatVersion: manifest.formatVersion,
     openMode: getOpenMode(manifest.formatVersion, supportedFormat, writerLock === null),
   };
-  const lease = writerLock === null ? null : { workspace: Object.freeze({ ...workspace }), active: true };
+  const directoryIdentity = writerLock === null ? null : readDirectoryIdentity(directory);
+  if (writerLock && !directoryIdentity) {
+    closeWriterLock(writerLock);
+    throw new Error('INVALID_WORKSPACE_PATH');
+  }
+  const lease = writerLock === null || !directoryIdentity ? null : { workspace: Object.freeze({ ...workspace }), directoryIdentity, active: true };
   let closed = false;
   const close = () => {
     if (closed || !writerLock) return;
