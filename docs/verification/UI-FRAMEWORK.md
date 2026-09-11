@@ -66,3 +66,14 @@ Run `pnpm start` in this worktree to open the example workspace directly in Elec
 Electron development uses Vite-injected `<style>` tags and renderer inline style attributes for icons and canvas positioning. `src/desktop/csp.ts` therefore adds `'unsafe-inline'` only when `MAIN_WINDOW_VITE_DEV_SERVER_URL` is present; the packaged renderer keeps `style-src 'self'`. Restart `pnpm start` after changing this policy so the main process installs the new response header.
 
 The `node_modules` symlink is a local setup convenience, ignored by Git; a fresh checkout uses normal `pnpm install --frozen-lockfile`. No application dependency or lockfile change is part of this UI branch. The parallel feasibility checkout and its uncommitted SQLite/native changes remain independent. Merge/cherry-pick only when its owner is ready to integrate the App entry and UI.
+
+## Designer Persona Slice
+
+Date: 2026-09-11. Scope: persona-led project creation, designer repository, inspector, CRUD session actions, candidate review and preview publish disclosure.
+
+- Designer profiles expose a creative persona code, version, localized Style DNA, three negative rules and three bundled example portfolio sheets. MBTI-like codes are creative labels only and are not psychological diagnoses.
+- The repository supports local search, status filtering, selectable profile cards, project reference counts and a session-default marker. The inspector supports edit, derive, delete (non-built-in profiles), set default and use-for-new actions.
+- New designer creation accepts a written description or illustrative portfolio source labels. Portfolio analysis is gated by an explicit rights confirmation. Candidate generation shows exactly three bundled example candidates; it performs no model call, upload, network fetch or progress claim. Preview publish is session-only and does not write to disk.
+- Character bitmaps were intentionally skipped in this slice. Missing `/public/personas/*.png` assets render an honest unavailable/pending state; no AI-generated image result is claimed.
+- Verification: `pnpm test:unit` → 17 files / 56 tests; `pnpm lint`, `pnpm typecheck`, and `pnpm build` exit 0. Focused persona tests cover repository filtering, inspector actions, CRUD session state, rights gating, candidate selection and preview publish disclosure.
+- The slice changes renderer UI state only. Real profile persistence, workspace folders, model providers, image generation, portfolio fetching and native Electron file access remain open and must be validated in their owning modules.

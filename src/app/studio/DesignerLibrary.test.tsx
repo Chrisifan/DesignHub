@@ -8,7 +8,7 @@ it('filters personas and exposes structured style guidance in the inspector', ()
   expect(screen.getByText('Style DNA')).toBeInTheDocument();
   expect(screen.getByText('禁用规则')).toBeInTheDocument();
   expect(screen.getByText('精选作品')).toBeInTheDocument();
-  fireEvent.change(screen.getByRole('searchbox', { name: '搜索设计师' }), {
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索档案' }), {
     target: { value: '商品' },
   });
   expect(screen.getByRole('button', { name: /清晰商业/ })).toBeInTheDocument();
@@ -35,4 +35,25 @@ it('supports create, derive, default and use-for-new actions in session state', 
   });
   fireEvent.click(within(dialog).getByRole('button', { name: '保留' }));
   expect(screen.getByRole('button', { name: /夜间叙事/ })).toBeInTheDocument();
+});
+
+it('requires portfolio rights confirmation before entering candidate review', () => {
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  fireEvent.click(screen.getByRole('button', { name: '作品集' }));
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  expect(screen.getByText('请先确认拥有分析这些来源的权利。')).toBeInTheDocument();
+});
+
+it('presents three example candidates and marks preview publish as session-only', () => {
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '风格描述' }), { target: { value: '纸张、城市与留白' } });
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  const candidates = screen.getAllByRole('button', { name: /候选/ });
+  expect(candidates).toHaveLength(3);
+  fireEvent.click(candidates[1]!);
+  expect(candidates[1]).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: '发布预览' }));
+  expect(screen.getByText('已在本次示例会话中发布，不会写入磁盘。')).toBeInTheDocument();
 });

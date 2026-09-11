@@ -11,6 +11,16 @@ export type View =
   | 'settings';
 export type Theme = 'system' | 'dark' | 'light';
 export type Artwork = 'market' | 'objects' | 'type' | 'blank';
+export type CreationMode = 'manual' | 'conversation';
+export type StudioSurface = View | 'new-design';
+export type NewDesignDraft = {
+  name: string;
+  goal: string;
+  brief: string;
+  personaId: string;
+  size: '1080 × 1440';
+  mode: CreationMode;
+};
 export type Project = {
   id: string;
   name: string;

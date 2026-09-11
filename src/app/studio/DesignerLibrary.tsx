@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
+import { PersonaArtwork } from './PersonaArtwork';
 import { PersonaInspector } from './PersonaInspector';
 import { PersonaRepository, type PersonaStatusFilter } from './PersonaRepository';
 import { localize, personaProfiles, type LocalizedText, type PersonaProfile } from './personas';
@@ -56,6 +57,13 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew }: DesignerLibrary
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<PersonaStatusFilter>('all');
   const [editor, setEditor] = useState<{ mode: 'new' } | { mode: 'edit'; profileId: string } | null>(null);
+  const [creationSource, setCreationSource] = useState<'description' | 'portfolio'>('description');
+  const [candidatePhase, setCandidatePhase] = useState<'form' | 'review'>('form');
+  const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [portfolioSources, setPortfolioSources] = useState('');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>();
+  const [publishedInSession, setPublishedInSession] = useState(false);
+  const [creationError, setCreationError] = useState('');
   const [newDraft, setNewDraft] = useState<DesignerDraft>(emptyDraft);
   const [editDrafts, setEditDrafts] = useState<Record<string, DesignerDraft>>({});
   const selected = profiles.find((profile) => profile.id === selectedId);
@@ -64,7 +72,16 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew }: DesignerLibrary
     if (editor?.mode === 'edit') setEditDrafts((previous) => ({ ...previous, [editor.profileId]: draft }));
     else setNewDraft(draft);
   };
-  const openCreate = () => setEditor({ mode: 'new' });
+  const openCreate = () => {
+    setCreationSource('description');
+    setCandidatePhase('form');
+    setRightsConfirmed(false);
+    setPortfolioSources('');
+    setSelectedCandidateId(undefined);
+    setPublishedInSession(false);
+    setCreationError('');
+    setEditor({ mode: 'new' });
+  };
   const openEdit = () => {
     if (!selected) return;
     setEditDrafts((previous) => previous[selected.id] ? previous : { ...previous, [selected.id]: profileToDraft(selected, locale) });
@@ -86,6 +103,23 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew }: DesignerLibrary
       notify(t(locale, '新档案已保留', 'New profile kept'));
     }
     setEditor(null);
+  };
+  const requestCandidates = () => {
+    if (creationSource === 'portfolio' && !rightsConfirmed) {
+      setCreationError(t(locale, '请先确认拥有分析这些来源的权利。', 'Confirm rights before analysing these sources.'));
+      return;
+    }
+    setCreationError('');
+    setCandidatePhase('review');
+  };
+  const publishPreview = () => {
+    if (!selectedCandidateId) {
+      setCreationError(t(locale, '请先选用一个候选。', 'Select a candidate first.'));
+      return;
+    }
+    setCreationError('');
+    setPublishedInSession(true);
+    notify(t(locale, '已在本次示例会话中发布，不会写入磁盘。', 'Published in this example session only; nothing was written to disk.'));
   };
   const deleteSelected = () => {
     if (!selected || selected.status === 'built-in') return;
@@ -109,13 +143,15 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew }: DesignerLibrary
         <PersonaInspector locale={locale} profile={selected} isDefault={selectedId === defaultId} onEdit={openEdit} onDelete={deleteSelected} onDuplicate={duplicateSelected} onSetDefault={() => { setDefaultId(selectedId); notify(t(locale, '已设为会话默认', 'Set as session default')); }} onUseForNew={() => { if (onUseForNew && selected) onUseForNew(selected.id); else notify(t(locale, '请从项目库新建', 'Start a new design from Projects')); }} />
       </div>
       <p className="page-footnote"><Icon name="circle-help" size={14} />{t(locale, '人物位图尚未生成时会显示待生成；档案修改仅在本次预览保留。', 'When character bitmaps are unavailable, the UI shows a pending state; profile changes last for this preview only.')}</p>
-      {editor && <DesignerEditorModal locale={locale} draft={activeDraft} mode={editor.mode} onDraftChange={setActiveDraft} onClose={() => setEditor(null)} onSubmit={saveDraft} />}
+      {editor && <DesignerEditorModal locale={locale} draft={activeDraft} mode={editor.mode} source={creationSource} candidatePhase={candidatePhase} rightsConfirmed={rightsConfirmed} portfolioSources={portfolioSources} selectedCandidateId={selectedCandidateId} publishedInSession={publishedInSession} error={creationError} onSourceChange={setCreationSource} onRightsConfirmed={setRightsConfirmed} onPortfolioSourcesChange={setPortfolioSources} onCandidatePhaseChange={setCandidatePhase} onCandidateSelect={setSelectedCandidateId} onRequestCandidates={requestCandidates} onPublish={publishPreview} onDraftChange={setActiveDraft} onClose={() => setEditor(null)} onSubmit={saveDraft} />}
     </section>
   );
 };
 
-const DesignerEditorModal = ({ locale, draft, mode, onDraftChange, onClose, onSubmit }: { locale: Locale; draft: DesignerDraft; mode: 'new' | 'edit'; onDraftChange: (draft: DesignerDraft) => void; onClose: () => void; onSubmit: () => void }) => {
+const DesignerEditorModal = ({ locale, draft, mode, source, candidatePhase, rightsConfirmed, portfolioSources, selectedCandidateId, publishedInSession, error, onSourceChange, onRightsConfirmed, onPortfolioSourcesChange, onCandidatePhaseChange, onCandidateSelect, onRequestCandidates, onPublish, onDraftChange, onClose, onSubmit }: { locale: Locale; draft: DesignerDraft; mode: 'new' | 'edit'; source: 'description' | 'portfolio'; candidatePhase: 'form' | 'review'; rightsConfirmed: boolean; portfolioSources: string; selectedCandidateId?: string; publishedInSession: boolean; error: string; onSourceChange: (source: 'description' | 'portfolio') => void; onRightsConfirmed: (value: boolean) => void; onPortfolioSourcesChange: (value: string) => void; onCandidatePhaseChange: (phase: 'form' | 'review') => void; onCandidateSelect: (id: string) => void; onRequestCandidates: () => void; onPublish: () => void; onDraftChange: (draft: DesignerDraft) => void; onClose: () => void; onSubmit: () => void }) => {
   const setField = (field: keyof DesignerDraft) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onDraftChange({ ...draft, [field]: event.target.value });
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); onSubmit(); };
-  return <Modal title={mode === 'new' ? t(locale, '创建设计师', 'Create designer') : t(locale, '编辑设计师', 'Edit designer')} locale={locale} onClose={onClose} wide><form className="designer-editor" onSubmit={submit}><div className="designer-form"><p className="panel-label">{t(locale, '档案草稿', 'Profile draft')}</p><Field label={t(locale, '名称', 'Name')}><input required value={draft.name} onChange={setField('name')} /></Field><Field label={t(locale, '署名', 'Signature')}><input value={draft.signature} onChange={setField('signature')} /></Field><Field label={t(locale, '风格说明', 'Style description')}><textarea rows={3} value={draft.summary} onChange={setField('summary')} /></Field><Field label={t(locale, '创作原则', 'Creative principle')}><textarea rows={3} value={draft.principle} onChange={setField('principle')} /></Field><div className="form-grid-2"><Field label={t(locale, '创意代号', 'Persona code')}><input value={draft.personaCode} onChange={setField('personaCode')} /></Field><Field label={t(locale, '版本', 'Version')}><input value={draft.version} onChange={setField('version')} /></Field></div><Field label={t(locale, '标签', 'Tags')}><input value={draft.tags} onChange={setField('tags')} placeholder={t(locale, '用逗号分隔', 'Comma separated')} /></Field><Field label={t(locale, '色板', 'Palette')}><input value={draft.palette} onChange={setField('palette')} /></Field><Field label={t(locale, '字体与构图', 'Type and composition')}><input value={draft.typography} onChange={setField('typography')} /></Field><Field label={t(locale, '材质', 'Texture')}><input value={draft.texture} onChange={setField('texture')} /></Field><Field label={t(locale, '禁用规则', 'Negative rules')}><textarea rows={3} value={draft.negativeRules} onChange={setField('negativeRules')} placeholder={t(locale, '每行一条', 'One rule per line')} /></Field></div><aside className="designer-draft-preview" aria-label={t(locale, '档案预览', 'Profile preview')}><span className="profile-mark"><Icon name="sparkles" size={22} /></span><p className="section-kicker">{t(locale, '会话草稿', 'Session draft')}</p><h3>{draft.name || t(locale, '未命名档案', 'Untitled profile')}</h3><p>{draft.summary || t(locale, '填写风格说明查看预览。', 'Add a style summary to preview it.')}</p><div className="draft-rule"><span>{t(locale, '规则', 'Rules')}</span>{draft.negativeRules || t(locale, '尚未填写', 'Not provided')}</div><small>{t(locale, '关闭后草稿仍保留在本次示例会话中。', 'Closing keeps this draft in the example session.')}</small></aside><div className="dialog-actions designer-editor-actions"><Button variant="ghost" onClick={onClose}>{t(locale, '关闭', 'Close')}</Button><Button variant="primary" icon="check" type="submit">{t(locale, '保留', 'Keep')}</Button></div></form></Modal>;
+  return <Modal title={mode === 'new' ? t(locale, '创建设计师', 'Create designer') : t(locale, '编辑设计师', 'Edit designer')} locale={locale} onClose={onClose} wide><div className="designer-source-tabs" role="group" aria-label={t(locale, '来源方式', 'Source mode')}><button type="button" aria-pressed={source === 'description'} className={source === 'description' ? 'is-active' : ''} onClick={() => { onSourceChange('description'); onCandidatePhaseChange('form'); }}>{t(locale, '描述', 'Description')}</button><button type="button" aria-pressed={source === 'portfolio'} className={source === 'portfolio' ? 'is-active' : ''} onClick={() => { onSourceChange('portfolio'); onCandidatePhaseChange('form'); }}>{t(locale, '作品集', 'Portfolio')}</button></div>{mode === 'new' && candidatePhase === 'review' ? <CandidateReview locale={locale} selectedCandidateId={selectedCandidateId} publishedInSession={publishedInSession} error={error} onSelect={onCandidateSelect} onPublish={onPublish} /> : <form className="designer-editor" onSubmit={submit}><div className="designer-form"><p className="panel-label">{t(locale, '档案草稿', 'Profile draft')}</p><Field label={t(locale, '名称', 'Name')}><input required value={draft.name} onChange={setField('name')} /></Field><Field label={t(locale, '署名', 'Signature')}><input value={draft.signature} onChange={setField('signature')} /></Field><Field label={mode === 'new' && source === 'description' ? t(locale, '风格描述', 'Style description') : t(locale, '风格说明', 'Style summary')}><textarea rows={3} value={draft.summary} onChange={setField('summary')} /></Field><Field label={t(locale, '创作原则', 'Creative principle')}><textarea rows={3} value={draft.principle} onChange={setField('principle')} /></Field>{mode === 'new' && source === 'portfolio' && <><Field label={t(locale, '作品来源', 'Portfolio sources')}><textarea rows={3} value={portfolioSources} onChange={(event) => onPortfolioSourcesChange(event.target.value)} /></Field><label className="check-row"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => onRightsConfirmed(event.target.checked)} />{t(locale, '我确认拥有分析这些来源的权利', 'I confirm I have rights to analyse these sources')}</label></>}{mode === 'new' && <><p className="form-error" role="alert">{error}</p><Button type="button" variant="ai" icon="sparkles" onClick={onRequestCandidates}>{t(locale, '生成', 'Generate')}</Button></>}</div><aside className="designer-draft-preview" aria-label={t(locale, '档案预览', 'Profile preview')}><span className="profile-mark"><Icon name="sparkles" size={22} /></span><p className="section-kicker">{t(locale, '会话草稿', 'Session draft')}</p><h3>{draft.name || t(locale, '未命名档案', 'Untitled profile')}</h3><p>{draft.summary || t(locale, '填写风格说明查看预览。', 'Add a style summary to preview it.')}</p><div className="draft-rule"><span>{t(locale, '规则', 'Rules')}</span>{draft.negativeRules || t(locale, '尚未填写', 'Not provided')}</div><small>{t(locale, '关闭后草稿仍保留在本次示例会话中。', 'Closing keeps this draft in the example session.')}</small></aside><div className="dialog-actions designer-editor-actions"><Button variant="ghost" onClick={onClose}>{t(locale, '关闭', 'Close')}</Button><Button variant="primary" icon="check" type="submit">{t(locale, '保留', 'Keep')}</Button></div></form>}</Modal>;
 };
+
+const CandidateReview = ({ locale, selectedCandidateId, publishedInSession, error, onSelect, onPublish }: { locale: Locale; selectedCandidateId?: string; publishedInSession: boolean; error: string; onSelect: (candidateId: string) => void; onPublish: () => void }) => <section className="candidate-review" aria-labelledby="candidate-review-title"><p className="section-kicker">{t(locale, '示例候选', 'Example candidates')}</p><h2 id="candidate-review-title">{t(locale, '选择人物形象', 'Choose a persona')}</h2><div className="persona-candidate-grid" role="group" aria-label={t(locale, '人物候选', 'Persona candidates')}>{['paper-type', 'clear-commerce', 'natural-story'].map((personaId, index) => <button type="button" key={personaId} className={`persona-candidate ${selectedCandidateId === personaId ? 'is-selected' : ''}`} aria-label={`${t(locale, '候选', 'Candidate')} ${index + 1} · ${localize(locale, personaProfiles.find((profile) => profile.id === personaId)!.name)}`} aria-pressed={selectedCandidateId === personaId} onClick={() => onSelect(personaId)}><span className="persona-candidate__art"><PersonaArtwork personaId={personaId} crop="full" /></span><strong>{t(locale, `候选 ${index + 1}`, `Candidate ${index + 1}`)}</strong><span>{localize(locale, personaProfiles.find((profile) => profile.id === personaId)!.name)}</span></button>)}</div>{error && <p className="form-error" role="alert">{error}</p>}<Button type="button" variant="primary" icon="check" disabled={!selectedCandidateId || publishedInSession} onClick={onPublish}>{t(locale, '发布预览', 'Publish preview')}</Button>{publishedInSession && <p className="panel-note">{t(locale, '已在本次示例会话中发布，不会写入磁盘。', 'Published in this example session only; nothing is written to disk.')}</p>}</section>;

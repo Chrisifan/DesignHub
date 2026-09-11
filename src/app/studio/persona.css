@@ -552,6 +552,115 @@
   gap: 12px;
 }
 
+.designer-source-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.designer-source-tabs button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--on-surface-variant);
+  background: transparent;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.designer-source-tabs button.is-active {
+  border-bottom-color: var(--primary);
+  color: var(--on-surface);
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  line-height: 17px;
+}
+
+.check-row input {
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+
+.form-error {
+  min-height: 18px;
+  margin: 10px 0;
+  color: var(--error, #b54b4b);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.candidate-review {
+  min-width: 0;
+}
+
+.candidate-review h2 {
+  margin: 4px 0 18px;
+  font-size: 18px;
+}
+
+.persona-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.persona-candidate {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 0 10px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  text-align: left;
+}
+
+.persona-candidate:hover,
+.persona-candidate.is-selected {
+  border-color: var(--primary);
+}
+
+.persona-candidate.is-selected {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.persona-candidate__art,
+.persona-candidate__art .persona-artwork {
+  display: block;
+  width: 100%;
+  height: 118px;
+}
+
+.persona-candidate strong,
+.persona-candidate > span:last-child {
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.persona-candidate strong {
+  font-size: 11px;
+}
+
+.persona-candidate > span:last-child {
+  color: var(--on-surface-variant);
+  font-size: 10px;
+}
+
 @media (max-width: 960px) {
   .library-split--designer {
     grid-template-columns: minmax(0, 1fr);
@@ -588,6 +697,10 @@
 
   .persona-inspector__hero > .persona-artwork {
     height: 102px;
+  }
+
+  .persona-candidate-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

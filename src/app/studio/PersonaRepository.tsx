@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import type { Locale } from '../i18n';
 import { PersonaArtwork } from './PersonaArtwork';
@@ -11,13 +11,14 @@ type PersonaRepositoryProps = {
   locale: Locale;
   profiles: PersonaProfile[];
   selectedId: string;
-  query: string;
-  statusFilter: PersonaStatusFilter;
-  defaultId: string;
-  onQueryChange: (value: string) => void;
-  onStatusFilterChange: (value: PersonaStatusFilter) => void;
+  query?: string;
+  statusFilter?: PersonaStatusFilter;
+  defaultId?: string;
+  sessionDefaultId?: string;
+  onQueryChange?: (value: string) => void;
+  onStatusFilterChange?: (value: PersonaStatusFilter) => void;
   onSelect: (id: string) => void;
-  onCreate: () => void;
+  onCreate?: () => void;
 };
 
 const statusLabel = (locale: Locale, status: PersonaProfile['status']): string =>
@@ -31,14 +32,20 @@ export const PersonaRepository = ({
   locale,
   profiles,
   selectedId,
-  query,
-  statusFilter,
+  query: queryProp,
+  statusFilter: statusFilterProp,
   defaultId,
+  sessionDefaultId,
   onQueryChange,
   onStatusFilterChange,
   onSelect,
   onCreate,
 }: PersonaRepositoryProps) => {
+  const [localQuery, setLocalQuery] = useState('');
+  const [localStatusFilter, setLocalStatusFilter] = useState<PersonaStatusFilter>('all');
+  const query = queryProp ?? localQuery;
+  const statusFilter = statusFilterProp ?? localStatusFilter;
+  const activeDefaultId = sessionDefaultId ?? defaultId;
   const filteredProfiles = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     return profiles.filter((profile) => {
@@ -61,13 +68,16 @@ export const PersonaRepository = ({
       <div className="persona-repository__toolbar">
         <label className="search-control">
           <Icon name="search" size={16} />
-          <span className="sr-only">{t(locale, '搜索设计师', 'Search designers')}</span>
+          <span className="sr-only">{t(locale, '搜索档案', 'Search profiles')}</span>
           <input
             type="search"
             value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder={t(locale, '搜索设计师', 'Search designers')}
-            aria-label={t(locale, '搜索设计师', 'Search designers')}
+            onChange={(event) => {
+              if (onQueryChange) onQueryChange(event.target.value);
+              else setLocalQuery(event.target.value);
+            }}
+            placeholder={t(locale, '搜索档案', 'Search profiles')}
+            aria-label={t(locale, '搜索档案', 'Search profiles')}
           />
         </label>
         <div className="tab-strip persona-status-tabs" role="group" aria-label={t(locale, '档案状态', 'Profile status')}>
@@ -77,16 +87,19 @@ export const PersonaRepository = ({
               key={value}
               className={statusFilter === value ? 'is-active' : ''}
               aria-pressed={statusFilter === value}
-              onClick={() => onStatusFilterChange(value)}
+              onClick={() => {
+                if (onStatusFilterChange) onStatusFilterChange(value);
+                else setLocalStatusFilter(value);
+              }}
             >
               {value === 'all' ? t(locale, '全部', 'All') : statusLabel(locale, value)}
             </button>
           ))}
         </div>
-        <button type="button" className="ui-button ui-button--primary" onClick={onCreate}>
+        {onCreate && <button type="button" className="ui-button ui-button--primary" onClick={onCreate}>
           <Icon name="plus" size={16} />
           {t(locale, '创建', 'Create')}
-        </button>
+        </button>}
       </div>
       {filteredProfiles.length ? (
         <div className="persona-repository__grid">
@@ -104,7 +117,7 @@ export const PersonaRepository = ({
                 <span className="persona-repository-card__body">
                   <span className="persona-repository-card__title">
                     <strong>{localize(locale, profile.name)}</strong>
-                    {profile.id === defaultId && <Badge tone="primary">{t(locale, '默认', 'Default')}</Badge>}
+                    {profile.id === activeDefaultId && <Badge tone="primary">{t(locale, '默认', 'Default')}</Badge>}
                   </span>
                   <span className="persona-repository-card__meta">
                     {profile.personaCode} · {profile.version} · {statusLabel(locale, profile.status)}
