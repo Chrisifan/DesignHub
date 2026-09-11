@@ -47,4 +47,3 @@ it('snapshots brand fields deeply so later edits cannot rewrite the snapshot', (
   expect(snapshot.colorPalette).toEqual(['#101010', '#f5f5f5']);
   expect(snapshot.fonts[0]).toBe('Source Han Serif');
 });
-

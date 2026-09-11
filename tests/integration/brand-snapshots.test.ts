@@ -51,11 +51,14 @@ it('keeps a deliberate field override when adopting a newer source version', () 
 it('copies related document source identity but keeps size and scene independent', () => {
   const original: DesignDocument = {
     id: 'poster',
+    sourceRevisionId: 'rev-1',
     size: '1080x1440',
     scene: { layers: ['title'] },
     brandSnapshot: createBrandSnapshot(source),
   };
   const related = createRelatedDocument(original, { id: 'square', size: '1080x1080', scene: { layers: ['title', 'cta'] } });
+  expect(related.sourceDocumentId).toBe('poster');
+  expect(related.sourceRevisionId).toBe('rev-1');
   expect(related.brandSnapshot.source).toEqual(original.brandSnapshot.source);
   expect(related.size).toBe('1080x1080');
   expect(related.scene).not.toBe(original.scene);
