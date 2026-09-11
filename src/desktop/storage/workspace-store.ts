@@ -66,6 +66,18 @@ const readDirectoryIdentity = (directory: string): DirectoryIdentity | null => {
 
 const sameDirectoryIdentity = (left: DirectoryIdentity, right: DirectoryIdentity): boolean => left.dev === right.dev && left.ino === right.ino;
 
+const readRequiredDirectoryIdentity = (directory: string): DirectoryIdentity => {
+  const identity = readDirectoryIdentity(directory);
+  if (!identity) throw new Error('INVALID_WORKSPACE_PATH');
+  return identity;
+};
+
+const assertDirectoryIdentity = (directory: string, expectedIdentity: DirectoryIdentity): DirectoryIdentity => {
+  const currentIdentity = readRequiredDirectoryIdentity(directory);
+  if (!sameDirectoryIdentity(currentIdentity, expectedIdentity)) throw new Error('INVALID_WORKSPACE_PATH');
+  return currentIdentity;
+};
+
 const isValidWorkspaceName = (name: string): boolean => {
   if (!name || name === '.' || name === '..' || /[<>:"/\\|?*\u0000-\u001F]/u.test(name)) return false;
   if (name.endsWith('.') || name.endsWith(' ')) return false;
@@ -157,16 +169,24 @@ export const initializeWorkspaceWriterLock = (directory: string): void => {
   }
 };
 
-const acquireWriterLock = (directory: string): Database.Database | null => {
+const acquireWriterLock = (directory: string, expectedIdentity?: DirectoryIdentity): Database.Database | null => {
+  if (expectedIdentity) assertDirectoryIdentity(directory, expectedIdentity);
   const database = new Database(join(directory, internalDirectoryName, writerLockName), { fileMustExist: true, timeout: 0 });
+  let transactionStarted = false;
   try {
     database.pragma('busy_timeout = 0');
     database.pragma('journal_mode = DELETE');
     database.pragma('locking_mode = EXCLUSIVE');
     database.exec('BEGIN EXCLUSIVE');
+    transactionStarted = true;
+    if (expectedIdentity) assertDirectoryIdentity(directory, expectedIdentity);
     return database;
   } catch (error) {
-    database.close();
+    try {
+      if (transactionStarted) database.exec('ROLLBACK');
+    } finally {
+      database.close();
+    }
     if (errorCode(error)?.startsWith('SQLITE_BUSY')) return null;
     throw error;
   }
@@ -198,25 +218,29 @@ const readWorkspaceMigrationState = (directory: string): WorkspaceMigrationState
   return stateValue;
 };
 
-const recoverInterruptedWorkspaceMigration = (directory: string): void => {
-  const stateValue = readWorkspaceMigrationState(directory);
-  if (!stateValue) return;
+const recoverInterruptedWorkspaceMigration = (directory: string, expectedIdentity: DirectoryIdentity): void => {
+  const stateBeforeLock = readWorkspaceMigrationState(directory);
+  if (!stateBeforeLock) return;
 
   const statePath = join(directory, internalDirectoryName, workspaceMigrationStateName);
-  const writerLock = acquireWriterLock(directory);
+  const writerLock = acquireWriterLock(directory, expectedIdentity);
   const manifestPath = join(directory, workspaceManifestName);
   if (!writerLock) {
+    assertDirectoryIdentity(directory, expectedIdentity);
     if (!existsSync(manifestPath)) throw new Error('WORKSPACE_MIGRATION_IN_PROGRESS');
     return;
   }
 
-  const temporaryPath = join(directory, `.${workspaceManifestName}.migration-${stateValue.migrationId}`);
-  const rollbackPath = join(directory, `.${workspaceManifestName}.rollback-${stateValue.migrationId}`);
-  const matchesOriginal = ({ content, manifest }: { content: string; manifest: WorkspaceManifest }): boolean => manifest.workspaceId === stateValue.workspaceId
-    && manifest.formatVersion === stateValue.fromFormatVersion
-    && createHash('sha256').update(content).digest('hex') === stateValue.originalManifestSha256;
-
   try {
+    assertDirectoryIdentity(directory, expectedIdentity);
+    const stateValue = readWorkspaceMigrationState(directory);
+    if (!stateValue) return;
+    const temporaryPath = join(directory, `.${workspaceManifestName}.migration-${stateValue.migrationId}`);
+    const rollbackPath = join(directory, `.${workspaceManifestName}.rollback-${stateValue.migrationId}`);
+    const matchesOriginal = ({ content, manifest }: { content: string; manifest: WorkspaceManifest }): boolean => manifest.workspaceId === stateValue.workspaceId
+      && manifest.formatVersion === stateValue.fromFormatVersion
+      && createHash('sha256').update(content).digest('hex') === stateValue.originalManifestSha256;
+
     if (!existsSync(manifestPath)) {
       if (!existsSync(rollbackPath) || !matchesOriginal(readWorkspaceManifestFile(rollbackPath))) {
         throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
@@ -254,7 +278,8 @@ export const getWritableWorkspaceLease = (handle: WorkspaceHandle): WorkspaceDes
   return lease.workspace;
 };
 
-const createHandle = (directory: string, manifest: WorkspaceManifest, supportedFormat: number): WorkspaceHandle => {
+const createHandle = (directory: string, manifest: WorkspaceManifest, supportedFormat: number, expectedIdentity?: DirectoryIdentity): WorkspaceHandle => {
+  if (expectedIdentity) assertDirectoryIdentity(directory, expectedIdentity);
   if (manifest.formatVersion > supportedFormat) {
     return {
       workspace: {
@@ -268,39 +293,60 @@ const createHandle = (directory: string, manifest: WorkspaceManifest, supportedF
     };
   }
 
-  const writerLock = acquireWriterLock(directory);
-  const workspace: WorkspaceDescriptor = {
-    workspaceId: manifest.workspaceId,
-    name: manifest.name,
-    directory,
-    formatVersion: manifest.formatVersion,
-    openMode: getOpenMode(manifest.formatVersion, supportedFormat, writerLock === null),
-  };
-  const directoryIdentity = writerLock === null ? null : readDirectoryIdentity(directory);
-  if (writerLock && !directoryIdentity) {
-    closeWriterLock(writerLock);
-    throw new Error('INVALID_WORKSPACE_PATH');
+  const writerLock = acquireWriterLock(directory, expectedIdentity);
+  if (!writerLock) {
+    if (expectedIdentity) assertDirectoryIdentity(directory, expectedIdentity);
+    return {
+      workspace: {
+        workspaceId: manifest.workspaceId,
+        name: manifest.name,
+        directory,
+        formatVersion: manifest.formatVersion,
+        openMode: getOpenMode(manifest.formatVersion, supportedFormat, true),
+      },
+      close: () => undefined,
+    };
   }
-  const lease = writerLock === null || !directoryIdentity ? null : { workspace: Object.freeze({ ...workspace }), directoryIdentity, active: true };
+
+  let directoryIdentity: DirectoryIdentity;
+  let lockedManifest: WorkspaceManifest;
+  try {
+    directoryIdentity = expectedIdentity
+      ? assertDirectoryIdentity(directory, expectedIdentity)
+      : readRequiredDirectoryIdentity(directory);
+    lockedManifest = readWorkspaceManifestFile(join(directory, workspaceManifestName)).manifest;
+    if (lockedManifest.workspaceId !== manifest.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+    if (lockedManifest.formatVersion !== manifest.formatVersion) throw new Error('WORKSPACE_FORMAT_CHANGED');
+  } catch (error) {
+    closeWriterLock(writerLock);
+    throw error;
+  }
+
+  const workspace: WorkspaceDescriptor = {
+    workspaceId: lockedManifest.workspaceId,
+    name: lockedManifest.name,
+    directory,
+    formatVersion: lockedManifest.formatVersion,
+    openMode: getOpenMode(lockedManifest.formatVersion, supportedFormat, false),
+  };
+  const lease = { workspace: Object.freeze({ ...workspace }), directoryIdentity, active: true };
   let closed = false;
   const close = () => {
-    if (closed || !writerLock) return;
+    if (closed) return;
     closed = true;
-    if (lease) lease.active = false;
+    lease.active = false;
     closeWriterLock(writerLock);
   };
   const handle = { workspace, close };
-  if (lease && writerLock) {
-    if (workspace.openMode === 'writable') {
-      try {
-        cleanupStaleProjectStaging(directory);
-      } catch (error) {
-        close();
-        throw error;
-      }
+  if (workspace.openMode === 'writable') {
+    try {
+      cleanupStaleProjectStaging(directory);
+    } catch (error) {
+      close();
+      throw error;
     }
-    writableWorkspaceLeases.set(handle, lease);
   }
+  writableWorkspaceLeases.set(handle, lease);
   return handle;
 };
 
@@ -330,7 +376,7 @@ export const createWorkspace = async (input: { parentDirectory: string; name: st
     };
     await writeFile(join(directory, workspaceManifestName), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
     initializeWorkspaceWriterLock(directory);
-    return createHandle(directory, manifest, workspaceFormatVersion);
+    return createHandle(directory, manifest, workspaceFormatVersion, readRequiredDirectoryIdentity(directory));
   } catch (error) {
     if (created) await rm(directory, { recursive: true, force: true });
     if (errorCode(error) === 'EEXIST') throw new Error('WORKSPACE_EXISTS');
@@ -341,18 +387,23 @@ export const createWorkspace = async (input: { parentDirectory: string; name: st
 export const openWorkspace = async (directory: string, supportedFormat = workspaceFormatVersion): Promise<WorkspaceHandle> => {
   if (!Number.isInteger(supportedFormat) || supportedFormat < 1) throw new Error('INVALID_SUPPORTED_FORMAT');
   const canonicalDirectory = await realpath(directory);
+  const directoryIdentity = readRequiredDirectoryIdentity(canonicalDirectory);
   const manifestBeforeRecovery = await readManifestIfPresent(canonicalDirectory);
+  assertDirectoryIdentity(canonicalDirectory, directoryIdentity);
   if (manifestBeforeRecovery && manifestBeforeRecovery.formatVersion > supportedFormat) {
-    return createHandle(canonicalDirectory, manifestBeforeRecovery, supportedFormat);
+    return createHandle(canonicalDirectory, manifestBeforeRecovery, supportedFormat, directoryIdentity);
   }
   const migrationState = readWorkspaceMigrationState(canonicalDirectory);
+  assertDirectoryIdentity(canonicalDirectory, directoryIdentity);
   if (!manifestBeforeRecovery && migrationState && migrationState.toFormatVersion > supportedFormat) {
     throw new Error('WORKSPACE_MIGRATION_REQUIRES_NEWER_VERSION');
   }
   if (manifestBeforeRecovery && migrationState && migrationState.toFormatVersion > supportedFormat) {
     throw new Error('WORKSPACE_MIGRATION_REQUIRES_NEWER_VERSION');
   }
-  recoverInterruptedWorkspaceMigration(canonicalDirectory);
+  recoverInterruptedWorkspaceMigration(canonicalDirectory, directoryIdentity);
+  assertDirectoryIdentity(canonicalDirectory, directoryIdentity);
   const manifest = await readManifest(canonicalDirectory);
-  return createHandle(canonicalDirectory, manifest, supportedFormat);
+  assertDirectoryIdentity(canonicalDirectory, directoryIdentity);
+  return createHandle(canonicalDirectory, manifest, supportedFormat, directoryIdentity);
 };
