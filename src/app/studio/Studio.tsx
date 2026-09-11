@@ -3,6 +3,9 @@ import { getMessages, type Locale } from '../i18n';
 import { WindowBar } from '../shell/WindowBar';
 import { exampleProjects } from './examples';
 import { LibraryPages } from './LibraryPages';
+import { DesignerHero } from './DesignerHero';
+import { PersonaArtwork } from './PersonaArtwork';
+import { getPersona } from './personas';
 import { Workbench } from './Workbench';
 import {
   ArtworkPreview,
@@ -137,6 +140,17 @@ export const Studio = ({
             自然叙事: 'Natural stories',
           } as Record<string, string>
         )[name] ?? name);
+  const projectPersonaId = (project: Project) => {
+    const name = project.designers[0];
+    return (
+      {
+        纸感排版: 'paper-type',
+        极简构成: 'paper-type',
+        自然叙事: 'natural-story',
+        清晰商业: 'clear-commerce',
+      } as Record<string, string>
+    )[name] ?? 'paper-type';
+  };
   const openDelivery = (project: Project) => {
     setDeliveryProject(project);
     navigate('delivery');
@@ -357,15 +371,11 @@ export const Studio = ({
                           )}
                         </p>
                         <div className="project-meta">
-                          <span
-                            className={`designer-dot designer-dot--${project.artwork}`}
-                          >
-                            {project.designers[0]?.slice(0, 1)}
-                          </span>
-                          <span>
-                            {project.designers
-                              .map(designerName)
-                              .join(locale === 'zh-CN' ? '、' : ', ')}
+                          <span className="design-attribution">
+                            <PersonaArtwork personaId={projectPersonaId(project)} crop="avatar" />
+                            <strong>
+                              {designerName(project.designers[0] ?? '纸感排版')} · {getPersona(projectPersonaId(project))?.version ?? 'v1.0'}
+                            </strong>
                           </span>
                           <span className="project-meta-end">
                             {t(locale, '示例', 'Example')}
@@ -469,13 +479,15 @@ export const Studio = ({
                   {t(locale, '继续编辑', 'Open workbench')}
                 </Button>
               </PageHeader>
+              <DesignerHero
+                personaId={projectPersonaId(selected)}
+                locale={locale}
+                label={t(locale, '当前设计师', 'Active designer')}
+              />
               <div className="project-context">
                 <div>
-                  <small>{t(locale, '活跃设计师', 'ACTIVE DESIGNER')}</small>
-                  <strong>
-                    {designerName(selected.designers[0] ?? '纸感排版')}{' '}
-                    <Badge>v1</Badge>
-                  </strong>
+                  <small>{t(locale, '活跃版本', 'ACTIVE VERSION')}</small>
+                  <strong>{getPersona(projectPersonaId(selected))?.version ?? 'v1.0'}</strong>
                 </div>
                 <div>
                   <small>{t(locale, '项目状态', 'PROJECT STATUS')}</small>

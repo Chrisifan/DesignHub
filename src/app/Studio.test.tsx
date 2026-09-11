@@ -21,6 +21,26 @@ it('lets an offline user navigate the example workspace without a connection or 
   expect(screen.queryByText('已保存到本地')).not.toBeInTheDocument();
 });
 
+it('shows a design cover with its designer avatar, name, and version', () => {
+  enter();
+  const project = screen.getByRole('button', { name: '春间市集' });
+  expect(
+    within(project).getByRole('img', { name: '纸感排版的人物形象' }),
+  ).toBeInTheDocument();
+  expect(within(project).getByText('纸感排版 · v1.4')).toBeInTheDocument();
+});
+
+it('shows the active persona and working principle when opening a project', () => {
+  enter();
+  fireEvent.click(screen.getByRole('button', { name: '春间市集' }));
+  expect(screen.getByLabelText('当前设计师')).toHaveTextContent(
+    '先建立文字层级',
+  );
+  expect(
+    screen.getByRole('img', { name: '纸感排版的人物形象' }),
+  ).toBeInTheDocument();
+});
+
 it('preserves project search while visiting another destination and offers an empty-result reset', () => {
   enter();
   fireEvent.change(screen.getByRole('searchbox', { name: '搜索项目' }), {

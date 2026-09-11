@@ -1,4 +1,6 @@
 /* App chrome shares the approved layout and tokens in both themes. */
+@import '../studio/persona.css';
+
 :where(button, input, textarea, select) {
   font: inherit;
 }
