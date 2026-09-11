@@ -3,9 +3,10 @@ import {
   type CommitRevisionInput,
   type RevisionRecord,
   type RevisionStore,
+  type RevisionTimelineEvent,
 } from './model';
 
-export type { CommitRevisionInput, RevisionRecord, RevisionStore } from './model';
+export type { CommitRevisionInput, RevisionRecord, RevisionStore, RevisionTimelineEvent } from './model';
 export { createRevisionStore } from './model';
 
 const revisionStore = createRevisionStore();
@@ -23,5 +24,7 @@ export const getRevision = (revisionId: string): RevisionRecord | undefined => r
 export const getFinalRevision = (documentId: string): string | null => revisionStore.getFinalRevision(documentId);
 
 export const listRevisions = (documentId: string): RevisionRecord[] => revisionStore.listRevisions(documentId);
+
+export const listTimeline = (documentId: string): RevisionTimelineEvent[] => revisionStore.listTimeline(documentId);
 
 export const getRevisionStore = (): RevisionStore => revisionStore;

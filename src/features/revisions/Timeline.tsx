@@ -1,6 +1,6 @@
 export type TimelineEvent = {
   id: string;
-  kind: 'message' | 'tool' | 'revision' | 'handoff';
+  kind: 'message' | 'tool' | 'revision' | 'handoff' | 'finalized';
   label: string;
   revisionId?: string;
   timestamp?: string;

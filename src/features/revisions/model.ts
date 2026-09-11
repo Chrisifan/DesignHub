@@ -24,12 +24,22 @@ export type RevisionRecord = {
   createdAt: string;
 };
 
+export type RevisionTimelineEvent = {
+  id: string;
+  kind: 'revision' | 'finalized';
+  label: string;
+  documentId: string;
+  revisionId: string;
+  timestamp: string;
+};
+
 export type RevisionStore = {
   commitRevision: (input: CommitRevisionInput) => Promise<{ revisionId: string }>;
   getRevision: (revisionId: string) => RevisionRecord | undefined;
   setFinalRevision: (documentId: string, revisionId: string) => Promise<void>;
   getFinalRevision: (documentId: string) => string | null;
   listRevisions: (documentId: string) => RevisionRecord[];
+  listTimeline: (documentId: string) => RevisionTimelineEvent[];
 };
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -42,6 +52,16 @@ const nextRevisionId = (): string => {
   return `revision-${revisionSequence}`;
 };
 
+const operationFingerprint = (input: CommitRevisionInput): string => JSON.stringify({
+  projectId: input.projectId,
+  documentId: input.documentId,
+  baseRevisionId: input.baseRevisionId,
+  sceneAssetId: input.sceneAssetId,
+  assetIds: input.assetIds,
+  contributions: input.contributions,
+  operatorName: input.operatorName,
+});
+
 export const branchRevision = (base: { id: string; documentId: string }, id: string) => ({
   id,
   documentId: base.documentId,
@@ -50,15 +70,20 @@ export const branchRevision = (base: { id: string; documentId: string }, id: str
 
 export const createRevisionStore = (): RevisionStore => {
   const revisions = new Map<string, RevisionRecord>();
-  const operations = new Map<string, string>();
+  const operations = new Map<string, { revisionId: string; fingerprint: string }>();
   const finalRevisions = new Map<string, string>();
+  const timeline = new Map<string, RevisionTimelineEvent[]>();
 
   const commitRevision = async (input: CommitRevisionInput): Promise<{ revisionId: string }> => {
     if (!input.projectId || !input.documentId || !input.operationId || !input.sceneAssetId) {
       throw new Error('INVALID_REVISION');
     }
-    const existingRevisionId = operations.get(input.operationId);
-    if (existingRevisionId) return { revisionId: existingRevisionId };
+    const fingerprint = operationFingerprint(input);
+    const existingOperation = operations.get(input.operationId);
+    if (existingOperation) {
+      if (existingOperation.fingerprint !== fingerprint) throw new Error('OPERATION_CONFLICT');
+      return { revisionId: existingOperation.revisionId };
+    }
 
     if (input.baseRevisionId) {
       const parent = revisions.get(input.baseRevisionId);
@@ -82,7 +107,16 @@ export const createRevisionStore = (): RevisionStore => {
       createdAt: new Date().toISOString(),
     };
     revisions.set(revisionId, record);
-    operations.set(input.operationId, revisionId);
+    operations.set(input.operationId, { revisionId, fingerprint });
+    const revisionEvent: RevisionTimelineEvent = {
+      id: `event-${revisionId}`,
+      kind: 'revision',
+      label: `Revision ${revisionId}`,
+      documentId: input.documentId,
+      revisionId,
+      timestamp: record.createdAt,
+    };
+    timeline.set(input.documentId, [...(timeline.get(input.documentId) ?? []), revisionEvent]);
     return { revisionId };
   };
 
@@ -96,6 +130,15 @@ export const createRevisionStore = (): RevisionStore => {
     if (!record) throw new Error('REVISION_NOT_FOUND');
     if (record.documentId !== documentId) throw new Error('DOCUMENT_MISMATCH');
     finalRevisions.set(documentId, revisionId);
+    const event: RevisionTimelineEvent = {
+      id: `finalized-${documentId}-${revisionId}-${Date.now()}`,
+      kind: 'finalized',
+      label: 'Final revision selected',
+      documentId,
+      revisionId,
+      timestamp: new Date().toISOString(),
+    };
+    timeline.set(documentId, [...(timeline.get(documentId) ?? []), event]);
   };
 
   const getFinalRevision = (documentId: string): string | null => finalRevisions.get(documentId) ?? null;
@@ -104,5 +147,7 @@ export const createRevisionStore = (): RevisionStore => {
     .filter((record) => record.documentId === documentId)
     .map((record) => clone(record));
 
-  return { commitRevision, getRevision, setFinalRevision, getFinalRevision, listRevisions };
+  const listTimeline = (documentId: string): RevisionTimelineEvent[] => clone(timeline.get(documentId) ?? []);
+
+  return { commitRevision, getRevision, setFinalRevision, getFinalRevision, listRevisions, listTimeline };
 };

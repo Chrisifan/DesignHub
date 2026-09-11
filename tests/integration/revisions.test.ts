@@ -30,7 +30,9 @@ it('keeps finalization and operation idempotency within an isolated revision sto
   const first = await store.commitRevision(input);
   const retry = await store.commitRevision(input);
   await store.setFinalRevision(input.documentId, first.revisionId);
+  render(createElement(Timeline, { events: store.listTimeline(input.documentId) }));
 
   expect(retry).toEqual(first);
   expect(store.getFinalRevision(input.documentId)).toBe(first.revisionId);
+  expect(screen.getByText('Final revision selected')).toBeInTheDocument();
 });

@@ -26,7 +26,11 @@ it('commits an immutable snapshot and reuses the revision for duplicate operatio
   const first = await store.commitRevision(input);
   input.assetIds.push('asset-2');
   contributions[0].designerName = 'Renamed';
-  const retry = await store.commitRevision(input);
+  const retry = await store.commitRevision({
+    ...input,
+    assetIds: ['asset-1'],
+    contributions: [{ designerVersionId: 'designer-v1', role: 'lead', designerName: 'Mina' }],
+  });
   const stored = store.getRevision(first.revisionId);
 
   expect(retry).toEqual(first);
@@ -36,6 +40,19 @@ it('commits an immutable snapshot and reuses the revision for duplicate operatio
     contributions: [{ designerVersionId: 'designer-v1', role: 'lead', designerName: 'Mina' }],
     operatorName: 'Alex',
   });
+});
+
+it('rejects an operation id reused for another document or payload', async () => {
+  const store = createRevisionStore();
+  await store.commitRevision({
+    projectId: 'p1', documentId: 'd1', baseRevisionId: null, operationId: 'op-conflict',
+    sceneAssetId: 'scene-1', assetIds: ['asset-1'], contributions: [],
+  });
+
+  await expect(store.commitRevision({
+    projectId: 'p2', documentId: 'd2', baseRevisionId: null, operationId: 'op-conflict',
+    sceneAssetId: 'scene-2', assetIds: ['asset-2'], contributions: [],
+  })).rejects.toThrow('OPERATION_CONFLICT');
 });
 
 it('rejects a parent revision from another document', async () => {
@@ -64,6 +81,9 @@ it('finalizes only a revision belonging to the document and keeps the pointer st
 
   await store.setFinalRevision('d1', first.revisionId);
   expect(store.getFinalRevision('d1')).toBe(first.revisionId);
+  expect(store.listTimeline('d1')).toEqual(expect.arrayContaining([
+    expect.objectContaining({ kind: 'finalized', revisionId: first.revisionId }),
+  ]));
   await store.setFinalRevision('d1', second.revisionId);
   expect(store.getFinalRevision('d1')).toBe(second.revisionId);
 
