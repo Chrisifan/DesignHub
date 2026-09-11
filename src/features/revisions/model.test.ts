@@ -103,3 +103,23 @@ it('does not add designer attribution when a direct tool supplies no contributio
 
   expect(store.getRevision(result.revisionId)?.contributions).toEqual([]);
 });
+
+it('gives repeated finalization events unique ids even in the same millisecond', async () => {
+  const store = createRevisionStore();
+  const revision = await store.commitRevision({
+    projectId: 'p1', documentId: 'd1', baseRevisionId: null, operationId: 'op-repeat-final',
+    sceneAssetId: 'scene-1', assetIds: [], contributions: [],
+  });
+
+  const originalNow = Date.now;
+  Date.now = () => 1234567890;
+  try {
+    await store.setFinalRevision('d1', revision.revisionId);
+    await store.setFinalRevision('d1', revision.revisionId);
+  } finally {
+    Date.now = originalNow;
+  }
+
+  const finalizedEvents = store.listTimeline('d1').filter((event) => event.kind === 'finalized');
+  expect(new Set(finalizedEvents.map((event) => event.id)).size).toBe(2);
+});

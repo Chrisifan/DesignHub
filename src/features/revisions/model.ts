@@ -73,6 +73,7 @@ export const createRevisionStore = (): RevisionStore => {
   const operations = new Map<string, { revisionId: string; fingerprint: string }>();
   const finalRevisions = new Map<string, string>();
   const timeline = new Map<string, RevisionTimelineEvent[]>();
+  let finalizationSequence = 0;
 
   const commitRevision = async (input: CommitRevisionInput): Promise<{ revisionId: string }> => {
     if (!input.projectId || !input.documentId || !input.operationId || !input.sceneAssetId) {
@@ -130,8 +131,9 @@ export const createRevisionStore = (): RevisionStore => {
     if (!record) throw new Error('REVISION_NOT_FOUND');
     if (record.documentId !== documentId) throw new Error('DOCUMENT_MISMATCH');
     finalRevisions.set(documentId, revisionId);
+    finalizationSequence += 1;
     const event: RevisionTimelineEvent = {
-      id: `finalized-${documentId}-${revisionId}-${Date.now()}`,
+      id: `finalized-${documentId}-${revisionId}-${finalizationSequence}`,
       kind: 'finalized',
       label: 'Final revision selected',
       documentId,
