@@ -2,8 +2,28 @@
 html, body, #root { min-width: 1024px; min-height: 720px; height: 100%; margin: 0; }
 body { background: var(--background); color: var(--on-surface); }
 button { font: inherit; }
-.app-shell { min-height: 100%; background: var(--background); }
-.window-bar { height: 40px; display: flex; align-items: center; border-bottom: 1px solid var(--outline-variant); background: var(--surface-container-low); }
+.app-shell { position: relative; isolation: isolate; min-height: 100%; overflow: hidden; background: var(--background); }
+.app-shell::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(118deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent 42%, color-mix(in srgb, var(--secondary) 3%, transparent)),
+    repeating-linear-gradient(90deg, transparent 0 63px, color-mix(in srgb, var(--on-surface) 4%, transparent) 64px),
+    repeating-linear-gradient(0deg, transparent 0 63px, color-mix(in srgb, var(--on-surface) 3%, transparent) 64px);
+}
+.window-bar, .studio, .welcome { position: relative; z-index: 1; }
+.window-bar {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--shell-glass-border);
+  background: var(--shell-glass);
+  backdrop-filter: var(--shell-backdrop);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+}
 .window-bar-drag-region { flex: 1; height: 100%; display: flex; align-items: center; padding: 0 16px; -webkit-app-region: drag; user-select: none; }
 .window-bar-title { font-size: 12px; font-weight: 600; white-space: nowrap; }
 .window-control-safe-area { height: 40px; -webkit-app-region: no-drag; }

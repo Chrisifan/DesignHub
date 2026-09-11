@@ -48,6 +48,17 @@ UF01–UF09 pass within the browser/UI scope above. UI02, UI05–UI07 are exerci
 
 Preview state is session-only. Theme and locale are the only preferences persisted by this framework; it creates no real workspaces, publishes no designer profiles, connects no providers and renders/exports no real design files. The creation form exposes only the currently supported 1080×1440 preview size. Other document thumbnails explain their pending backend rather than showing fake success.
 
+## Shell Material Refinement
+
+Date: 2026-09-10. Scope: persistent window bar, global toolbar and workspace navigation shelf only.
+
+- User feedback identified the earlier screenshot's opaque shell as materially different from the target. Root-cause inspection in Chrome confirmed support for `backdrop-filter`; the three shell surfaces instead had `backdropFilter: none` and opaque backgrounds. This was not caused by browser preview.
+- TDD evidence: the shell material test first failed on `backdropFilter: none`, then passed after applying the theme-aware shell material. It asserts a 280px desktop shelf, 40px window bar, 44px global toolbar, the dark and light alpha gradients, and a non-empty blur/background image on all three surfaces.
+- Chrome DevTools emulation covers `prefers-reduced-transparency: reduce`. The regression first failed because the later-loaded window bar rule won the CSS cascade; the fallback now changes shared shell tokens, and the browser contract verifies that all three shell surfaces have `backdrop-filter: none` and the dark solid background.
+- The dark and light 1280px shell screenshots plus the 1024px compact workbench screenshot were captured by the local Chrome review script. The final run logged no page errors and `document.scrollWidth === innerWidth` at 1024px.
+- `pnpm test:unit && pnpm lint && pnpm typecheck && pnpm build` passed: 42 unit/integration tests, lint, TypeScript and all renderer/main/preload bundles. The full UI browser suite passed 15 tests across dark/light, Chinese/English, 1280/1024, workbench shelf width, reduced transparency, dialog focus and preferences.
+- `pnpm test:native` timed out while awaiting the Electron window after 30 seconds. The test and Electron startup path are unchanged by this CSS refinement; `docs/verification/M01.md` records the same host has no successful Playwright Electron launch. Native vibrancy/Mica composition therefore remains unverified and must not be inferred from Chrome results.
+
 ## Run and integrate
 
 Run `pnpm exec vite --host 127.0.0.1 --port 5178 --strictPort` in this worktree and open `http://127.0.0.1:5178/?preview=1` for the example workspace; `/` opens the real-workspace welcome entry. Standard `pnpm build` still builds all three existing bundles.

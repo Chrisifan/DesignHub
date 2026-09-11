@@ -139,7 +139,7 @@ export const Studio = ({
   };
   return (
     <div
-      className={`studio ${collapsed || documentOpen ? 'studio--compact' : ''}`}
+      className={`studio ${collapsed ? 'studio--compact' : ''}`}
     >
       <aside className="studio-sidebar">
         <button

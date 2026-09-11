@@ -114,6 +114,102 @@ for (const width of [1280, 1024]) {
   }
 }
 
+for (const [theme, expectedTint] of [
+  ['dark', 'rgba(20, 28, 46, 0.84)'],
+  ['light', 'rgba(255, 255, 255, 0.86)'],
+] as const) {
+  test(`desktop ${theme} shell uses the approved dimensions and glass material`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.addInitScript((mode) => {
+      localStorage.setItem('designhub.ui.theme', mode);
+    }, theme);
+    await page.goto('/?preview=1');
+    await expect(
+      page.getByRole('heading', { name: '项目库', exact: true }),
+    ).toBeVisible();
+    const shell = await page.evaluate(() => {
+      const inspect = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector)!;
+        const style = getComputedStyle(element);
+        return {
+          width: element.getBoundingClientRect().width,
+          height: element.getBoundingClientRect().height,
+          backdropFilter: style.backdropFilter,
+          backgroundImage: style.backgroundImage,
+        };
+      };
+      return {
+        sidebar: inspect('.studio-sidebar'),
+        windowBar: inspect('.window-bar'),
+        toolbar: inspect('.studio-toolbar'),
+        backdrop: getComputedStyle(
+          document.querySelector<HTMLElement>('.app-shell')!,
+          '::before',
+        ).backgroundImage,
+      };
+    });
+
+    expect(shell.sidebar.width).toBe(280);
+    expect(shell.windowBar.height).toBe(40);
+    expect(shell.toolbar.height).toBe(44);
+    for (const surface of [shell.sidebar, shell.windowBar, shell.toolbar]) {
+      expect(surface.backdropFilter).toContain('blur(');
+      expect(surface.backgroundImage).toContain(expectedTint);
+    }
+    expect(shell.backdrop).toContain('repeating-linear-gradient');
+
+    await page.getByRole('button', { name: '春间市集', exact: true }).click();
+    await page.getByRole('button', { name: '打开主海报', exact: true }).click();
+    await expect(page.locator('.studio-sidebar')).toHaveCSS('width', '280px');
+  });
+}
+
+test('reduced-transparency shell uses solid surfaces without blur', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setEmulatedMedia', {
+    features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }],
+  });
+  await page.addInitScript(() => {
+    localStorage.setItem('designhub.ui.theme', 'dark');
+  });
+  await page.goto('/?preview=1');
+
+  const shell = await page.evaluate(() => {
+    const inspect = (selector: string) => {
+      const style = getComputedStyle(
+        document.querySelector<HTMLElement>(selector)!,
+      );
+      return {
+        backdropFilter: style.backdropFilter,
+        backgroundColor: style.backgroundColor,
+        backgroundImage: style.backgroundImage,
+      };
+    };
+    return {
+      matchesReducedTransparency: matchMedia(
+        '(prefers-reduced-transparency: reduce)',
+      ).matches,
+      surfaces: [
+        inspect('.window-bar'),
+        inspect('.studio-sidebar'),
+        inspect('.studio-toolbar'),
+      ],
+    };
+  });
+
+  expect(shell.matchesReducedTransparency).toBe(true);
+  for (const surface of shell.surfaces) {
+    expect(surface.backdropFilter).toBe('none');
+    expect(surface.backgroundImage).toBe('none');
+    expect(surface.backgroundColor).toBe('rgb(14, 20, 36)');
+  }
+});
+
 test('native dialog restores focus and retains a cancelled draft', async ({
   page,
 }) => {

@@ -48,8 +48,10 @@ button:disabled {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--border-subtle);
-  background: var(--surface-container-lowest);
+  border-right: 1px solid var(--shell-glass-border);
+  background: var(--shell-glass);
+  backdrop-filter: var(--shell-backdrop);
+  -webkit-backdrop-filter: var(--shell-backdrop);
 }
 .workspace-switch {
   display: flex;
@@ -219,9 +221,11 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--shell-glass-border);
   padding: 0 16px;
-  background: var(--background);
+  background: var(--shell-glass);
+  backdrop-filter: var(--shell-backdrop);
+  -webkit-backdrop-filter: var(--shell-backdrop);
 }
 .toolbar-location,
 .toolbar-actions {
@@ -281,6 +285,7 @@ button:disabled {
   min-height: 0;
   min-width: 0;
   overflow: auto;
+  background: var(--background);
 }
 .destination {
   height: 100%;
