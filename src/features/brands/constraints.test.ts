@@ -39,6 +39,26 @@ it('creates, updates, lists, and removes complete brand records', () => {
   expect(store.list()).toEqual([]);
 });
 
+it('isolates caller inputs and every CRUD result from nested mutable brand fields', () => {
+  const input = structuredClone(brand);
+  const store = createBrandStore();
+  const created = store.create(input);
+  input.colorPalette.push('#ffffff');
+  created.fonts[0] = 'Changed';
+  expect(store.get('spring')).toMatchObject({
+    colorPalette: ['#101010', '#f5f5f5'],
+    fonts: ['Source Han Serif', 'Geist'],
+  });
+
+  const patch = { sizes: ['1600x900'] };
+  const updated = store.update('spring', patch);
+  patch.sizes.push('1080x1080');
+  updated.sizes.push('1200x1200');
+  const listed = store.list();
+  listed[0].sizes[0] = 'Changed again';
+  expect(store.get('spring')?.sizes).toEqual(['1600x900']);
+});
+
 it('snapshots brand fields deeply so later edits cannot rewrite the snapshot', () => {
   const source = { ...brand, colorPalette: [...brand.colorPalette], fonts: [...brand.fonts], sizes: [...brand.sizes] };
   const snapshot = createBrandSnapshot(source);

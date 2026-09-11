@@ -65,3 +65,23 @@ it('copies related document source identity but keeps size and scene independent
   related.scene.layers.push('logo');
   expect(original.scene.layers).toEqual(['title']);
 });
+
+it('rejects related documents without a source revision and ignores option provenance', () => {
+  const original: DesignDocument = {
+    id: 'poster',
+    sourceRevisionId: 'rev-1',
+    size: '1080x1440',
+    scene: { layers: ['title'] },
+    brandSnapshot: createBrandSnapshot(source),
+  };
+  const related = createRelatedDocument(original, {
+    id: 'square',
+    sourceDocumentId: 'forged-document',
+    sourceRevisionId: 'forged-revision',
+    size: '1080x1080',
+    scene: { layers: [] },
+  } as unknown as Parameters<typeof createRelatedDocument>[1]);
+  expect(related.sourceDocumentId).toBe('poster');
+  expect(related.sourceRevisionId).toBe('rev-1');
+  expect(() => createRelatedDocument({ ...original, sourceRevisionId: undefined }, { id: 'missing-revision', size: '1080x1080', scene: { layers: [] } })).toThrow('SOURCE_REVISION_REQUIRED');
+});

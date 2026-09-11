@@ -13,4 +13,12 @@
   ,"themeSystem": "System"
   ,"themeDark": "Dark"
   ,"themeLight": "Light"
+  ,"brandEditorLabel": "Brand editor"
+  ,"brandLogo": "Logo"
+  ,"brandPalette": "Color palette"
+  ,"brandFonts": "Fonts"
+  ,"brandTone": "Tone"
+  ,"brandFixedCopy": "Fixed copy"
+  ,"brandSizes": "Sizes"
+  ,"brandSave": "Save"
 }
