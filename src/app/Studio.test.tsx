@@ -72,7 +72,7 @@ it('creates only a labelled preview draft and keeps project input when dismissin
   fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), {
     target: { value: '我的测试项目' },
   });
-  fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  fireEvent.click(screen.getByRole('button', { name: '返回' }));
   fireEvent.click(screen.getAllByRole('button', { name: '新建项目' })[0]!);
   expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue(
     '我的测试项目',
@@ -91,7 +91,7 @@ it('keeps the draft when language and theme change and remembers UI preferences'
   fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), {
     target: { value: '保留输入' },
   });
-  fireEvent.click(screen.getByRole('button', { name: '取消' }));
+  fireEvent.click(screen.getByRole('button', { name: '返回' }));
   fireEvent.click(screen.getByRole('button', { name: '切换主题' }));
   fireEvent.click(screen.getByRole('button', { name: 'Switch to English' }));
   fireEvent.click(screen.getAllByRole('button', { name: 'New project' })[0]!);

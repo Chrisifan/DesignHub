@@ -4,6 +4,7 @@ import { WindowBar } from '../shell/WindowBar';
 import { exampleProjects } from './examples';
 import { LibraryPages } from './LibraryPages';
 import { DesignerHero } from './DesignerHero';
+import { NewDesignPage } from './NewDesignPage';
 import { PersonaArtwork } from './PersonaArtwork';
 import { getPersona } from './personas';
 import { Workbench } from './Workbench';
@@ -12,14 +13,13 @@ import {
   Badge,
   Button,
   EmptyState,
-  Field,
   Icon,
   IconButton,
   Modal,
   PageHeader,
   t,
 } from './ui';
-import type { Project, Theme, View } from './types';
+import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
 import '../styles/studio.css';
 
 const navigation: { view: View; icon: string; zh: string; en: string }[] = [
@@ -50,6 +50,7 @@ export const Studio = ({
   onExit,
 }: StudioProps) => {
   const [view, setView] = useState<View>('projects');
+  const [surface, setSurface] = useState<StudioSurface>('projects');
   const [projects, setProjects] = useState(exampleProjects);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'active' | 'archived' | 'all'>('active');
@@ -57,21 +58,20 @@ export const Studio = ({
   const [selected, setSelected] = useState<Project | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
   const [deliveryProject, setDeliveryProject] = useState<Project | null>(null);
-  const [dialog, setDialog] = useState<'project' | 'workspace' | null>(null);
+  const [dialog, setDialog] = useState<'workspace' | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [notice, setNotice] = useState('');
-  const [brief, setBrief] = useState('');
-  const [draft, setDraft] = useState({
+  const [draft, setDraft] = useState<NewDesignDraft>({
     name: '',
     goal: '',
-    designer: '纸感排版',
+    brief: '',
+    personaId: 'paper-type',
     size: '1080 × 1440',
+    mode: 'manual',
   });
-  const [createMode, setCreateMode] = useState<'manual' | 'conversation'>(
-    'manual',
-  );
   const navigate = (next: View) => {
     setView(next);
+    setSurface(next);
     setDocumentOpen(false);
     setSelected(null);
   };
@@ -95,6 +95,7 @@ export const Studio = ({
   );
   const openProject = (project: Project) => {
     setSelected(project);
+    setSurface('projects');
     setDocumentOpen(false);
     setView('projects');
   };
@@ -106,20 +107,27 @@ export const Studio = ({
       name: draft.name.trim(),
       enName: draft.name.trim(),
       description:
-        draft.goal ||
+        draft.goal || draft.brief ||
         t(locale, '本次预览中的项目草稿', 'A project draft for this preview'),
-      enDescription: draft.goal || 'A project draft for this preview',
-      designers: [draft.designer],
+      enDescription: draft.goal || draft.brief || 'A project draft for this preview',
+      designers: [getPersona(draft.personaId)?.name.zh ?? '纸感排版'],
       artwork: 'blank',
       documents: 1,
     };
     setProjects((previous) => [project, ...previous]);
-    setDialog(null);
+    setSurface('projects');
     setSelected(project);
     setView('projects');
     setQuery('');
     setFilter('active');
-    setDraft({ name: '', goal: '', designer: '纸感排版', size: '1080 × 1440' });
+    setDraft({
+      name: '',
+      goal: '',
+      brief: '',
+      personaId: 'paper-type',
+      size: '1080 × 1440',
+      mode: 'manual',
+    });
     notify(
       t(
         locale,
@@ -138,6 +146,7 @@ export const Studio = ({
             纸感排版: 'Paper & type',
             极简构成: 'Minimal form',
             自然叙事: 'Natural stories',
+            清晰商业: 'Clear Commerce',
           } as Record<string, string>
         )[name] ?? name);
   const projectPersonaId = (project: Project) => {
@@ -154,6 +163,17 @@ export const Studio = ({
   const openDelivery = (project: Project) => {
     setDeliveryProject(project);
     navigate('delivery');
+  };
+  const openNewDesign = (mode: NewDesignDraft['mode'], personaId?: string) => {
+    setDraft((previous) => ({
+      ...previous,
+      mode,
+      personaId: personaId ?? previous.personaId,
+    }));
+    setSurface('new-design');
+    setView('projects');
+    setSelected(null);
+    setDocumentOpen(false);
   };
   return (
     <>
@@ -251,7 +271,16 @@ export const Studio = ({
           </div>
         </header>
         <div className="studio-body">
-          {view === 'projects' && !selected && (
+          {surface === 'new-design' && (
+            <NewDesignPage
+              locale={locale}
+              draft={draft}
+              onDraftChange={setDraft}
+              onCreate={createProject}
+              onBack={() => setSurface('projects')}
+            />
+          )}
+          {surface === 'projects' && view === 'projects' && !selected && (
             <section className="page-content projects-page">
               <PageHeader
                 title={t(locale, '项目库', 'Projects')}
@@ -265,20 +294,14 @@ export const Studio = ({
                 <Button
                   icon="message-square"
                   variant="ai"
-                  onClick={() => {
-                    setCreateMode('conversation');
-                    setDialog('project');
-                  }}
+                  onClick={() => openNewDesign('conversation')}
                 >
                   {t(locale, '对话创建', 'Create with chat')}
                 </Button>
                 <Button
                   icon="plus"
                   variant="primary"
-                  onClick={() => {
-                    setCreateMode('manual');
-                    setDialog('project');
-                  }}
+                  onClick={() => openNewDesign('manual')}
                 >
                   {t(locale, '新建项目', 'New project')}
                 </Button>
@@ -428,10 +451,7 @@ export const Studio = ({
                 <Button
                   variant="ghost"
                   icon="arrow-right"
-                  onClick={() => {
-                    setCreateMode('manual');
-                    setDialog('project');
-                  }}
+                  onClick={() => openNewDesign('manual')}
                 >
                   {t(locale, '开始创作', 'Start creating')}
                 </Button>
@@ -446,7 +466,7 @@ export const Studio = ({
               </p>
             </section>
           )}
-          {view === 'projects' && selected && !documentOpen && (
+          {surface === 'projects' && view === 'projects' && selected && !documentOpen && (
             <section className="page-content project-detail">
               <Button
                 icon="arrow-left"
@@ -580,8 +600,9 @@ export const Studio = ({
             <div
               className="destination"
               key={project.id}
-              hidden={
-                view !== 'projects' ||
+                hidden={
+                  surface !== 'projects' ||
+                  view !== 'projects' ||
                 !documentOpen ||
                 selected?.id !== project.id
               }
@@ -602,7 +623,7 @@ export const Studio = ({
               <div
                 className="destination"
                 key={item.view}
-                hidden={view !== item.view}
+                hidden={surface !== item.view || view !== item.view}
               >
                 <LibraryPages
                   locale={locale}
@@ -678,180 +699,6 @@ export const Studio = ({
               {t(locale, '继续浏览', 'Continue browsing')}
             </Button>
           </div>
-        </Modal>
-      )}
-      {dialog === 'project' && (
-        <Modal
-          title={t(locale, '新建项目', 'New project')}
-          locale={locale}
-          onClose={() => setDialog(null)}
-          wide
-        >
-          <div className="tab-strip form-tabs">
-            <button
-              className={createMode === 'manual' ? 'is-active' : ''}
-              onClick={() => setCreateMode('manual')}
-            >
-              {t(locale, '手动填写', 'Write a brief')}
-            </button>
-            <button
-              className={createMode === 'conversation' ? 'is-active' : ''}
-              onClick={() => setCreateMode('conversation')}
-            >
-              {t(locale, '通过对话', 'Start with chat')}
-            </button>
-          </div>
-          {createMode === 'conversation' ? (
-            <div className="conversation-draft">
-              <div className="ai-intro">
-                <Icon name="sparkles" size={24} />
-                <h3>
-                  {t(
-                    locale,
-                    '描述你想做的设计',
-                    'What would you like to create?',
-                  )}
-                </h3>
-                <p>
-                  {t(
-                    locale,
-                    '先记下想法，连接对话模型后可协助整理设计简报。',
-                    'Capture your idea. A connected conversation model can help shape the brief.',
-                  )}
-                </p>
-              </div>
-              <Field label={t(locale, '创作想法', 'Your idea')}>
-                <textarea
-                  value={brief}
-                  onChange={(event) => setBrief(event.target.value)}
-                  placeholder={t(
-                    locale,
-                    '例如：为春季市集制作一组清新自然的宣传图…',
-                    'For example: A fresh, natural campaign for a spring market…',
-                  )}
-                  rows={5}
-                />
-              </Field>
-              <p className="inline-notice">
-                <Icon name="plug" size={16} />
-                {t(
-                  locale,
-                  '尚未连接对话模型，内容仍保留在此草稿中。',
-                  'No conversation model connected. Your draft stays here.',
-                )}
-              </p>
-              <div className="dialog-actions">
-                <Button
-                  onClick={() => {
-                    setDialog(null);
-                    navigate('connections');
-                  }}
-                >
-                  {t(locale, '连接模型', 'Connect model')}
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    setDraft((previous) => ({ ...previous, goal: brief }));
-                    setCreateMode('manual');
-                  }}
-                >
-                  {t(locale, '手动填写', 'Continue manually')}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={createProject}>
-              <p className="muted">
-                {t(
-                  locale,
-                  '先明确创作方向，细节可以在工作台继续调整。',
-                  'Set a creative direction. Refine the details in the workbench.',
-                )}
-              </p>
-              <Field label={t(locale, '项目名称', 'Project name')}>
-                <input
-                  required
-                  autoFocus
-                  maxLength={120}
-                  value={draft.name}
-                  onChange={(event) =>
-                    setDraft({ ...draft, name: event.target.value })
-                  }
-                  placeholder={t(
-                    locale,
-                    '为这次创作起个名字',
-                    'Name your next project',
-                  )}
-                />
-              </Field>
-              <Field label={t(locale, '设计目标', 'Creative brief')}>
-                <textarea
-                  rows={3}
-                  value={draft.goal}
-                  onChange={(event) =>
-                    setDraft({ ...draft, goal: event.target.value })
-                  }
-                  placeholder={t(
-                    locale,
-                    '用途、受众、想要传达的感受…',
-                    'Purpose, audience, and what you want to convey…',
-                  )}
-                />
-              </Field>
-              <div className="form-grid">
-                <Field label={t(locale, '设计师', 'Designer')}>
-                  <select
-                    value={draft.designer}
-                    onChange={(event) =>
-                      setDraft({ ...draft, designer: event.target.value })
-                    }
-                  >
-                    <option value="纸感排版">
-                      {t(locale, '纸感排版', 'Paper & type')}
-                    </option>
-                    <option value="极简构成">
-                      {t(locale, '极简构成', 'Minimal form')}
-                    </option>
-                    <option value="自然叙事">
-                      {t(locale, '自然叙事', 'Natural stories')}
-                    </option>
-                  </select>
-                </Field>
-                <Field label={t(locale, '文档尺寸', 'Document size')}>
-                  <select
-                    value={draft.size}
-                    onChange={(event) =>
-                      setDraft({ ...draft, size: event.target.value })
-                    }
-                  >
-                    <option>1080 × 1440</option>
-                  </select>
-                </Field>
-              </div>
-              <p className="inline-notice">
-                <Icon name="circle-help" size={16} />
-                {t(
-                  locale,
-                  '此处创建预览草稿，仅本次会话可见，不写入磁盘。',
-                  'Creates a session-only preview draft. Nothing is written to disk.',
-                )}
-              </p>
-              <div className="dialog-actions">
-                <Button onClick={() => setDialog(null)}>
-                  {t(locale, '取消', 'Cancel')}
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  icon="plus"
-                  disabled={!draft.name.trim()}
-                >
-                  {t(locale, '创建预览', 'Create preview')}
-                </Button>
-              </div>
-            </form>
-          )}
         </Modal>
       )}
     </>
