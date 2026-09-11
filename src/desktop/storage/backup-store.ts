@@ -13,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 
 import Database from 'better-sqlite3';
 
@@ -62,6 +62,9 @@ type BackupCompletion = {
   kind: 'designhub-backup-complete';
   manifestSha256: string;
 };
+
+type ManagedInternalEntryKind = 'directory' | 'file' | 'other';
+type ManagedInternalEntryPolicy = 'domain' | 'transient' | 'unmanaged';
 
 const backupKind = 'designhub-backup';
 const backupFormatVersion = 1;
@@ -225,20 +228,26 @@ const validateWritableSource = (handle: WorkspaceHandle): { directory: string; m
   return { directory, manifest };
 };
 
-const isManagedSqlitePath = (relativePath: string): boolean => (relativePath.startsWith(`${internalDirectoryName}/`)
-  && extname(relativePath) === '.sqlite')
+const isManagedSqlitePath = (relativePath: string): boolean => relativePath === projectIndexPath
   || /^(?:projects|trash)\/[^/]+\/project\.sqlite$/u.test(relativePath);
 
 const isSqliteSidecarOf = (relativePath: string, databasePath: string): boolean => sqliteSidecarPattern.test(relativePath)
   && relativePath.replace(sqliteSidecarPattern, '') === databasePath;
 
-const isManagedInternalSourceFile = (relativePath: string): boolean => relativePath === projectIndexPath
-  || relativePath === writerLockPrefix
-  || isSqliteSidecarOf(relativePath, projectIndexPath)
-  || isSqliteSidecarOf(relativePath, writerLockPrefix);
+const getManagedInternalEntryPolicy = (
+  relativePath: string,
+  kind: ManagedInternalEntryKind,
+): ManagedInternalEntryPolicy => {
+  if (kind === 'directory' && relativePath === internalDirectoryName) return 'domain';
+  if (kind !== 'file') return 'unmanaged';
+  if (relativePath === projectIndexPath) return 'domain';
+  if (relativePath === writerLockPrefix
+    || isSqliteSidecarOf(relativePath, projectIndexPath)
+    || isSqliteSidecarOf(relativePath, writerLockPrefix)) return 'transient';
+  return 'unmanaged';
+};
 
-const shouldSkipSourceFile = (relativePath: string): boolean => relativePath === writerLockPrefix
-  || isSqliteSidecarOf(relativePath, writerLockPrefix)
+const shouldSkipSourceFile = (relativePath: string): boolean => getManagedInternalEntryPolicy(relativePath, 'file') === 'transient'
   || (sqliteSidecarPattern.test(relativePath) && isManagedSqlitePath(relativePath.replace(sqliteSidecarPattern, '')));
 
 const collectManagedContent = (workspaceDirectory: string): { directories: string[]; files: string[] } => {
@@ -258,8 +267,9 @@ const collectManagedContent = (workspaceDirectory: string): { directories: strin
         const entrySegments = [...segments, entry.name];
         const relativePath = toManifestPath(entrySegments);
         const absolutePath = join(absoluteDirectory, entry.name);
-        if (entrySegments[0] === internalDirectoryName && (!entry.isFile() || !isManagedInternalSourceFile(relativePath))) {
-          throw new Error('UNMANAGED_INTERNAL_FILE');
+        if (entrySegments[0] === internalDirectoryName) {
+          const kind: ManagedInternalEntryKind = entry.isFile() ? 'file' : entry.isDirectory() ? 'directory' : 'other';
+          if (getManagedInternalEntryPolicy(relativePath, kind) === 'unmanaged') throw new Error('UNMANAGED_INTERNAL_FILE');
         }
         if (entry.isSymbolicLink()) throw new Error('UNMANAGED_BACKUP_SOURCE');
         if (entry.isDirectory()) {
@@ -348,11 +358,17 @@ const assertUniquePaths = (paths: string[]): void => {
 
 const verifyWorkspaceContent = (workspaceDirectory: string, manifest: BackupManifest): void => {
   const expectedDirectories = manifest.directories.map((path) => {
-    manifestPathSegments(path);
+    const segments = manifestPathSegments(path);
+    if (segments[0] === internalDirectoryName && getManagedInternalEntryPolicy(path, 'directory') !== 'domain') {
+      throw new Error('UNMANAGED_INTERNAL_FILE');
+    }
     return path;
   }).sort();
   const expectedFiles = manifest.files.map((entry) => {
-    manifestPathSegments(entry.path);
+    const segments = manifestPathSegments(entry.path);
+    if (segments[0] === internalDirectoryName && getManagedInternalEntryPolicy(entry.path, 'file') !== 'domain') {
+      throw new Error('UNMANAGED_INTERNAL_FILE');
+    }
     const expectedStorage = isManagedSqlitePath(entry.path) ? 'sqlite' : 'file';
     if (entry.storage !== expectedStorage) throw new Error('INVALID_BACKUP_MANIFEST');
     return entry.path;

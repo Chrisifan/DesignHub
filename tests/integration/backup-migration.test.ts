@@ -230,6 +230,38 @@ it('rejects non-M02 credential-like files inside the internal directory', async 
   }
 });
 
+it('rejects a checksum-consistent backup artifact containing a non-M02 internal file', async () => {
+  const sourceParent = await createTemporaryDirectory('designhub-backup-internal-artifact-source-');
+  const backupParent = await createTemporaryDirectory('designhub-backup-internal-artifact-backup-');
+  const restoreParent = await createTemporaryDirectory('designhub-backup-internal-artifact-restore-');
+  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Internal artifact policy' });
+  const credentialRelativePath = '.designhub/credentials.json';
+  const credentialContent = 'api-key=do-not-restore';
+
+  try {
+    const store = createWorkspaceBackupStore(workspace);
+    const artifact = await store.createBackup({ destinationParentDirectory: backupParent });
+    await writeFile(join(artifact.directory, 'workspace', ...credentialRelativePath.split('/')), credentialContent);
+    const manifest = await readBackupManifest(artifact.directory);
+    expect(manifest.directories).toContain('.designhub');
+    manifest.files.push({
+      path: credentialRelativePath,
+      size: Buffer.byteLength(credentialContent),
+      sha256: sha256(credentialContent),
+      storage: 'file',
+    });
+    await replaceManifest(artifact.directory, manifest);
+
+    await expect(store.restoreBackup({
+      backupDirectory: artifact.directory,
+      destinationParentDirectory: restoreParent,
+    })).rejects.toThrow('UNMANAGED_INTERNAL_FILE');
+    expect(await readdir(restoreParent)).toEqual([]);
+  } finally {
+    workspace.close();
+  }
+});
+
 it('rejects incomplete, tampered, and internally corrupt backup artifacts without publishing a restored workspace', async () => {
   const sourceParent = await createTemporaryDirectory('designhub-invalid-backup-source-');
   const backupParent = await createTemporaryDirectory('designhub-invalid-backup-artifacts-');
