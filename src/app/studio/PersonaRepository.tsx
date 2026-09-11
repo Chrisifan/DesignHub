@@ -65,9 +65,21 @@ export const PersonaRepository = ({
 
   return (
     <div className="persona-repository" aria-label={t(locale, '设计师档案库', 'Designer repository')}>
+      <header className="persona-repository__head">
+        <div>
+          <p className="section-kicker">{t(locale, 'PERSONA REPOSITORY', 'PERSONA REPOSITORY')}</p>
+          <div className="persona-repository__title-line">
+            <h2>{t(locale, '设计师档案', 'Designer profiles')}</h2>
+            <span className="mono persona-repository__count">{filteredProfiles.length.toString().padStart(2, '0')}</span>
+          </div>
+        </div>
+        {onCreate && <button type="button" className="icon-button persona-repository__create" title={t(locale, '创建', 'Create')} aria-label={t(locale, '创建', 'Create')} onClick={onCreate}>
+          <Icon name="plus" size={17} />
+        </button>}
+      </header>
       <div className="persona-repository__toolbar">
         <label className="search-control">
-          <Icon name="search" size={16} />
+          <Icon name="search" size={15} />
           <span className="sr-only">{t(locale, '搜索档案', 'Search profiles')}</span>
           <input
             type="search"
@@ -96,39 +108,37 @@ export const PersonaRepository = ({
             </button>
           ))}
         </div>
-        {onCreate && <button type="button" className="ui-button ui-button--primary" onClick={onCreate}>
-          <Icon name="plus" size={16} />
-          {t(locale, '创建', 'Create')}
-        </button>}
       </div>
       {filteredProfiles.length ? (
-        <div className="persona-repository__grid">
+        <div className="persona-repository__list">
           {filteredProfiles.map((profile) => {
             const selected = profile.id === selectedId;
             return (
               <button
                 type="button"
                 key={profile.id}
-                className={`persona-repository-card ${selected ? 'is-selected' : ''}`}
+                className={`persona-repository-row ${selected ? 'is-selected' : ''}`}
                 aria-pressed={selected}
                 onClick={() => onSelect(profile.id)}
               >
-                <PersonaArtwork personaId={profile.id} crop="full" />
-                <span className="persona-repository-card__body">
-                  <span className="persona-repository-card__title">
+                <span className="persona-repository-row__avatar"><PersonaArtwork personaId={profile.id} crop="avatar" /></span>
+                <span className="persona-repository-row__body">
+                  <span className="persona-repository-row__title">
                     <strong>{localize(locale, profile.name)}</strong>
                     {profile.id === activeDefaultId && <Badge tone="primary">{t(locale, '默认', 'Default')}</Badge>}
                   </span>
-                  <span className="persona-repository-card__meta">
-                    {profile.personaCode} · {profile.version} · {statusLabel(locale, profile.status)}
+                  <span className="persona-repository-row__meta">
+                    <span className="mono">{profile.personaCode}</span><span>{profile.version}</span><span className={`persona-status-dot persona-status-dot--${profile.status}`} />{statusLabel(locale, profile.status)}
                   </span>
-                  <span className="persona-repository-card__summary">{localize(locale, profile.summary)}</span>
-                  <span className="persona-repository-card__tags">
+                  <span className="persona-repository-row__summary">{localize(locale, profile.summary)}</span>
+                  <span className="persona-repository-row__footer">
                     {profile.tags.slice(0, 3).map((tag) => (
-                      <Badge key={`${profile.id}-${tag.zh}`}>{localize(locale, tag)}</Badge>
+                      <span className="persona-tag" key={`${profile.id}-${tag.zh}`}>{localize(locale, tag)}</span>
                     ))}
+                    <span className="persona-repository-row__refs"><Icon name="folder" size={12} />{profile.referenceCount}</span>
                   </span>
                 </span>
+                <Icon name="chevron-right" size={15} />
               </button>
             );
           })}

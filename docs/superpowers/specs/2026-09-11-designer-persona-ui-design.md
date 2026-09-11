@@ -30,7 +30,7 @@ Existing dark/light semantic tokens remain the only color source. Primary repres
 
 ### Persona Repository Reference Update
 
-The user provided a visual reference on 2026-09-11 for the designer destination. It supersedes the earlier generic persona-card grid treatment for P10/P12 only. The designer destination becomes a dense **Persona Repository** workstation:
+The user provided an updated visual reference on 2026-09-11 at Figma node `67:19940` (`P10/P12 AI 设计师库与档案详情`). It supersedes the earlier generic persona-card grid treatment for P10/P12 only. The designer destination becomes a dense **Persona Repository** workstation:
 
 - A compact page header exposes repository scope, filters, search, archive state, and one create action.
 - The left column is a scrollable profile repository. Each row has a small character portrait, name, creative-persona code, version, status, short style tags, local model preference label when configured, and project-reference count. It is a selectable list, not a second navigation rail.
@@ -159,4 +159,4 @@ Existing generic button, icon, dialog, field, localization, and theme primitives
 
 ## Research Record
 
-The task will reuse current React, existing local icon assets, and browser-native dialog behavior. A GitHub search on 2026-09-11 found `Abdilar/react-master-detail`, but it has low adoption and no updates since 2021; introducing it would duplicate the project's existing responsive CSS Grid and theme contracts. No new implementation dependency is justified in scope. Figma MCP is configured, but the request to read `15Uu5xrn45sTsHAV5Mlpz4` returned HTTP 429 because the account's API quota is exhausted; the already approved repository UI foundations for P02/P03/P10/P11 remain the visual source until Figma quota recovers.
+The task will reuse current React, existing local icon assets, and browser-native dialog behavior. A GitHub search on 2026-09-11 found `Abdilar/react-master-detail`, but it has low adoption and no updates since 2021; introducing it would duplicate the project's existing responsive CSS Grid and theme contracts. No new implementation dependency is justified in scope. Figma MCP is configured, but reads for file `15Uu5xrn45sTsHAV5Mlpz4` (including node `67:19940`) returned HTTP 429 because the account's API quota is exhausted; the updated node was reviewed through the Figma Desktop connection and is now the visual source.

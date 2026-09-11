@@ -160,6 +160,46 @@ export const personaProfiles: PersonaProfile[] = [
       { id: 'story-sheet-3', artwork: 'type', title: { zh: '慢慢阅读', en: 'Read slowly' }, note: { zh: '长文案封面', en: 'Long-copy cover' } },
     ],
   },
+  {
+    id: 'minimal-form',
+    name: { zh: '极简构成', en: 'Minimal Form' },
+    signature: { zh: 'DesignHub 示例', en: 'DesignHub Example' },
+    summary: {
+      zh: '清晰几何、低噪层级与强调秩序的品牌构成。',
+      en: 'Clear geometry, low-noise hierarchy and ordered brand composition.',
+    },
+    principle: {
+      zh: '删除多余装饰，让结构本身成为视觉识别。',
+      en: 'Remove excess ornament so structure becomes the visual signature.',
+    },
+    personaCode: 'ISTJ-D',
+    version: 'v2.2',
+    status: 'built-in',
+    artworkUrl: '/personas/minimal-form.png',
+    artworkAlt: { zh: '极简构成', en: 'Minimal Form' },
+    tags: [
+      { zh: '几何秩序', en: 'Geometric order' },
+      { zh: '低噪层级', en: 'Low-noise hierarchy' },
+      { zh: '品牌系统', en: 'Brand system' },
+    ],
+    referenceCount: 4,
+    styleDna: {
+      palette: ['#E6E8F0', '#20242D', '#7C83A8'],
+      typography: { zh: '中性无衬线 · 清晰数字系统', en: 'Neutral sans · clear numeric system' },
+      composition: { zh: '严格网格 · 负空间分组', en: 'Strict grid · grouped negative space' },
+      texture: { zh: '平整表面 · 极细描边', en: 'Flat surface · hairline strokes' },
+    },
+    negativeRules: [
+      { zh: '不使用无意义装饰', en: 'No ornamental noise' },
+      { zh: '不混用超过两种字重', en: 'No more than two weights' },
+      { zh: '不打破基础网格', en: 'Do not break the base grid' },
+    ],
+    portfolioSheets: [
+      { id: 'minimal-sheet-1', artwork: 'type', title: { zh: '系统字标', en: 'System wordmark' }, note: { zh: '品牌识别样张', en: 'Brand identity study' } },
+      { id: 'minimal-sheet-2', artwork: 'objects', title: { zh: '留白器物', en: 'Quiet object' }, note: { zh: '产品视觉规范', en: 'Product visual rules' } },
+      { id: 'minimal-sheet-3', artwork: 'market', title: { zh: '城市坐标', en: 'City coordinates' }, note: { zh: '活动信息模板', en: 'Event information template' } },
+    ],
+  },
 ];
 
 export const localize = (locale: 'zh-CN' | 'en', value: LocalizedText): string =>
