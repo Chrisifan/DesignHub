@@ -204,6 +204,7 @@ const validateWorkspace = (workspace: WorkspaceDescriptor, workspaceId: string):
   if (workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
 
   const directory = realpathSync(workspace.directory);
+  if (directory !== workspace.directory) throw new Error('INVALID_WORKSPACE_PATH');
   const manifest = readJson(join(directory, workspaceManifestName), 'INVALID_WORKSPACE_MANIFEST');
   if (!isWorkspaceManifest(manifest)) throw new Error('INVALID_WORKSPACE_MANIFEST');
   if (manifest.workspaceId !== workspace.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');

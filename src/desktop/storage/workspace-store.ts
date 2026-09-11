@@ -117,6 +117,18 @@ const readManifest = async (directory: string): Promise<WorkspaceManifest> => {
   return value;
 };
 
+const readManifestIfPresent = async (directory: string): Promise<WorkspaceManifest | null> => {
+  let value: unknown;
+  try {
+    value = JSON.parse(await readFile(join(directory, workspaceManifestName), 'utf8')) as unknown;
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return null;
+    throw new Error('INVALID_WORKSPACE_MANIFEST');
+  }
+  if (!isWorkspaceManifest(value)) throw new Error('INVALID_WORKSPACE_MANIFEST');
+  return value;
+};
+
 export const initializeWorkspaceWriterLock = (directory: string): void => {
   const database = new Database(join(directory, internalDirectoryName, writerLockName));
   try {
@@ -154,9 +166,9 @@ const removeMigrationFile = (path: string): void => {
   rmSync(path);
 };
 
-const recoverInterruptedWorkspaceMigration = (directory: string): void => {
+const readWorkspaceMigrationState = (directory: string): WorkspaceMigrationState | null => {
   const statePath = join(directory, internalDirectoryName, workspaceMigrationStateName);
-  if (!existsSync(statePath)) return;
+  if (!existsSync(statePath)) return null;
 
   let stateValue: unknown;
   try {
@@ -165,7 +177,14 @@ const recoverInterruptedWorkspaceMigration = (directory: string): void => {
     throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
   }
   if (!isWorkspaceMigrationState(stateValue)) throw new Error('INVALID_WORKSPACE_MIGRATION_STATE');
+  return stateValue;
+};
 
+const recoverInterruptedWorkspaceMigration = (directory: string): void => {
+  const stateValue = readWorkspaceMigrationState(directory);
+  if (!stateValue) return;
+
+  const statePath = join(directory, internalDirectoryName, workspaceMigrationStateName);
   const writerLock = acquireWriterLock(directory);
   const manifestPath = join(directory, workspaceManifestName);
   if (!writerLock) {
@@ -296,6 +315,17 @@ export const createWorkspace = async (input: { parentDirectory: string; name: st
 export const openWorkspace = async (directory: string, supportedFormat = workspaceFormatVersion): Promise<WorkspaceHandle> => {
   if (!Number.isInteger(supportedFormat) || supportedFormat < 1) throw new Error('INVALID_SUPPORTED_FORMAT');
   const canonicalDirectory = await realpath(directory);
+  const manifestBeforeRecovery = await readManifestIfPresent(canonicalDirectory);
+  if (manifestBeforeRecovery && manifestBeforeRecovery.formatVersion > supportedFormat) {
+    return createHandle(canonicalDirectory, manifestBeforeRecovery, supportedFormat);
+  }
+  const migrationState = readWorkspaceMigrationState(canonicalDirectory);
+  if (!manifestBeforeRecovery && migrationState && migrationState.toFormatVersion > supportedFormat) {
+    throw new Error('WORKSPACE_MIGRATION_REQUIRES_NEWER_VERSION');
+  }
+  if (manifestBeforeRecovery && migrationState && migrationState.toFormatVersion > supportedFormat) {
+    throw new Error('WORKSPACE_MIGRATION_REQUIRES_NEWER_VERSION');
+  }
   recoverInterruptedWorkspaceMigration(canonicalDirectory);
   const manifest = await readManifest(canonicalDirectory);
   return createHandle(canonicalDirectory, manifest, supportedFormat);

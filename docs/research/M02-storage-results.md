@@ -30,3 +30,4 @@ Periodic backup configuration and missed-interval prompts belong to the later ac
 - `.designhub/writer-lock.sqlite` is implementation metadata. `projects/`, `shared-assets/` and `trash/` are visible domain containers.
 - Paths locate a workspace; the manifest ID identifies it. Moving the whole directory must retain the same ID.
 - A format newer than the application-supported version is parsed only through the known manifest and opened read-only. No unknown database is created or migrated.
+- Interrupted workspace-migration recovery is gated by the same format boundary. If the manifest already declares a newer format, the workspace opens read-only without parsing or deleting migration markers. If the manifest is missing and the migration state targets a format newer than the caller supports, open fails closed with the markers preserved for a newer binary.

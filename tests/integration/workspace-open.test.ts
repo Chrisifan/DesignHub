@@ -1,6 +1,8 @@
 // @vitest-environment node
 
-import { mkdtemp, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdtemp, mkdir, readFile, realpath, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +10,7 @@ import { spawn } from 'node:child_process';
 
 import { afterEach, expect, it } from 'vitest';
 
-import { createWorkspace, openWorkspace, workspaceManifestName } from '../../src/desktop/storage/workspace-store';
+import { createWorkspace, openWorkspace, workspaceManifestName, workspaceMigrationStateName } from '../../src/desktop/storage/workspace-store';
 
 const temporaryDirectories: string[] = [];
 
@@ -27,6 +29,8 @@ const waitForChildLock = async (child: ReturnType<typeof spawn>): Promise<string
   child.once('error', (error) => finish(() => rejectPromise(error)));
   child.stdout?.once('data', (output) => finish(() => resolvePromise(String(output))));
 });
+
+const sha256 = (content: string): string => createHash('sha256').update(content).digest('hex');
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
@@ -96,6 +100,67 @@ it('opens a newer manifest read-only without taking the writer lock', async () =
   first.close();
   second.close();
   writer.close();
+});
+
+it('opens a newer manifest read-only without recovering migration markers', async () => {
+  const parent = await createTemporaryDirectory();
+  const created = await createWorkspace({ parentDirectory: parent, name: '未来迁移标记' });
+  created.close();
+  const manifestPath = join(created.workspace.directory, workspaceManifestName);
+  const originalManifest = await readFile(manifestPath, 'utf8');
+  const original = JSON.parse(originalManifest) as Record<string, unknown>;
+  const migrationId = randomUUID();
+  const nextManifest = `${JSON.stringify({ ...original, formatVersion: 2 }, null, 2)}\n`;
+  const statePath = join(created.workspace.directory, '.designhub', workspaceMigrationStateName);
+  const temporaryPath = join(created.workspace.directory, `.${workspaceManifestName}.migration-${migrationId}`);
+  const rollbackPath = join(created.workspace.directory, `.${workspaceManifestName}.rollback-${migrationId}`);
+  await writeFile(statePath, `${JSON.stringify({
+    kind: 'designhub-workspace-migration',
+    migrationId,
+    workspaceId: original.workspaceId,
+    fromFormatVersion: 1,
+    toFormatVersion: 2,
+    originalManifestSha256: sha256(originalManifest),
+  }, null, 2)}\n`);
+  await writeFile(temporaryPath, nextManifest);
+  await writeFile(rollbackPath, originalManifest);
+  await writeFile(manifestPath, nextManifest);
+
+  const opened = await openWorkspace(created.workspace.directory, 1);
+
+  expect(opened.workspace.openMode).toBe('read-only');
+  await expect(readFile(statePath, 'utf8')).resolves.toContain(migrationId);
+  await expect(readFile(temporaryPath, 'utf8')).resolves.toBe(nextManifest);
+  await expect(readFile(rollbackPath, 'utf8')).resolves.toBe(originalManifest);
+  opened.close();
+});
+
+it('rejects unsupported missing-manifest migration recovery without mutating markers', async () => {
+  const parent = await createTemporaryDirectory();
+  const created = await createWorkspace({ parentDirectory: parent, name: '未知迁移中断' });
+  created.close();
+  const manifestPath = join(created.workspace.directory, workspaceManifestName);
+  const originalManifest = await readFile(manifestPath, 'utf8');
+  const original = JSON.parse(originalManifest) as Record<string, unknown>;
+  const migrationId = randomUUID();
+  const statePath = join(created.workspace.directory, '.designhub', workspaceMigrationStateName);
+  const rollbackPath = join(created.workspace.directory, `.${workspaceManifestName}.rollback-${migrationId}`);
+  await writeFile(statePath, `${JSON.stringify({
+    kind: 'designhub-workspace-migration',
+    migrationId,
+    workspaceId: original.workspaceId,
+    fromFormatVersion: 1,
+    toFormatVersion: 2,
+    originalManifestSha256: sha256(originalManifest),
+  }, null, 2)}\n`);
+  await writeFile(rollbackPath, originalManifest);
+  await unlink(manifestPath);
+
+  await expect(openWorkspace(created.workspace.directory, 1)).rejects.toThrow('WORKSPACE_MIGRATION_REQUIRES_NEWER_VERSION');
+  expect(existsSync(manifestPath)).toBe(false);
+  await expect(readFile(statePath, 'utf8')).resolves.toContain(migrationId);
+  await expect(readFile(rollbackPath, 'utf8')).resolves.toBe(originalManifest);
+  await expect(readdir(created.workspace.directory)).resolves.toContain(`.${workspaceManifestName}.rollback-${migrationId}`);
 });
 
 it('releases the operating-system writer lock after the owning process crashes', async () => {

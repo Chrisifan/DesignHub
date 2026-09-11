@@ -2,7 +2,7 @@
 
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, mkdir, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -157,6 +157,39 @@ it('rejects a store after its writer handle closes and permits a newly opened wr
     await expect(createProjectStore(reopened).createProjectContainer({ ...staleInput, operationId: 'reopened-writer' })).resolves.toMatchObject({ projectId: expect.any(String) });
   } finally {
     reopened.close();
+  }
+});
+
+it('rejects project writes when the opened workspace path is replaced by another directory', async () => {
+  const { directory, workspace, store } = await createWritableStore();
+  const originalDirectory = workspace.workspace.directory;
+  const movedDirectory = join(directory, 'moved-workspace');
+  const replacementDirectory = join(directory, 'replacement-workspace');
+  const replacementStaging = join(replacementDirectory, 'projects', '.unrelated-temp');
+  const manifest = await readFile(join(originalDirectory, 'designhub.workspace.json'), 'utf8');
+
+  try {
+    await rename(originalDirectory, movedDirectory);
+    await mkdir(replacementDirectory);
+    await Promise.all([
+      mkdir(join(replacementDirectory, '.designhub')),
+      mkdir(join(replacementDirectory, 'projects')),
+      mkdir(join(replacementDirectory, 'shared-assets')),
+      mkdir(join(replacementDirectory, 'trash')),
+    ]);
+    await writeFile(join(replacementDirectory, 'designhub.workspace.json'), manifest);
+    await mkdir(replacementStaging);
+    await symlink(replacementDirectory, originalDirectory, 'dir');
+
+    await expect(store.createProjectContainer({
+      workspaceId: workspace.workspace.workspaceId,
+      operationId: 'replaced-path',
+      name: 'Replaced path',
+    })).rejects.toThrow('INVALID_WORKSPACE_PATH');
+    await expect(readdir(join(replacementDirectory, 'projects'))).resolves.toEqual(['.unrelated-temp']);
+    expect(existsSync(join(replacementDirectory, '.designhub', workspaceProjectIndexName))).toBe(false);
+  } finally {
+    workspace.close();
   }
 });
 
