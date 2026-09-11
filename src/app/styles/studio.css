@@ -85,14 +85,8 @@ button:disabled {
   margin-top: 3px;
   white-space: nowrap;
 }
-.sidebar-create {
-  padding: 0 16px 20px;
-}
-.sidebar-create .ui-button {
-  width: 100%;
-}
 .main-navigation {
-  padding: 0 12px;
+  padding: 12px 12px 0;
   min-height: 0;
   overflow: auto;
 }
@@ -1186,14 +1180,8 @@ button:disabled {
 .studio--compact .local-note {
   display: none;
 }
-.studio--compact .sidebar-create {
-  padding: 0 12px 16px;
-}
-.studio--compact .sidebar-create .ui-button {
-  padding: 0;
-}
 .studio--compact .main-navigation {
-  padding: 0 8px;
+  padding: 12px 8px 0;
 }
 .studio--compact .nav-item {
   justify-content: center;
@@ -1243,14 +1231,8 @@ button:disabled {
   .studio .local-note {
     display: none;
   }
-  .studio .sidebar-create {
-    padding: 0 12px 16px;
-  }
-  .studio .sidebar-create .ui-button {
-    padding: 0;
-  }
   .studio .main-navigation {
-    padding: 0 8px;
+    padding: 12px 8px 0;
   }
   .studio .nav-item {
     justify-content: center;

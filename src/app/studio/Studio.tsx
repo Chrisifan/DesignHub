@@ -155,21 +155,6 @@ export const Studio = ({
       />
       <div className={`studio ${collapsed ? 'studio--compact' : ''}`}>
         <aside className="studio-sidebar">
-        <div className="sidebar-create">
-          <Button
-            icon="plus"
-            variant="primary"
-            onClick={() => {
-              setCreateMode('manual');
-              setDialog('project');
-            }}
-            aria-label={t(locale, '新建项目', 'New project')}
-          >
-            <span className="sidebar-label">
-              {t(locale, '新建项目', 'New project')}
-            </span>
-          </Button>
-        </div>
         <nav
           aria-label={t(locale, '主导航', 'Main navigation')}
           className="main-navigation"

@@ -25,6 +25,14 @@ for (const width of [1280, 1024]) {
             exact: true,
           }),
         ).toBeVisible();
+        const windowBar = page.locator('.window-bar');
+        await expect(
+          windowBar.getByRole('button', {
+            name: english ? 'Switch workspace' : '切换工作区',
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(page.locator('.studio-sidebar .sidebar-create')).toHaveCount(0);
         await page
           .getByRole('button', {
             name: english ? 'Spring in bloom' : '春间市集',

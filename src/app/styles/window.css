@@ -26,7 +26,7 @@ button { font: inherit; }
 }
 .window-bar-drag-region { flex: 1; height: 100%; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 0 16px; -webkit-app-region: drag; user-select: none; }
 .window-brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.window-brand-mark { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--primary); color: var(--on-primary); font: 600 15px/1 Geist, 'PingFang SC', sans-serif; letter-spacing: -1px; }
+.window-brand-mark { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--primary); color: var(--on-primary); font: 600 14px/1 Geist, 'PingFang SC', sans-serif; letter-spacing: -1px; }
 .window-bar-title { font-size: 12px; font-weight: 600; white-space: nowrap; }
 .window-bar-separator { width: 1px; height: 18px; flex: 0 0 1px; background: var(--shell-glass-border); }
 .window-workspace-switch { display: inline-flex; align-items: center; gap: 10px; min-width: 0; min-height: 30px; padding: 2px 8px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; -webkit-app-region: no-drag; }
