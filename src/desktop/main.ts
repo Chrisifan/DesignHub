@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { createWorkspaceHandler, workspaceChannel } from './ipc/workspace';
+import { createContentSecurityPolicy } from './csp';
 import { recreateWindowOnActivate } from './lifecycle';
 import { createWindowOptions } from './window-options';
 
@@ -13,8 +14,9 @@ const createWindow = (): { window: BrowserWindow; trustedUrl: string } => {
   const options = createWindowOptions(process.platform);
   const window = new BrowserWindow({ ...options, webPreferences: { ...options.webPreferences, preload: join(__dirname, 'preload.cjs') } });
   const trustedUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL ?? pathToFileURL(join(__dirname, '../renderer/index.html')).toString();
+  const contentSecurityPolicy = createContentSecurityPolicy(Boolean(MAIN_WINDOW_VITE_DEV_SERVER_URL));
   window.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': ["default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'"] } });
+    callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [contentSecurityPolicy] } });
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event, url) => {
