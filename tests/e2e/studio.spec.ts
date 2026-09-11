@@ -234,6 +234,20 @@ test('reduced-transparency shell uses solid surfaces without blur', async ({
   }
 });
 
+test('persona-led creation keeps the selected designer across pages', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await page.goto('/?preview=1');
+  const navigation = page.getByRole('navigation', { name: '主导航' });
+  await navigation.getByRole('button', { name: '设计师', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '设计师', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /清晰商业/ }).click();
+  await expect(page.getByLabel('设计师检查器')).toContainText('清晰商业');
+  await page.getByRole('button', { name: '用于新建', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '新建设计', exact: true })).toBeVisible();
+  await expect(page.getByLabel('新建设计的当前设计师')).toContainText('清晰商业');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+});
+
 test('native dialog restores focus and retains a cancelled draft', async ({
   page,
 }) => {

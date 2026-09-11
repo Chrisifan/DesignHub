@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import { useEffect, useRef, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
 import { getPersona, localize } from './personas';
@@ -21,6 +21,17 @@ export const NewDesignPage = ({
   onCreate,
   onBack,
 }: NewDesignPageProps) => {
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    nameInputRef.current?.focus({ preventScroll: true });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      onBack();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
   const setMode = (mode: NewDesignDraft['mode']) =>
     onDraftChange({ ...draft, mode });
   const setPersona = (personaId: string) =>
@@ -48,7 +59,7 @@ export const NewDesignPage = ({
             </button>
           </div>
           <Field label={t(locale, '项目名称', 'Project name')}>
-            <input required maxLength={120} value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
+            <input ref={nameInputRef} required maxLength={120} value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
           </Field>
           {draft.mode === 'conversation' ? (
             <>

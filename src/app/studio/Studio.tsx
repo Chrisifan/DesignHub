@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { getMessages, type Locale } from '../i18n';
 import { WindowBar } from '../shell/WindowBar';
 import { exampleProjects } from './examples';
@@ -61,6 +61,7 @@ export const Studio = ({
   const [dialog, setDialog] = useState<'workspace' | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [notice, setNotice] = useState('');
+  const newDesignReturnFocus = useRef<HTMLElement | null>(null);
   const [draft, setDraft] = useState<NewDesignDraft>({
     name: '',
     goal: '',
@@ -165,6 +166,7 @@ export const Studio = ({
     navigate('delivery');
   };
   const openNewDesign = (mode: NewDesignDraft['mode'], personaId?: string) => {
+    newDesignReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDraft((previous) => ({
       ...previous,
       mode,
@@ -174,6 +176,15 @@ export const Studio = ({
     setView('projects');
     setSelected(null);
     setDocumentOpen(false);
+  };
+  const backFromNewDesign = () => {
+    setSurface('projects');
+    window.requestAnimationFrame(() => {
+      const projectCreateButton = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('.projects-page .heading-actions button'),
+      ).find((button) => button.textContent?.includes('新建项目') || button.textContent?.includes('New project'));
+      (projectCreateButton ?? newDesignReturnFocus.current)?.focus({ preventScroll: true });
+    });
   };
   return (
     <>
@@ -277,7 +288,7 @@ export const Studio = ({
               draft={draft}
               onDraftChange={setDraft}
               onCreate={createProject}
-              onBack={() => setSurface('projects')}
+              onBack={backFromNewDesign}
             />
           )}
           {surface === 'projects' && view === 'projects' && !selected && (
