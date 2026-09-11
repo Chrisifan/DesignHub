@@ -8,6 +8,7 @@ import { NewDesignPage } from './NewDesignPage';
 import { PersonaArtwork } from './PersonaArtwork';
 import { getPersona } from './personas';
 import { Workbench } from './Workbench';
+import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
 import {
   ArtworkPreview,
   Badge,
@@ -37,6 +38,7 @@ const navigation: { view: View; icon: string; zh: string; en: string }[] = [
 type StudioProps = {
   locale: Locale;
   theme: Theme;
+  workspace?: WorkspaceDescriptor | null;
   onLocaleChange: (locale: Locale) => void;
   onThemeChange: (theme: Theme) => void;
   onExit: () => void;
@@ -45,13 +47,14 @@ type StudioProps = {
 export const Studio = ({
   locale,
   theme,
+  workspace = null,
   onLocaleChange,
   onThemeChange,
   onExit,
 }: StudioProps) => {
   const [view, setView] = useState<View>('projects');
   const [surface, setSurface] = useState<StudioSurface>('projects');
-  const [projects, setProjects] = useState(exampleProjects);
+  const [projects, setProjects] = useState(() => (workspace ? [] : exampleProjects));
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'active' | 'archived' | 'all'>('active');
   const [display, setDisplay] = useState<'grid' | 'list'>('grid');
@@ -70,6 +73,13 @@ export const Studio = ({
     size: '1080 × 1440',
     mode: 'manual',
   });
+  useEffect(() => {
+    setProjects(workspace ? [] : exampleProjects);
+    setSelected(null);
+    setDocumentOpen(false);
+    setView('projects');
+    setSurface('projects');
+  }, [workspace?.workspaceId]);
   const navigate = (next: View) => {
     setView(next);
     setSurface(next);
@@ -240,11 +250,15 @@ export const Studio = ({
         nativeControlSide={nativeControlSide}
         onLocaleChange={onLocaleChange}
         onThemeChange={onThemeChange}
-        previewLabel={t(locale, '示例预览', 'Example preview')}
+        previewLabel={workspace ? undefined : t(locale, '示例预览', 'Example preview')}
         themeLabel={t(locale, '切换主题', 'Switch theme')}
         workspace={{
-          name: t(locale, '我的设计空间', 'My design studio'),
-          detail: t(locale, '示例工作区', 'Example workspace'),
+          name: workspace?.name ?? t(locale, '我的设计空间', 'My design studio'),
+          detail: workspace
+            ? workspace.openMode === 'read-only'
+              ? t(locale, '只读工作区', 'Read-only workspace')
+              : t(locale, '本地工作区', 'Local workspace')
+            : t(locale, '示例工作区', 'Example workspace'),
           label: t(locale, '切换工作区', 'Switch workspace'),
           onClick: () => setDialog('workspace'),
         }}
@@ -328,7 +342,7 @@ export const Studio = ({
             )}
             <span className="toolbar-divider" />
             <span className="toolbar-workspace">
-              {t(locale, '我的设计空间', 'My design studio')}
+              {workspace?.name ?? t(locale, '我的设计空间', 'My design studio')}
             </span>
             <Icon name="chevron-right" size={14} />
             <span className="breadcrumb-current">
@@ -678,8 +692,16 @@ export const Studio = ({
             <Icon name="hard-drive" size={12} />
             {t(
               locale,
-              '示例工作区 · 仅本次预览',
-              'Example workspace · Session only',
+              workspace
+                ? workspace.openMode === 'read-only'
+                  ? '只读工作区'
+                  : '本地工作区'
+                : '示例工作区 · 仅本次预览',
+              workspace
+                ? workspace.openMode === 'read-only'
+                  ? 'Read-only workspace'
+                  : 'Local workspace'
+                : 'Example workspace · Session only',
             )}
           </span>
           <span>
@@ -710,18 +732,22 @@ export const Studio = ({
           locale={locale}
         >
           <p className="muted">
-            {t(
-              locale,
-              '示例修改仅在本次预览中保留，离开示例后会清除。',
-              'Example edits stay in this preview and are cleared when you leave it.',
-            )}
+            {workspace
+              ? workspace.openMode === 'read-only'
+                ? t(locale, '当前工作区为只读模式。', 'This workspace is read-only.')
+                : t(locale, '当前工作区保存在本机目录。', 'This workspace is stored in a local folder.')
+              : t(locale, '示例修改仅在本次预览中保留，离开示例后会清除。', 'Example edits stay in this preview and are cleared when you leave it.')}
           </p>
           <button className="workspace-choice" onClick={() => setDialog(null)}>
-            <span className="workspace-monogram">D</span>
+            <span className="workspace-monogram">{workspace?.name.slice(0, 1).toUpperCase() ?? 'D'}</span>
             <span>
-              <strong>{t(locale, '我的设计空间', 'My design studio')}</strong>
+              <strong>{workspace?.name ?? t(locale, '我的设计空间', 'My design studio')}</strong>
               <small>
-                {t(locale, '示例工作区 · 当前', 'Example workspace · Current')}
+                {workspace
+                  ? workspace.openMode === 'read-only'
+                    ? t(locale, '只读工作区 · 当前', 'Read-only workspace · Current')
+                    : t(locale, '本地工作区 · 当前', 'Local workspace · Current')
+                  : t(locale, '示例工作区 · 当前', 'Example workspace · Current')}
               </small>
             </span>
             <Icon name="check" />

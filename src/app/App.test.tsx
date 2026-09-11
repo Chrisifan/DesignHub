@@ -85,3 +85,95 @@ it('opens the desktop application directly in the workspace shell', () => {
   expect(screen.getByRole('heading', { name: '项目库' })).toBeVisible();
   expect(screen.queryByRole('heading', { name: '开始本地创作' })).toBeNull();
 });
+
+it('creates a real workspace from the welcome form instead of entering example mode', async () => {
+  const createWorkspace = vi.fn(async ({ parentDirectory, name }: { parentDirectory: string; name: string }) => ({
+    workspaceId: 'workspace-created',
+    name,
+    directory: `${parentDirectory}/${name}`,
+    formatVersion: 1,
+    openMode: 'writable' as const,
+  }));
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => '/tmp/designhub-parent',
+    createWorkspace,
+    openWorkspace: async () => null,
+  } as never;
+  render(<App />);
+
+  fireEvent.click(screen.getByRole('button', { name: '新建工作区' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '工作区名称' }), {
+    target: { value: '我的真实空间' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '选择目录' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '创建' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+
+  await waitFor(() => expect(createWorkspace).toHaveBeenCalledWith({
+    parentDirectory: '/tmp/designhub-parent',
+    name: '我的真实空间',
+  }));
+  expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('我的真实空间');
+  expect(screen.getByRole('heading', { name: '项目库' })).toBeVisible();
+});
+
+it('opens a selected workspace and preserves read-only mode in the shell', async () => {
+  const openWorkspace = vi.fn(async (directory: string) => ({
+    workspaceId: 'workspace-opened',
+    name: '只读空间',
+    directory,
+    formatVersion: 3,
+    openMode: 'read-only' as const,
+  }));
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => '/tmp/designhub-workspace',
+    createWorkspace: async () => null,
+    openWorkspace,
+  } as never;
+  render(<App />);
+
+  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
+
+  await waitFor(() => expect(openWorkspace).toHaveBeenCalledWith('/tmp/designhub-workspace'));
+  expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('只读空间');
+  expect(screen.getByRole('heading', { name: '项目库' })).toBeVisible();
+});
+
+it('keeps the create form when workspace storage rejects the request', async () => {
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => '/tmp/designhub-parent',
+    createWorkspace: async () => {
+      throw new Error('WORKSPACE_EXISTS');
+    },
+  };
+  render(<App />);
+
+  fireEvent.click(screen.getByRole('button', { name: '新建工作区' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '工作区名称' }), {
+    target: { value: '重复空间' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '选择目录' }));
+  const createButton = await screen.findByRole('button', { name: '创建' });
+  await waitFor(() => expect(createButton).toBeEnabled());
+  fireEvent.click(createButton);
+
+  await screen.findByText('无法创建工作区，请检查名称和目录。');
+  expect(screen.getByRole('textbox', { name: '工作区名称' })).toHaveValue('重复空间');
+  expect(screen.getByRole('textbox', { name: '本地目录' })).toHaveValue('/tmp/designhub-parent');
+  expect(screen.getByRole('heading', { name: '开始本地创作' })).toBeVisible();
+});
+
+it('keeps the welcome shell when opening a workspace fails', async () => {
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => '/tmp/invalid-workspace',
+    openWorkspace: async () => {
+      throw new Error('INVALID_WORKSPACE_MANIFEST');
+    },
+  };
+  render(<App />);
+
+  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
+
+  await screen.findByText('无法打开工作区，请确认目录有效。');
+  expect(screen.getByRole('heading', { name: '开始本地创作' })).toBeVisible();
+});

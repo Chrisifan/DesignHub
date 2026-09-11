@@ -1,7 +1,9 @@
 import type { DesktopApi } from './contracts';
 
 const unavailableDesktopApi: DesktopApi = {
-  chooseWorkspaceDirectory: async () => null
+  chooseWorkspaceDirectory: async () => null,
+  createWorkspace: async () => null,
+  openWorkspace: async () => null,
 };
 
 export const getDesktopApi = (): DesktopApi => {

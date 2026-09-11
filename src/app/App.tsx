@@ -5,6 +5,7 @@ import { WindowBar } from './shell/WindowBar';
 import { Studio } from './studio/Studio';
 import { Button, Field, Icon, Modal, t } from './studio/ui';
 import type { Theme } from './studio/types';
+import type { WorkspaceDescriptor } from '../features/workspace/open-workspace';
 import { getDesktopApi } from '../platform/desktop';
 import './styles/tokens.css';
 import './styles/window.css';
@@ -41,6 +42,7 @@ export const App = () => {
   const [workspaceName, setWorkspaceName] = useState('');
   const [directory, setDirectory] = useState('');
   const [workspaceError, setWorkspaceError] = useState('');
+  const [workspace, setWorkspace] = useState<WorkspaceDescriptor | null>(null);
   const changeLocale = (value: Locale) => {
     setLocale(value);
     savePreference('designhub.ui.locale', value);
@@ -66,7 +68,7 @@ export const App = () => {
       delete document.documentElement.dataset.theme;
     };
   }, [theme]);
-  const chooseWorkspaceDirectory = async (): Promise<void> => {
+  const chooseWorkspaceDirectory = async (purpose: 'create' | 'open' = 'create'): Promise<void> => {
     setWorkspaceError('');
     if (!window.designhub) {
       setWorkspaceError(
@@ -78,19 +80,9 @@ export const App = () => {
       );
       return;
     }
+    let path: string | null = null;
     try {
-      const path = await getDesktopApi().chooseWorkspaceDirectory();
-      if (path) {
-        setDirectory(path);
-        setWorkspaceForm(true);
-        setWorkspaceError(
-          t(
-            locale,
-            '目录已选择，工作区读写能力尚未接入。',
-            'Folder selected. Workspace storage is not connected yet.',
-          ),
-        );
-      }
+      path = await getDesktopApi().chooseWorkspaceDirectory();
     } catch {
       setWorkspaceError(
         t(
@@ -99,8 +91,60 @@ export const App = () => {
           'Could not open the folder chooser. Your input is preserved; please retry.',
         ),
       );
+      return;
+    }
+    if (!path) return;
+    if (purpose === 'open') {
+      try {
+        const opened = await getDesktopApi().openWorkspace?.(path);
+        if (!opened) {
+          setWorkspaceError(
+            t(locale, '无法打开工作区，请确认目录有效。', 'Could not open the workspace. Check that the folder is valid.'),
+          );
+          return;
+        }
+        setWorkspace(opened);
+        setWorkspaceForm(false);
+        setEntered(true);
+      } catch {
+        setWorkspaceError(
+          t(locale, '无法打开工作区，请确认目录有效。', 'Could not open the workspace. Check that the folder is valid.'),
+        );
+      }
+      return;
+    }
+    setDirectory(path);
+    setWorkspaceForm(true);
+  };
+  const createWorkspaceFromForm = async (): Promise<void> => {
+    const name = workspaceName.trim();
+    if (!name || !directory) return;
+    setWorkspaceError('');
+    try {
+      const created = await getDesktopApi().createWorkspace?.({
+        parentDirectory: directory,
+        name,
+      });
+      if (!created) {
+        setWorkspaceError(
+          t(locale, '当前环境无法创建工作区。', 'Workspace creation is unavailable in this environment.'),
+        );
+        return;
+      }
+      setWorkspace(created);
+      setWorkspaceName('');
+      setDirectory('');
+      setWorkspaceForm(false);
+      setEntered(true);
+    } catch {
+      setWorkspaceError(
+        t(locale, '无法创建工作区，请检查名称和目录。', 'Could not create the workspace. Check the name and folder.'),
+      );
     }
   };
+  const canCreateWorkspace = Boolean(
+    workspaceName.trim() && directory && getDesktopApi().createWorkspace,
+  );
 
   return (
     <main className="app-shell" aria-label={copy.appName} data-theme={theme}>
@@ -119,6 +163,7 @@ export const App = () => {
         <Studio
           locale={locale}
           theme={theme}
+          workspace={workspace}
           onLocaleChange={changeLocale}
           onThemeChange={changeTheme}
           onExit={() => setEntered(false)}
@@ -133,7 +178,10 @@ export const App = () => {
               type="button"
               className="button button-primary"
               aria-label={copy.newWorkspaceLabel}
-              onClick={() => setWorkspaceForm(true)}
+              onClick={() => {
+                setWorkspaceError('');
+                setWorkspaceForm(true);
+              }}
             >
               {copy.newWorkspace}
             </button>
@@ -141,7 +189,7 @@ export const App = () => {
               type="button"
               className="button button-secondary"
               aria-label={copy.openWorkspaceLabel}
-              onClick={chooseWorkspaceDirectory}
+              onClick={() => chooseWorkspaceDirectory('open')}
             >
               {copy.openWorkspace}
             </button>
@@ -206,17 +254,15 @@ export const App = () => {
               )}
             />
           </Field>
-          <Button icon="folder-open" onClick={chooseWorkspaceDirectory}>
+          <Button icon="folder-open" onClick={() => chooseWorkspaceDirectory('create')}>
             {t(locale, '选择目录', 'Choose folder')}
           </Button>
           <p className="inline-notice">
             <Icon name="circle-help" size={16} />
             {workspaceError ||
-              t(
-                locale,
-                '工作区存储尚未接入，可以先浏览示例体验完整界面。',
-                'Workspace storage is not connected yet. Explore the example to preview the interface.',
-              )}
+              (getDesktopApi().createWorkspace
+                ? t(locale, '选择父目录并填写名称后创建。', 'Choose a parent folder and name to create the workspace.')
+                : t(locale, '工作区存储尚未接入，可以先浏览示例体验完整界面。', 'Workspace storage is not connected yet. Explore the example to preview the interface.'))}
           </p>
           <div className="dialog-actions">
             <Button
@@ -227,7 +273,11 @@ export const App = () => {
             >
               {t(locale, '浏览示例', 'Explore example')}
             </Button>
-            <Button variant="primary" disabled>
+            <Button
+              variant="primary"
+              disabled={!canCreateWorkspace}
+              onClick={createWorkspaceFromForm}
+            >
               {t(locale, '创建', 'Create workspace')}
             </Button>
           </div>

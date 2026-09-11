@@ -1,3 +1,3 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig({ build: { lib: { entry: 'src/desktop/preload.ts', formats: ['cjs'], fileName: 'preload' }, outDir: '.vite/build', rollupOptions: { external: ['electron'] } } });
+export default defineConfig({ build: { lib: { entry: 'src/desktop/preload.ts', formats: ['cjs'], fileName: 'preload' }, outDir: '.vite/build', emptyOutDir: false, rollupOptions: { external: ['electron'] } } });

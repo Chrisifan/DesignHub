@@ -5,7 +5,7 @@
 | 模块 | 当前状态 | 实现前测试/清单文件 | 必须回归的直接消费者 |
 | --- | --- | --- | --- |
 | M01 | 部分验证；基础外壳、bridge、规则、构建与 macOS 原生 smoke 已完成，双平台/发布门禁开放 | [M01 记录](M01.md) | M02–M08 |
-| M02 | 实施中；Tasks 1–2 工作区格式、单写者锁、原子项目存储与恢复已完成；Tasks 3–4、UI、Windows 与发布验证开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
+| M02 | 实施中；Tasks 1–5 工作区格式、单写者锁、项目/废纸篓/备份存储与 Electron 工作区入口已完成；项目持久化 UI、Windows 与发布验证开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
 | M03 | 计划已写，分析依赖 M06 | `docs/verification/M03.md` | M04、M06、M07、M08 |
 | M04 | 计划已写，对话依赖 M06 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
 | M05 | 计划已写，待上游 | `docs/verification/M05.md` | M06、M07、M08 |
@@ -55,6 +55,7 @@
 2026-09-12：UI 布局回归（变更 ID UI-20260912-01）。目标文件为 `src/app/styles/tokens.css`、`src/app/styles/studio.css`、`src/app/studio/library.css`、`src/app/studio/persona.css`；影响 M01 基础 UI、M03 设计师库、M04 项目/素材页及 M07 导出/模型页的布局契约。主内容容器改为无外层卡片背景/边框/圆角/阴影，独立项目卡保留卡片样式；页面内容、设计师列表和检查器明确内部滚动所有者，并统一 6px 双主题滚动条 token。先执行契约 Red，再实现 Green；layout-contract 3/3、unit 56/56、integration 65/65、lint、typecheck、build、diff check 均通过。Playwright E2E 因环境缺少 Chromium 可执行文件未完成，下载尝试无结果，未记为通过；需在具备浏览器运行时后补 UI01–UI10 及双语/主题回归。
 2026-09-12：UI 布局回归（变更 ID UI-20260912-02）。针对截图反馈，目标文件为 `src/app/studio/library.css`、`src/app/studio/persona.css` 与 `tests/integration/layout-contract.test.ts`。主分栏区域改为 flex 填满页面可用高度并保持左右拉伸对齐；素材网格与搜索框共享左基线；品牌列表与详情顶部对齐；交付空态与原稿 footer 样式隔离；设置页移除孤立首尾分割线；设计师页使用高特异性规则关闭外层滚动，仅保留列表/检查器内部滚动。先新增 4 条失败契约再实现；layout-contract 4/4、unit 56/56、integration 66/66、lint、typecheck、build、diff check 均通过。浏览器截图回归仍受同一 Playwright Chromium 前提阻塞，未记为通过。
 2026-09-12：设计师页滚动边界回归（变更 ID UI-20260912-03）。用户反馈设计师页面外侧仍存在滚动；目标文件为 `src/app/styles/window.css`、`src/app/styles/studio.css`、`tests/integration/layout-contract.test.ts`、`tests/e2e/studio.spec.ts` 与 UI 验收文档。根节点/应用壳层/Studio 现在固定在窗口视口并裁剪外层溢出，Studio 不再使用 680px 人工最小高度；设计师列表和检查器保留内部滚动所有权。先收紧正则并新增 1 条失败契约，随后实现 Green；layout-contract 5/5、integration 67/67、unit 56/56、lint、typecheck、build、diff check 均通过；设计师专项浏览器旅程 1/1 通过。同步将与“标题由面包屑承载”冲突的 E2E 可见性断言改为节点存在性，并在导航矩阵加入 1280/1024 外层纵向溢出断言；最近一次完整浏览器套件 14/16，余下 2 条为 headless 毛玻璃断言环境差异，未归因于本次滚动改动。新增矩阵断言后的完整重跑因本地提权审批超时未执行，不伪记为通过。
+2026-09-12：M02 Task 5 工作区入口与 Electron bridge（变更 ID M02-20260912-01）。目标文件为 `src/platform/contracts.ts`、`src/platform/desktop.ts`、`src/desktop/preload.ts`、`src/desktop/ipc/workspace.ts`、`src/desktop/main.ts`、`src/app/App.tsx`、`src/app/studio/Studio.tsx`、`vite.preload.config.ts` 及相关测试。新增受信 sender/origin 下的创建/打开 handler、typed preload API、main-only `WorkspaceHandle` 替换与关闭、欢迎页真实创建/打开流程；真实工作区不再注入示例项目。先执行 focused Red（4 failures），再 Green；unit 60/60、integration 68/68、lint、typecheck、build、diff check 通过；macOS native 2 passed/1 skipped。构建回归发现 preload 清空共享输出目录会删除 `main.cjs`，新增配置契约并修复为保留主进程产物。E03 目前为代码审查证据，双工作区原生切换 harness、Windows、打包 artifact 与项目持久化 UI 仍开放。
 
 选择回归范围的规则：
 

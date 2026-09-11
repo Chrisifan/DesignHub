@@ -2,16 +2,25 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { createWorkspaceHandler, workspaceChannel } from './ipc/workspace';
+import {
+  createWorkspaceFromParentHandler,
+  createWorkspaceHandler,
+  openWorkspaceHandler,
+  workspaceChannel,
+  workspaceCreateChannel,
+  workspaceOpenChannel,
+} from './ipc/workspace';
 import { createContentSecurityPolicy } from './csp';
 import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore } from './storage/project-store';
 import { runStorageSmoke } from './storage/storage-smoke';
+import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
 import { createWindowOptions } from './window-options';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
+let activeWorkspaceHandle: WorkspaceHandle | null = null;
 
 export const createMainProjectStore = (workspace: WorkspaceHandle) => createProjectStore(workspace);
 
@@ -37,7 +46,20 @@ const createWindow = (): { window: BrowserWindow; trustedUrl: string } => {
   }
   activeWindow = window;
   activeTrustedUrl = trustedUrl;
+  window.on('closed', () => {
+    if (activeWindow !== window) return;
+    activeWindow = null;
+    activeTrustedUrl = null;
+    activeWorkspaceHandle?.close();
+    activeWorkspaceHandle = null;
+  });
   return { window, trustedUrl };
+};
+
+const activateWorkspace = (workspace: WorkspaceHandle): WorkspaceHandle => {
+  activeWorkspaceHandle?.close();
+  activeWorkspaceHandle = workspace;
+  return workspace;
 };
 
 app.whenReady().then(() => {
@@ -50,9 +72,27 @@ app.whenReady().then(() => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createWorkspaceHandler(activeWindow, activeTrustedUrl, (browserWindow) => dialog.showOpenDialog(browserWindow, { properties: ['openDirectory', 'createDirectory'] }))(event);
   });
+  ipcMain.handle(workspaceCreateChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createWorkspaceFromParentHandler(
+      activeWindow,
+      activeTrustedUrl,
+      async (workspaceInput) => activateWorkspace(await createWorkspace(workspaceInput)),
+    )(event, input);
+  });
+  ipcMain.handle(workspaceOpenChannel, async (event, directory) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return openWorkspaceHandler(
+      activeWindow,
+      activeTrustedUrl,
+      async (workspaceDirectory) => activateWorkspace(await openWorkspace(workspaceDirectory)),
+    )(event, directory);
+  });
 });
 
 app.on('window-all-closed', () => {
+  activeWorkspaceHandle?.close();
+  activeWorkspaceHandle = null;
   if (process.platform !== 'darwin') app.quit();
 });
 
