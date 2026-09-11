@@ -211,6 +211,27 @@
 :root {
   font-family:
     Inter, 'PingFang SC', 'Microsoft YaHei UI', 'Noto Sans CJK SC', sans-serif;
+  /* Shared layout contract: compact chrome, unframed main content, one page scroll owner. */
+  --toolbar-control-height: 28px;
+  --toolbar-control-padding-inline: 8px;
+  --toolbar-control-icon-size: 14px;
+  --content-card-background: transparent;
+  --content-card-radius: 0;
+  --content-card-shadow: none;
+  --content-panel-min-height: 520px;
+  --scrollbar-size: 6px;
+  --scrollbar-radius: 999px;
+  --scrollbar-track: color-mix(
+    in srgb,
+    var(--surface-container-lowest) 72%,
+    transparent
+  );
+  --scrollbar-thumb: color-mix(in srgb, var(--on-surface) 28%, transparent);
+  --scrollbar-thumb-hover: color-mix(
+    in srgb,
+    var(--on-surface) 46%,
+    transparent
+  );
   --border-subtle: color-mix(in srgb, var(--outline-variant) 45%, transparent);
   --shadow-overlay: 0 20px 80px rgba(0, 0, 0, 0.28);
   --art-paper: #dedfc4;

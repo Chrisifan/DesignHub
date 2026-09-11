@@ -52,6 +52,10 @@
 
 2026-09-10：M02 Task 2 增加 main-only 项目存储、Electron storage smoke、Vite native external 和 Forge 精确保留规则，影响 M01 main/build/package。unit 13/13、integration 29/29、lint/typecheck/build 通过；本地镜像下 macOS arm64 package 与 source/packaged storage smoke 2/2 曾通过，并确认 `.node` 位于 `app.asar.unpacked`。随后只增加项目完整性校验与回归测试，最终树重打包和 native 套件请求被审批策略拒绝，因此 Windows、最终 artifact、签名安装和 UI 仍保持开放，未伪记为已验证。
 
+2026-09-12：UI 布局回归（变更 ID UI-20260912-01）。目标文件为 `src/app/styles/tokens.css`、`src/app/styles/studio.css`、`src/app/studio/library.css`、`src/app/studio/persona.css`；影响 M01 基础 UI、M03 设计师库、M04 项目/素材页及 M07 导出/模型页的布局契约。主内容容器改为无外层卡片背景/边框/圆角/阴影，独立项目卡保留卡片样式；页面内容、设计师列表和检查器明确内部滚动所有者，并统一 6px 双主题滚动条 token。先执行契约 Red，再实现 Green；layout-contract 3/3、unit 56/56、integration 65/65、lint、typecheck、build、diff check 均通过。Playwright E2E 因环境缺少 Chromium 可执行文件未完成，下载尝试无结果，未记为通过；需在具备浏览器运行时后补 UI01–UI10 及双语/主题回归。
+2026-09-12：UI 布局回归（变更 ID UI-20260912-02）。针对截图反馈，目标文件为 `src/app/studio/library.css`、`src/app/studio/persona.css` 与 `tests/integration/layout-contract.test.ts`。主分栏区域改为 flex 填满页面可用高度并保持左右拉伸对齐；素材网格与搜索框共享左基线；品牌列表与详情顶部对齐；交付空态与原稿 footer 样式隔离；设置页移除孤立首尾分割线；设计师页使用高特异性规则关闭外层滚动，仅保留列表/检查器内部滚动。先新增 4 条失败契约再实现；layout-contract 4/4、unit 56/56、integration 66/66、lint、typecheck、build、diff check 均通过。浏览器截图回归仍受同一 Playwright Chromium 前提阻塞，未记为通过。
+2026-09-12：设计师页滚动边界回归（变更 ID UI-20260912-03）。用户反馈设计师页面外侧仍存在滚动；目标文件为 `src/app/styles/window.css`、`src/app/styles/studio.css`、`tests/integration/layout-contract.test.ts`、`tests/e2e/studio.spec.ts` 与 UI 验收文档。根节点/应用壳层/Studio 现在固定在窗口视口并裁剪外层溢出，Studio 不再使用 680px 人工最小高度；设计师列表和检查器保留内部滚动所有权。先收紧正则并新增 1 条失败契约，随后实现 Green；layout-contract 5/5、integration 67/67、unit 56/56、lint、typecheck、build、diff check 均通过；设计师专项浏览器旅程 1/1 通过。同步将与“标题由面包屑承载”冲突的 E2E 可见性断言改为节点存在性，并在导航矩阵加入 1280/1024 外层纵向溢出断言；最近一次完整浏览器套件 14/16，余下 2 条为 headless 毛玻璃断言环境差异，未归因于本次滚动改动。新增矩阵断言后的完整重跑因本地提权审批超时未执行，不伪记为通过。
+
 选择回归范围的规则：
 
 - 改依赖、宿主、公共类型或原生桥接：测试所有直接消费者，必要时跑完整关键旅程。

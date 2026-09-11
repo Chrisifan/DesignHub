@@ -13,6 +13,7 @@ Date: 2026-09-09. Scope: P01–P20 UI navigation, example-session interaction an
 | UF07 | Workbench controls are decorative | Layer selection/visibility, zoom, grid and panel changes update the view. |
 | UF08 | Responsive chrome hides primary actions | 1280×800 / 1024×720, zh/en, dark/light have no unintended page overflow; inspector can be dismissed. |
 | UF09 | Prior M01 contracts regress | Existing unit/integration, lint, typecheck and build pass; host files untouched. |
+| UF10 | Designer page leaks scroll to the document shell | `html`, `body`, `#root`, app shell and Studio clip outer overflow; only the designer repository list and inspector own vertical scrolling. |
 
 Execution: UI scope verified; native and business gates remain separate. Native macOS/Windows materials, IME, packaged host, filesystem persistence and real provider calls are outside this UI result.
 
@@ -44,7 +45,7 @@ Execution: UI scope verified; native and business gates remain separate. Native 
 
 ### UI acceptance boundary
 
-UF01–UF09 pass within the browser/UI scope above. UI02, UI05–UI07 are exercised by browser tests; reduced motion/transparency rules and stable artwork theme colors are implemented. True OS scaling, font/IME behavior, native macOS/Windows material and window operations, real canvas performance and release packaging remain native acceptance work. This framework does not mark full UI01–UI10, M01, or M02–M08 verified.
+UF01–UF09 retain their recorded browser/UI evidence; UF10 passes the CSS/integration contract and the focused designer browser journey. The full browser suite currently reports 14/16: the two remaining failures are the pre-existing headless shell-material `backdrop-filter: blur()` expectation, not the designer overflow path. UI02, UI05–UI07 are exercised by browser tests; reduced motion/transparency rules and stable artwork theme colors are implemented. True OS scaling, font/IME behavior, native macOS/Windows material and window operations, real canvas performance and release packaging remain native acceptance work. This framework does not mark full UI01–UI10, M01, or M02–M08 verified.
 
 Preview state is session-only. Theme and locale are the only preferences persisted by this framework; it creates no real workspaces, publishes no designer profiles, connects no providers and renders/exports no real design files. The creation form exposes only the currently supported 1080×1440 preview size. Other document thumbnails explain their pending backend rather than showing fake success.
 
@@ -78,3 +79,12 @@ Date: 2026-09-11. Scope: persona-led project creation, designer repository, insp
 - Verification: `pnpm test:unit` → 19 files / 54 tests; `pnpm lint`, `pnpm typecheck`, and `pnpm build` exit 0. Focused persona tests cover repository filtering, inspector actions, CRUD session state, rights gating, candidate selection and preview publish disclosure.
 - The slice changes renderer UI state only. Real profile persistence, workspace folders, model providers, image generation, portfolio fetching and native Electron file access remain open and must be validated in their owning modules.
 - Chrome UI regression: the new persona handoff test passes at 1024px, and the existing suite reached 15/16 tests before the legacy focus assertion exposed the page-surface transition. The new-design page now focuses its name field on entry, handles Escape, and explicitly restores the project-page create control; the focused rerun was interrupted by the local browser approval timeout, so this final focus assertion remains to be rerun in an unrestricted browser environment.
+
+## Designer Outer-Scroll Regression
+
+Date: 2026-09-12. Scope: document-level overflow ownership for the designer repository page.
+
+- Contract Red: `layout-contract.test.ts` first failed because `html/body/#root` had no overflow clip, `.app-shell` had no explicit viewport height, and `.studio` retained a 680px minimum height.
+- Green implementation: root nodes and app shell now clip outer overflow; `.studio` uses `min-height: 0` and clips its grid boundary; the repository list and inspector remain the only designer-page vertical scroll owners.
+- Browser evidence: focused persona journey 1/1 passed at 1024×720. Direct metrics were `document/body/#root = 720px`, designer page `608px`, inspector `888px` content over `538px` client height, confirming internal scrolling without document scrolling.
+- Static verification: unit 56/56, integration 67/67, lint, typecheck, build and `git diff --check` passed. The latest complete browser run was 14/16; the focused persona journey was 1/1. Two shell-material assertions remain environment-specific as described above. The follow-up run after adding the 1280/1024 designer matrix assertion was blocked by the local提权 approval timeout, so it is not counted as executed.

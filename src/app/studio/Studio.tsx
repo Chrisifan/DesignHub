@@ -181,11 +181,56 @@ export const Studio = ({
     setSurface('projects');
     window.requestAnimationFrame(() => {
       const projectCreateButton = Array.from(
-        document.querySelectorAll<HTMLButtonElement>('.projects-page .heading-actions button'),
+        document.querySelectorAll<HTMLButtonElement>('.studio-toolbar .toolbar-actions button'),
       ).find((button) => button.textContent?.includes('新建项目') || button.textContent?.includes('New project'));
       (projectCreateButton ?? newDesignReturnFocus.current)?.focus({ preventScroll: true });
     });
   };
+  const breadcrumbTitle =
+    surface === 'new-design'
+      ? t(locale, '新建设计', 'New design')
+      : selected
+        ? projectName(selected)
+        : t(locale, title.zh, title.en);
+  const toolbarActions =
+    surface === 'projects' && view === 'projects' && !documentOpen && !selected ? (
+      <>
+        <Button
+          icon="message-square"
+          variant="ai"
+          onClick={() => openNewDesign('conversation')}
+        >
+          {t(locale, '对话创建', 'Create with chat')}
+        </Button>
+        <Button
+          icon="plus"
+          variant="primary"
+          onClick={() => openNewDesign('manual')}
+        >
+          {t(locale, '新建项目', 'New project')}
+        </Button>
+      </>
+    ) : surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
+      <>
+        <Button icon="download" onClick={() => openDelivery(selected)}>
+          {t(locale, '导出交付', 'Delivery')}
+        </Button>
+        <Button
+          variant="primary"
+          icon="file-image"
+          onClick={() => setDocumentOpen(true)}
+        >
+          {t(locale, '继续编辑', 'Open workbench')}
+        </Button>
+      </>
+    ) : view === 'assets' ? (
+      <span className="disabled-action">
+        <Button icon="upload" disabled>
+          {t(locale, '导入', 'Import')}
+        </Button>
+        <small>{t(locale, '需要桌面文件能力', 'Desktop file access required')}</small>
+      </span>
+    ) : null;
   return (
     <>
       <WindowBar
@@ -264,22 +309,33 @@ export const Studio = ({
         </div>
         </aside>
         <div className="studio-main">
-        <header className="studio-toolbar">
+        <header
+          className="studio-toolbar"
+          aria-label={t(locale, '工作区工具栏', 'Workspace toolbar')}
+        >
           <div className="toolbar-location">
             <IconButton
               name="panel-left"
               label={t(locale, '切换侧栏', 'Toggle sidebar')}
               onClick={() => setCollapsed(!collapsed)}
             />
+            {surface === 'new-design' && (
+              <IconButton
+                name="arrow-left"
+                label={t(locale, '返回', 'Back')}
+                onClick={backFromNewDesign}
+              />
+            )}
             <span className="toolbar-divider" />
             <span className="toolbar-workspace">
               {t(locale, '我的设计空间', 'My design studio')}
             </span>
             <Icon name="chevron-right" size={14} />
             <span className="breadcrumb-current">
-              {selected ? projectName(selected) : t(locale, title.zh, title.en)}
+              {breadcrumbTitle}
             </span>
           </div>
+          <div className="toolbar-actions">{toolbarActions}</div>
         </header>
         <div className="studio-body">
           {surface === 'new-design' && (
@@ -301,22 +357,7 @@ export const Studio = ({
                   'From the first idea to a complete collection.',
                 )}
                 eyebrow={t(locale, '工作区 / 创作', 'WORKSPACE / CREATE')}
-              >
-                <Button
-                  icon="message-square"
-                  variant="ai"
-                  onClick={() => openNewDesign('conversation')}
-                >
-                  {t(locale, '对话创建', 'Create with chat')}
-                </Button>
-                <Button
-                  icon="plus"
-                  variant="primary"
-                  onClick={() => openNewDesign('manual')}
-                >
-                  {t(locale, '新建项目', 'New project')}
-                </Button>
-              </PageHeader>
+              />
               <div className="project-controls">
                 <div
                   className="tab-strip"
@@ -479,13 +520,6 @@ export const Studio = ({
           )}
           {surface === 'projects' && view === 'projects' && selected && !documentOpen && (
             <section className="page-content project-detail">
-              <Button
-                icon="arrow-left"
-                variant="ghost"
-                onClick={() => setSelected(null)}
-              >
-                {t(locale, '返回列表', 'Back to projects')}
-              </Button>
               <PageHeader
                 title={projectName(selected)}
                 description={t(
@@ -498,18 +532,7 @@ export const Studio = ({
                   '设计项目 / 示例',
                   'DESIGN PROJECT / EXAMPLE',
                 )}
-              >
-                <Button icon="download" onClick={() => openDelivery(selected)}>
-                  {t(locale, '导出交付', 'Delivery')}
-                </Button>
-                <Button
-                  variant="primary"
-                  icon="file-image"
-                  onClick={() => setDocumentOpen(true)}
-                >
-                  {t(locale, '继续编辑', 'Open workbench')}
-                </Button>
-              </PageHeader>
+              />
               <DesignerHero
                 personaId={projectPersonaId(selected)}
                 locale={locale}

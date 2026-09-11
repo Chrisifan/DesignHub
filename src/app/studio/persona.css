@@ -185,20 +185,22 @@
 }
 
 .new-design-heading {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 0;
 }
 
 .new-design-heading h1 {
   margin: 0;
-  font-size: 24px;
-  line-height: 32px;
+  font-size: 22px;
+  line-height: 28px;
 }
 
 .new-design-heading .section-kicker {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .new-design-layout {
@@ -333,7 +335,7 @@
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  background: var(--surface-container-low);
+  background: var(--surface-container-lowest);
   color: var(--on-surface);
   text-align: left;
 }
@@ -759,27 +761,29 @@
 }
 
 /* P10/P12 reference: dense repository workstation. */
-.designer-library-page {
+.page-content.designer-library-page {
   padding: 24px 28px 18px;
   background: var(--background);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .designer-library-page .page-heading {
-  align-items: flex-end;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border-subtle);
+  align-items: flex-start;
+  margin-bottom: 18px;
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .designer-library-page .page-heading h1 {
-  font-size: 20px;
-  line-height: 26px;
+  font-size: 22px;
+  line-height: 28px;
   letter-spacing: 0;
 }
 
 .designer-library-page .page-heading p:not(.section-kicker) {
-  margin-top: 5px;
-  font-size: 11px;
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 .designer-library-page .page-heading .section-kicker {
@@ -789,11 +793,10 @@
 
 .library-split--designer {
   grid-template-columns: minmax(260px, 292px) minmax(0, 1fr);
+  flex: 1 1 auto;
   min-height: 0;
-  height: calc(100dvh - 178px);
-  border: 1px solid var(--border-subtle);
-  border-radius: 5px;
-  background: var(--surface-container-lowest);
+  height: auto;
+  background: var(--content-card-background);
 }
 
 .persona-repository {
@@ -802,7 +805,7 @@
   min-height: 0;
   padding: 17px 14px 12px;
   border-right: 1px solid var(--border-subtle);
-  background: color-mix(in srgb, var(--surface-container-lowest) 92%, var(--primary) 8%);
+  background: transparent;
 }
 
 .persona-repository__head {
@@ -886,10 +889,11 @@
 .persona-repository__list {
   display: grid;
   gap: 2px;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 2px 0;
-  scrollbar-width: thin;
 }
 
 .persona-repository-row {
@@ -1032,7 +1036,9 @@
   min-height: 0;
   padding: 18px 22px 22px;
   border-left: 0;
-  background: var(--surface-container-low);
+  background: transparent;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .persona-inspector__head {
@@ -1287,6 +1293,10 @@
 @media (max-width: 560px) {
   .designer-library-page { padding: 16px 14px 12px; }
   .designer-library-page .page-heading { align-items: flex-start; }
+  .designer-library-page .page-heading h1 {
+    font-size: 20px;
+    line-height: 26px;
+  }
   .persona-inspector__hero { grid-template-columns: 106px minmax(0, 1fr); gap: 12px; }
   .persona-inspector__portrait .persona-artwork { height: 146px; }
   .persona-inspector__identity h2 { font-size: 19px; line-height: 24px; }

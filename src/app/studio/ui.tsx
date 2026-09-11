@@ -93,12 +93,12 @@ export const PageHeader = ({
   eyebrow?: string;
 }) => (
   <header className="page-heading">
-    <div>
+    <div className="page-heading__content">
       {eyebrow && <p className="section-kicker">{eyebrow}</p>}
       <h1>{title}</h1>
       {description && <p>{description}</p>}
     </div>
-    <div className="heading-actions">{children}</div>
+    <div className="heading-actions page-heading__actions">{children}</div>
   </header>
 );
 export const EmptyState = ({

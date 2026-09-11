@@ -192,16 +192,7 @@ const AssetsPage = ({
           '浏览示例素材的来源、格式、用途与受管状态。',
           'Browse source, format, usage and managed state for example assets.',
         )}
-      >
-        <span className="disabled-action">
-          <Button icon="upload" disabled>
-            {t(locale, '导入', 'Import')}
-          </Button>
-          <small>
-            {t(locale, '需要桌面文件能力', 'Desktop file access required')}
-          </small>
-        </span>
-      </PageHeader>
+      />
       <div className="asset-toolbar">
         <label className="search-control">
           <Icon name="search" size={16} />

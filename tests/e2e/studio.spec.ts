@@ -24,7 +24,7 @@ for (const width of [1280, 1024]) {
             name: english ? 'Projects' : '项目库',
             exact: true,
           }),
-        ).toBeVisible();
+        ).toBeAttached();
         const windowBar = page.locator('.window-bar');
         await expect(
           windowBar.getByRole('button', {
@@ -126,12 +126,21 @@ for (const width of [1280, 1024]) {
           await nav.getByRole('button', { name, exact: true }).click();
           await expect(
             page.locator('.destination:not([hidden]) h1'),
-          ).toBeVisible();
+          ).toBeAttached();
           expect(
             await page.evaluate(
               () => document.documentElement.scrollWidth > window.innerWidth,
             ),
           ).toBe(false);
+          if (name === (english ? 'Designers' : '设计师')) {
+            expect(
+              await page.evaluate(
+                () =>
+                  document.documentElement.scrollHeight <= window.innerHeight &&
+                  document.body.scrollHeight <= window.innerHeight,
+              ),
+            ).toBe(true);
+          }
         }
       });
     }
@@ -152,7 +161,7 @@ for (const [theme, expectedTint] of [
     await page.goto('/?preview=1');
     await expect(
       page.getByRole('heading', { name: '项目库', exact: true }),
-    ).toBeVisible();
+    ).toBeAttached();
     const shell = await page.evaluate(() => {
       const inspect = (selector: string) => {
         const element = document.querySelector<HTMLElement>(selector)!;
@@ -239,13 +248,28 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
   await page.goto('/?preview=1');
   const navigation = page.getByRole('navigation', { name: '主导航' });
   await navigation.getByRole('button', { name: '设计师', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '设计师', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '设计师', exact: true })).toBeAttached();
   await page.getByRole('button', { name: /清晰商业/ }).click();
   await expect(page.getByLabel('设计师检查器')).toContainText('清晰商业');
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollHeight <= window.innerHeight &&
+        document.body.scrollHeight <= window.innerHeight,
+    ),
+  ).toBe(true);
   await page.getByRole('button', { name: '用于新建', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '新建设计', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '新建设计', exact: true })).toBeAttached();
   await expect(page.getByLabel('新建设计的当前设计师')).toContainText('清晰商业');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <= window.innerWidth &&
+        document.documentElement.scrollHeight <= window.innerHeight &&
+        document.body.scrollWidth <= window.innerWidth &&
+        document.body.scrollHeight <= window.innerHeight,
+    ),
+  ).toBe(true);
 });
 
 test('native dialog restores focus and retains a cancelled draft', async ({
@@ -272,7 +296,7 @@ test('native dialog restores focus and retains a cancelled draft', async ({
     page.getByRole('heading', {
       name: '秋日漫游 / An unexpectedly long campaign title',
     }),
-  ).toBeVisible();
+  ).toBeAttached();
   await expect(page.getByText('预览草稿', { exact: true })).toBeVisible();
 });
 
@@ -290,6 +314,6 @@ test('preferences survive reload and empty search can be cleared', async ({
   await page.reload();
   await expect(
     page.getByRole('heading', { name: 'Projects', exact: true }),
-  ).toBeVisible();
+  ).toBeAttached();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });

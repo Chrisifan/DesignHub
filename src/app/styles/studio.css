@@ -18,6 +18,26 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
 }
+:where(html, body, .studio, .studio *) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+:where(html, body, .studio, .studio *)::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+:where(html, body, .studio, .studio *)::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+:where(html, body, .studio, .studio *)::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: var(--scrollbar-radius);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+:where(html, body, .studio, .studio *)::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
 .ui-icon {
   display: inline-block;
   flex: 0 0 auto;
@@ -42,7 +62,8 @@ button:disabled {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   height: calc(100dvh - 40px);
-  min-height: 680px;
+  min-height: 0;
+  overflow: hidden;
   font-size: 13px;
   line-height: 18px;
 }
@@ -206,9 +227,8 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1 1 auto;
   min-width: 0;
-}
-.toolbar-location {
   font-size: 12px;
 }
 .toolbar-workspace,
@@ -227,12 +247,40 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.toolbar-actions .ui-button {
+  min-height: var(--toolbar-control-height);
+  padding-inline: var(--toolbar-control-padding-inline);
+  white-space: nowrap;
+}
+.toolbar-actions .ui-button > .ui-icon {
+  width: var(--toolbar-control-icon-size) !important;
+  height: var(--toolbar-control-icon-size) !important;
+}
 .studio-body {
   position: relative;
   min-height: 0;
   min-width: 0;
-  overflow: auto;
+  overflow: hidden;
+  overscroll-behavior: contain;
   background: var(--background);
+}
+/* Main content containers stay unframed; child panels own their dividers. */
+.library-split,
+.connection-layout,
+.delivery-layout {
+  background: var(--content-card-background);
+  border: 0;
+  border-radius: var(--content-card-radius);
+  box-shadow: var(--content-card-shadow);
+  overflow: visible;
 }
 .destination {
   height: 100%;
@@ -241,33 +289,40 @@ button:disabled {
   display: none;
 }
 .page-content {
+  height: 100%;
+  box-sizing: border-box;
   max-width: 1600px;
   margin: 0 auto;
-  padding: 32px;
+  padding: 24px 28px 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   animation: page-appear 180ms ease-out;
 }
 .page-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 28px;
+  align-items: start;
+  margin-bottom: 18px;
 }
+.page-heading__content,
 .page-heading > div:first-child {
   min-width: 0;
 }
 .page-heading h1 {
   font:
-    600 24px/32px Geist,
+    600 22px/28px Geist,
     'PingFang SC',
     'Microsoft YaHei UI',
     sans-serif;
   margin: 0;
+  letter-spacing: 0;
   overflow-wrap: anywhere;
 }
 .page-heading p:not(.section-kicker) {
   color: var(--on-surface-variant);
-  margin: 8px 0 0;
+  margin: 4px 0 0;
   font-size: 12px;
   line-height: 18px;
 }
@@ -277,13 +332,19 @@ button:disabled {
     500 10px/14px 'JetBrains Mono',
     monospace;
   letter-spacing: 0.08em;
-  margin: 0 0 10px;
+  margin: 0 0 6px;
 }
 .heading-actions {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
   flex-shrink: 0;
+}
+.heading-actions .ui-button {
+  white-space: nowrap;
+}
+.heading-actions:empty {
+  display: none;
 }
 .ui-button {
   display: inline-flex;
@@ -476,7 +537,7 @@ button:disabled {
   text-align: left;
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  background: var(--surface-container-low);
+  background: var(--surface-container-lowest);
   overflow: hidden;
   transition:
     border-color 150ms ease-out,
@@ -1193,7 +1254,7 @@ button:disabled {
     height: 296px;
   }
   .page-content {
-    padding: 40px;
+    padding: 28px 32px 24px;
   }
 }
 @media (max-width: 1279px) {
@@ -1219,10 +1280,47 @@ button:disabled {
     margin: 12px 8px;
   }
   .page-content {
-    padding: 24px;
+    padding: 20px 24px 16px;
   }
   .project-cover {
     height: 256px;
+  }
+}
+@media (max-width: 720px) {
+  .studio-toolbar {
+    gap: 8px;
+    padding-inline: 12px;
+  }
+  .toolbar-location {
+    gap: 8px;
+  }
+  .toolbar-actions {
+    gap: 6px;
+  }
+  .toolbar-actions .ui-button {
+    padding-inline: 8px;
+  }
+  .page-heading {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .heading-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 560px) {
+  .page-content {
+    padding: 16px;
+  }
+  .page-heading h1 {
+    font-size: 20px;
+    line-height: 26px;
+  }
+  .new-design-heading h1 {
+    font-size: 20px;
+    line-height: 26px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1281,4 +1379,23 @@ button:disabled {
   .studio:not(.studio--compact) {
     grid-template-columns: 280px minmax(0, 1fr);
   }
+}
+
+/* The toolbar owns the visible page context; keep headings for screen readers. */
+.page-heading,
+.new-design-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.page-heading .heading-actions,
+.new-design-heading > .ui-button {
+  display: none;
 }

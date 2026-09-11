@@ -30,6 +30,13 @@ it('shows a design cover with its designer avatar, name, and version', () => {
   expect(within(project).getByText('纸感排版 · v1.4')).toBeInTheDocument();
 });
 
+it('keeps project actions in the breadcrumb toolbar instead of the page title', () => {
+  enter();
+  const toolbar = screen.getByRole('banner', { name: '工作区工具栏' });
+  expect(within(toolbar).getByRole('button', { name: '新建项目' })).toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: '新建项目' })).toHaveLength(1);
+});
+
 it('shows the active persona and working principle when opening a project', () => {
   enter();
   fireEvent.click(screen.getByRole('button', { name: '春间市集' }));

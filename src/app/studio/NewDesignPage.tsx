@@ -40,9 +40,6 @@ export const NewDesignPage = ({
   return (
     <section className="page-content new-design-page" aria-labelledby="new-design-title">
       <header className="new-design-heading">
-        <Button icon="arrow-left" variant="ghost" onClick={onBack}>
-          {t(locale, '返回', 'Back')}
-        </Button>
         <div>
           <p className="section-kicker">{t(locale, '创作入口', 'CREATION ENTRY')}</p>
           <h1 id="new-design-title">{t(locale, '新建设计', 'New design')}</h1>
