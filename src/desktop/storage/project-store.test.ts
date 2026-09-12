@@ -146,3 +146,34 @@ it('rejects importing the same package identity twice', async () => {
     } finally { workspace.close(); }
   });
 });
+
+it('preserves related document lineage when duplicating a project', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    try {
+      const store = createProjectStore(workspace);
+      const source = await store.createProjectContainer({
+        workspaceId: workspace.workspace.workspaceId,
+        operationId: 'duplicate-lineage-source',
+        name: 'Lineage source',
+        documents: [
+          { id: 'doc-main', name: 'Main', width: 1080, height: 1440, finalizedRevisionId: 'rev-main' },
+          { id: 'doc-square', name: 'Square', width: 1080, height: 1080, sourceDocumentId: 'doc-main', sourceRevisionId: 'rev-main', finalizedRevisionId: null },
+        ],
+      });
+      const duplicate = await store.duplicateProject({
+        workspaceId: workspace.workspace.workspaceId,
+        sourceProjectId: source.projectId,
+        operationId: 'duplicate-lineage-copy',
+      });
+      await expect(store.getProjectMetadata(duplicate.projectId)).resolves.toMatchObject({
+        documents: [
+          { id: 'doc-main', finalizedRevisionId: 'rev-main' },
+          { id: 'doc-square', sourceDocumentId: 'doc-main', sourceRevisionId: 'rev-main', finalizedRevisionId: null },
+        ],
+      });
+    } finally {
+      workspace.close();
+    }
+  });
+});

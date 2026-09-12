@@ -184,6 +184,8 @@
 
 2026-09-13：M04 设计师主署名归一化（变更 ID M04-20260913-15）。项目元数据创建与更新现在始终将活跃设计师放在去重贡献者列表首位；切换活跃设计师不会丢弃已有方向贡献，后续修订署名可稳定继承主署名。先新增 metadata Red，再 Green；metadata 6/6、project-store/Studio/Workbench 30/30、lint、typecheck、diff check 通过。历史旧数据迁移、真实提供方署名和跨设备验证仍开放。
 
+2026-09-13：M04 项目复制/导入关联链路（变更 ID M04-20260913-16）。项目复制与项目包导入保留文档的 `sourceDocumentId`、`sourceRevisionId` 和 `finalizedRevisionId`，不再丢失关联尺寸来源。先新增 project-store Red，再 Green；project-store/metadata 12/12、lint、typecheck、diff check 通过。跨设备包闭包和大包流式处理仍属 M07 发布门禁。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

@@ -744,7 +744,15 @@ const duplicateProject = async (handle: WorkspaceHandle, input: DuplicateProject
     contributorDesignerVersionIds: sourceMetadata.contributorDesignerVersionIds,
     designerSnapshot: sourceMetadata.designerSnapshot,
     brandSnapshot: sourceMetadata.brandSnapshot,
-    documents: sourceMetadata.documents.map(({ id, name, width, height, finalizedRevisionId }) => ({ id, name, width, height, finalizedRevisionId })),
+    documents: sourceMetadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
+      id,
+      name,
+      width,
+      height,
+      ...(sourceDocumentId ? { sourceDocumentId } : {}),
+      ...(sourceRevisionId !== undefined ? { sourceRevisionId } : {}),
+      ...(finalizedRevisionId !== undefined ? { finalizedRevisionId } : {}),
+    })),
   });
   const destinationDirectory = resolveProjectDirectory(handle, created.projectId);
   if (!destinationDirectory) throw new Error('PROJECT_NOT_FOUND');
@@ -783,7 +791,15 @@ export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, i
   if (!pack.manifest.entries.includes(projectManifestName) || !pack.manifest.entries.includes(projectContentManifestName)) throw new Error('INVALID_PACKAGE');
   if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === pack.manifest.packageId)) throw new Error('PACKAGE_ALREADY_IMPORTED');
   const sourceMetadata = sourceManifest.metadata;
-  const documents = sourceMetadata?.documents?.map(({ id, name, width, height, finalizedRevisionId }) => ({ id, name, width, height, finalizedRevisionId })) ?? [];
+  const documents = sourceMetadata?.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
+    id,
+    name,
+    width,
+    height,
+    ...(sourceDocumentId ? { sourceDocumentId } : {}),
+    ...(sourceRevisionId !== undefined ? { sourceRevisionId } : {}),
+    ...(finalizedRevisionId !== undefined ? { finalizedRevisionId } : {}),
+  })) ?? [];
   const created = createProject(handle, {}, {
     workspaceId: input.workspaceId,
     operationId: input.operationId,
