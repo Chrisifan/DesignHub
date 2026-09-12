@@ -14,3 +14,7 @@ it('supports Chinese and English substring matching across indexed text', () => 
   expect(matchesSearch(item, 'Spring Market')).toBe(true);
   expect(matchesSearch(item, 'winter')).toBe(false);
 });
+
+it('matches historical contributor identifiers in the local index', () => {
+  expect(matchesSearch({ title: 'Spring Market', contributorIds: ['designer-direction'] }, 'designer-direction')).toBe(true);
+});

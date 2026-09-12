@@ -356,7 +356,10 @@ export const Studio = ({
       tags: project.designers,
       updatedAt: undefined,
       finalized: false,
-      contributorIds: project.activeDesignerVersionId ? [project.activeDesignerVersionId] : [],
+      contributorIds: [...new Set([
+        ...(project.activeDesignerVersionId ? [project.activeDesignerVersionId] : []),
+        ...(project.contributorDesignerVersionIds ?? []),
+      ])],
     };
   });
   const indexedProjects = buildSearchIndex(searchRecords);
