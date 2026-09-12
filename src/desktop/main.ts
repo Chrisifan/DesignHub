@@ -1,5 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import { join } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeFile } from 'node:fs/promises';
 
@@ -19,7 +21,7 @@ import {
   credentialStoreChannel,
 } from './ipc/credentials';
 import { recreateWindowOnActivate } from './lifecycle';
-import { createProjectStore } from './storage/project-store';
+import { createProjectStore, resolveProjectDirectory } from './storage/project-store';
 import { createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listTrashedProjectsHandler, moveProjectToTrashHandler, projectCreateChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, updateProjectMetadataHandler } from './ipc/projects';
 import { designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, saveDesignerStateHandler } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel, importAssetsHandler, listAssetsHandler, readAssetHandler } from './ipc/assets';
@@ -44,6 +46,8 @@ import { exportSceneToFile } from './export-scene';
 import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel, createBackupHandler, restoreBackupHandler } from './ipc/backup';
 import { createWorkspaceBackupStore } from './storage/backup-store';
+import { exportProjectPackageHandler, projectPackageExportChannel } from './ipc/package';
+import { createProjectPackage, encodeProjectPackage } from '../features/delivery/project-package';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -52,6 +56,21 @@ let taskServicePromise: Promise<AgentTaskService> | null = null;
 const credentialBoundary = createCredentialBoundary(createUnavailableCredentialStore());
 
 export const createMainProjectStore = (workspace: WorkspaceHandle) => createProjectStore(workspace);
+
+const collectProjectPackageEntries = (projectDirectory: string) => {
+  const entries: Array<{ path: string; bytes: Uint8Array; kind: 'manifest' }> = [];
+  const visit = (directory: string): void => {
+    readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name)).forEach((entry) => {
+      const path = join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error('INVALID_PROJECT_PACKAGE_SOURCE');
+      if (entry.isDirectory()) { visit(path); return; }
+      if (!entry.isFile()) throw new Error('INVALID_PROJECT_PACKAGE_SOURCE');
+      entries.push({ path: relative(projectDirectory, path).split(sep).join('/'), bytes: new Uint8Array(readFileSync(path)), kind: 'manifest' });
+    });
+  };
+  visit(projectDirectory);
+  return entries;
+};
 
 const storageSmokeResultPath = process.env.DESIGNHUB_STORAGE_SMOKE_RESULT;
 const devServerUrl = typeof MAIN_WINDOW_VITE_DEV_SERVER_URL === 'undefined' ? undefined : MAIN_WINDOW_VITE_DEV_SERVER_URL;
@@ -155,6 +174,20 @@ app.whenReady().then(() => {
   ipcMain.handle(projectDuplicateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return duplicateProjectHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).duplicateProject(projectInput))(event, input);
+  });
+  ipcMain.handle(projectPackageExportChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return exportProjectPackageHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, projectId) => {
+      const projectDirectory = resolveProjectDirectory(workspace, projectId);
+      if (!projectDirectory) throw new Error('PROJECT_NOT_FOUND');
+      const result = await dialog.showSaveDialog(activeWindow!, { defaultPath: `designhub-${projectId}.designhub.zip`, filters: [{ name: 'DesignHub package', extensions: ['zip'] }] });
+      if (result.canceled || !result.filePath) return null;
+      const packageData = await createProjectPackage({ packageId: randomUUID(), projectId, entries: collectProjectPackageEntries(projectDirectory) });
+      const archive = await encodeProjectPackage(packageData);
+      const { writeFile } = await import('node:fs/promises');
+      await writeFile(result.filePath, archive, { flag: 'wx' });
+      return { path: result.filePath, sha256: createHash('sha256').update(archive).digest('hex') };
+    })(event, input);
   });
   ipcMain.handle(projectMetadataGetChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;

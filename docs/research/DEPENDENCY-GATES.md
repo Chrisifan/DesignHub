@@ -28,6 +28,8 @@
 
 G01/G02/G03/G07/G10 补充（2026-09-09）：锁定 Electron `44.3.0`、Forge `7.11.2`、Vite `8.2.2`、TypeScript `5.9.3`、ESLint `9.39.2`、Zod `4.5.4`、React `19.2.8`、Radix/shadcn/Tailwind/Lucide 候选、`@napi-rs/keyring` `2.0.0`、Vitest `5.0.0`、Playwright `1.63.0` 等准确版本及许可。Vitest 明示兼容 Vite 8 / Node 22.12+；TypeScript 7 与 ESLint 10 没有在本轮仅凭 latest 采用。Electron 官方文档确认进程/桥接模型、safeStorage 的系统加密保护与原生模块适配方法；自动化给出 WebdriverIO 和仍标 experimental 的 Playwright Electron。探针源码和 lock 已创建，但 Electron binary 下载 `TypeError: fetch failed`，没有运行 Electron 样例；不把配置或 browser mock 记为平台通过。
 
+G09 implementation follow-up (2026-09-12)：采用 `fflate` `0.8.2`（MIT）作为项目包 ZIP 编解码器。采用前确认其官方 npm/package metadata、纯 JS/TypeScript 运行方式和浏览器/Node 双端 API；使用 `zipSync`/`unzipSync` 完成包清单和二进制条目 round-trip。大文件流式压缩、原生归档 worker 和跨设备闭包仍未声称通过。
+
 模型供应商品牌尚未确定；不将某个商业 SDK 锁进基础实体。每项能力至少一个真实验证路径才可称支持；其中基本离线画布/尺寸/格式操作不得要求云 Key。
 
 ## 3. 网络恢复后的只读核验示例

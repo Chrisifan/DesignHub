@@ -727,6 +727,15 @@ const DeliveryPage = ({
       notify?.(t(locale, '导出失败，请重试。', 'Export failed. Try again.'));
     } finally { setExporting(false); }
   };
+  const exportPackage = async (): Promise<void> => {
+    if (!project?.workspaceId) return;
+    try {
+      const result = await getDesktopApi().exportProjectPackage?.({ workspaceId: project.workspaceId, projectId: project.id });
+      if (result) notify?.(t(locale, `项目包已导出到 ${result.path}`, `Project package exported to ${result.path}`));
+    } catch {
+      notify?.(t(locale, '项目包导出失败', 'Project package export failed'));
+    }
+  };
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -745,7 +754,9 @@ const DeliveryPage = ({
                 'Select a project document to configure its output format.',
               )
         }
-      />
+      >
+        {project?.workspaceId && <IconButton name="download" label={t(locale, '导出项目包', 'Export project package')} onClick={() => { void exportPackage(); }} />}
+      </PageHeader>
       <div className="delivery-layout">
         {project ? (
           <div className="delivery-preview">

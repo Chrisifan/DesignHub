@@ -11,6 +11,7 @@ import { exportDocumentChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
 import { projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
+import { projectPackageExportChannel } from './ipc/package';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -27,6 +28,7 @@ const api: DesktopApi = {
   purgeProjectFromTrash: (input) => ipcRenderer.invoke(projectPurgeTrashChannel, input),
   createWorkspaceBackup: (workspaceId, destinationParentDirectory) => ipcRenderer.invoke(backupCreateChannel, { workspaceId, destinationParentDirectory }),
   restoreWorkspaceBackup: (input) => ipcRenderer.invoke(backupRestoreChannel, input),
+  exportProjectPackage: (input) => ipcRenderer.invoke(projectPackageExportChannel, input),
   loadDesignerState: (workspaceId) => ipcRenderer.invoke(designerLoadChannel, workspaceId),
   saveDesignerState: (workspaceId, state) => ipcRenderer.invoke(designerSaveChannel, { workspaceId, state }),
   listAssets: (input) => ipcRenderer.invoke(assetListChannel, input),

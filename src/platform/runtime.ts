@@ -15,6 +15,7 @@ const unavailableDesktopApi: DesktopApi = {
   purgeProjectFromTrash: async () => null,
   createWorkspaceBackup: async () => null,
   restoreWorkspaceBackup: async () => null,
+  exportProjectPackage: async () => null,
   loadDesignerState: async () => null,
   saveDesignerState: async () => false,
   listAssets: async () => null,
