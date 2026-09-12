@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import sharp from 'sharp';
+import { PDFDocument } from 'pdf-lib';
 import { createNodeCodec } from './node-codec';
 
 const transparentPng = async (): Promise<Uint8Array> => new Uint8Array(await sharp({
@@ -41,4 +42,8 @@ it('generates a standard PDF page from a real PNG', async () => {
   const pdf = await codec.toPdf(await transparentPng());
   expect(new TextDecoder().decode(pdf.slice(0, 5))).toBe('%PDF-');
   expect(pdf.length).toBeGreaterThan(100);
+  const document = await PDFDocument.load(pdf);
+  const page = document.getPage(0);
+  expect(page.getWidth()).toBe(3);
+  expect(page.getHeight()).toBe(2);
 });
