@@ -105,6 +105,8 @@
 
 2026-09-12：M05/M04 managed image previews（变更 ID M05-20260912-09）。画布和素材详情通过现有 `asset:read` bridge 加载受管图像字节并使用本地对象 URL 预览，外部引用保持不下载；影响 CanvasWorkspace、素材库和导出前预览。直接回归 2 文件/23 测试、lint/typecheck 通过；复杂格式解码和大图性能仍开放。
 
+2026-09-12：M08 local search integration（变更 ID M08-20260912-03）。Studio 项目搜索接入现有 allowlisted 内存索引，覆盖标题、简报、品牌快照、尺寸和贡献者标签，并按工作区隔离；新增 Studio 回归，相关 unit/integration、lint/typecheck 通过。持久 FTS 索引和压力基准仍开放。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：

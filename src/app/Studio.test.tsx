@@ -66,6 +66,14 @@ it('preserves project search while visiting another destination and offers an em
   expect(screen.getByRole('button', { name: /春间市集/ })).toBeInTheDocument();
 });
 
+it('searches the local index across project briefs and contributor tags', () => {
+  enter();
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索项目' }), { target: { value: '纸感排版' } });
+  expect(screen.getByRole('button', { name: '春间市集' })).toBeInTheDocument();
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索项目' }), { target: { value: '不存在' } });
+  expect(screen.getByText('没有匹配的项目')).toBeInTheDocument();
+});
+
 it('opens a project document and returns to that project', () => {
   enter();
   fireEvent.click(screen.getByRole('button', { name: /春间市集/ }));

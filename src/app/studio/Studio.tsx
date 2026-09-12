@@ -23,6 +23,7 @@ import {
   t,
 } from './ui';
 import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
+import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
 
 const navigation: { view: View; icon: string; zh: string; en: string }[] = [
@@ -235,13 +236,26 @@ export const Studio = ({
   const nativeControlSide = navigator.userAgent.includes('Mac')
     ? 'left'
     : 'right';
-  const visibleProjects = projects.filter(
-    (project) =>
-      (filter === 'all' ||
-        Boolean(project.archived) === (filter === 'archived')) &&
-      `${project.name} ${project.enName} ${project.description}`
-        .toLocaleLowerCase()
-        .includes(query.trim().toLocaleLowerCase()),
+  const searchRecords = projects.map((project) => {
+    const brand = project.brandSnapshot as { source?: { brandId?: string } } | undefined;
+    return {
+      workspaceId: project.workspaceId ?? 'preview',
+      projectId: project.id,
+      documentId: project.documentId ?? `${project.id}-overview`,
+      title: `${project.name} ${project.enName}`,
+      brief: `${project.description} ${project.enDescription}`,
+      brand: brand?.source?.brandId,
+      size: `${project.documents} documents`,
+      tags: project.designers,
+      updatedAt: undefined,
+      finalized: false,
+      contributorIds: project.activeDesignerVersionId ? [project.activeDesignerVersionId] : [],
+    };
+  });
+  const indexedProjects = buildSearchIndex(searchRecords);
+  const visibleProjectIds = new Set(searchIndex(indexedProjects, { workspaceId: workspace?.workspaceId ?? 'preview', query }).map((item) => item.projectId));
+  const visibleProjects = projects.filter((project) =>
+    (filter === 'all' || Boolean(project.archived) === (filter === 'archived')) && visibleProjectIds.has(project.id),
   );
   const openProject = (project: Project) => {
     setSelected(project);
