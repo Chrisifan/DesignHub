@@ -890,7 +890,7 @@ const DeliveryPage = ({
   const activeDocumentId = documentId || project?.documentId || project?.documentEntries?.[0]?.id || '';
   const currentDocument = project?.documentEntries?.find((entry) => entry.id === activeDocumentId) ?? project?.documentEntries?.[0];
   const finalizedRevisionId = currentDocument?.finalizedRevisionId ?? null;
-  const hasFinalizedRevision = Boolean(project?.workspaceId && project?.documentId && finalizedRevisionId);
+  const hasFinalizedRevision = Boolean(project?.workspaceId && activeDocumentId && finalizedRevisionId);
   useEffect(() => {
     if (!hasFinalizedRevision && source === 'final') setSource('current');
   }, [hasFinalizedRevision, source]);

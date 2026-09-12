@@ -284,6 +284,27 @@ it('lets delivery select another document in a multi-document project', async ()
   expect(loadDocumentScene).toHaveBeenCalledWith('workspace-1', 'multi-project', 'doc-2');
 });
 
+it('offers finalized export for the selected non-primary document', () => {
+  const project: Project = {
+    id: 'multi-final-project',
+    workspaceId: 'workspace-1',
+    name: '多文档定稿',
+    enName: 'Multi final',
+    description: 'desc',
+    enDescription: 'desc',
+    designers: ['纸感排版'],
+    artwork: 'blank',
+    documents: 2,
+    documentEntries: [
+      { id: 'doc-main', name: '主海报', width: 100, height: 100 },
+      { id: 'doc-square', name: '方图', width: 100, height: 100, finalizedRevisionId: 'revision-square' },
+    ],
+  };
+  render(<Harness initialView="delivery" deliveryProject={project} />);
+  fireEvent.change(screen.getByRole('combobox', { name: '文档' }), { target: { value: 'doc-square' } });
+  expect(screen.getByRole('option', { name: '已定稿' })).toBeInTheDocument();
+});
+
 it('passes the archive choice to document export', async () => {
   const loadDocumentScene = vi.fn(async () => ({ id: 'scene-current', version: 1 as const, width: 100, height: 100, layers: [] }));
   const exportDocument = vi.fn(async () => ({ path: '/tmp/archive.png', sha256: 'c'.repeat(64) }));
