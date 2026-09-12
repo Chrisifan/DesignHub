@@ -228,6 +228,7 @@
 2026-09-13：M04/M07 项目包素材闭包校验（变更 ID M04-20260913-21）。导入前验证受管素材路径、唯一哈希、压缩包存在性和字节哈希，缺失素材在创建项目之前以 `INVALID_PACKAGE` 拒绝；先执行缺失素材 Red，再 Green；project-store focused 7/7、typecheck 通过。影响 M04 导入、M05 素材读取与 M07 项目包，流式大包、跨设备和 Windows 仍开放。
 2026-09-13：M05 画布草稿项目隔离（变更 ID M05-20260913-08）。`EditSession` 默认草稿键同时包含项目与文档 ID，避免同名文档跨项目恢复；先执行跨项目恢复 Red，再 Green；canvas recovery integration 5/5、canvas unit 18/18、typecheck 通过。影响 M06/M07 项目上下文消费者，崩溃耐久、IME 与跨平台存储仍开放。
 2026-09-13：M07 导出目标迟到冲突保护（变更 ID M07-20260913-19）。导出在渲染/编码后再次检查目标路径，目标在初次检查后出现时返回 `TARGET_EXISTS`，不写入或重命名临时文件；先执行迟到目标 Red，再 Green；export-document focused 6/6、lint、typecheck 通过。目标盘故障、原子 no-replace 和 Windows 仍开放。
+2026-09-13：M06 图片任务空结果保护（变更 ID M06-20260913-14）。图片生成/编辑适配器返回空列表时任务失败并记录 `IMAGE_RESULT_EMPTY`，不产生伪候选。先执行空结果 Red，再 Green；task-service focused 12/12、lint、typecheck 通过。真实提供方部分成功语义、远端取消与跨平台仍开放。
 
 ## 发布前检查
 

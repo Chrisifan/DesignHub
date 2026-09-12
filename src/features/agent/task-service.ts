@@ -68,6 +68,7 @@ const requestId = (): string => `request-${crypto.randomUUID()}`;
 const errorCode = (error: unknown): string => {
   if (error && typeof error === 'object' && 'kind' in error && typeof error.kind === 'string') return error.kind;
   if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return 'CANCELLED';
+  if (error instanceof Error && /^[A-Z][A-Z0-9_]{2,63}$/u.test(error.message)) return error.message;
   return 'PROVIDER_REQUEST_FAILED';
 };
 
@@ -122,6 +123,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           ? (adapter.generateImage ? await adapter.generateImage({ prompt: input.prompt.trim(), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}) }, controller.signal) : undefined)
           : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('tool' in input && input.tool ? { tool: input.tool } : {}), ...('region' in input && input.region ? { region: input.region } : {}) }, controller.signal) : undefined);
         if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
+        if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
         const assetIds = options.persistGeneratedImages ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images }) : [];
         await options.runtime.complete(task.id, {
           assetIds,

@@ -202,3 +202,17 @@ it('does not retry image editing without a recoverable source image', async () =
   expect(runtime.list()).toHaveLength(1);
   expect(runtime.get(first.id)?.state).toBe('failed');
 });
+
+it('fails image tasks that return no generated images', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async () => ({ images: [], cost: null }),
+    }),
+  });
+  const task = await service.submitImageGeneration({ projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'empty result' });
+  await service.flush();
+  expect(runtime.get(task.id)).toMatchObject({ state: 'failed', errorCode: 'IMAGE_RESULT_EMPTY' });
+});
