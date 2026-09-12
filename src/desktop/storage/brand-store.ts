@@ -28,8 +28,20 @@ const getWorkspaceDirectory = (handle: WorkspaceHandle, workspaceId: string, wri
   return getInternalDirectory(handle.workspace.directory);
 };
 
+const assertRegularBrandFile = (path: string, allowMissing: boolean): void => {
+  try {
+    const status = lstatSync(path);
+    if (!status.isFile() || status.isSymbolicLink()) throw new Error('INVALID_BRAND_STATE');
+  } catch (error) {
+    if (allowMissing && typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return;
+    if (error instanceof Error && error.message === 'INVALID_BRAND_STATE') throw error;
+    throw new Error('INVALID_BRAND_STATE');
+  }
+};
+
 export const loadBrandState = async (handle: WorkspaceHandle, workspaceId: string): Promise<BrandLibraryState | null> => {
   const path = join(getWorkspaceDirectory(handle, workspaceId, false), brandsFileName);
+  assertRegularBrandFile(path, true);
   try {
     await access(path, constants.R_OK);
     const value: unknown = JSON.parse(await readFile(path, 'utf8'));
@@ -46,6 +58,7 @@ export const saveBrandState = async (handle: WorkspaceHandle, workspaceId: strin
   const directory = getWorkspaceDirectory(handle, workspaceId, true);
   if (!isBrandLibraryState(state)) throw new Error('INVALID_BRAND_STATE');
   const destination = join(directory, brandsFileName);
+  assertRegularBrandFile(destination, true);
   const temporary = join(directory, `.${brandsFileName}.tmp-${randomUUID()}`);
   try {
     await writeFile(temporary, `${JSON.stringify(structuredClone(state), null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });

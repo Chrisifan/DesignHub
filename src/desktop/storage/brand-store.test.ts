@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -34,6 +34,21 @@ it('writes an atomic schema and rejects malformed persisted content', async () =
     const path = join(handle.workspace.directory, '.designhub', brandsFileName);
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ brands: [brand] });
     await writeFile(path, '{"brands":[{"id":"bad"}]}');
+    await expect(loadBrandState(handle, handle.workspace.workspaceId)).rejects.toThrow('INVALID_BRAND_STATE');
+    handle.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('rejects a symlinked brand state instead of reading outside the workspace', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'designhub-brand-'));
+  try {
+    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
+    const path = join(handle.workspace.directory, '.designhub', brandsFileName);
+    const external = join(root, 'external-brands.json');
+    await writeFile(external, JSON.stringify({ brands: [brand] }), 'utf8');
+    await symlink(external, path);
     await expect(loadBrandState(handle, handle.workspace.workspaceId)).rejects.toThrow('INVALID_BRAND_STATE');
     handle.close();
   } finally {

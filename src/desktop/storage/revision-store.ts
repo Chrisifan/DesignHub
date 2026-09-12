@@ -45,6 +45,17 @@ const isTimelineEvent = (value: unknown): value is RevisionTimelineEvent => isRe
   && typeof value.timestamp === 'string' && !Number.isNaN(Date.parse(value.timestamp));
 const emptyState = (): PersistedRevisionState => ({ revisions: [], timeline: [], finalRevisionId: null });
 
+const assertRegularRevisionFile = (file: string): void => {
+  try {
+    const status = lstatSync(file);
+    if (!status.isFile() || status.isSymbolicLink()) throw new Error('INVALID_REVISION_STATE');
+  } catch (error) {
+    if (isRecord(error) && error.code === 'ENOENT') return;
+    if (error instanceof Error && error.message === 'INVALID_REVISION_STATE') throw error;
+    throw new Error('INVALID_REVISION_STATE');
+  }
+};
+
 const getDocumentsDirectory = (projectDirectory: string, writable: boolean): string => {
   const directory = join(projectDirectory, 'documents');
   try {
@@ -78,6 +89,7 @@ const validateTarget = (handle: WorkspaceHandle, workspaceId: string, projectId:
 };
 
 const readState = async (file: string): Promise<PersistedRevisionState> => {
+  assertRegularRevisionFile(file);
   try { await access(file, constants.R_OK); } catch (error) {
     if (isRecord(error) && error.code === 'ENOENT') return emptyState();
     throw error;
