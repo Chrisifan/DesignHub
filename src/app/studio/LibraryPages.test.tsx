@@ -161,6 +161,24 @@ it('loads managed asset bytes for the selected workspace preview', async () => {
   await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-managed' }));
 });
 
+it('imports dropped files for a workspace project', async () => {
+  const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'asset-drop', name: 'drop.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'd'.repeat(64), managed: true } }]);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => []), importAssets };
+  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+  const file = new File(['png'], 'drop.png', { type: 'image/png' });
+  fireEvent.drop(screen.getByLabelText('素材导入区域'), { dataTransfer: { files: [file] } });
+  await waitFor(() => expect(importAssets).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', projectId: 'project-1', items: [expect.objectContaining({ name: 'drop.png', mimeType: 'image/png' })] })));
+});
+
+it('imports an image pasted from the clipboard for a workspace project', async () => {
+  const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'asset-paste', name: 'clipboard.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'p'.repeat(64), managed: true } }]);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => []), importAssets };
+  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+  const file = new File(['png'], '', { type: 'image/png' });
+  fireEvent.paste(screen.getByLabelText('素材导入区域'), { clipboardData: { files: [file] } });
+  await waitFor(() => expect(importAssets).toHaveBeenCalledWith(expect.objectContaining({ items: [expect.objectContaining({ name: 'clipboard.png', mimeType: 'image/png' })] })));
+});
+
 it('shows honest unavailable states for connections and delivery', () => {
   const { unmount } = render(<Harness initialView="connections" />);
   expect(screen.getByText('尚未连接模型')).toBeInTheDocument();

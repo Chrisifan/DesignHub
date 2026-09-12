@@ -2,6 +2,8 @@ import {
   useMemo,
   useEffect,
   useState,
+  type ClipboardEvent,
+  type DragEvent,
   type ReactNode,
 } from 'react';
 
@@ -242,6 +244,10 @@ const AssetsPage = ({
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [importing, setImporting] = useState(false);
   const inputId = 'asset-import-input';
+  const readFile = async (file: File): Promise<ArrayBuffer> => {
+    if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
+    return new Response(file).arrayBuffer();
+  };
   useEffect(() => {
     if (!workspaceId || !projectId) return undefined;
     let cancelled = false;
@@ -249,11 +255,11 @@ const AssetsPage = ({
     void request?.then((result) => { if (!cancelled && result) setManagedAssets(result); }).catch(() => notify?.(t(locale, '素材读取失败', 'Could not load assets')));
     return () => { cancelled = true; };
   }, [locale, notify, projectId, workspaceId]);
-  const importFiles = async (files: FileList | null): Promise<void> => {
+  const importFiles = async (files: FileList | File[] | null): Promise<void> => {
     if (!files || !workspaceId || !projectId || readOnly) return;
     setImporting(true);
     try {
-      const items = await Promise.all(Array.from(files).map(async (file) => ({ name: file.name, mimeType: file.type || undefined, data: await file.arrayBuffer() })));
+      const items = await Promise.all(Array.from(files).map(async (file) => ({ name: file.name, mimeType: file.type || undefined, data: await readFile(file) })));
       const results = await getDesktopApi().importAssets?.({ workspaceId, projectId, items });
       if (results) {
         const imported = results.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset);
@@ -264,6 +270,20 @@ const AssetsPage = ({
     } catch {
       notify?.(t(locale, '素材导入失败', 'Could not import assets'));
     } finally { setImporting(false); }
+  };
+  const handleDrop = (event: DragEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    void importFiles(event.dataTransfer.files);
+  };
+  const handlePaste = (event: ClipboardEvent<HTMLDivElement>): void => {
+    const files = Array.from(event.clipboardData.files);
+    if (!files.length) return;
+    event.preventDefault();
+    void importFiles(files.map((file) => {
+      if (file.name) return file;
+      const extension = file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1] || 'png';
+      return new File([file], `clipboard.${extension}`, { type: file.type || 'image/png' });
+    }));
   };
   const usingManagedAssets = Boolean(workspaceId && projectId);
   const displayAssets = usingManagedAssets ? managedAssets.map(managedAssetToItem) : assets;
@@ -353,7 +373,14 @@ const AssetsPage = ({
           {filteredAssets.length} {t(locale, '项', 'items')}
         </span>
       </div>
-      <div className="library-split">
+      <div
+        className="library-split"
+        aria-label={t(locale, '素材导入区域', 'Asset import area')}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={handleDrop}
+        onPaste={handlePaste}
+        tabIndex={0}
+      >
         <div className={`asset-collection asset-collection--${layout}`}>
           {filteredAssets.length ? (
             filteredAssets.map((item) => (
