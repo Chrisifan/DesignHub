@@ -13,6 +13,7 @@ import {
   isLayerInteractive,
   moveLayer,
   replaceSceneLayer,
+  renameLayer,
   reorderLayers,
   resizeLayer,
   selectLayerIds,
@@ -85,6 +86,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   const [sceneHydrated, setSceneHydrated] = useState(!workspaceId || !projectId || !documentId);
   const handledAssetAction = useRef<string | undefined>(undefined);
   const selectedLayer = useMemo(() => scene.layers.find((layer) => layer.id === selectedIds[0]), [scene.layers, selectedIds]);
+  const selectedLayers = useMemo(() => scene.layers.filter((layer) => selectedIds.includes(layer.id)), [scene.layers, selectedIds]);
   useEffect(() => {
     if (!workspaceId || !projectId) return undefined;
     let cancelled = false;
@@ -163,9 +165,18 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     persist(createScene({ ...scene, layers: scene.layers.filter((layer) => layer.id !== layerId) }));
     setSelectedIds((ids) => ids.filter((id) => id !== layerId));
   };
+  const rename = (layerId: string, name: string): void => {
+    const layer = scene.layers.find((entry) => entry.id === layerId);
+    if (!layer) return;
+    persist(replaceSceneLayer(scene, renameLayer(layer, name)));
+  };
   const updateLayer = (layer: SceneLayer) => {
     const next = layer.width > 0 && layer.height > 0 ? layer : resizeLayer(layer, { width: Math.max(1, layer.width), height: Math.max(1, layer.height) });
     replace(next);
+  };
+  const updateLayers = (layers: SceneLayer[]): void => {
+    const byId = new Map(layers.map((layer) => [layer.id, layer]));
+    persist(createScene({ ...scene, layers: scene.layers.map((layer) => byId.get(layer.id) ?? layer) }));
   };
   return (
     <section className="canvas-workspace" aria-label={messages.canvasTitle}>
@@ -177,7 +188,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
         </div>
       </header>
       <div className="canvas-workspace__body">
-        <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} />
+        <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} />
         <div className="canvas-workspace__stage" style={{ overflow: 'auto' }}>
           {canvasReady ? <Stage width={stageDimensions.width} height={stageDimensions.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
             <Layer>
@@ -186,7 +197,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
             </Layer>
           </Stage> : <div className="canvas-workspace__fallback" role="img" aria-label={messages.canvasTitle}>{messages.canvasUnavailable}</div>}
         </div>
-        <Inspector locale={locale} layer={selectedLayer} onChange={updateLayer} />
+        <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} />
       </div>
     </section>
   );

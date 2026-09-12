@@ -44,6 +44,8 @@
   ,"canvasOpacity": "不透明度"
   ,"canvasVisible": "可见"
   ,"canvasLocked": "锁定"
+  ,"canvasLayerName": "图层名称"
+  ,"canvasSelectionCount": "已选图层"
   ,"canvasFit": "适应"
   ,"canvasReset": "100%"
   ,"canvasUnavailable": "当前环境不支持画布渲染。"

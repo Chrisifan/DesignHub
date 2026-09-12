@@ -93,3 +93,25 @@ it('applies a pending asset action after hydrating the workspace scene', async (
   })));
   expect(onSceneChange).toHaveBeenCalledWith(expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ assetId: 'asset-1' })]) }));
 });
+
+it('toggles shift multi-selection and persists a renamed layer', async () => {
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, saveDocumentScene };
+  const multi = createScene({ id: 'scene-multi', width: 800, height: 600, layers: [
+    { id: 'text-1', type: 'text', text: '标题', fontFamily: 'sans-serif', fontSize: 24, fontWeight: '400', align: 'left', color: '#111111', x: 10, y: 10, width: 200, height: 40, rotation: 0, opacity: 1, visible: true, locked: false },
+    { id: 'text-2', type: 'text', text: '副标题', fontFamily: 'sans-serif', fontSize: 24, fontWeight: '400', align: 'left', color: '#111111', x: 10, y: 60, width: 200, height: 40, rotation: 0, opacity: 1, visible: true, locked: false },
+  ] });
+  render(<CanvasWorkspace locale="zh-CN" scene={multi} workspaceId="workspace-1" projectId="project-1" documentId="doc-1" />);
+  const rows = screen.getAllByRole('button', { name: /标题|副标题/ });
+  fireEvent.click(rows[0]!);
+  fireEvent.click(rows[1]!, { shiftKey: true });
+  expect(rows[1]).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(rows[1]!, { shiftKey: true });
+  expect(rows[1]).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(rows[0]!);
+  fireEvent.change(screen.getByRole('textbox', { name: '图层名称' }), { target: { value: '主标题' } });
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ name: '主标题' })]) }) })));
+  fireEvent.click(rows[1]!, { shiftKey: true });
+  fireEvent.change(screen.getByRole('spinbutton', { name: '不透明度' }), { target: { value: '0.5' } });
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ opacity: 0.5 }), expect.objectContaining({ opacity: 0.5 })]) }) })));
+});

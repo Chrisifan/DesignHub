@@ -10,6 +10,7 @@ export type LayerListProps = {
   onMove?: (id: string, direction: 'up' | 'down') => void;
   onDuplicate?: (id: string) => void;
   onDelete?: (id: string) => void;
+  onRename?: (id: string, name: string) => void;
 };
 
 const layerLabel = (layer: SceneLayer): string => {
@@ -18,7 +19,7 @@ const layerLabel = (layer: SceneLayer): string => {
   return `${layer.kind} ${layer.id}`;
 };
 
-export const LayerList = ({ locale, layers, selectedIds, onSelect, onMove, onDuplicate, onDelete }: LayerListProps) => {
+export const LayerList = ({ locale, layers, selectedIds, onSelect, onMove, onDuplicate, onDelete, onRename }: LayerListProps) => {
   const messages = getMessages(locale);
   return (
     <aside className="canvas-layer-list" aria-label={messages.canvasLayers}>
@@ -30,7 +31,10 @@ export const LayerList = ({ locale, layers, selectedIds, onSelect, onMove, onDup
             <button
               type="button"
               aria-pressed={selected}
-              onClick={(event) => onSelect(event.shiftKey ? [...selectedIds, layer.id] : [layer.id])}
+              onClick={(event) => {
+                if (!event.shiftKey) { onSelect([layer.id]); return; }
+                onSelect(selected ? selectedIds.filter((id) => id !== layer.id) : [...selectedIds, layer.id]);
+              }}
             >
               <span>{layerLabel(layer)}</span>
               {!layer.visible && <span aria-label={messages.canvasVisible}>-</span>}
@@ -43,6 +47,10 @@ export const LayerList = ({ locale, layers, selectedIds, onSelect, onMove, onDup
               </>}
               {onDuplicate && <IconButton name="copy" label={locale === 'zh-CN' ? '复制图层' : 'Duplicate layer'} onClick={() => onDuplicate(layer.id)} />}
               {onDelete && <IconButton name="trash-2" label={locale === 'zh-CN' ? '删除图层' : 'Delete layer'} onClick={() => onDelete(layer.id)} />}
+              {onRename && <IconButton name="settings" label={locale === 'zh-CN' ? '重命名图层' : 'Rename layer'} onClick={() => {
+                const name = window.prompt(locale === 'zh-CN' ? '图层名称' : 'Layer name', layer.name ?? '');
+                if (name !== null) onRename(layer.id, name);
+              }} />}
             </span>
           </li>;
         })}

@@ -44,6 +44,8 @@
   ,"canvasOpacity": "Opacity"
   ,"canvasVisible": "Visible"
   ,"canvasLocked": "Locked"
+  ,"canvasLayerName": "Layer name"
+  ,"canvasSelectionCount": "Selected layers"
   ,"canvasFit": "Fit"
   ,"canvasReset": "100%"
   ,"canvasUnavailable": "Canvas rendering is unavailable in this environment."

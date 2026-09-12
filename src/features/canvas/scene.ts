@@ -1,5 +1,6 @@
 export type LayerBase = {
   id: string;
+  name?: string;
   x: number;
   y: number;
   width: number;
@@ -64,6 +65,7 @@ const hasAllowedKeys = (value: Record<string, unknown>, allowed: string[]): bool
 
 const isLayerBase = (value: Record<string, unknown>): boolean => (
   isNonBlank(value.id)
+  && (value.name === undefined || isNonBlank(value.name))
   && isFiniteNumber(value.x)
   && isFiniteNumber(value.y)
   && isFiniteNumber(value.width) && value.width > 0
@@ -84,7 +86,7 @@ const isImageLayer = (value: Record<string, unknown>): boolean => (
 
 const isTextLayer = (value: Record<string, unknown>): boolean => (
   value.type === 'text'
-  && hasAllowedKeys(value, ['id', 'type', 'text', 'fontFamily', 'fontSize', 'fontWeight', 'align', 'color', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'visible', 'locked'])
+  && hasAllowedKeys(value, ['id', 'name', 'type', 'text', 'fontFamily', 'fontSize', 'fontWeight', 'align', 'color', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'visible', 'locked'])
   && isLayerBase(value)
   && typeof value.text === 'string'
   && isNonBlank(value.fontFamily)
@@ -96,7 +98,7 @@ const isTextLayer = (value: Record<string, unknown>): boolean => (
 
 const isShapeLayer = (value: Record<string, unknown>): boolean => (
   value.type === 'shape'
-  && hasAllowedKeys(value, ['id', 'type', 'kind', 'fill', 'stroke', 'strokeWidth', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'visible', 'locked'])
+  && hasAllowedKeys(value, ['id', 'name', 'type', 'kind', 'fill', 'stroke', 'strokeWidth', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'visible', 'locked'])
   && isLayerBase(value)
   && (value.kind === 'rect' || value.kind === 'ellipse' || value.kind === 'line')
   && typeof value.fill === 'string'
@@ -161,6 +163,14 @@ export const moveLayer = <T extends SceneLayer>(layer: T, position: { x: number;
 export const setLayerVisibility = <T extends SceneLayer>(layer: T, visible: boolean): T => ({ ...clone(layer), visible });
 
 export const setLayerLock = <T extends SceneLayer>(layer: T, locked: boolean): T => ({ ...clone(layer), locked });
+
+export const renameLayer = <T extends SceneLayer>(layer: T, name: string): T => {
+  const next = clone(layer);
+  const trimmed = name.trim();
+  if (trimmed) next.name = trimmed;
+  else delete next.name;
+  return next;
+};
 
 export const isLayerInteractive = (layer: SceneLayer): boolean => layer.visible && !layer.locked;
 

@@ -6,6 +6,7 @@ import {
   isLayerInteractive,
   parseScene,
   reorderLayers,
+  renameLayer,
   resizeLayer,
   selectLayerIds,
   serializeScene,
@@ -70,6 +71,14 @@ it('keeps multi-selection scoped to existing unique layer ids', () => {
   const scene = createScene({ id: 'scene-2', width: 800, height: 600, layers: [imageLayer, { ...imageLayer, id: 'image-2' }] });
 
   expect(selectLayerIds(scene, ['image-2', 'image-1', 'image-2', 'missing'])).toEqual(['image-2', 'image-1']);
+});
+
+it('renames a layer immutably and rejects blank names', () => {
+  const renamed = renameLayer(imageLayer, '主图');
+  expect(renamed).toMatchObject({ id: 'image-1', name: '主图' });
+  expect(imageLayer).not.toHaveProperty('name');
+  expect(renameLayer(renamed, '')).toMatchObject({ id: 'image-1' });
+  expect(renameLayer(renamed, '   ')).toMatchObject({ id: 'image-1' });
 });
 
 it('places, references, and replaces image assets without mutating the source scene', () => {

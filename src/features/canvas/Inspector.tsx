@@ -5,7 +5,9 @@ import type { SceneLayer } from './scene';
 export type InspectorProps = {
   locale: Locale;
   layer?: SceneLayer;
+  selectedLayers?: SceneLayer[];
   onChange: (layer: SceneLayer) => void;
+  onChangeMany?: (layers: SceneLayer[]) => void;
 };
 
 const numberOr = (value: string, fallback: number): number => {
@@ -13,21 +15,39 @@ const numberOr = (value: string, fallback: number): number => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-export const Inspector = ({ locale, layer, onChange }: InspectorProps) => {
+export const Inspector = ({ locale, layer, selectedLayers = [], onChange, onChangeMany }: InspectorProps) => {
   const messages = getMessages(locale);
-  if (!layer) return <aside className="canvas-inspector" aria-label={messages.canvasInspector}><h2>{messages.canvasInspector}</h2><p>{messages.canvasEmptySelection}</p></aside>;
-  const update = <K extends keyof SceneLayer>(key: K, value: SceneLayer[K]) => onChange({ ...layer, [key]: value } as SceneLayer);
-  const numeric = (key: 'x' | 'y' | 'width' | 'height' | 'opacity') => (event: React.ChangeEvent<HTMLInputElement>) => update(key, numberOr(event.target.value, layer[key]));
+  const selection = selectedLayers.length ? selectedLayers : layer ? [layer] : [];
+  if (!selection.length) return <aside className="canvas-inspector" aria-label={messages.canvasInspector}><h2>{messages.canvasInspector}</h2><p>{messages.canvasEmptySelection}</p></aside>;
+  const activeLayer = selection[0]!;
+  const update = <K extends keyof SceneLayer>(key: K, value: SceneLayer[K]) => onChange({ ...activeLayer, [key]: value } as SceneLayer);
+  const updateMany = (patch: Partial<SceneLayer>): void => {
+    const next = selection.map((entry) => ({ ...entry, ...patch } as SceneLayer));
+    if (onChangeMany) onChangeMany(next);
+    else next.forEach(onChange);
+  };
+  const numeric = (key: 'x' | 'y' | 'width' | 'height' | 'opacity') => (event: React.ChangeEvent<HTMLInputElement>) => update(key, numberOr(event.target.value, activeLayer[key]));
+  const mixedOpacity = selection.some((entry) => entry.opacity !== activeLayer.opacity);
+  const mixedVisible = selection.some((entry) => entry.visible !== activeLayer.visible);
+  const mixedLocked = selection.some((entry) => entry.locked !== activeLayer.locked);
   return (
     <aside className="canvas-inspector" aria-label={messages.canvasInspector}>
       <h2>{messages.canvasInspector}</h2>
-      <Field label={messages.canvasX}><input type="number" value={layer.x} onChange={numeric('x')} disabled={layer.locked} /></Field>
-      <Field label={messages.canvasY}><input type="number" value={layer.y} onChange={numeric('y')} disabled={layer.locked} /></Field>
-      <Field label={messages.canvasWidth}><input type="number" min="1" value={layer.width} onChange={numeric('width')} disabled={layer.locked} /></Field>
-      <Field label={messages.canvasHeight}><input type="number" min="1" value={layer.height} onChange={numeric('height')} disabled={layer.locked} /></Field>
-      <Field label={messages.canvasOpacity}><input type="number" min="0" max="1" step="0.05" value={layer.opacity} onChange={numeric('opacity')} disabled={layer.locked} /></Field>
-      <Field label={messages.canvasVisible}><input type="checkbox" checked={layer.visible} onChange={(event) => update('visible', event.target.checked)} /></Field>
-      <Field label={messages.canvasLocked}><input type="checkbox" checked={layer.locked} onChange={(event) => update('locked', event.target.checked)} /></Field>
+      {selection.length > 1 ? <>
+        <p className="canvas-selection-count">{messages.canvasSelectionCount}: {selection.length}</p>
+        <Field label={messages.canvasOpacity}><input type="number" min="0" max="1" step="0.05" value={mixedOpacity ? '' : activeLayer.opacity} placeholder={mixedOpacity ? '—' : undefined} onChange={(event) => updateMany({ opacity: numberOr(event.target.value, activeLayer.opacity) })} disabled={selection.some((entry) => entry.locked)} /></Field>
+        <Field label={messages.canvasVisible}><input type="checkbox" checked={mixedVisible ? false : activeLayer.visible} onChange={(event) => updateMany({ visible: event.target.checked })} /></Field>
+        <Field label={messages.canvasLocked}><input type="checkbox" checked={mixedLocked ? false : activeLayer.locked} onChange={(event) => updateMany({ locked: event.target.checked })} /></Field>
+      </> : <>
+        <Field label={messages.canvasX}><input type="number" value={activeLayer.x} onChange={numeric('x')} disabled={activeLayer.locked} /></Field>
+        <Field label={messages.canvasY}><input type="number" value={activeLayer.y} onChange={numeric('y')} disabled={activeLayer.locked} /></Field>
+        <Field label={messages.canvasWidth}><input type="number" min="1" value={activeLayer.width} onChange={numeric('width')} disabled={activeLayer.locked} /></Field>
+        <Field label={messages.canvasHeight}><input type="number" min="1" value={activeLayer.height} onChange={numeric('height')} disabled={activeLayer.locked} /></Field>
+        <Field label={messages.canvasOpacity}><input type="number" min="0" max="1" step="0.05" value={activeLayer.opacity} onChange={numeric('opacity')} disabled={activeLayer.locked} /></Field>
+        <Field label={messages.canvasLayerName}><input type="text" value={activeLayer.name ?? ''} onChange={(event) => onChange({ ...activeLayer, name: event.target.value.trim() || undefined } as SceneLayer)} disabled={activeLayer.locked} /></Field>
+        <Field label={messages.canvasVisible}><input type="checkbox" checked={activeLayer.visible} onChange={(event) => update('visible', event.target.checked)} /></Field>
+        <Field label={messages.canvasLocked}><input type="checkbox" checked={activeLayer.locked} onChange={(event) => update('locked', event.target.checked)} /></Field>
+      </>}
     </aside>
   );
 };
