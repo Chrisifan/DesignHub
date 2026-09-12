@@ -1,6 +1,6 @@
 # 模块测试、checklist 与回归登记
 
-创建：2026-09-08；更新：2026-09-10。本文件是实施与回归协议。Electron 框架已选；M01 基础工程已实现，M02 Tasks 1–2 已完成计划内实现，未覆盖的平台和 UI 前提继续单列。
+创建：2026-09-08；更新：2026-09-12。本文件是实施与回归协议。Electron 框架已选；M01–M08 的可验证契约已落地，未覆盖的平台、真实模型、签名与人工质量前提继续单列。
 
 | 模块 | 当前状态 | 实现前测试/清单文件 | 必须回归的直接消费者 |
 | --- | --- | --- | --- |
@@ -56,6 +56,8 @@
 2026-09-12：UI 布局回归（变更 ID UI-20260912-02）。针对截图反馈，目标文件为 `src/app/studio/library.css`、`src/app/studio/persona.css` 与 `tests/integration/layout-contract.test.ts`。主分栏区域改为 flex 填满页面可用高度并保持左右拉伸对齐；素材网格与搜索框共享左基线；品牌列表与详情顶部对齐；交付空态与原稿 footer 样式隔离；设置页移除孤立首尾分割线；设计师页使用高特异性规则关闭外层滚动，仅保留列表/检查器内部滚动。先新增 4 条失败契约再实现；layout-contract 4/4、unit 56/56、integration 66/66、lint、typecheck、build、diff check 均通过。浏览器截图回归仍受同一 Playwright Chromium 前提阻塞，未记为通过。
 2026-09-12：设计师页滚动边界回归（变更 ID UI-20260912-03）。用户反馈设计师页面外侧仍存在滚动；目标文件为 `src/app/styles/window.css`、`src/app/styles/studio.css`、`tests/integration/layout-contract.test.ts`、`tests/e2e/studio.spec.ts` 与 UI 验收文档。根节点/应用壳层/Studio 现在固定在窗口视口并裁剪外层溢出，Studio 不再使用 680px 人工最小高度；设计师列表和检查器保留内部滚动所有权。先收紧正则并新增 1 条失败契约，随后实现 Green；layout-contract 5/5、integration 67/67、unit 56/56、lint、typecheck、build、diff check 均通过；设计师专项浏览器旅程 1/1 通过。同步将与“标题由面包屑承载”冲突的 E2E 可见性断言改为节点存在性，并在导航矩阵加入 1280/1024 外层纵向溢出断言；最近一次完整浏览器套件 14/16，余下 2 条为 headless 毛玻璃断言环境差异，未归因于本次滚动改动。新增矩阵断言后的完整重跑因本地提权审批超时未执行，不伪记为通过。
 2026-09-12：M02 Task 5 工作区入口与 Electron bridge（变更 ID M02-20260912-01）。目标文件为 `src/platform/contracts.ts`、`src/platform/desktop.ts`、`src/desktop/preload.ts`、`src/desktop/ipc/workspace.ts`、`src/desktop/main.ts`、`src/app/App.tsx`、`src/app/studio/Studio.tsx`、`vite.preload.config.ts` 及相关测试。新增受信 sender/origin 下的创建/打开 handler、typed preload API、main-only `WorkspaceHandle` 替换与关闭、欢迎页真实创建/打开流程；真实工作区不再注入示例项目。先执行 focused Red（4 failures），再 Green；unit 60/60、integration 68/68、lint、typecheck、build、diff check 通过；macOS native 2 passed/1 skipped。构建回归发现 preload 清空共享输出目录会删除 `main.cjs`，新增配置契约并修复为保留主进程产物。E03 目前为代码审查证据，双工作区原生切换 harness、Windows、打包 artifact 与项目持久化 UI 仍开放。
+
+2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：
 
