@@ -4,6 +4,7 @@ import { expect, it, vi } from 'vitest';
 
 import { NewDesignPage } from './NewDesignPage';
 import type { NewDesignDraft } from './types';
+import type { PersonaProfile } from './personas';
 
 const initialDraft: NewDesignDraft = {
   name: '',
@@ -49,4 +50,13 @@ it('shows a completed conversation brief for explicit review before project crea
   expect(screen.getByText('一张自然、克制的春季市集海报。')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '确认创建' }));
   expect(onConfirm).toHaveBeenCalledWith('task-1');
+});
+
+it('uses a persisted custom persona in the new-design hero and selector', () => {
+  const custom: PersonaProfile = {
+    id: 'custom-new', name: { zh: '新建人物', en: 'New persona' }, signature: { zh: '署名', en: 'Signature' }, summary: { zh: '摘要', en: 'Summary' }, principle: { zh: '原则', en: 'Principle' }, personaCode: 'NEW', version: 'v1.0', status: 'published', artworkUrl: '/new-persona.png', artworkAlt: { zh: '新建人物', en: 'New persona' }, tags: [], referenceCount: 0, styleDna: { palette: [], typography: { zh: '', en: '' }, composition: { zh: '', en: '' }, texture: { zh: '', en: '' } }, negativeRules: [], portfolioSheets: [],
+  };
+  render(<NewDesignPage locale="zh-CN" draft={{ ...initialDraft, personaId: custom.id }} profiles={[custom]} onDraftChange={vi.fn()} onCreate={vi.fn()} onBack={vi.fn()} />);
+  expect(screen.getByLabelText('新建设计的当前设计师')).toHaveTextContent('新建人物');
+  expect(screen.getByRole('img', { name: '新建人物的人物形象' })).toHaveAttribute('src', '/new-persona.png');
 });

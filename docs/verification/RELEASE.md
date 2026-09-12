@@ -57,3 +57,5 @@ Browser preview tests are not evidence for the native gates above. No release ar
 - Multi-contributor attribution and related-scene conversion: project credits can include multiple designer versions, revisions preserve lead/direction roles, and related-size creation scales the finalized source scene into an independent document. Affected focused suite passed 53/53; semantic layout reflow and human visual QA remain release gates.
 
 - Custom persona artwork now remains visible on project detail pages for persisted non-built-in profiles, with an explicit unavailable fallback when no artwork is available. Focused `DesignerHero` regression passed 1/1; generated bitmap persistence remains an external gate.
+
+- New-design now carries persisted custom persona options into its selector and hero. Focused NewDesignPage regression passed 3/3; native generated bitmap persistence remains an external gate.

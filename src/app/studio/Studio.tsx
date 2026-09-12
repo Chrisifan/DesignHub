@@ -767,6 +767,7 @@ export const Studio = ({
               onDraftChange={setDraft}
               onCreate={createProject}
               onBack={backFromNewDesign}
+              profiles={designerOptions}
               persisted={workspace?.openMode === 'writable'}
               conversationResult={conversationResult}
               onConfirmConversation={(taskId) => {

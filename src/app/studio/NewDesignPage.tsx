@@ -1,7 +1,7 @@
 import { useEffect, useRef, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
-import { getPersona, localize } from './personas';
+import { getPersona, localize, type PersonaProfile } from './personas';
 import { DesignerHero } from './DesignerHero';
 import { Button, Field, Icon, t } from './ui';
 import type { NewDesignDraft } from './types';
@@ -15,6 +15,7 @@ type NewDesignPageProps = {
   persisted?: boolean;
   conversationResult?: { taskId: string; text: string } | null;
   onConfirmConversation?: (taskId: string) => void;
+  profiles?: PersonaProfile[];
 };
 
 export const NewDesignPage = ({
@@ -26,6 +27,7 @@ export const NewDesignPage = ({
   persisted = false,
   conversationResult = null,
   onConfirmConversation,
+  profiles,
 }: NewDesignPageProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -42,7 +44,7 @@ export const NewDesignPage = ({
     onDraftChange({ ...draft, mode });
   const setPersona = (personaId: string) =>
     onDraftChange({ ...draft, personaId });
-  const personas = ['paper-type', 'clear-commerce', 'natural-story'];
+  const personas = profiles ?? ['paper-type', 'clear-commerce', 'natural-story'].map((id) => getPersona(id)!).filter(Boolean);
   return (
     <section className="page-content new-design-page" aria-labelledby="new-design-title">
       <header className="new-design-heading">
@@ -86,9 +88,9 @@ export const NewDesignPage = ({
           )}
           <Field label={t(locale, '设计师', 'Designer')}>
             <div className="persona-selector" role="group" aria-label={t(locale, '选择设计师', 'Choose a designer')}>
-              {personas.map((personaId) => {
-                const persona = getPersona(personaId)!;
-                return <button type="button" key={personaId} className={draft.personaId === personaId ? 'is-selected' : ''} aria-label={localize(locale, persona.name)} aria-pressed={draft.personaId === personaId} onClick={() => setPersona(personaId)}><span className="persona-selector__avatar"><span className="persona-artwork persona-artwork--avatar persona-artwork--unavailable">{t(locale, '待生成', 'Pending')}</span></span><span>{localize(locale, persona.name)}</span></button>;
+              {personas.map((persona) => {
+                const personaId = persona.id;
+                return <button type="button" key={personaId} className={draft.personaId === personaId ? 'is-selected' : ''} aria-label={localize(locale, persona.name)} aria-pressed={draft.personaId === personaId} onClick={() => setPersona(personaId)}><span className="persona-selector__avatar"><span className="persona-artwork persona-artwork--avatar"><img src={persona.artworkUrl} alt="" /></span></span><span>{localize(locale, persona.name)}</span></button>;
               })}
             </div>
           </Field>
@@ -98,7 +100,7 @@ export const NewDesignPage = ({
           <p className="inline-notice"><Icon name="circle-help" size={16} />{persisted ? t(locale, '项目将保存到当前本地工作区。', 'The project will be saved to the current local workspace.') : t(locale, '此处创建预览草稿，仅本次会话可见，不写入磁盘。', 'Creates a session-only preview draft. Nothing is written to disk.')}</p>
           <div className="dialog-actions"><Button type="submit" variant="primary" icon={draft.mode === 'conversation' ? 'send' : 'plus'} disabled={!draft.name.trim() || (draft.mode === 'conversation' && !draft.brief.trim())}>{draft.mode === 'conversation' ? t(locale, '提交简报', 'Submit brief') : persisted ? t(locale, '创建项目', 'Create project') : t(locale, '创建预览', 'Create preview')}</Button></div>
         </form>
-        <DesignerHero personaId={draft.personaId} locale={locale} label={t(locale, '新建设计的当前设计师', 'New design active designer')} />
+        <DesignerHero personaId={draft.personaId} profile={personas.find((persona) => persona.id === draft.personaId)} locale={locale} label={t(locale, '新建设计的当前设计师', 'New design active designer')} />
       </div>
     </section>
   );
