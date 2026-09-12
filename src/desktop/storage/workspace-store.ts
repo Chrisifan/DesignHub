@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { access, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { constants, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -140,7 +140,9 @@ const readManifest = async (directory: string): Promise<WorkspaceManifest> => {
   const path = join(directory, workspaceManifestName);
   let value: unknown;
   try {
-    value = JSON.parse(readRegularFile(path, 'INVALID_WORKSPACE_MANIFEST')) as unknown;
+    const status = lstatSync(path);
+    if (!status.isFile() || status.isSymbolicLink() || realpathSync(path) !== path) throw new Error('INVALID_WORKSPACE_MANIFEST');
+    value = JSON.parse(await readFile(path, 'utf8')) as unknown;
   } catch {
     throw new Error('INVALID_WORKSPACE_MANIFEST');
   }
@@ -158,7 +160,9 @@ const readManifestIfPresent = async (directory: string): Promise<WorkspaceManife
   }
   let value: unknown;
   try {
-    value = JSON.parse(readRegularFile(path, 'INVALID_WORKSPACE_MANIFEST')) as unknown;
+    const status = lstatSync(path);
+    if (!status.isFile() || status.isSymbolicLink() || realpathSync(path) !== path) throw new Error('INVALID_WORKSPACE_MANIFEST');
+    value = JSON.parse(await readFile(path, 'utf8')) as unknown;
   } catch {
     throw new Error('INVALID_WORKSPACE_MANIFEST');
   }
