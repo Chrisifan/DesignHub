@@ -144,7 +144,7 @@ it('hydrates managed assets for the active workspace project', async () => {
 it('shows honest unavailable states for connections and delivery', () => {
   const { unmount } = render(<Harness initialView="connections" />);
   expect(screen.getByText('尚未连接模型')).toBeInTheDocument();
-  expect(screen.queryByLabelText(/API Key/i)).not.toBeInTheDocument();
+  expect(screen.getByLabelText('API 密钥')).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: /检测/ }),
   ).not.toBeInTheDocument();

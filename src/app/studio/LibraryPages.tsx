@@ -21,6 +21,8 @@ import {
 } from './ui';
 import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
+import { ProviderSettings } from '../../features/providers/ProviderSettings';
+import type { ProviderConnection } from '../../features/providers/connection';
 import './library.css';
 
 type LibraryPagesProps = PageProps & {
@@ -58,6 +60,10 @@ type BrandKit = {
 };
 type DeliveryFormat = 'png' | 'jpeg' | 'pdf';
 type StorageTab = 'trash' | 'backup';
+
+const availableConnections: readonly ProviderConnection[] = [
+  { id: 'openai-compatible', label: 'OpenAI compatible', status: 'not-configured', capabilities: ['conversation', 'image-generation', 'image-editing'] },
+];
 
 const assets: AssetItem[] = [
   {
@@ -517,6 +523,12 @@ const ConnectionsPage = ({
           {t(locale, '查看设置', 'View settings')}
         </Button>
       </EmptyState>
+      <ProviderSettings
+        locale={locale}
+        connections={availableConnections}
+        onStoreCredential={async (connectionId, secret) => getDesktopApi().storeCredential?.(connectionId, secret) ?? false}
+        onDeleteCredential={async (connectionId) => getDesktopApi().deleteCredential?.(connectionId) ?? false}
+      />
       <div className="capability-matrix">
         <div className="matrix-heading">
           <span>{t(locale, '能力', 'Capability')}</span>
