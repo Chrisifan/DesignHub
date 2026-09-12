@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest';
 import type { Locale } from '../i18n';
 import { LibraryPages } from './LibraryPages';
 import type { Project, Theme, View } from './types';
+import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 
 const Harness = ({
   initialView = 'designers',
@@ -314,6 +315,20 @@ it('passes the archive choice to document export', async () => {
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: '导出' }));
   await waitFor(() => expect(exportDocument).toHaveBeenCalledWith(expect.objectContaining({ archiveCopy: true })));
+});
+
+it('shows persisted export history for a project', async () => {
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{
+      id: 'export-1', projectId: 'history-project', documentId: 'doc-1', revisionId: 'revision-1', format: 'png',
+      targetPath: '/tmp/poster.png', sha256: 'a'.repeat(64), status: 'success', archived: false, createdAt: '2026-09-13T00:00:00.000Z',
+    }]),
+  };
+  const project: Project = { id: 'history-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '历史项目', enName: 'History project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  render(<Harness initialView="delivery" deliveryProject={project} />);
+  await waitFor(() => expect(screen.getByText('PNG · revision-1')).toBeInTheDocument());
+  expect(screen.getByText('成功')).toBeInTheDocument();
 });
 
 it('reports an archive copy failure while retaining the external export result', async () => {

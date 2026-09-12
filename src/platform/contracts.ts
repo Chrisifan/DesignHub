@@ -13,6 +13,7 @@ import type { BrandLibraryState } from '../features/brands/constraints';
 import type { ImageEditInput, ImageGenerationInput } from '../features/agent/task-service';
 import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
+import type { ExportHistoryRecord } from '../features/delivery/export-history';
 
 export type ConversationTaskInput = {
   workspaceId: string;
@@ -83,6 +84,7 @@ export type DesktopApi = {
   cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;
   retryTask?: (workspaceId: string, taskId: string) => Promise<TaskRecord | null>;
   exportDocument?: (input: ExportDocumentInput) => Promise<{ path: string; sha256: string; archived?: boolean; archiveError?: string } | null>;
+  listExportHistory?: (workspaceId: string, projectId: string) => Promise<ExportHistoryRecord[] | null>;
   exportDiagnostics?: (input: { runtime: string; errorCode?: string | null }) => Promise<string | null>;
 };
 

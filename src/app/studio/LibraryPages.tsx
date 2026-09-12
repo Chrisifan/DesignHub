@@ -31,6 +31,7 @@ import { BrandEditor } from '../../features/brands/BrandEditor';
 import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
 import type { TaskRecord } from '../../features/tasks/state';
+import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
@@ -872,6 +873,7 @@ const DeliveryPage = ({
   notify?: (message: string) => void;
 }) => {
   const [exporting, setExporting] = useState(false);
+  const [exportHistory, setExportHistory] = useState<ExportHistoryRecord[]>([]);
   const [source, setSource] = useState<'current' | 'final'>('current');
   const [documentId, setDocumentId] = useState(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
   const formatDescription =
@@ -897,6 +899,17 @@ const DeliveryPage = ({
   useEffect(() => {
     setDocumentId(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
     setSource('current');
+    setExportHistory([]);
+    if (!project?.workspaceId) return;
+    let cancelled = false;
+    const request = getDesktopApi().listExportHistory?.(project.workspaceId, project.id);
+    if (!request) return () => { cancelled = true; };
+    void request.then((records) => {
+      if (!cancelled && records) setExportHistory(records);
+    }).catch(() => {
+      if (!cancelled) setExportHistory([]);
+    });
+    return () => { cancelled = true; };
   }, [project?.documentId, project?.id]);
   const activeDocumentId = documentId || project?.documentId || project?.documentEntries?.[0]?.id || '';
   const currentDocument = project?.documentEntries?.find((entry) => entry.id === activeDocumentId) ?? project?.documentEntries?.[0];
@@ -1093,6 +1106,17 @@ const DeliveryPage = ({
               {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
             </Button>
           </div>
+          {persistedProject && <div className="export-history" aria-label={t(locale, '导出历史', 'Export history')}>
+            <p className="panel-label">{t(locale, '导出历史', 'Export history')}</p>
+            {exportHistory.length === 0 ? <small>{t(locale, '暂无导出记录。', 'No export records yet.')}</small> : exportHistory.slice(0, 5).map((record) => (
+              <div className="export-history-row" key={record.id}>
+                <span>{record.format.toUpperCase()} · {record.revisionId}</span>
+                <Badge tone={record.status === 'success' ? 'success' : 'warning'}>
+                  {record.status === 'success' ? t(locale, '成功', 'Success') : t(locale, '失败', 'Failed')}
+                </Badge>
+              </div>
+            ))}
+          </div>}
         </div>
       </div>
     </section>

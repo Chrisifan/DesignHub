@@ -59,6 +59,8 @@ import { createSearchIndexStore } from './storage/search-index-store';
 import { exportProjectPackageHandler, importProjectPackageHandler, projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 import { createProjectPackage, encodeProjectPackage } from '../features/delivery/project-package';
 import { classifyPackageEntry, type PackageEntryKind } from '../features/delivery/package-policy';
+import { appendWorkspaceExportHistory, loadWorkspaceExportHistory } from './storage/export-history-store';
+import { exportHistoryListChannel, listExportHistoryHandler } from './ipc/export-history';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -404,25 +406,58 @@ app.whenReady().then(() => {
         filters: [{ name: exportInput.format.toUpperCase(), extensions: [extension] }],
       });
       if (result.canceled || !result.filePath) return null;
-      const exported = await exportSceneToFile({
-        scene: exportInput.scene,
-        format: exportInput.format,
-        targetPath: result.filePath,
-        background: exportInput.background,
-        ...(exportInput.archiveCopy ? {
-          archiveCopy: async ({ path }) => {
-            if (_workspace.workspace.openMode !== 'writable') throw new Error('ARCHIVE_REQUIRES_WRITABLE');
-            const projectDirectory = resolveProjectDirectory(_workspace, exportInput.projectId);
-            if (!projectDirectory) throw new Error('PROJECT_NOT_FOUND');
-            const archiveDirectory = join(projectDirectory, 'exports');
-            await mkdir(archiveDirectory, { recursive: true });
-            const archivePath = join(archiveDirectory, basename(path));
-            await writeFile(archivePath, await readFile(path), { flag: 'wx' });
-          },
-        } : {}),
-      });
-      return { path: exported.path, sha256: exported.sha256, archived: exported.archived, ...(exported.archiveError ? { archiveError: exported.archiveError } : {}) };
+      try {
+        const exported = await exportSceneToFile({
+          scene: exportInput.scene,
+          format: exportInput.format,
+          targetPath: result.filePath,
+          background: exportInput.background,
+          ...(exportInput.archiveCopy ? {
+            archiveCopy: async ({ path }) => {
+              if (_workspace.workspace.openMode !== 'writable') throw new Error('ARCHIVE_REQUIRES_WRITABLE');
+              const projectDirectory = resolveProjectDirectory(_workspace, exportInput.projectId);
+              if (!projectDirectory) throw new Error('PROJECT_NOT_FOUND');
+              const archiveDirectory = join(projectDirectory, 'exports');
+              await mkdir(archiveDirectory, { recursive: true });
+              const archivePath = join(archiveDirectory, basename(path));
+              await writeFile(archivePath, await readFile(path), { flag: 'wx' });
+            },
+          } : {}),
+        });
+        await appendWorkspaceExportHistory(_workspace, exportInput.workspaceId, {
+          id: `export-${randomUUID()}`,
+          projectId: exportInput.projectId,
+          documentId: exportInput.documentId,
+          revisionId: exportInput.scene.id,
+          format: exportInput.format,
+          targetPath: exported.path,
+          sha256: exported.sha256,
+          status: 'success',
+          archived: exported.archived,
+          ...(exported.archiveError ? { errorCode: exported.archiveError } : {}),
+          createdAt: new Date().toISOString(),
+        }).catch(() => undefined);
+        return { path: exported.path, sha256: exported.sha256, archived: exported.archived, ...(exported.archiveError ? { archiveError: exported.archiveError } : {}) };
+      } catch (error) {
+        await appendWorkspaceExportHistory(_workspace, exportInput.workspaceId, {
+          id: `export-${randomUUID()}`,
+          projectId: exportInput.projectId,
+          documentId: exportInput.documentId,
+          revisionId: exportInput.scene.id,
+          format: exportInput.format,
+          targetPath: result.filePath,
+          status: 'failed',
+          archived: false,
+          errorCode: error instanceof Error && error.message ? error.message : 'EXPORT_FAILED',
+          createdAt: new Date().toISOString(),
+        }).catch(() => undefined);
+        throw error;
+      }
     })(event, input);
+  });
+  ipcMain.handle(exportHistoryListChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return listExportHistoryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadWorkspaceExportHistory)(event, input);
   });
   ipcMain.handle(diagnosticsExportChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;

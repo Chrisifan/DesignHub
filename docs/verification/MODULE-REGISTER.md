@@ -243,6 +243,7 @@
 2026-09-13：M04 项目包元数据预检（变更 ID M04-20260913-26）。导入前通过共享项目 schema 校验 metadata，畸形文档列表统一返回 `INVALID_PACKAGE` 且不创建项目；先观察 project-store Red，再 Green；project-store focused 11/11、lint、typecheck、diff check 通过。历史迁移、磁盘满和跨设备仍开放。
 
 2026-09-13：M07 归档副本失败可恢复（变更 ID M07-20260913-20）。外部导出完成后，项目 `exports/` 归档副本冲突或目标盘失败不再撤销外部产物；导出结果返回 `archived: false` 与错误码，交付页保留外部路径并提示重试。先观察 export-document Red，再 Green；export/IPC/LibraryPages focused 39/39，lint、typecheck、diff check 通过。导出历史记录、归档索引/流式写入、Windows 与可移动磁盘仍开放。
+2026-09-13：M07 导出历史记录（变更 ID M07-20260913-21）。每次桌面导出在工作区 `.designhub/export-history.json` 原子记录项目/文档/修订、格式、目标、哈希、归档结果和成功状态；交付页显示最近记录，历史写入失败不会撤销已发布文件。先补 model/storage/IPC/UI Red，再 Green；focused 4 files/36 tests、lint、typecheck、diff check 通过。外部路径存活检查、归档索引/流式写入、Windows 与人工扫描仍开放。
 
 2026-09-13：M03 作品集分析输入边界（变更 ID M03-20260913-05）。视觉分析在适配器调用前拒绝重复/非法来源 ID、来源声明不一致、非 HTTP(S) 图片 URL、无效 Base64、超长描述和超过八项的批次；先观察 portfolio Red，再 Green；portfolio/analysis focused 9/9，lint、typecheck、diff check 通过。真实来源抓取、授权、图像生成和跨平台质量仍开放。
 

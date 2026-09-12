@@ -876,6 +876,24 @@
   background: transparent;
 }
 
+.export-history {
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.export-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 30px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .config-section {
   padding-bottom: 22px;
   border-bottom: 1px solid var(--border-subtle);

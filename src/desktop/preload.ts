@@ -16,6 +16,7 @@ import { revisionCommitChannel, revisionFinalizeChannel, revisionLoadChannel } f
 import { brandLoadChannel, brandSaveChannel } from './ipc/brands';
 import { settingsLoadChannel, settingsSaveChannel } from './ipc/settings';
 import { searchQueryChannel, searchRebuildChannel } from './ipc/search';
+import { exportHistoryListChannel } from './ipc/export-history';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -60,6 +61,7 @@ const api: DesktopApi = {
   cancelTask: (workspaceId, taskId) => ipcRenderer.invoke(taskCancelChannel, { workspaceId, taskId }),
   retryTask: (workspaceId, taskId) => ipcRenderer.invoke(taskRetryChannel, { workspaceId, taskId }),
   exportDocument: (input) => ipcRenderer.invoke(exportDocumentChannel, input),
+  listExportHistory: (workspaceId, projectId) => ipcRenderer.invoke(exportHistoryListChannel, { workspaceId, projectId }),
   exportDiagnostics: (input) => ipcRenderer.invoke(diagnosticsExportChannel, input),
 };
 
