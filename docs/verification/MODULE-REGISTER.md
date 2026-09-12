@@ -152,6 +152,8 @@
 
 2026-09-13：M05 图层管理操作（变更 ID M05-20260913-03）。CanvasWorkspace 图层列表新增上下移、复制、删除，所有操作生成新校验场景并通过既有 scene bridge 持久化，复制自动生成唯一 ID 并选中副本。先新增 CanvasWorkspace Red，再 Green；focused 5/5、lint、typecheck、diff check 通过。多选语义编辑、遮罩质量、Windows 与大图性能仍开放。
 
+2026-09-13：M05/M07 组合回归（变更 ID REL-20260913-05）。图层管理与多文档交付改动后串行执行 unit 84 files/308 tests、integration 23 files/100 tests、browser E2E 24/24、native 2 passed/1 skipped、lint、typecheck、build 与 diff check，全部退出 0。未配置 packaged executable；Windows、签名/公证、真实 provider、颜色管理和人工图像质量仍开放。
+
 2026-09-13：macOS packaged native 回归（变更 ID REL-20260913-02）。使用现有 `out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub` 设置 `DESIGNHUB_PACKAGED_APP_PATH` 执行 `pnpm test:native`，source smoke、main storage 与 packaged storage 共 3/3 通过；Windows、签名/公证、升级卸载与钥匙串持久化仍开放。
 
 2026-09-13：M03 描述建师任务闭环（变更 ID M03-20260913-02）。工作区内按描述创建设计师时提交 `designer-draft` 任务，消息包含风格说明与创作原则；完成任务解析为候选，运行中复用 500ms/12 次有界轮询，失败或不可用不展示伪造候选；无工作区示例仍保持离线预览。先新增描述路径 Red 回归，再 Green；`DesignerLibrary` focused 16/16、lint、typecheck、diff check 通过。真实 provider、授权来源传输、人物位图和跨平台图像质量仍开放。
