@@ -209,6 +209,8 @@
 
 2026-09-13：M01/M08 检索 IPC 输入校验（变更 ID M08-20260913-14）。重建通道拒绝 malformed records before storage invocation, preserving the trusted bridge contract. 先新增 search IPC Red，再 Green；focused 2/2、lint、typecheck 通过。
 
+2026-09-13：M08 持久化检索索引损坏恢复（变更 ID M08-20260913-15）。可写工作区检测到损坏的 `search-index.sqlite` 或 sidecar 时会移除并重建，源项目数据不受影响；只读工作区对缺失/损坏索引 fail-closed 返回空结果。先执行真实文件损坏 Red，再 Green；storage 3/3、integration search-index 100/100、lint、typecheck、diff check 通过。影响 M01 bridge/build、M02 备份内部清单和 M08 Studio 检索，事务中断、Windows 与大工作区压力证据仍开放。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

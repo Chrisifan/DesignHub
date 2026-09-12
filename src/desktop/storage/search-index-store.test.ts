@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -14,11 +14,11 @@ const record = (workspaceId: string, projectId: string, title: string, contribut
   tags: [], contributorIds,
 });
 
-const openStore = async (): Promise<{ root: string; directory: string; workspaceId: string; store: SearchIndexStore }> => {
+const openStore = async (): Promise<{ root: string; directory: string; workspaceId: string; store: SearchIndexStore; workspace: Awaited<ReturnType<typeof createWorkspace>> }> => {
   const root = await mkdtemp(join(tmpdir(), 'designhub-search-'));
   const workspace = await createWorkspace({ parentDirectory: root, name: 'Studio' });
   const store = createSearchIndexStore(workspace);
-  return { root, directory: workspace.workspace.directory, workspaceId: workspace.workspace.workspaceId, store };
+  return { root, directory: workspace.workspace.directory, workspaceId: workspace.workspace.workspaceId, store, workspace };
 };
 
 it('persists a rebuildable index and supports Chinese, English and contributor queries', async () => {
@@ -58,6 +58,24 @@ it('rebuild replaces stale entries, deduplicates documents and keeps workspace s
     await expect(fixture.store.search({ workspaceId: 'other-workspace', query: 'new' })).resolves.toEqual([]);
     fixture.store.close();
   } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+it('recreates a corrupt writable index before rebuilding', async () => {
+  const fixture = await openStore();
+  try {
+    fixture.store.close();
+    await writeFile(join(fixture.directory, '.designhub', 'search-index.sqlite'), 'not a sqlite database');
+    const recovered = createSearchIndexStore(fixture.workspace);
+    try {
+      await recovered.replace([record(fixture.workspaceId, 'project-recovered', 'Recovered', ['designer-a'])]);
+      await expect(recovered.search({ workspaceId: fixture.workspaceId, query: 'recovered' })).resolves.toHaveLength(1);
+    } finally {
+      recovered.close();
+    }
+  } finally {
+    fixture.workspace.close();
     await rm(fixture.root, { recursive: true, force: true });
   }
 });

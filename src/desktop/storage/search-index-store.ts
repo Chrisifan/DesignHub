@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, lstatSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -46,6 +46,59 @@ const configure = (database: Database.Database): void => {
   `);
 };
 
+const removeIndexArtifacts = (databasePath: string): void => {
+  [databasePath, `${databasePath}-wal`, `${databasePath}-shm`, `${databasePath}-journal`].forEach((path) => {
+    try {
+      const status = lstatSync(path);
+      if (status.isDirectory() && !status.isSymbolicLink()) throw new Error('INVALID_SEARCH_INDEX');
+      rmSync(path, { force: true });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'INVALID_SEARCH_INDEX') throw error;
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return;
+      throw error;
+    }
+  });
+};
+
+const isHealthy = (database: Database.Database): boolean => {
+  try {
+    return database.pragma('integrity_check', { simple: true }) === 'ok';
+  } catch {
+    return false;
+  }
+};
+
+const openDatabase = (databasePath: string, writable: boolean): Database.Database | null => {
+  if (!writable && !existsSync(databasePath)) return null;
+  try {
+    const database = new Database(databasePath, writable ? {} : { readonly: true, fileMustExist: true });
+    if (writable) {
+      try {
+        configure(database);
+        if (!isHealthy(database)) throw new Error('INVALID_SEARCH_INDEX');
+        return database;
+      } catch {
+        database.close();
+        removeIndexArtifacts(databasePath);
+      }
+      const recovered = new Database(databasePath);
+      configure(recovered);
+      return recovered;
+    }
+    if (!isHealthy(database)) {
+      database.close();
+      return null;
+    }
+    return database;
+  } catch {
+    if (!writable) return null;
+    removeIndexArtifacts(databasePath);
+    const recovered = new Database(databasePath);
+    configure(recovered);
+    return recovered;
+  }
+};
+
 const parsePayload = (value: unknown): SearchIndexItem | null => {
   if (!isRecord(value) || typeof value.workspaceId !== 'string' || typeof value.projectId !== 'string' || typeof value.documentId !== 'string') return null;
   if (typeof value.title !== 'undefined' && typeof value.title !== 'string') return null;
@@ -66,8 +119,14 @@ export const createSearchIndexStore = (handle: WorkspaceHandle): SearchIndexStor
     };
   }
   if (writable) mkdirSync(directory, { recursive: true });
-  const database = new Database(databasePath, writable ? {} : { readonly: true, fileMustExist: true });
-  if (writable) configure(database);
+  const database = openDatabase(databasePath, writable);
+  if (!database) {
+    return {
+      replace: async () => { throw new Error('WORKSPACE_NOT_WRITABLE'); },
+      search: async () => [],
+      close: () => undefined,
+    };
+  }
   const replace = async (records: readonly SearchRecord[]): Promise<void> => {
     if (handle.workspace.openMode !== 'writable' || !getWritableWorkspaceLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
     const items = buildSearchIndex(records);
