@@ -56,3 +56,9 @@ it('generates a standard PDF page from a real WebP', async () => {
   const document = await PDFDocument.load(pdf);
   expect(document.getPageCount()).toBe(1);
 });
+
+it('rejects unsupported image formats instead of relabeling them as JPEG', async () => {
+  const codec = createNodeCodec();
+  const gif = await sharp({ create: { width: 1, height: 1, channels: 3, background: '#000000' } }).gif().toBuffer();
+  await expect(codec.inspect(new Uint8Array(gif))).rejects.toThrow('UNSUPPORTED_IMAGE_FORMAT');
+});

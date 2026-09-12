@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest';
 import { exportDocument } from './export-document';
+import sharp from 'sharp';
+import { createNodeCodec } from './node-codec';
 
 it('exports the requested revision through a temporary file and records its hash', async () => {
   const writes: string[] = [];
@@ -56,4 +58,19 @@ it('rejects an encoded image whose dimensions do not match the requested export'
     },
     expectedSize: { width: 3, height: 1 },
   })).rejects.toThrow('INVALID_SIZE');
+});
+
+it('encodes a rendered PNG into the requested JPEG before writing', async () => {
+  const source = new Uint8Array(await sharp({ create: { width: 2, height: 1, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } }).png().toBuffer());
+  let written: number[] = [];
+  const result = await exportDocument({
+    revisionId: 'revision-1', format: 'jpeg', targetPath: '/exports/poster.jpg',
+    target: { exists: async () => false, write: async (_path, bytes) => { written = [...bytes]; } },
+    render: async () => source,
+    codec: createNodeCodec(),
+    background: '#ffffff',
+  });
+  expect(result.path).toBe('/exports/poster.jpg');
+  expect(written[0]).toBe(0xff);
+  expect(written[1]).toBe(0xd8);
 });

@@ -14,6 +14,7 @@ export type ExportDocumentInput = {
   targetPath: string;
   target: ExportTarget;
   render: () => Promise<Uint8Array>;
+  background?: string;
   archiveCopy?: (input: { revisionId: string; path: string; sha256: string }) => Promise<void>;
   codec?: CodecAdapter;
   expectedSize?: { width: number; height: number };
@@ -36,7 +37,16 @@ const hash = async (bytes: Uint8Array): Promise<string> => {
 export const exportDocument = async (input: ExportDocumentInput): Promise<ExportResult> => {
   if (!input.revisionId.trim() || !input.targetPath.trim()) throw new Error('EXPORT_BINDING_REQUIRED');
   if (await input.target.exists(input.targetPath)) throw new Error('TARGET_EXISTS');
-  const bytes = await input.render();
+  const rendered = await input.render();
+  let bytes = rendered;
+  if (input.codec) {
+    if (input.format === 'pdf') {
+      if (!matchesMagic('pdf', rendered)) bytes = await input.codec.toPdf(rendered);
+    } else {
+      const metadata = await input.codec.inspect(rendered);
+      if (metadata.format !== input.format) bytes = await input.codec.encode(rendered, { format: input.format, ...(input.background ? { background: input.background } : {}) });
+    }
+  }
   if (!matchesMagic(input.format, bytes)) throw new Error('INVALID_OUTPUT');
   if (input.codec && input.format !== 'pdf') {
     const metadata = await input.codec.inspect(bytes);

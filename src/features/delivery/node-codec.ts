@@ -4,7 +4,8 @@ import type { CodecAdapter, ImageEncodeOptions, ImageMetadata } from './codec';
 
 const formatFromMetadata = (format: string | undefined): ImageMetadata['format'] => {
   if (format === 'png' || format === 'webp') return format;
-  return 'jpeg';
+  if (format === 'jpeg' || format === 'jpg') return 'jpeg';
+  throw new Error('UNSUPPORTED_IMAGE_FORMAT');
 };
 
 const createNodeCodec = (): CodecAdapter => {
