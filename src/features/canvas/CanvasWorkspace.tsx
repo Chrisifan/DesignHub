@@ -33,6 +33,7 @@ const stageDimensions = { width: 900, height: 620 };
 
 const canRenderCanvas = (): boolean => {
   if (typeof document === 'undefined') return false;
+  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return false;
   try {
     return Boolean(document.createElement('canvas').getContext('2d'));
   } catch {
