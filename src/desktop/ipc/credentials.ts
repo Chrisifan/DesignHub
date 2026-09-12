@@ -15,10 +15,26 @@ type CredentialRequest = {
 };
 type CredentialWindow = { webContents: CredentialSender };
 
+const hasSameCanonicalRendererLocation = (candidateUrl: string, trustedUrl: string): boolean => {
+  try {
+    const candidate = new URL(candidateUrl);
+    const trusted = new URL(trustedUrl);
+    if (trusted.protocol === 'file:') return candidate.protocol === 'file:' && candidate.href === trusted.href;
+    if (trusted.protocol !== 'http:' && trusted.protocol !== 'https:') return false;
+    return candidate.protocol === trusted.protocol
+      && candidate.host === trusted.host
+      && candidate.pathname === trusted.pathname
+      && candidate.search === trusted.search
+      && candidate.hash === trusted.hash;
+  } catch {
+    return false;
+  }
+};
+
 const isTrustedCredentialRequest = (event: CredentialRequest, window: CredentialWindow, trustedUrl: string): boolean => {
   const frame = event.senderFrame;
   if (event.sender !== window.webContents || frame !== window.webContents.mainFrame || frame === null) return false;
-  return frame.url === trustedUrl;
+  return hasSameCanonicalRendererLocation(frame.url, trustedUrl);
 };
 
 const validConnectionId = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
