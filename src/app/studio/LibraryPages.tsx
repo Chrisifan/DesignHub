@@ -1017,10 +1017,16 @@ const SettingsPage = ({
   navigate,
   onThemeChange,
   onLocaleChange,
+  notify,
 }: Pick<
   LibraryPagesProps,
   'locale' | 'theme' | 'navigate' | 'onThemeChange' | 'onLocaleChange'
->) => (
+> & { notify?: (message: string) => void }) => {
+  const exportDiagnostics = async (): Promise<void> => {
+    const path = await getDesktopApi().exportDiagnostics?.({ runtime: 'Electron', errorCode: null });
+    if (path) notify?.(t(locale, `诊断包已导出到 ${path}`, `Diagnostics exported to ${path}`));
+  };
+  return (
   <section className="page-content library-page">
     <PageHeader
       title={t(locale, '设置', 'Settings')}
@@ -1156,13 +1162,14 @@ const SettingsPage = ({
                 )}
               </small>
             </span>
-            <Button disabled>{t(locale, '导出', 'Export')}</Button>
+            <Button icon="download" onClick={() => { void exportDiagnostics(); }}>{t(locale, '导出', 'Export')}</Button>
           </div>
         </div>
       </section>
     </div>
   </section>
-);
+  );
+};
 
 export const LibraryPages = ({
   view,
@@ -1242,6 +1249,7 @@ export const LibraryPages = ({
         navigate={navigate}
         onThemeChange={onThemeChange}
         onLocaleChange={onLocaleChange}
+        notify={notify}
       />
     ),
   };

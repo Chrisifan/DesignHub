@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { writeFile } from 'node:fs/promises';
 
 import {
   createWorkspaceFromParentHandler,
@@ -40,6 +41,7 @@ import { createOpenAICompatibleAdapter } from '../features/providers/adapter';
 import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
 import { exportSceneToFile } from './export-scene';
+import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -228,6 +230,18 @@ app.whenReady().then(() => {
       if (result.canceled || !result.filePath) return null;
       const exported = await exportSceneToFile({ scene: exportInput.scene, format: exportInput.format, targetPath: result.filePath, background: exportInput.background });
       return { path: exported.path, sha256: exported.sha256 };
+    })(event, input);
+  });
+  ipcMain.handle(diagnosticsExportChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return exportDiagnosticsHandler(activeWindow, activeTrustedUrl, async (diagnostic) => {
+      const result = await dialog.showSaveDialog(activeWindow!, {
+        defaultPath: 'designhub-diagnostics.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (result.canceled || !result.filePath) return null;
+      await writeFile(result.filePath, JSON.stringify(diagnostic, null, 2), 'utf8');
+      return result.filePath;
     })(event, input);
   });
 });

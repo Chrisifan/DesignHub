@@ -55,6 +55,7 @@ export type DesktopApi = {
   cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;
   retryTask?: (workspaceId: string, taskId: string) => Promise<TaskRecord | null>;
   exportDocument?: (input: ExportDocumentInput) => Promise<{ path: string; sha256: string } | null>;
+  exportDiagnostics?: (input: { runtime: string; errorCode?: string | null }) => Promise<string | null>;
 };
 
 declare global {

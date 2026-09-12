@@ -217,6 +217,14 @@ it('uses functional navigation for the model setup action', () => {
   expect(screen.getByRole('heading', { name: '设置' })).toBeInTheDocument();
 });
 
+it('exports a redacted diagnostics preview through the desktop bridge', async () => {
+  const exportDiagnostics = vi.fn(async () => '/tmp/designhub-diagnostics.json');
+  window.designhub = { chooseWorkspaceDirectory: async () => null, exportDiagnostics };
+  render(<Harness initialView="settings" />);
+  fireEvent.click(screen.getByRole('button', { name: '导出' }));
+  await waitFor(() => expect(exportDiagnostics).toHaveBeenCalledWith({ runtime: 'Electron', errorCode: null }));
+});
+
 it('hydrates persisted model tasks in the task view', async () => {
   const listTasks = vi.fn(async () => [{
     id: 'task-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1,
