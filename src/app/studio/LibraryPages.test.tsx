@@ -331,6 +331,20 @@ it('shows persisted export history for a project', async () => {
   expect(screen.getByText('成功')).toBeInTheDocument();
 });
 
+it('keeps history when its external target has moved', async () => {
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{
+      id: 'export-moved', projectId: 'moved-project', documentId: 'doc-1', revisionId: 'revision-1', format: 'png',
+      targetPath: '/tmp/missing.png', status: 'success', archived: false, targetAvailable: false, createdAt: '2026-09-13T00:00:00.000Z',
+    }]),
+  };
+  const project: Project = { id: 'moved-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '移动项目', enName: 'Moved project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  render(<Harness initialView="delivery" deliveryProject={project} />);
+  await waitFor(() => expect(screen.getByText(/目标已移动/)).toBeInTheDocument());
+  expect(screen.getByText('成功')).toBeInTheDocument();
+});
+
 it('reports an archive copy failure while retaining the external export result', async () => {
   const loadDocumentScene = vi.fn(async () => ({ id: 'scene-current', version: 1 as const, width: 100, height: 100, layers: [] }));
   const exportDocument = vi.fn(async () => ({ path: '/tmp/archive.png', sha256: 'd'.repeat(64), archived: false, archiveError: 'TARGET_EXISTS' }));

@@ -11,6 +11,7 @@ export type ExportHistoryRecord = {
   status: 'success' | 'failed';
   archived: boolean;
   errorCode?: string;
+  targetAvailable?: boolean;
   createdAt: string;
 };
 
@@ -29,6 +30,7 @@ export const isExportHistoryRecord = (value: unknown): value is ExportHistoryRec
     && (value.status === 'success' || value.status === 'failed')
     && typeof value.archived === 'boolean'
     && (value.errorCode === undefined || (typeof value.errorCode === 'string' && value.errorCode.trim().length > 0))
+    && (value.targetAvailable === undefined || typeof value.targetAvailable === 'boolean')
     && typeof value.createdAt === 'string' && !Number.isNaN(Date.parse(value.createdAt));
 };
 

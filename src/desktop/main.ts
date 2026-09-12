@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 
 import {
   createWorkspaceFromParentHandler,
@@ -457,7 +457,10 @@ app.whenReady().then(() => {
   });
   ipcMain.handle(exportHistoryListChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listExportHistoryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadWorkspaceExportHistory)(event, input);
+    return listExportHistoryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, workspaceId, projectId) => {
+      const records = await loadWorkspaceExportHistory(workspace, workspaceId, projectId);
+      return Promise.all(records.map(async (record) => ({ ...record, targetAvailable: await access(record.targetPath).then(() => true).catch(() => false) })));
+    })(event, input);
   });
   ipcMain.handle(diagnosticsExportChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;

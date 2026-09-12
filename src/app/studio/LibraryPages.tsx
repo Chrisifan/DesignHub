@@ -1110,7 +1110,7 @@ const DeliveryPage = ({
             <p className="panel-label">{t(locale, '导出历史', 'Export history')}</p>
             {exportHistory.length === 0 ? <small>{t(locale, '暂无导出记录。', 'No export records yet.')}</small> : exportHistory.slice(0, 5).map((record) => (
               <div className="export-history-row" key={record.id}>
-                <span>{record.format.toUpperCase()} · {record.revisionId}</span>
+                <span>{record.format.toUpperCase()} · {record.revisionId}{record.targetAvailable === false ? ` · ${t(locale, '目标已移动', 'Target moved')}` : ''}</span>
                 <Badge tone={record.status === 'success' ? 'success' : 'warning'}>
                   {record.status === 'success' ? t(locale, '成功', 'Success') : t(locale, '失败', 'Failed')}
                 </Badge>
