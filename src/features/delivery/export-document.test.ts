@@ -90,3 +90,15 @@ it('encodes a rendered PNG into the requested JPEG before writing', async () => 
   expect(written[0]).toBe(0xff);
   expect(written[1]).toBe(0xd8);
 });
+
+it('keeps the external export when an optional archive copy fails', async () => {
+  const result = await exportDocument({
+    revisionId: 'revision-archive',
+    format: 'png',
+    targetPath: '/exports/poster.png',
+    target: { exists: async () => false, write: async () => undefined },
+    render: async () => new Uint8Array([137, 80, 78, 71]),
+    archiveCopy: async () => { throw new Error('TARGET_EXISTS'); },
+  });
+  expect(result).toMatchObject({ revisionId: 'revision-archive', path: '/exports/poster.png', archived: false, archiveError: 'TARGET_EXISTS' });
+});

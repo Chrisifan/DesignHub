@@ -316,6 +316,18 @@ it('passes the archive choice to document export', async () => {
   await waitFor(() => expect(exportDocument).toHaveBeenCalledWith(expect.objectContaining({ archiveCopy: true })));
 });
 
+it('reports an archive copy failure while retaining the external export result', async () => {
+  const loadDocumentScene = vi.fn(async () => ({ id: 'scene-current', version: 1 as const, width: 100, height: 100, layers: [] }));
+  const exportDocument = vi.fn(async () => ({ path: '/tmp/archive.png', sha256: 'd'.repeat(64), archived: false, archiveError: 'TARGET_EXISTS' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, exportDocument };
+  const project: Project = { id: 'archive-failure-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '归档失败', enName: 'Archive failure', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }] };
+  render(<Harness initialView="delivery" deliveryProject={project} />);
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: '导出' }));
+  await waitFor(() => expect(screen.getByText(/归档副本失败/)).toBeInTheDocument());
+  expect(screen.getByText(/可重试/)).toBeInTheDocument();
+});
+
 it('offers project package export for persisted projects', async () => {
   const exportProjectPackage = vi.fn(async () => ({ path: '/tmp/project.zip', sha256: 'a'.repeat(64) }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, exportProjectPackage };

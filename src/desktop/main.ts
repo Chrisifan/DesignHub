@@ -417,7 +417,7 @@ app.whenReady().then(() => {
           },
         } : {}),
       });
-      return { path: exported.path, sha256: exported.sha256 };
+      return { path: exported.path, sha256: exported.sha256, archived: exported.archived, ...(exported.archiveError ? { archiveError: exported.archiveError } : {}) };
     })(event, input);
   });
   ipcMain.handle(diagnosticsExportChannel, async (event, input) => {

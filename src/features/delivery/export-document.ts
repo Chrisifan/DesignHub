@@ -20,7 +20,7 @@ export type ExportDocumentInput = {
   expectedSize?: { width: number; height: number };
 };
 
-export type ExportResult = { revisionId: string; path: string; sha256: string; archived: boolean };
+export type ExportResult = { revisionId: string; path: string; sha256: string; archived: boolean; archiveError?: string };
 
 const matchesMagic = (format: ExportFormat, bytes: Uint8Array): boolean => {
   if (format === 'png') return bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71;
@@ -60,11 +60,17 @@ export const exportDocument = async (input: ExportDocumentInput): Promise<Export
     await input.target.write(temporaryPath, bytes);
     if (input.target.rename) await input.target.rename(temporaryPath, input.targetPath);
     else await input.target.write(input.targetPath, bytes);
-    if (input.archiveCopy) await input.archiveCopy({ revisionId: input.revisionId, path: input.targetPath, sha256 });
   } catch (error) {
     if (input.target.remove) await input.target.remove(temporaryPath).catch(() => undefined);
     if (!input.target.rename && input.target.remove) await input.target.remove(input.targetPath).catch(() => undefined);
     throw error;
   }
-  return { revisionId: input.revisionId, path: input.targetPath, sha256, archived: Boolean(input.archiveCopy) };
+  if (!input.archiveCopy) return { revisionId: input.revisionId, path: input.targetPath, sha256, archived: false };
+  try {
+    await input.archiveCopy({ revisionId: input.revisionId, path: input.targetPath, sha256 });
+    return { revisionId: input.revisionId, path: input.targetPath, sha256, archived: true };
+  } catch (error) {
+    const archiveError = error instanceof Error && error.message ? error.message : 'ARCHIVE_FAILED';
+    return { revisionId: input.revisionId, path: input.targetPath, sha256, archived: false, archiveError };
+  }
 };

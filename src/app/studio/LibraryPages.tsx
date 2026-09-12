@@ -922,7 +922,15 @@ const DeliveryPage = ({
           ?? createScene({ id: activeDocumentId, width: currentDocument?.width ?? 1080, height: currentDocument?.height ?? 1440, layers: [] });
       }
       const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
-      if (result) notify?.(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
+      if (result) {
+        if (result.archiveError) {
+          notify?.(t(locale, `已导出到 ${result.path}，归档副本失败（${result.archiveError}），可重试。`, `Exported to ${result.path}; the archive copy failed (${result.archiveError}). Retry when ready.`));
+        } else if (result.archived) {
+          notify?.(t(locale, `已导出并归档到 ${result.path}`, `Exported and archived from ${result.path}`));
+        } else {
+          notify?.(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
+        }
+      }
     } catch {
       notify?.(t(locale, source === 'final' ? '定稿读取失败，请重试。' : '导出失败，请重试。', source === 'final' ? 'Could not read the finalized revision. Try again.' : 'Export failed. Try again.'));
     } finally { setExporting(false); }

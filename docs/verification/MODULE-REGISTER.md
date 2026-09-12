@@ -242,6 +242,8 @@
 2026-09-13：M06 终态任务重启幂等（变更 ID M06-20260913-17）。任务运行时加载已完成/失败/取消记录后直接保持终态，不因内存去重表丢失而重复提交修订；先观察 runtime Red，再 Green；runtime focused 6/6、lint、typecheck 通过。真实跨进程回调、远端幂等与打包恢复仍开放。
 2026-09-13：M04 项目包元数据预检（变更 ID M04-20260913-26）。导入前通过共享项目 schema 校验 metadata，畸形文档列表统一返回 `INVALID_PACKAGE` 且不创建项目；先观察 project-store Red，再 Green；project-store focused 11/11、lint、typecheck、diff check 通过。历史迁移、磁盘满和跨设备仍开放。
 
+2026-09-13：M07 归档副本失败可恢复（变更 ID M07-20260913-20）。外部导出完成后，项目 `exports/` 归档副本冲突或目标盘失败不再撤销外部产物；导出结果返回 `archived: false` 与错误码，交付页保留外部路径并提示重试。先观察 export-document Red，再 Green；export/IPC/LibraryPages focused 39/39，lint、typecheck、diff check 通过。导出历史记录、归档索引/流式写入、Windows 与可移动磁盘仍开放。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

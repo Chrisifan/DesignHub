@@ -9,7 +9,7 @@ type ExportSender = { mainFrame: { url: string }; getURL: () => string };
 type ExportRequest = { sender: ExportSender; senderFrame: { url: string } | null };
 type ExportWindow = { webContents: ExportSender };
 export type ExportBridgeInput = { workspaceId: string; projectId: string; documentId: string; format: ExportFormat; scene: DesignScene; background?: string; archiveCopy?: boolean };
-export type ExportBridgeResult = { path: string; sha256: string };
+export type ExportBridgeResult = { path: string; sha256: string; archived?: boolean; archiveError?: string };
 
 const isFormat = (value: unknown): value is ExportFormat => value === 'png' || value === 'jpeg' || value === 'webp' || value === 'pdf';
 const isInput = (value: unknown): value is ExportBridgeInput => {
