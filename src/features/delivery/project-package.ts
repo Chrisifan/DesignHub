@@ -14,11 +14,14 @@ export type CreateProjectPackageInput = {
   entries: ProjectPackageEntry[];
 };
 
+const hasUniquePaths = (paths: readonly string[]): boolean => new Set(paths).size === paths.length;
+
 export const createProjectPackage = async (input: CreateProjectPackageInput): Promise<ProjectPackage> => {
   if (!input.packageId.trim() || !input.projectId.trim()) throw new Error('PACKAGE_BINDING_REQUIRED');
   const allowed = input.readOnly ? deliveryEntries(input.entries) : input.entries
     .filter((entry) => entry.kind !== 'credential' && entry.kind !== 'font' && isSafePackagePath(entry.path))
     .map((entry) => entry.path);
+  if (!hasUniquePaths(allowed)) throw new Error('INVALID_PACKAGE');
   const files: Record<string, Uint8Array> = {};
   input.entries.forEach((entry) => {
     if (allowed.includes(entry.path)) files[entry.path] = entry.bytes.slice();
@@ -52,7 +55,8 @@ const isPackageManifest = (value: unknown): value is ProjectPackage['manifest'] 
     && manifest.projectId.trim().length > 0
     && typeof manifest.readOnly === 'boolean'
     && Array.isArray(manifest.entries)
-    && manifest.entries.every((entry) => typeof entry === 'string' && isSafePackagePath(entry));
+    && manifest.entries.every((entry) => typeof entry === 'string' && isSafePackagePath(entry))
+    && hasUniquePaths(manifest.entries as string[]);
 };
 
 export const encodeProjectPackage = async (pack: ProjectPackage): Promise<Uint8Array> => {

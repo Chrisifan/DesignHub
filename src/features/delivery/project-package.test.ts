@@ -41,3 +41,19 @@ it('rejects ZIP entries that are not declared in the package manifest', async ()
   });
   await expect(decodeProjectPackage(encoded)).rejects.toThrow('INVALID_PACKAGE');
 });
+
+it('rejects duplicate paths in package manifests', async () => {
+  const encoded = zipSync({
+    'designhub.package.json': new TextEncoder().encode(JSON.stringify({ packageId: 'pkg-duplicate', projectId: 'project-duplicate', readOnly: false, entries: ['declared.txt', 'declared.txt'] })),
+    'declared.txt': new Uint8Array([1]),
+  });
+  await expect(decodeProjectPackage(encoded)).rejects.toThrow('INVALID_PACKAGE');
+  await expect(createProjectPackage({
+    packageId: 'pkg-duplicate-create',
+    projectId: 'project-duplicate-create',
+    entries: [
+      { path: 'declared.txt', kind: 'manifest', bytes: new Uint8Array([1]) },
+      { path: 'declared.txt', kind: 'manifest', bytes: new Uint8Array([2]) },
+    ],
+  })).rejects.toThrow('INVALID_PACKAGE');
+});
