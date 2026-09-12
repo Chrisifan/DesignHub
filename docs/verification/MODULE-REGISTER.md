@@ -255,6 +255,7 @@
 2026-09-13：M05 取消请求令牌失效（变更 ID M05-20260913-10）。取消画布编辑批次会清除 AI 请求令牌，迟到结果即使回到原始基线也不会写入草稿；先观察 canvas-recovery Red，再 Green；canvas/CanvasWorkspace/scene focused 19/19，lint、typecheck、diff check 通过。进程终止、提供方取消和打包恢复仍开放。
 2026-09-13：M06 受管源素材图像重试（变更 ID M06-20260913-18）。图像编辑任务持久化 `sourceAssetId`，失败重试从主进程受管素材存储重新加载原图并复用原能力；带区域遮罩的编辑因遮罩字节未持久化而明确不可重试。先补 task-service/task-store 边界回归，再 Green；focused 2 files/23 tests、integration 23 files/105 tests、lint、typecheck、diff check 通过。提供方幂等、远端取消、遮罩持久化、Windows 与打包恢复仍开放。
 2026-09-13：M06/M08 中断任务恢复（变更 ID M06-20260913-19）。运行时加载工作区任务时将遗留 `queued/running` 标记为 `failed/RESULT_UNKNOWN_AFTER_RESTART` 并持久化，任务列表显示“结果未知”且仅允许用户显式重试，不自动重发云请求。先补 runtime Red，再 Green；runtime/LibraryPages focused 41/41、task-recovery integration 1/1、lint、typecheck 通过。远端结果查询、跨进程回调、Windows 与打包恢复仍开放。
+2026-09-13：M01/M02/M06/M08 packaged recovery 回归（变更 ID REL-20260913-01）。串行执行 `pnpm build`、`pnpm package` 后，使用最新 macOS arm64 packaged executable 执行 `DESIGNHUB_PACKAGED_APP_PATH=... pnpm test:native`，native 3/3 通过；可执行文件 SHA-256 `588478afc5f2bc73b6433d6e565a214dc830144be39a3d79805723292754ccd8`。Windows、签名/公证、钥匙串、真实提供方和人工图像质量仍开放。
 
 ## 发布前检查
 
