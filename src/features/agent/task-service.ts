@@ -2,6 +2,8 @@ import type { ChatRequest, ChatResponse, GeneratedImage } from '../providers/ada
 import type { TaskRecord } from '../tasks/state';
 import type { TaskSource } from '../tasks/state';
 import type { TaskRuntime } from '../tasks/runtime';
+import type { Region } from '../canvas/selection';
+import type { ImageTool } from '../image-tools/target';
 
 export type ConversationInput = {
   projectId?: string;
@@ -36,6 +38,8 @@ export type ImageEditInput = {
   mask?: Blob;
   model?: string;
   size?: string;
+  tool?: ImageTool;
+  region?: Region;
 };
 
 type ConversationAdapter = {
@@ -101,6 +105,8 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       documentId: input.documentId.trim(),
       baseRevisionId: input.baseRevisionId ?? null,
       ...(input.designerVersionId ? { designerVersionId: input.designerVersionId } : {}),
+      ...('tool' in input && input.tool ? { tool: input.tool } : {}),
+      ...('region' in input && input.region ? { region: { ...input.region } } : {}),
       providerId: input.connectionId.trim(),
       capability,
       createdAt: new Date().toISOString(),

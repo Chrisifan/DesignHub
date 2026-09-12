@@ -4,6 +4,7 @@ import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { TaskRecord, TaskSource, TaskState } from '../../features/tasks/state';
+import { imageTools } from '../../features/image-tools/target';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
 
@@ -15,6 +16,9 @@ const isTaskSource = (value: unknown): value is TaskSource => isRecord(value)
   && (value.kind === 'project' || value.kind === 'creation-draft' || value.kind === 'designer-draft')
   && typeof value.id === 'string'
   && value.id.trim().length > 0;
+const isRegion = (value: unknown): boolean => isRecord(value)
+  && ['x', 'y', 'width', 'height'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0)
+  && Number(value.width) > 0 && Number(value.height) > 0;
 const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> => {
   if (!isRecord(value)) return false;
   const candidate = value.candidate;
@@ -44,6 +48,8 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.designerVersionId === undefined || typeof value.designerVersionId === 'string')
   && (value.providerId === undefined || typeof value.providerId === 'string')
   && (value.capability === undefined || typeof value.capability === 'string')
+  && (value.tool === undefined || imageTools.includes(value.tool as typeof imageTools[number]))
+  && (value.region === undefined || isRegion(value.region))
   && (value.createdAt === undefined || typeof value.createdAt === 'string')
   && (value.updatedAt === undefined || typeof value.updatedAt === 'string')
   && (value.errorCode === undefined || typeof value.errorCode === 'string')

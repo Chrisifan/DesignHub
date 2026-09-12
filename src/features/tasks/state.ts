@@ -1,3 +1,6 @@
+import type { Region } from '../canvas/selection';
+import type { ImageTool } from '../image-tools/target';
+
 export type TaskState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type TaskSource = { kind: 'project' | 'creation-draft' | 'designer-draft'; id: string };
@@ -23,6 +26,8 @@ export type TaskRecord = {
   designerVersionId?: string;
   providerId?: string;
   capability?: string;
+  tool?: ImageTool;
+  region?: Region;
   createdAt?: string;
   updatedAt?: string;
   errorCode?: string;

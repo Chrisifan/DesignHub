@@ -2,6 +2,7 @@ import type { TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import type { AgentTaskService, ImageEditInput, ImageGenerationInput } from '../../features/agent/task-service';
+import { imageTools } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const conversationSubmitChannel = 'agent:conversation-submit';
@@ -60,6 +61,10 @@ const isImageGenerationInput = (value: unknown): value is ImageGenerationBridgeI
     && (input.count === undefined || (Number.isInteger(input.count) && Number(input.count) >= 1 && Number(input.count) <= 4));
 };
 const isBlobLike = (value: unknown): value is Blob => Boolean(value && typeof value === 'object' && typeof (value as Blob).size === 'number' && (typeof (value as Blob).arrayBuffer === 'function' || typeof (value as Blob).stream === 'function' || typeof (value as Blob).slice === 'function'));
+const isRegion = (value: unknown): boolean => value !== null && typeof value === 'object'
+  && ['x', 'y', 'width', 'height'].every((key) => typeof (value as Record<string, unknown>)[key] === 'number' && Number.isFinite((value as Record<string, unknown>)[key]))
+  && Number((value as Record<string, unknown>).x) >= 0 && Number((value as Record<string, unknown>).y) >= 0
+  && Number((value as Record<string, unknown>).width) > 0 && Number((value as Record<string, unknown>).height) > 0;
 const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
@@ -69,7 +74,9 @@ const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
     && (input.model === undefined || isNonEmpty(input.model))
-    && (input.size === undefined || isNonEmpty(input.size));
+    && (input.size === undefined || isNonEmpty(input.size))
+    && (input.tool === undefined || imageTools.includes(input.tool as typeof imageTools[number]))
+    && (input.region === undefined || isRegion(input.region));
 };
 
 export const createConversationHandler = (

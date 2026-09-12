@@ -555,7 +555,7 @@ export const Studio = ({
       notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
     }
   };
-  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; baseRevisionId: string | null }): Promise<void> => {
+  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; baseRevisionId: string | null; region?: { x: number; y: number; width: number; height: number } }): Promise<void> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return;
@@ -578,7 +578,7 @@ export const Studio = ({
         notify(t(locale, '无法读取目标图像。', 'Could not read the target image.'));
         return;
       }
-      const task = await api.submitImageEdit?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }) });
+      const task = await api.submitImageEdit?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), tool: input.tool, ...(input.region ? { region: input.region } : {}) });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;

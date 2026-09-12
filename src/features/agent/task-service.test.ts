@@ -142,3 +142,19 @@ it('runs image editing with an explicit source image and mask', async () => {
   expect(receivedMask).toBeInstanceOf(Blob);
   expect(runtime.get(task.id)).toMatchObject({ state: 'completed', capability: 'image-editing', result: { assetIds: ['asset-edited'], imageCount: 1 } });
 });
+
+it('retains the selected image tool and region in the task record', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async () => ({ images: [], cost: null }),
+    }),
+  });
+  const task = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'doc-1', connectionId: 'provider-1', prompt: 'Remove object', image: new Blob(['image']),
+    tool: 'remove-object', region: { x: 0, y: 0, width: 10, height: 20 },
+  });
+  expect(task).toMatchObject({ tool: 'remove-object', region: { x: 0, y: 0, width: 10, height: 20 } });
+});
