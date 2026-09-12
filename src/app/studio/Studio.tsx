@@ -1048,31 +1048,18 @@ export const Studio = ({
                 </div>
               </div>
               <div className="document-collection">
-                {Array.from({ length: selected.documents }, (_, index) => (
-                  <button
+                {Array.from({ length: selected.documents }, (_, index) => {
+                  const entry = selected.documentEntries?.[index];
+                  const fallbackName = index === 0 ? t(locale, '主海报', 'Main poster') : index === 1 ? t(locale, '社媒方图', 'Social square') : t(locale, '活动横幅', 'Campaign banner');
+                  const fallbackSize = index === 0 ? '1080 × 1440' : index === 1 ? '1080 × 1080' : '1920 × 1080';
+                  return <button
                     className="document-card"
-                    key={index}
+                    key={entry?.id ?? index}
                     onClick={() => {
-                      if (index === 0) openDocument(selected, selected.documentEntries?.[0]?.id);
-                      else if (selected.documentEntries?.[index]) openDocument(selected, selected.documentEntries[index].id);
-                      else
-                        notify(
-                          t(
-                            locale,
-                            '当前可打开主海报预览，其他尺寸稿将在文档能力接入后提供。',
-                            'Open the main poster preview. Other sizes will be available with document storage.',
-                          ),
-                        );
+                      if (entry?.id || index === 0) openDocument(selected, entry?.id);
+                      else notify(t(locale, '当前可打开主海报预览，其他尺寸稿将在文档能力接入后提供。', 'Open the main poster preview. Other sizes will be available with document storage.'));
                     }}
-                    aria-label={
-                      index === 0
-                        ? t(locale, '打开主海报', 'Open main poster')
-                        : t(
-                            locale,
-                            `查看尺寸稿 ${index}`,
-                            `View size variant ${index}`,
-                          )
-                    }
+                    aria-label={index === 0 ? t(locale, '打开主海报', 'Open main poster') : t(locale, `查看尺寸稿 ${index}`, `View size variant ${index}`)}
                   >
                     <div
                       className={`document-cover document-cover--${index % 3}`}
@@ -1080,24 +1067,14 @@ export const Studio = ({
                       <ArtworkPreview kind={selected.artwork} />
                     </div>
                     <div className="document-card-body">
-                      <h3>
-                        {index === 0
-                          ? t(locale, '主海报', 'Main poster')
-                          : index === 1
-                            ? t(locale, '社媒方图', 'Social square')
-                            : t(locale, '活动横幅', 'Campaign banner')}
-                      </h3>
+                      <h3>{entry?.name ?? fallbackName}</h3>
                       <span>
-                        {index === 0
-                          ? '1080 × 1440'
-                          : index === 1
-                            ? '1080 × 1080'
-                            : '1920 × 1080'}{' '}
+                        {entry ? `${entry.width} × ${entry.height}` : fallbackSize}{' '}
                         px <Badge>{selected.workspaceId ? t(locale, '本地', 'Local') : t(locale, '示例', 'Example')}</Badge>
                       </span>
                     </div>
                   </button>
-                ))}
+                })}
               </div>
               <div className="brief-summary">
                 <h2>{t(locale, '设计简报', 'Design brief')}</h2>
