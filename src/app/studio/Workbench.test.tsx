@@ -192,7 +192,7 @@ it('submits a generation request through the active project service', async () =
   const panel = screen.getByRole('complementary', { name: '对话' });
   fireEvent.change(within(panel).getByRole('textbox', { name: '修改说明' }), { target: { value: '生成春季市集主视觉' } });
   fireEvent.click(within(panel).getByRole('button', { name: '生成' }));
-  await waitFor(() => expect(onSubmitImageGeneration).toHaveBeenCalledWith('生成春季市集主视觉'));
+  await waitFor(() => expect(onSubmitImageGeneration).toHaveBeenCalledWith('生成春季市集主视觉', null));
 });
 
 it('shows a connected model state when the host confirms a credential', () => {
@@ -317,4 +317,23 @@ it('can continue from a revision scene snapshot and branches the next save from 
   expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: olderScene }));
   fireEvent.click(screen.getByRole('button', { name: '保存版本' }));
   await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({ baseRevisionId: 'revision-old' })));
+});
+
+it('binds image submissions to the latest document revision and exposes candidate actions', async () => {
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-current', projectId: 'spring-market', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-current', sceneAssetId: 'scene-current', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z' }], timeline: [], finalRevisionId: null }));
+  const listTasks = vi.fn(async () => [{ id: 'task-image', requestId: 'request-image', state: 'completed' as const, cancelRequested: false, attempt: 1, capability: 'image-generation', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' }, result: { imageCount: 1, candidate: { id: 'candidate-task-image', baseRevisionId: 'revision-current', assetIds: ['asset-candidate'], sceneAssetId: 'asset-candidate', createdAt: '2026-09-13T00:00:00.000Z' } } }]);
+  const onSubmitImageGeneration = vi.fn();
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, listTasks };
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', onSubmitImageGeneration })} />);
+  await waitFor(() => expect(loadDocumentRevisions).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成候选' } });
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  expect(onSubmitImageGeneration).toHaveBeenCalledWith('生成候选', 'revision-current');
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '查看' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '查看' }));
+  fireEvent.click(screen.getByRole('button', { name: '比较' }));
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '定稿' }).at(-1)!);
 });

@@ -8,6 +8,7 @@ import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
 import type { ImageTool } from '../../features/image-tools/target';
 import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
+import type { TaskCandidate, TaskRecord } from '../../features/tasks/state';
 import { CompareRevisions } from '../../features/revisions/CompareRevisions';
 import {
   ArtworkPreview,
@@ -35,8 +36,9 @@ export type WorkbenchProps = {
   onExport: () => void;
   onConnections: () => void;
   onSubmitConversation?: (message: string) => void | Promise<void>;
-  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string }) => void | Promise<void>;
-  onSubmitImageGeneration?: (prompt: string) => void | Promise<void>;
+  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; baseRevisionId: string | null }) => void | Promise<void>;
+  onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
+  operatorName?: string;
   modelConnected?: boolean;
   notify: (message: string) => void;
 };
@@ -74,6 +76,7 @@ export const Workbench = ({
   onSubmitConversation,
   onSubmitImageTask,
   onSubmitImageGeneration,
+  operatorName = '',
   modelConnected = false,
   notify,
 }: WorkbenchProps) => {
@@ -109,6 +112,8 @@ export const Workbench = ({
   const [revisionBusy, setRevisionBusy] = useState(false);
   const [revisionBaseId, setRevisionBaseId] = useState<string | null>(null);
   const [compareRevisionId, setCompareRevisionId] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [candidatePreviewId, setCandidatePreviewId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!workspaceId || !documentId) return undefined;
@@ -117,6 +122,22 @@ export const Workbench = ({
     void request?.then((loaded) => { if (!cancelled && loaded) setRevisionState(loaded); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [documentId, project.id, workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId) return undefined;
+    let cancelled = false;
+    const request = getDesktopApi().listTasks?.(workspaceId);
+    void request?.then((loaded) => { if (!cancelled && loaded) setTasks(loaded.filter((task) => task.documentId === documentId)); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [documentId, workspaceId]);
+
+  const currentRevisionId = revisionState.finalRevisionId ?? revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? null;
+  const candidateFor = (candidateId: string): { task: TaskRecord; candidate: TaskCandidate } | undefined => {
+    for (const task of tasks) {
+      if (task.result?.candidate?.id === candidateId) return { task, candidate: task.result.candidate };
+    }
+    return undefined;
+  };
 
   const persistScene = (nextScene: DesignScene): void => {
     setScene(nextScene);
@@ -177,6 +198,46 @@ export const Workbench = ({
       if (result) setRevisionState((current) => ({ ...current, finalRevisionId: revisionId, timeline: current.timeline }));
     } catch { notify(t(locale, '定稿失败', 'Could not finalize version')); }
     finally { setRevisionBusy(false); }
+  };
+  const finalizeCandidate = async (candidateId: string): Promise<void> => {
+    const entry = candidateFor(candidateId);
+    if (!workspaceId || !documentId || !entry || revisionBusy || entry.candidate.assetIds.length === 0) return;
+    setRevisionBusy(true);
+    try {
+      const contribution = project.activeDesignerVersionId ? [{
+        designerVersionId: project.activeDesignerVersionId,
+        role: 'revision' as const,
+        designerName: (project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined)?.name?.[locale === 'zh-CN' ? 'zh' : 'en'],
+      }] : [];
+      const committed = await getDesktopApi().commitDocumentRevision?.({
+        workspaceId,
+        projectId: project.id,
+        documentId,
+        baseRevisionId: entry.candidate.baseRevisionId,
+        operationId: `candidate-${entry.task.requestId}`,
+        sceneAssetId: entry.candidate.sceneAssetId ?? entry.candidate.assetIds[0]!,
+        assetIds: [...entry.candidate.assetIds],
+        contributions: contribution,
+        ...(operatorName.trim() ? { operatorName: operatorName.trim() } : {}),
+      });
+      if (!committed) return;
+      await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId: committed.revisionId });
+      const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
+      if (loaded) setRevisionState(loaded);
+      notify(t(locale, '候选已定稿', 'Candidate finalized'));
+    } catch { notify(t(locale, '候选定稿失败', 'Could not finalize candidate')); }
+    finally { setRevisionBusy(false); }
+  };
+  const continueCandidate = (candidateId: string): void => {
+    const entry = candidateFor(candidateId);
+    const assetId = entry?.candidate.assetIds[0];
+    if (!entry || !assetId) return;
+    const imageLayer = scene.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image');
+    if (!imageLayer) return;
+    const nextScene = replaceSceneLayer(scene, { ...imageLayer, assetId });
+    setRevisionBaseId(entry.candidate.baseRevisionId);
+    persistScene(nextScene);
+    notify(t(locale, '候选已载入，可继续编辑', 'Candidate loaded for continued editing'));
   };
 
   const layerCopy: Record<
@@ -270,14 +331,14 @@ export const Workbench = ({
       onConnections();
       return;
     }
-    void Promise.resolve(onSubmitImageGeneration(prompt.trim())).then(() => setPrompt('')).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+    void Promise.resolve(onSubmitImageGeneration(prompt.trim(), currentRevisionId)).then(() => setPrompt('')).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
   const runImageTask = (tool: ImageTool, taskPrompt: string): void => {
     if (!onSubmitImageTask) {
       onConnections();
       return;
     }
-    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, baseRevisionId: currentRevisionId })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
 
   return (
@@ -737,6 +798,26 @@ export const Workbench = ({
                 </p>
                 {workspaceId && <Button variant="secondary" icon="save" disabled={revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>}
                 <ol className="workbench-history-list">
+                {tasks.filter((task) => task.state === 'completed' && task.result?.candidate).map((task) => {
+                  const candidate = task.result!.candidate!;
+                  const latest = revisionState.revisions[revisionState.revisions.length - 1];
+                  return <li key={candidate.id}>
+                    <span className="workbench-history-marker" aria-hidden="true" />
+                    <div>
+                      <Badge>{t(locale, '候选', 'Candidate')}</Badge>
+                      <strong>{candidate.id.slice(0, 16)}</strong>
+                      <p>{candidate.assetIds.length} {t(locale, '张图', 'images')}</p>
+                      <div className="workbench-history-actions">
+                        <Button variant="ghost" onClick={() => setCandidatePreviewId((current) => current === candidate.id ? null : candidate.id)}>{t(locale, '查看', 'View')}</Button>
+                        {latest && <Button variant="ghost" onClick={() => setCompareRevisionId((current) => current === candidate.id ? null : candidate.id)}>{t(locale, '比较', 'Compare')}</Button>}
+                        <Button variant="ghost" disabled={revisionBusy} onClick={() => continueCandidate(candidate.id)}>{t(locale, '继续', 'Continue')}</Button>
+                        <Button variant="ghost" disabled={revisionBusy} onClick={() => { void finalizeCandidate(candidate.id); }}>{t(locale, '定稿', 'Finalize')}</Button>
+                      </div>
+                      {candidatePreviewId === candidate.id && <p role="status">{t(locale, `候选素材 ${candidate.assetIds.join(', ')}`, `Candidate assets ${candidate.assetIds.join(', ')}`)}</p>}
+                      {compareRevisionId === candidate.id && latest && <CompareRevisions left={{ revisionId: candidate.id, sceneAssetId: candidate.sceneAssetId ?? candidate.assetIds[0] ?? 'candidate', assetIds: candidate.assetIds }} right={latest} />}
+                    </div>
+                  </li>;
+                })}
                 {revisionState.revisions.length > 0 ? revisionState.revisions.map((revision) => <li key={revision.revisionId}>
                     <span className="workbench-history-marker" aria-hidden="true" />
                     <div>

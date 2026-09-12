@@ -461,7 +461,7 @@ export const Studio = ({
       notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
     }
   };
-  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string }): Promise<void> => {
+  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; baseRevisionId: string | null }): Promise<void> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return;
@@ -484,7 +484,7 @@ export const Studio = ({
         notify(t(locale, '无法读取目标图像。', 'Could not read the target image.'));
         return;
       }
-      const task = await api.submitImageEdit?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: null, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }) });
+      const task = await api.submitImageEdit?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }) });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;
@@ -494,7 +494,7 @@ export const Studio = ({
       notify(t(locale, '图像任务提交失败，请检查连接。', 'Image task submission failed. Check the connection.'));
     }
   };
-  const submitProjectImageGeneration = async (project: Project, prompt: string): Promise<void> => {
+  const submitProjectImageGeneration = async (project: Project, prompt: string, baseRevisionId: string | null): Promise<void> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return;
@@ -505,7 +505,7 @@ export const Studio = ({
       return;
     }
     try {
-      const task = await getDesktopApi().submitImageGeneration?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: null, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt, size: `${project.documentEntries?.find((entry) => entry.id === documentId)?.width ?? 1080}x${project.documentEntries?.find((entry) => entry.id === documentId)?.height ?? 1440}`, count: 2 });
+      const task = await getDesktopApi().submitImageGeneration?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt, size: `${project.documentEntries?.find((entry) => entry.id === documentId)?.width ?? 1080}x${project.documentEntries?.find((entry) => entry.id === documentId)?.height ?? 1440}`, count: 2 });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;
@@ -1026,7 +1026,8 @@ export const Studio = ({
                 onConnections={() => navigate('connections')}
                 onSubmitConversation={(message) => submitProjectConversation(project, message)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
-                onSubmitImageGeneration={(prompt) => submitProjectImageGeneration(project, prompt)}
+                onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
+                operatorName={operatorName}
                 modelConnected={modelConnected}
                 notify={notify}
               />
