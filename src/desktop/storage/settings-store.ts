@@ -28,8 +28,20 @@ const getInternalDirectory = (handle: WorkspaceHandle, workspaceId: string, writ
   return internal;
 };
 
+const assertRegularSettingsFile = (path: string, allowMissing: boolean): void => {
+  try {
+    const status = lstat(path);
+    if (!status.isFile() || status.isSymbolicLink()) throw new Error('INVALID_WORKSPACE_SETTINGS');
+  } catch (error) {
+    if (allowMissing && typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return;
+    if (error instanceof Error && error.message === 'INVALID_WORKSPACE_SETTINGS') throw error;
+    throw new Error('INVALID_WORKSPACE_SETTINGS');
+  }
+};
+
 export const loadWorkspaceSettings = async (handle: WorkspaceHandle, workspaceId: string): Promise<WorkspaceSettings | null> => {
   const path = join(getInternalDirectory(handle, workspaceId, false), workspaceSettingsFileName);
+  assertRegularSettingsFile(path, true);
   try {
     await access(path, constants.R_OK);
     const value: unknown = JSON.parse(await readFile(path, 'utf8'));
@@ -46,6 +58,7 @@ export const saveWorkspaceSettings = async (handle: WorkspaceHandle, workspaceId
   const directory = getInternalDirectory(handle, workspaceId, true);
   if (!isWorkspaceSettings(settings)) throw new Error('INVALID_WORKSPACE_SETTINGS');
   const destination = join(directory, workspaceSettingsFileName);
+  assertRegularSettingsFile(destination, true);
   const temporary = join(directory, `.${workspaceSettingsFileName}.tmp-${randomUUID()}`);
   try {
     await writeFile(temporary, `${JSON.stringify(structuredClone(settings), null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });

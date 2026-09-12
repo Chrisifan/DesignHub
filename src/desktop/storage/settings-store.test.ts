@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -64,5 +64,24 @@ it('rejects settings writes from a read-only workspace', async () => {
     writable.close();
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('rejects settings symlinks instead of reading or replacing an external file', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'designhub-settings-'));
+  const externalRoot = await mkdtemp(join(tmpdir(), 'designhub-settings-external-'));
+  try {
+    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
+    const settingsPath = join(handle.workspace.directory, '.designhub', workspaceSettingsFileName);
+    const externalPath = join(externalRoot, 'settings.json');
+    await writeFile(externalPath, `${JSON.stringify(settings)}\n`);
+    await symlink(externalPath, settingsPath);
+    await expect(loadWorkspaceSettings(handle, handle.workspace.workspaceId)).rejects.toThrow('INVALID_WORKSPACE_SETTINGS');
+    await expect(saveWorkspaceSettings(handle, handle.workspace.workspaceId, settings)).rejects.toThrow('INVALID_WORKSPACE_SETTINGS');
+    await expect(readFile(externalPath, 'utf8')).resolves.toContain('Volumes/backup');
+    handle.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(externalRoot, { recursive: true, force: true });
   }
 });
