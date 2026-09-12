@@ -34,6 +34,6 @@ export const MaskEditor = ({ image, locale = 'en', region, readOnly = false, onC
   return <form className="canvas-mask-editor" aria-label={labels.title} onSubmit={(event) => { event.preventDefault(); if (valid) onApply?.(draft); }}>
     {(['x', 'y', 'width', 'height'] as const).map((key) => <label key={key}><span>{labels[key]}</span><input type="number" min="0" value={draft?.[key] ?? ''} onChange={update(key)} disabled={readOnly} /></label>)}
     {!valid && draft && <p role="alert">{labels.invalid}</p>}
-    <div className="canvas-mask-editor__actions"><button type="submit" disabled={readOnly || !valid}>{labels.apply}</button><button type="button" onClick={onCancel} disabled={readOnly}>{labels.cancel}</button><button type="button" onClick={() => { setDraft(undefined); onClear?.(); }} disabled={readOnly}>{labels.clear}</button></div>
+    <div className="canvas-mask-editor__actions"><button type="submit" disabled={readOnly || !valid}>{labels.apply}</button><button type="button" onClick={onCancel}>{labels.cancel}</button><button type="button" onClick={() => { setDraft(undefined); onClear?.(); }} disabled={readOnly}>{labels.clear}</button></div>
   </form>;
 };

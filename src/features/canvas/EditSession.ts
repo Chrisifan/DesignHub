@@ -47,6 +47,7 @@ export const createEditSession = <T>(initial: T, options: EditSessionOptions): E
   let historyIndex = 0;
   let batchStart: T | null = null;
   let aiToken = '';
+  let aiBaseline = '';
   const assertWritable = (): void => { if (options.readOnly) throw new Error('READ_ONLY'); };
   const record = (next: T): T => {
     draft = clone(next);
@@ -117,9 +118,9 @@ export const createEditSession = <T>(initial: T, options: EditSessionOptions): E
     historyIndex = 0;
     return clone(draft);
   };
-  const startAiRequest = (): string => { aiToken = makeToken(); return aiToken; };
+  const startAiRequest = (): string => { aiToken = makeToken(); aiBaseline = JSON.stringify(draft); return aiToken; };
   const applyAiResult = (result: T, token: string): boolean => {
-    if (options.readOnly || !token || token !== aiToken) return false;
+    if (options.readOnly || !token || token !== aiToken || JSON.stringify(draft) !== aiBaseline) return false;
     record(result);
     return true;
   };

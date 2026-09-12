@@ -33,3 +33,11 @@ it('does not apply stale AI results or writes in a read-only session', () => {
   expect(session.applyAiResult({ id: 'scene-1', value: 2 }, 'stale-token')).toBe(false);
   expect(session.getDraft()).toEqual(base);
 });
+
+it('does not let a current-token AI result overwrite a newer local draft', () => {
+  const session = createEditSession(base, { projectId: 'p1', documentId: 'd4', sceneAssetId: 'scene-1' });
+  const token = session.startAiRequest();
+  session.update({ value: 1 });
+  expect(session.applyAiResult({ id: 'scene-1', value: 2 }, token)).toBe(false);
+  expect(session.getDraft()).toEqual({ id: 'scene-1', value: 1 });
+});
