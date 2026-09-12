@@ -470,6 +470,7 @@ const createBackup = async (
 ) => {
   const source = validateWritableSource(handle);
   const destinationParent = getCanonicalDirectory(input.destinationParentDirectory, 'INVALID_BACKUP_DESTINATION');
+  if (isContainedPath(source.directory, destinationParent)) throw new Error('INVALID_BACKUP_DESTINATION');
   accessSync(destinationParent, constants.W_OK);
   const operationId = randomUUID();
   const stagingDirectory = join(destinationParent, `.designhub-backup-${operationId}.staging`);

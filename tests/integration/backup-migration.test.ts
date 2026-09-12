@@ -162,6 +162,16 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
   }
 });
 
+it('rejects a backup destination inside the source workspace before staging', async () => {
+  const sourceParent = await createTemporaryDirectory('designhub-backup-nested-source-');
+  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Workspace' });
+  const nestedDestination = join(workspace.workspace.directory, 'projects');
+  await expect(createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory: nestedDestination }))
+    .rejects.toThrow('INVALID_BACKUP_DESTINATION');
+  await expect(readdir(nestedDestination)).resolves.not.toContain(expect.stringContaining('.designhub-backup-'));
+  workspace.close();
+});
+
 it.each(['file-copy', 'database-backup', 'backup-publish'] as const)('does not publish a completed backup or modify the source after an injected %s failure', async (failAt) => {
   const sourceParent = await createTemporaryDirectory(`designhub-backup-failure-source-${failAt}-`);
   const destinationParent = await createTemporaryDirectory(`designhub-backup-failure-target-${failAt}-`);
