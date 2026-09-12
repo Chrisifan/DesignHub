@@ -195,6 +195,7 @@
 2026-09-13：M07 工作台区域工具选择（变更 ID M07-20260913-16）。工作台局部工具在提交前显示现有遮罩编辑器并要求有效选区，应用区域后通过 typed image-task 回调传递，取消/清除不创建任务。先新增 Workbench Red，再 Green；Workbench/MaskEditor/target focused 30/30、lint、typecheck、diff check 通过。provider 遮罩栅格化、真实模型执行、Windows 与人工质量仍开放。
 2026-09-13：M05/M07 工作台会话状态文案（变更 ID UI-20260913-08）。工作台底部状态根据是否绑定工作区显示“本地会话”或“示例会话”，修正真实项目仍显示预览状态的问题。先新增 Workbench Red，再 Green；Workbench focused 回归通过，lint、typecheck、diff check 通过。进程恢复、打包存储、Windows 与人工视觉门禁仍开放。
 2026-09-13：M06/M07 图像工具任务溯源（变更 ID M06-20260913-10）。图片编辑任务贯穿保存所选工具与有限区域，Studio、可信 IPC 与任务存储共同校验，避免局部操作参数在桥接处丢失。先新增 task-service Red，再 Green；task-service/IPC/task-store focused 17/17、lint、typecheck、diff check 通过。provider 遮罩栅格化、真实模型、Windows 与人工质量仍开放。
+2026-09-13：M06 provider 图像编辑元数据（变更 ID M06-20260913-11）。OpenAI-compatible image-edit adapter 在 multipart 请求中携带工具与区域元数据，和任务记录保持一致；原图、遮罩与凭据边界不变。先新增 adapter Red，再 Green；adapter/task-service focused 16/16、lint、typecheck、diff check 通过。真实 provider 对自定义字段的支持、遮罩栅格化与跨平台验证仍开放。
 
 ## 发布前检查
 

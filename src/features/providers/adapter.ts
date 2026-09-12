@@ -18,7 +18,7 @@ export type ChatResponse = { text: string; usage?: ChatUsage; cost: number | nul
 export type ChatStreamEvent = { text: string; finishReason?: string | null };
 export type VisionRequest = { prompt: string; image: { url: string } | { base64: string; mimeType?: string } };
 export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number };
-export type ImageEditRequest = { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string };
+export type ImageEditRequest = { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: string; region?: { x: number; y: number; width: number; height: number } };
 export type GeneratedImage = { url?: string; base64?: string };
 export type ImageResponse = { images: GeneratedImage[]; cost: number | null };
 
@@ -278,6 +278,8 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     form.append('prompt', request.prompt);
     form.append('image', request.image);
     if (request.mask) form.append('mask', request.mask);
+    if (request.tool) form.append('tool', request.tool);
+    if (request.region) form.append('region', JSON.stringify(request.region));
     if (request.model) form.append('model', request.model);
     if (request.size) form.append('size', request.size);
     let response: Response;

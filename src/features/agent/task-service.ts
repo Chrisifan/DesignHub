@@ -45,7 +45,7 @@ export type ImageEditInput = {
 type ConversationAdapter = {
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
   generateImage?: (request: { prompt: string; model?: string; size?: string; count?: number }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
-  editImage?: (request: { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
+  editImage?: (request: { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: ImageTool; region?: Region }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
 };
 
 export type AgentTaskService = {
@@ -120,7 +120,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         const adapter = await options.resolveAdapter(input.connectionId);
         const response = operation === 'generate'
           ? (adapter.generateImage ? await adapter.generateImage({ prompt: input.prompt.trim(), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}) }, controller.signal) : undefined)
-          : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}) }, controller.signal) : undefined);
+          : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('tool' in input && input.tool ? { tool: input.tool } : {}), ...('region' in input && input.region ? { region: input.region } : {}) }, controller.signal) : undefined);
         if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
         const assetIds = options.persistGeneratedImages ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images }) : [];
         await options.runtime.complete(task.id, {
