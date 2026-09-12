@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Ellipse, Layer, Line, Rect, Stage, Text } from 'react-konva';
+import { Ellipse, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
 
 import { getMessages, type Locale } from '../../app/i18n';
 import { Button } from '../../app/studio/ui';
@@ -41,7 +41,7 @@ const canRenderCanvas = (): boolean => {
   }
 };
 
-const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void, onMove: (next: SceneLayer) => void) => {
+const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void, onMove: (next: SceneLayer) => void, image?: HTMLImageElement) => {
   const common = {
     key: layer.id,
     x: layer.x,
@@ -61,6 +61,7 @@ const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void,
   if (layer.type === 'text') return <Text {...common} text={layer.text} fontFamily={layer.fontFamily} fontSize={layer.fontSize} fontStyle={layer.fontWeight} align={layer.align} fill={layer.color} />;
   if (layer.type === 'shape' && layer.kind === 'ellipse') return <Ellipse {...common} radiusX={layer.width / 2} radiusY={layer.height / 2} x={layer.x + layer.width / 2} y={layer.y + layer.height / 2} fill={layer.fill} />;
   if (layer.type === 'shape' && layer.kind === 'line') return <Line {...common} points={[0, 0, layer.width, layer.height]} stroke={selected ? '#2f7cf6' : layer.stroke} />;
+  if (layer.type === 'image' && image) return <KonvaImage {...common} image={image} />;
   return <Rect {...common} fill={layer.type === 'shape' ? layer.fill : '#d7dce5'} dash={layer.type === 'image' ? [8, 6] : undefined} />;
 };
 
@@ -69,7 +70,24 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   const canvasReady = useMemo(canRenderCanvas, []);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewport, setViewport] = useState<ViewportState>(initialViewport);
+  const [assetImages, setAssetImages] = useState<Record<string, HTMLImageElement>>({});
   const selectedLayer = useMemo(() => scene.layers.find((layer) => layer.id === selectedIds[0]), [scene.layers, selectedIds]);
+  useEffect(() => {
+    if (!workspaceId || !projectId) return undefined;
+    let cancelled = false;
+    const imageLayers = scene.layers.filter((layer): layer is Extract<SceneLayer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder');
+    imageLayers.forEach((layer) => {
+      const request = getDesktopApi().readAsset?.({ workspaceId, projectId, assetId: layer.assetId });
+      void request?.then((bytes) => {
+        if (!bytes || cancelled || typeof URL === 'undefined' || typeof Image === 'undefined') return;
+        const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'image/*' }));
+        const image = new Image();
+        image.onload = () => { if (!cancelled) setAssetImages((current) => ({ ...current, [layer.assetId]: image })); URL.revokeObjectURL(url); };
+        image.src = url;
+      }).catch(() => undefined);
+    });
+    return () => { cancelled = true; };
+  }, [projectId, scene.layers, workspaceId]);
   useEffect(() => {
     if (!workspaceId || !projectId || !documentId) return undefined;
     let cancelled = false;
@@ -114,7 +132,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
           {canvasReady ? <Stage width={stageDimensions.width} height={stageDimensions.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
             <Layer>
               <Rect x={0} y={0} width={scene.width} height={scene.height} fill="#ffffff" listening={false} />
-              {scene.layers.map((layer) => renderLayer(layer, selectedIds.includes(layer.id), () => select([layer.id]), updateLayer))}
+              {scene.layers.map((layer) => renderLayer(layer, selectedIds.includes(layer.id), () => select([layer.id]), updateLayer, layer.type === 'image' ? assetImages[layer.assetId] : undefined))}
             </Layer>
           </Stage> : <div className="canvas-workspace__fallback" role="img" aria-label={messages.canvasTitle}>{messages.canvasUnavailable}</div>}
         </div>

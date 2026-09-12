@@ -547,6 +547,14 @@
   height: 100%;
 }
 
+.asset-image-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--surface-container-high);
+}
+
 .asset-details > .section-kicker {
   margin-bottom: 6px;
 }

@@ -154,6 +154,13 @@ it('keeps external asset references visibly unmanaged in project details', async
   expect(within(details).queryByText('受管副本')).not.toBeInTheDocument();
 });
 
+it('loads managed asset bytes for the selected workspace preview', async () => {
+  const readAsset = vi.fn(async () => new Uint8Array([137, 80, 78, 71]));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => [{ id: 'asset-managed', name: '原图', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true }]), readAsset };
+  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+  await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-managed' }));
+});
+
 it('shows honest unavailable states for connections and delivery', () => {
   const { unmount } = render(<Harness initialView="connections" />);
   expect(screen.getByText('尚未连接模型')).toBeInTheDocument();

@@ -197,8 +197,8 @@ const DetailRow = ({
   </div>
 );
 
-const AssetVisual = ({ item, locale }: { item: AssetItem; locale: Locale }) =>
-  item.type === 'logo' ? (
+const AssetVisual = ({ item, locale, previewUrl }: { item: AssetItem; locale: Locale; previewUrl?: string }) =>
+  previewUrl ? <img className="asset-image-preview" src={previewUrl} alt={localize(locale, item.name)} /> : item.type === 'logo' ? (
     <div className="asset-logo">
       <span>{t(locale, '春', 'S')}</span>
       <i />
@@ -237,6 +237,7 @@ const AssetsPage = ({
   notify?: (message: string) => void;
 }) => {
   const [managedAssets, setManagedAssets] = useState<ManagedAsset[]>([]);
+  const [previewUrl, setPreviewUrl] = useState<string>();
   const [importing, setImporting] = useState(false);
   const inputId = 'asset-import-input';
   useEffect(() => {
@@ -276,6 +277,18 @@ const AssetsPage = ({
     [displayAssets, locale, query, type],
   );
   const selected = displayAssets.find((item) => item.id === selectedId) ?? displayAssets[0];
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewUrl(undefined);
+    if (!selected || !workspaceId || !projectId || selected.managed === false) return () => { cancelled = true; };
+    const request = getDesktopApi().readAsset?.({ workspaceId, projectId, assetId: selected.id });
+    void request?.then((bytes) => {
+      if (!bytes || cancelled || typeof URL === 'undefined') return;
+      const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'image/*' }));
+      setPreviewUrl(url);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [projectId, selected?.id, selected?.managed, workspaceId]);
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -375,7 +388,7 @@ const AssetsPage = ({
           aria-label={t(locale, '素材详情', 'Asset details')}
         >
           <div className="asset-detail-visual">
-            <AssetVisual item={selected} locale={locale} />
+            <AssetVisual item={selected} locale={locale} previewUrl={previewUrl} />
           </div>
           <p className="section-kicker">
             {localize(locale, selected.typeName)}

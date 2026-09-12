@@ -54,3 +54,11 @@ it('persists the initial scene when a workspace document has no stored scene', a
     workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'doc-1', scene: initial,
   })));
 });
+
+it('requests managed image bytes for image layers in a workspace scene', async () => {
+  const readAsset = vi.fn(async () => new Uint8Array([137, 80, 78, 71]));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, readAsset };
+  const imageScene = createScene({ id: 'scene-image', width: 800, height: 600, layers: [{ id: 'image-1', type: 'image', assetId: 'asset-1', x: 0, y: 0, width: 800, height: 600, rotation: 0, opacity: 1, visible: true, locked: false }] });
+  render(<CanvasWorkspace locale="zh-CN" scene={imageScene} workspaceId="workspace-1" projectId="project-1" documentId="doc-1" />);
+  await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-1' }));
+});
