@@ -75,6 +75,7 @@ export const Studio = ({
     mode: 'manual',
   });
   const [creationDraftId, setCreationDraftId] = useState<string | null>(null);
+  const [conversationResult, setConversationResult] = useState<{ taskId: string; text: string } | null>(null);
   useEffect(() => {
     let cancelled = false;
     if (!workspace) {
@@ -108,6 +109,19 @@ export const Studio = ({
     setSurface('projects');
     return () => { cancelled = true; };
   }, [workspace?.workspaceId, locale]);
+  useEffect(() => {
+    if (!workspace || !creationDraftId) return undefined;
+    let cancelled = false;
+    const request = getDesktopApi().listTasks?.(workspace.workspaceId);
+    void request?.then((stored) => {
+      if (cancelled || !stored) return;
+      const completed = stored.find((task) => task.source?.kind === 'creation-draft' && task.source.id === creationDraftId && task.state === 'completed' && task.result?.text);
+      if (!completed?.result?.text) return;
+      setConversationResult({ taskId: completed.id, text: completed.result.text });
+      setDraft((current) => ({ ...current, brief: completed.result?.text ?? current.brief }));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [creationDraftId, workspace]);
   const navigate = (next: View) => {
     setView(next);
     setSurface(next);
@@ -160,6 +174,7 @@ export const Studio = ({
           return;
         }
         setCreationDraftId(draftId);
+        setConversationResult(null);
         notify(t(locale, '简报任务已排队，确认后创建项目。', 'Brief task queued; confirm it before creating the project.'));
       } catch {
         notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
@@ -200,6 +215,7 @@ export const Studio = ({
       setFilter('active');
       setDraft({ name: '', goal: '', brief: '', personaId: 'paper-type', size: '1080 × 1440', mode: 'manual' });
       setCreationDraftId(null);
+      setConversationResult(null);
       notify(t(locale, '项目已保存到本地工作区。', 'Project saved to the local workspace.'));
       return;
     }
@@ -234,6 +250,7 @@ export const Studio = ({
       mode: 'manual',
     });
     setCreationDraftId(null);
+    setConversationResult(null);
     notify(
       t(
         locale,
@@ -477,6 +494,12 @@ export const Studio = ({
               onCreate={createProject}
               onBack={backFromNewDesign}
               persisted={workspace?.openMode === 'writable'}
+              conversationResult={conversationResult}
+              onConfirmConversation={(taskId) => {
+                if (!conversationResult || conversationResult.taskId !== taskId) return;
+                setDraft((current) => ({ ...current, mode: 'manual', goal: conversationResult.text }));
+                notify(t(locale, '简报已确认，请创建项目。', 'Brief confirmed. Create the project when ready.'));
+              }}
             />
           )}
           {surface === 'projects' && view === 'projects' && !selected && (

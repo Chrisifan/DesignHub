@@ -41,3 +41,12 @@ it('keeps manual and conversation input in one session draft while the hero foll
     screen.getByText('模型未连接，想法已保留在示例草稿中。'),
   ).toBeInTheDocument();
 });
+
+it('shows a completed conversation brief for explicit review before project creation', () => {
+  const onConfirm = vi.fn();
+  render(<NewDesignPage locale="zh-CN" draft={{ ...initialDraft, mode: 'conversation', name: '春间市集' }} onDraftChange={vi.fn()} onCreate={vi.fn()} onBack={vi.fn()} conversationResult={{ taskId: 'task-1', text: '一张自然、克制的春季市集海报。' }} onConfirmConversation={onConfirm} />);
+  expect(screen.getByText('模型已整理简报')).toBeInTheDocument();
+  expect(screen.getByText('一张自然、克制的春季市集海报。')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '确认创建' }));
+  expect(onConfirm).toHaveBeenCalledWith('task-1');
+});

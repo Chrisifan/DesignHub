@@ -13,6 +13,8 @@ type NewDesignPageProps = {
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onBack: () => void;
   persisted?: boolean;
+  conversationResult?: { taskId: string; text: string } | null;
+  onConfirmConversation?: (taskId: string) => void;
 };
 
 export const NewDesignPage = ({
@@ -22,6 +24,8 @@ export const NewDesignPage = ({
   onCreate,
   onBack,
   persisted = false,
+  conversationResult = null,
+  onConfirmConversation,
 }: NewDesignPageProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -67,6 +71,13 @@ export const NewDesignPage = ({
                 <textarea rows={6} value={draft.brief} onChange={(event) => onDraftChange({ ...draft, brief: event.target.value })} placeholder={t(locale, '例如：春季市集宣传图', 'For example: spring market campaign')} />
               </Field>
               <p className="inline-notice"><Icon name="plug" size={16} />{t(locale, '模型未连接，想法已保留在示例草稿中。', 'No model connected. Your idea stays in this example draft.')}</p>
+              {conversationResult && (
+                <section className="conversation-review" aria-label={t(locale, '简报审阅', 'Brief review')}>
+                  <div className="conversation-review__heading"><Icon name="check" size={18} /><strong>{t(locale, '模型已整理简报', 'Model brief ready')}</strong></div>
+                  <p>{conversationResult.text}</p>
+                  <Button type="button" variant="primary" icon="check" onClick={() => onConfirmConversation?.(conversationResult.taskId)}>{t(locale, '确认创建', 'Confirm')}</Button>
+                </section>
+              )}
             </>
           ) : (
             <Field label={t(locale, '设计目标', 'Creative brief')}>

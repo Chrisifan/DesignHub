@@ -238,6 +238,28 @@
   font-weight: 500;
 }
 
+.conversation-review {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+.conversation-review__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--on-surface);
+}
+
+.conversation-review p {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--secondary);
+}
+
 .persona-selector {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
