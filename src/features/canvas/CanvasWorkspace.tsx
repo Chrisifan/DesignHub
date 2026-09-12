@@ -31,6 +31,15 @@ const initialViewport: ViewportState = { zoom: 1, offsetX: 0, offsetY: 0 };
 
 const stageDimensions = { width: 900, height: 620 };
 
+const canRenderCanvas = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  try {
+    return Boolean(document.createElement('canvas').getContext('2d'));
+  } catch {
+    return false;
+  }
+};
+
 const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void, onMove: (next: SceneLayer) => void) => {
   const common = {
     key: layer.id,
@@ -56,6 +65,7 @@ const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void,
 
 export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId }: CanvasWorkspaceProps) => {
   const messages = getMessages(locale);
+  const canvasReady = useMemo(canRenderCanvas, []);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewport, setViewport] = useState<ViewportState>(initialViewport);
   const selectedLayer = useMemo(() => scene.layers.find((layer) => layer.id === selectedIds[0]), [scene.layers, selectedIds]);
@@ -94,12 +104,12 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
       <div className="canvas-workspace__body">
         <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} />
         <div className="canvas-workspace__stage" style={{ overflow: 'auto' }}>
-          <Stage width={stageDimensions.width} height={stageDimensions.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
+          {canvasReady ? <Stage width={stageDimensions.width} height={stageDimensions.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
             <Layer>
               <Rect x={0} y={0} width={scene.width} height={scene.height} fill="#ffffff" listening={false} />
               {scene.layers.map((layer) => renderLayer(layer, selectedIds.includes(layer.id), () => select([layer.id]), updateLayer))}
             </Layer>
-          </Stage>
+          </Stage> : <div className="canvas-workspace__fallback" role="img" aria-label={messages.canvasTitle}>{messages.canvasUnavailable}</div>}
         </div>
         <Inspector locale={locale} layer={selectedLayer} onChange={updateLayer} />
       </div>

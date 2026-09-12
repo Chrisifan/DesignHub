@@ -42,6 +42,7 @@
   ,"canvasLocked": "Locked"
   ,"canvasFit": "Fit"
   ,"canvasReset": "100%"
+  ,"canvasUnavailable": "Canvas rendering is unavailable in this environment."
   ,"textEditorLabel": "Text editor"
   ,"textContent": "Text content"
   ,"textFamily": "Font"

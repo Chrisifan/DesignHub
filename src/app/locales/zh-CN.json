@@ -42,6 +42,7 @@
   ,"canvasLocked": "锁定"
   ,"canvasFit": "适应"
   ,"canvasReset": "100%"
+  ,"canvasUnavailable": "当前环境不支持画布渲染。"
   ,"textEditorLabel": "文本编辑器"
   ,"textContent": "文本内容"
   ,"textFamily": "字体"
