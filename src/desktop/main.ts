@@ -11,16 +11,24 @@ import {
   workspaceOpenChannel,
 } from './ipc/workspace';
 import { createContentSecurityPolicy } from './csp';
+import {
+  createCredentialDeleteHandler,
+  createCredentialStoreHandler,
+  credentialDeleteChannel,
+  credentialStoreChannel,
+} from './ipc/credentials';
 import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore } from './storage/project-store';
 import { runStorageSmoke } from './storage/storage-smoke';
 import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
 import { createWindowOptions } from './window-options';
+import { createCredentialBoundary, createUnavailableCredentialStore } from './security/credentials';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
 let activeWorkspaceHandle: WorkspaceHandle | null = null;
+const credentialBoundary = createCredentialBoundary(createUnavailableCredentialStore());
 
 export const createMainProjectStore = (workspace: WorkspaceHandle) => createProjectStore(workspace);
 
@@ -87,6 +95,14 @@ app.whenReady().then(() => {
       activeTrustedUrl,
       async (workspaceDirectory) => activateWorkspace(await openWorkspace(workspaceDirectory)),
     )(event, directory);
+  });
+  ipcMain.handle(credentialStoreChannel, async (event, connectionId, secret) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return createCredentialStoreHandler(activeWindow, activeTrustedUrl, credentialBoundary)(event, connectionId, secret);
+  });
+  ipcMain.handle(credentialDeleteChannel, async (event, connectionId) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return createCredentialDeleteHandler(activeWindow, activeTrustedUrl, credentialBoundary)(event, connectionId);
   });
 });
 

@@ -4,6 +4,8 @@ const unavailableDesktopApi: DesktopApi = {
   chooseWorkspaceDirectory: async () => null,
   createWorkspace: async () => null,
   openWorkspace: async () => null,
+  storeCredential: async () => false,
+  deleteCredential: async () => false,
 };
 
 export const getDesktopApi = (): DesktopApi => {
