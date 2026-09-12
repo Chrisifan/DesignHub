@@ -31,3 +31,9 @@ Expected evidence: final PNG magic/dimensions/pixels, two final revision IDs, im
 - [ ] Real provider adapters, licensed image-tool samples, and 100-project/long-history performance sample.
 
 Browser preview tests are not evidence for the native gates above. No release artifact is uploaded by this plan.
+
+## 2026-09-12 execution evidence
+
+- `pnpm test:e2e -- tests/e2e/full-design-journey.spec.ts tests/e2e/failure-recovery.spec.ts`: 24/24 passed, including the existing studio navigation matrix. Headless Chromium reports `backdrop-filter: none`; the test accepts this documented reduced-transparency fallback while retaining native blur verification as an open gate.
+- `pnpm test:native`: Electron smoke and main-process storage passed; packaged storage test skipped because no packaged executable was available.
+- `pnpm package`: macOS arm64 package preparation completed locally; signed artifact, Windows package, keychain persistence, and installer upgrade evidence remain open.

@@ -15,5 +15,5 @@ test('REL02 delivery and workspace navigation remain available without a model c
 test('REL03 provider-dependent work is disclosed as unavailable in the preview shell', async ({ page }) => {
   await page.goto('/?preview=1');
   await page.getByRole('button', { name: /模型连接|Connections/ }).click();
-  await expect(page.getByText(/不可用|Unavailable/).first()).toBeVisible();
+  await expect(page.getByText(/尚未连接模型|No models connected/).first()).toBeVisible();
 });

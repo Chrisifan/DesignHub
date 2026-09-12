@@ -15,6 +15,8 @@ test('launches the workspace shell with only the DesignHub bridge', async () => 
       'chooseWorkspaceDirectory',
       'createWorkspace',
       'openWorkspace',
+      'storeCredential',
+      'deleteCredential',
     ]);
   } finally {
     await electronApp.close();
