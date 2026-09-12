@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import {
   createWorkspaceFromParentHandler,
@@ -46,7 +46,7 @@ import { exportSceneToFile } from './export-scene';
 import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel, createBackupHandler, restoreBackupHandler } from './ipc/backup';
 import { createWorkspaceBackupStore } from './storage/backup-store';
-import { exportProjectPackageHandler, projectPackageExportChannel } from './ipc/package';
+import { exportProjectPackageHandler, importProjectPackageHandler, projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 import { createProjectPackage, encodeProjectPackage } from '../features/delivery/project-package';
 
 let activeWindow: BrowserWindow | null = null;
@@ -187,6 +187,15 @@ app.whenReady().then(() => {
       const { writeFile } = await import('node:fs/promises');
       await writeFile(result.filePath, archive, { flag: 'wx' });
       return { path: result.filePath, sha256: createHash('sha256').update(archive).digest('hex') };
+    })(event, input);
+  });
+  ipcMain.handle(projectPackageImportChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return importProjectPackageHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace) => {
+      const result = await dialog.showOpenDialog(activeWindow!, { properties: ['openFile'], filters: [{ name: 'DesignHub package', extensions: ['zip'] }] });
+      if (result.canceled || !result.filePaths[0]) return null;
+      const archive = await readFile(result.filePaths[0]);
+      return createProjectStore(workspace).importProjectPackage({ workspaceId: workspace.workspace.workspaceId, operationId: randomUUID(), archive: new Uint8Array(archive) });
     })(event, input);
   });
   ipcMain.handle(projectMetadataGetChannel, async (event, input) => {

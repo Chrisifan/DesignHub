@@ -7,6 +7,7 @@ const unavailableDesktopApi: DesktopApi = {
   listActiveProjects: async () => null,
   createProjectContainer: async () => null,
   duplicateProject: async () => null,
+  importProjectPackage: async () => null,
   getProjectMetadata: async () => null,
   updateProjectMetadata: async () => null,
   listTrashedProjects: async () => null,

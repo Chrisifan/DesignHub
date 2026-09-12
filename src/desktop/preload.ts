@@ -11,7 +11,7 @@ import { exportDocumentChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
 import { projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
-import { projectPackageExportChannel } from './ipc/package';
+import { projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -20,6 +20,7 @@ const api: DesktopApi = {
   listActiveProjects: (workspaceId) => ipcRenderer.invoke('project:list-active', workspaceId),
   createProjectContainer: (input) => ipcRenderer.invoke('project:create', input),
   duplicateProject: (input) => ipcRenderer.invoke('project:duplicate', input),
+  importProjectPackage: (input) => ipcRenderer.invoke(projectPackageImportChannel, input),
   getProjectMetadata: (workspaceId, projectId) => ipcRenderer.invoke('project:get-metadata', { workspaceId, projectId }),
   updateProjectMetadata: (input) => ipcRenderer.invoke('project:update-metadata', input),
   listTrashedProjects: (workspaceId) => ipcRenderer.invoke(projectListTrashChannel, workspaceId),

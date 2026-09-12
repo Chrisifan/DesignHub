@@ -1,10 +1,13 @@
+// @vitest-environment node
+
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createProjectPackage, encodeProjectPackage } from '../../features/delivery/project-package';
 
 import { expect, it } from 'vitest';
 
-import { createProjectStore } from './project-store';
+import { createProjectStore, importProjectPackageToWorkspace } from './project-store';
 import { createWorkspace, openWorkspace } from './workspace-store';
 
 const withWorkspace = async (run: (parentDirectory: string, workspaceDirectory: string) => Promise<void>): Promise<void> => {
@@ -99,5 +102,47 @@ it('persists project brief, designer and document metadata across reopen', async
     } finally {
       reopened.close();
     }
+  });
+});
+
+it('imports a validated project package into the workspace and rewrites project identity', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    try {
+      const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43631';
+      const pack = await createProjectPackage({
+        packageId: 'pkg-import-1',
+        projectId: sourceProjectId,
+        entries: [
+          { path: 'designhub.project.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({
+            kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Imported project', formatVersion: 1, createdAt: new Date().toISOString(),
+            metadata: { projectId: sourceProjectId, workspaceId: 'source-workspace', name: 'Imported project', brief: 'Imported brief', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200, updatedAt: new Date().toISOString() }], archived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          })) },
+          { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
+          { path: 'documents/doc-1.scene.json', kind: 'manifest', bytes: new TextEncoder().encode('{"id":"doc-1","width":100,"height":200,"layers":[]}' ) },
+        ],
+      });
+      const archive = await encodeProjectPackage(pack);
+      const result = await importProjectPackageToWorkspace(workspace, { workspaceId: workspace.workspace.workspaceId, operationId: 'import-op-1', archive });
+      expect(result.projectId).not.toBe(sourceProjectId);
+      await expect(createProjectStore(workspace).getProjectMetadata(result.projectId)).resolves.toMatchObject({ name: 'Imported project', brief: 'Imported brief', documents: [{ id: 'doc-1', width: 100, height: 200 }] });
+    } finally { workspace.close(); }
+  });
+});
+
+it('rejects importing the same package identity twice', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    try {
+      const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43631';
+      const now = new Date().toISOString();
+      const pack = await createProjectPackage({ packageId: 'pkg-import-duplicate', projectId: sourceProjectId, entries: [
+        { path: 'designhub.project.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Imported', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Imported', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+        { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
+      ] });
+      const archive = await encodeProjectPackage(pack);
+      await importProjectPackageToWorkspace(workspace, { workspaceId: workspace.workspace.workspaceId, operationId: 'import-op-a', archive });
+      await expect(importProjectPackageToWorkspace(workspace, { workspaceId: workspace.workspace.workspaceId, operationId: 'import-op-b', archive })).rejects.toThrow('PACKAGE_ALREADY_IMPORTED');
+    } finally { workspace.close(); }
   });
 });

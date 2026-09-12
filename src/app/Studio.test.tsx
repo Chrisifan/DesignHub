@@ -144,6 +144,19 @@ it('hydrates persisted workspace projects and creates through the desktop API', 
   expect(await screen.findByRole('heading', { name: 'Created project' })).toBeInTheDocument();
 });
 
+it('imports a project package and refreshes the persisted project list', async () => {
+  const listActiveProjects = vi.fn()
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([{ projectId: 'project-imported', name: 'Imported project' }]);
+  const importProjectPackage = vi.fn(async () => ({ projectId: 'project-imported' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, importProjectPackage };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('heading', { name: '项目库' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '导入项目包' }));
+  await waitFor(() => expect(importProjectPackage).toHaveBeenCalledWith({ workspaceId: 'workspace-1' }));
+  expect(await screen.findByRole('button', { name: 'Imported project' })).toBeInTheDocument();
+});
+
 it('renames, archives and duplicates a persisted project from its detail view', async () => {
   const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
   const updateProjectMetadata = vi.fn(async ({ patch }: { patch: { name?: string; archived?: boolean } }) => ({ projectId: 'project-1', workspaceId: 'workspace-1', name: patch.name ?? 'Persisted project', archived: patch.archived ?? false, documents: [], createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:01.000Z' }));

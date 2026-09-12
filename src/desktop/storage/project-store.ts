@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 
 import Database from 'better-sqlite3';
 
@@ -9,6 +9,8 @@ import type {
   CreateProjectContainerInput,
   CreateProjectContainerResult,
   DuplicateProjectInput,
+  ImportProjectPackageInput,
+  ImportProjectPackageResult,
   ActiveProject,
   ProjectStore,
   RestoreProjectResult,
@@ -18,6 +20,8 @@ import type {
 } from '../../features/workspace/project-store';
 import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata } from '../../features/projects/metadata';
 import { canPurge } from '../../features/workspace/trash-policy';
+import { decodeProjectPackage } from '../../features/delivery/project-package';
+import { isSafePackagePath } from '../../features/delivery/package-policy';
 import { getWritableWorkspaceLease } from './workspace-store';
 
 export const projectManifestName = 'designhub.project.json';
@@ -48,6 +52,7 @@ type ProjectManifest = {
   formatVersion: number;
   createdAt: string;
   metadata?: ProjectMetadata;
+  importedPackageId?: string;
 };
 
 type ProjectContentManifest = {
@@ -145,7 +150,8 @@ const isProjectManifest = (value: unknown): value is ProjectManifest => isRecord
   && value.formatVersion === projectFormatVersion
   && typeof value.createdAt === 'string'
   && !Number.isNaN(Date.parse(value.createdAt))
-  && (value.metadata === undefined || isRecord(value.metadata));
+  && (value.metadata === undefined || isRecord(value.metadata))
+  && (value.importedPackageId === undefined || (typeof value.importedPackageId === 'string' && value.importedPackageId.trim().length > 0 && value.importedPackageId.length <= 512 && !/\u0000/u.test(value.importedPackageId)));
 
 const isProjectContentManifest = (value: unknown, projectId: string): value is ProjectContentManifest => isRecord(value)
   && value.formatVersion === projectFormatVersion
@@ -751,6 +757,60 @@ const duplicateProject = async (handle: WorkspaceHandle, input: DuplicateProject
   return created;
 };
 
+const decodePackageJson = <T>(bytes: Uint8Array | undefined): T => {
+  if (!bytes) throw new Error('INVALID_PACKAGE');
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  } catch {
+    throw new Error('INVALID_PACKAGE');
+  }
+};
+
+export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, input: ImportProjectPackageInput): Promise<ImportProjectPackageResult> => {
+  const workspace = getWritableWorkspaceLease(handle);
+  if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
+  if (workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  validateOperationId(input.operationId);
+  const paths = validateWorkspace(workspace, input.workspaceId);
+  const pack = await decodeProjectPackage(input.archive);
+  if (pack.manifest.readOnly) throw new Error('READ_ONLY_PACKAGE');
+  const sourceManifest = decodePackageJson<ProjectManifest>(pack.files[projectManifestName]);
+  const sourceContent = decodePackageJson<ProjectContentManifest>(pack.files[projectContentManifestName]);
+  if (!isProjectManifest(sourceManifest) || sourceManifest.projectId !== pack.manifest.projectId || !isProjectContentManifest(sourceContent, sourceManifest.projectId)) throw new Error('INVALID_PACKAGE');
+  if (!pack.manifest.entries.includes(projectManifestName) || !pack.manifest.entries.includes(projectContentManifestName)) throw new Error('INVALID_PACKAGE');
+  if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === pack.manifest.packageId)) throw new Error('PACKAGE_ALREADY_IMPORTED');
+  const sourceMetadata = sourceManifest.metadata;
+  const documents = sourceMetadata?.documents?.map(({ id, name, width, height, finalizedRevisionId }) => ({ id, name, width, height, finalizedRevisionId })) ?? [];
+  const created = createProject(handle, {}, {
+    workspaceId: input.workspaceId,
+    operationId: input.operationId,
+    name: sourceManifest.name,
+    brief: sourceMetadata?.brief,
+    activeDesignerVersionId: sourceMetadata?.activeDesignerVersionId,
+    designerSnapshot: sourceMetadata?.designerSnapshot,
+    brandSnapshot: sourceMetadata?.brandSnapshot,
+    documents,
+  });
+  const destination = resolveProjectDirectory(handle, created.projectId);
+  if (!destination) throw new Error('PROJECT_NOT_FOUND');
+  const destinationRoot = realpathSync(destination);
+  pack.manifest.entries.forEach((path) => {
+    if (!isSafePackagePath(path) || path === projectManifestName || path === projectContentManifestName || path === projectDatabaseName) return;
+    const target = join(destinationRoot, path);
+    const relativeTarget = relative(destinationRoot, target);
+    if (!relativeTarget || relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || relativeTarget.includes(`..${sep}`)) throw new Error('INVALID_PACKAGE');
+    const bytes = pack.files[path];
+    if (!bytes) throw new Error('INVALID_PACKAGE');
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, bytes, { flag: 'wx' });
+  });
+  const destinationManifestPath = join(destinationRoot, projectManifestName);
+  const destinationManifest = readJson(destinationManifestPath, 'INVALID_PROJECT_MANIFEST') as ProjectManifest;
+  writeFileSync(destinationManifestPath, `${JSON.stringify({ ...destinationManifest, importedPackageId: pack.manifest.packageId }, null, 2)}\n`, { encoding: 'utf8' });
+  writeFileSync(join(destinationRoot, projectContentManifestName), `${JSON.stringify({ ...sourceContent, projectId: created.projectId }, null, 2)}\n`, { encoding: 'utf8' });
+  return created;
+};
+
 const listTrashedProjects = (handle: WorkspaceHandle): TrashedProject[] => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
@@ -887,6 +947,7 @@ const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOpt
 export const createProjectStore = (handle: WorkspaceHandle, options: ProjectStoreOptions = {}): ProjectStore => ({
   createProjectContainer: async (input): Promise<CreateProjectContainerResult> => createProject(handle, options, input),
   duplicateProject: async (input): Promise<CreateProjectContainerResult> => duplicateProject(handle, input),
+  importProjectPackage: async (input): Promise<ImportProjectPackageResult> => importProjectPackageToWorkspace(handle, input),
   listActiveProjects: async (): Promise<ActiveProject[]> => listActiveProjects(handle),
   getProjectMetadata: async (projectId): Promise<ProjectMetadata | null> => getProjectMetadata(handle, projectId),
   updateProjectMetadata: async (input): Promise<ProjectMetadata> => updateProjectMetadataForHandle(handle, input),

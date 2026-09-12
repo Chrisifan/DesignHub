@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import { exportProjectPackageHandler, projectPackageExportChannel } from './package';
+import { exportProjectPackageHandler, importProjectPackageHandler, projectPackageExportChannel, projectPackageImportChannel } from './package';
 
 const createFixture = () => {
   const mainFrame = { url: 'file:///app/index.html' };
@@ -17,4 +17,15 @@ it('gates project package export on the active trusted workspace', async () => {
   await expect(exportProjectPackageHandler(window as never, trustedUrl, () => workspace, exportPackage)(event as never, { workspaceId: 'workspace-1', projectId: 'project-1' })).resolves.toMatchObject({ path: '/tmp/project.designhub.zip' });
   await expect(exportProjectPackageHandler(window as never, trustedUrl, () => workspace, exportPackage)(event as never, { workspaceId: 'other', projectId: 'project-1' })).resolves.toBeNull();
   expect(exportPackage).toHaveBeenCalledOnce();
+});
+
+it('gates package import on a trusted writable workspace and forwards archive path', async () => {
+  expect(projectPackageImportChannel).toBe('project:package-import');
+  const { window, event, trustedUrl } = createFixture();
+  const workspace = { workspace: { workspaceId: 'workspace-1', openMode: 'writable' } } as never;
+  const importPackage = vi.fn(async () => ({ projectId: 'project-imported' }));
+  await expect(importProjectPackageHandler(window as never, trustedUrl, () => workspace, importPackage)(event as never, { workspaceId: 'workspace-1' })).resolves.toEqual({ projectId: 'project-imported' });
+  await expect(importProjectPackageHandler(window as never, trustedUrl, () => workspace, importPackage)(event as never, { workspaceId: 'workspace-1' })).resolves.toEqual({ projectId: 'project-imported' });
+  expect(importPackage).toHaveBeenCalledTimes(2);
+  await expect(importProjectPackageHandler(window as never, trustedUrl, () => ({ workspace: { workspaceId: 'workspace-1', openMode: 'read-only' } } as never), importPackage)(event as never, { workspaceId: 'workspace-1' })).resolves.toBeNull();
 });

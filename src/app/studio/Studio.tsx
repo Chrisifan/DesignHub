@@ -174,6 +174,32 @@ export const Studio = ({
       notify(t(locale, '复制失败，请重试', 'Duplicate failed; try again'));
     }
   };
+  const importProjectPackage = async (): Promise<void> => {
+    if (!workspace || workspace.openMode !== 'writable') return;
+    try {
+      const result = await getDesktopApi().importProjectPackage?.({ workspaceId: workspace.workspaceId });
+      if (!result) return;
+      const entries = await getDesktopApi().listActiveProjects?.(workspace.workspaceId);
+      if (entries) {
+        setProjects(entries.map((entry) => ({
+          id: entry.projectId,
+          workspaceId: workspace.workspaceId,
+          documentId: entry.documents?.[0]?.id,
+          name: entry.name,
+          enName: entry.name,
+          description: entry.brief ?? t(locale, '本地项目', 'Local project'),
+          enDescription: entry.brief ?? 'Local project',
+          designers: ['纸感排版'],
+          artwork: 'blank' as const,
+          documents: entry.documents?.length ?? 1,
+          archived: entry.archived,
+        })));
+      }
+      notify(t(locale, '项目包已导入', 'Project package imported'));
+    } catch {
+      notify(t(locale, '项目包导入失败', 'Project package import failed'));
+    }
+  };
   useEffect(() => {
     if (!notice) return;
     const timeout = window.setTimeout(() => setNotice(''), 6000);
@@ -557,7 +583,9 @@ export const Studio = ({
                   'From the first idea to a complete collection.',
                 )}
                 eyebrow={t(locale, '工作区 / 创作', 'WORKSPACE / CREATE')}
-              />
+              >
+                {workspace?.openMode === 'writable' && <Button aria-label={t(locale, '导入项目包', 'Import package')} icon="upload" onClick={() => { void importProjectPackage(); }}>{t(locale, '导入', 'Import')}</Button>}
+              </PageHeader>
               <div className="project-controls">
                 <div
                   className="tab-strip"

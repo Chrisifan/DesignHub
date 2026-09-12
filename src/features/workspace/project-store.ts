@@ -22,6 +22,16 @@ export type DuplicateProjectInput = {
   name?: string;
 };
 
+export type ImportProjectPackageInput = {
+  workspaceId: string;
+  operationId: string;
+  archive: Uint8Array;
+};
+
+export type ImportProjectPackageResult = {
+  projectId: string;
+};
+
 export type ActiveProject = {
   projectId: string;
   name: string;
@@ -60,6 +70,7 @@ export type RestoreProjectResult = {
 export type ProjectStore = {
   createProjectContainer: (input: CreateProjectContainerInput) => Promise<CreateProjectContainerResult>;
   duplicateProject: (input: DuplicateProjectInput) => Promise<CreateProjectContainerResult>;
+  importProjectPackage: (input: ImportProjectPackageInput) => Promise<ImportProjectPackageResult>;
   listActiveProjects: () => Promise<ActiveProject[]>;
   getProjectMetadata: (projectId: string) => Promise<ProjectMetadata | null>;
   updateProjectMetadata: (input: UpdateProjectMetadataInput) => Promise<ProjectMetadata>;
@@ -74,6 +85,7 @@ export const createProjectStore = (
 ): ProjectStore => ({
   createProjectContainer: (input) => implementation.createProjectContainer(input),
   duplicateProject: (input) => implementation.duplicateProject(input),
+  importProjectPackage: (input) => implementation.importProjectPackage(input),
   listActiveProjects: () => implementation.listActiveProjects(),
   getProjectMetadata: (projectId) => implementation.getProjectMetadata(projectId),
   updateProjectMetadata: (input) => implementation.updateProjectMetadata(input),
