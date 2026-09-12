@@ -385,8 +385,13 @@ export const DesignerLibrary = ({
         connectionId: "openai-compatible",
         message: `Analyse this portfolio for a designer persona:\n${portfolioSources.trim()}`,
       });
+      if (!request) {
+        setCandidatePhase("form");
+        setCreationError(t(locale, "当前工作区未连接模型，无法分析作品集。", "No connected model is available for portfolio analysis."));
+        return;
+      }
       void request
-        ?.then(async (task) => {
+        .then(async (task) => {
           if (!task) throw new Error("ANALYSIS_UNAVAILABLE");
           const tasks = (await api.listTasks?.(workspaceId)) ?? [];
           const completed = tasks.find((item) => item.id === task.id);
