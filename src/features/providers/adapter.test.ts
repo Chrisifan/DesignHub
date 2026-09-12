@@ -73,4 +73,11 @@ describe('OpenAI-compatible provider adapter', () => {
     cancellation.cancel();
     expect(cancellation.signal.aborted).toBe(true);
   });
+
+  it('redacts credentials from injected network failures', async () => {
+    const fetchImpl = vi.fn(async () => { throw new Error('request failed for secret-key'); });
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key', fetchImpl });
+
+    await expect(adapter.chat({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toMatchObject({ message: 'request failed for [redacted]' });
+  });
 });

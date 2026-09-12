@@ -34,6 +34,7 @@ export type MainOnlyAdapterOptions = {
   baseUrl: string;
   apiKey: string;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+  fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
 };
 
 export type OpenAICompatibleAdapter = {
@@ -99,6 +100,11 @@ const createHttpError = async (response: Response, redact: (value: string) => st
     retryAfterSeconds: retryAfter(response),
     providerCode,
   });
+};
+
+const networkError = (cause: unknown, redact: (value: string) => string): ProviderAdapterError => {
+  const message = cause instanceof Error ? redact(cause.message) : 'Provider network request failed.';
+  return toError(message || 'Provider network request failed.', 'http');
 };
 
 const contentText = (value: unknown): string => {
@@ -169,7 +175,7 @@ const sseIterable = (response: Response, signal: AbortSignal | undefined, redact
       }
     } catch (cause) {
       if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
-      throw cause;
+      throw networkError(cause, redact);
     }
     if (pending.length > 0) return { done: false, value: pending.shift() as ChatStreamEvent };
     return { done: true, value: undefined } as IteratorResult<ChatStreamEvent>;
@@ -188,7 +194,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
   if (!options.apiKey.trim()) throw new Error('PROVIDER_API_KEY_REQUIRED');
   const baseUrl = options.baseUrl.replace(/\/+$/, '');
   const apiKey = options.apiKey;
-  const fetcher = options.fetch ?? ((input: string, init?: RequestInit): Promise<Response> => globalThis.fetch(input, init));
+  const fetcher = options.fetch ?? options.fetchImpl ?? ((input: string, init?: RequestInit): Promise<Response> => globalThis.fetch(input, init));
   const redact = (value: string): string => apiKey ? value.replaceAll(apiKey, '[redacted]') : value;
   const postJson = async (path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> => {
     let response: Response;
@@ -201,7 +207,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
       });
     } catch (cause) {
       if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
-      throw cause;
+      throw networkError(cause, redact);
     }
     if (!response.ok) throw await createHttpError(response, redact);
     return readJson(response);
@@ -240,7 +246,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
             return response;
           } catch (cause) {
             if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
-            throw cause;
+            throw networkError(cause, redact);
           }
         })();
       }
@@ -278,7 +284,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
       response = await fetcher(`${baseUrl}/images/edits`, { method: 'POST', headers: { authorization: `Bearer ${apiKey}` }, body: form, signal });
     } catch (cause) {
       if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
-      throw cause;
+      throw networkError(cause, redact);
     }
     if (!response.ok) throw await createHttpError(response, redact);
     const payload = await readJson(response);
