@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 
@@ -777,6 +777,23 @@ const decodePackageJson = <T>(bytes: Uint8Array | undefined): T => {
   }
 };
 
+const validateImportedContentClosure = (content: ProjectContentManifest, pack: Awaited<ReturnType<typeof decodeProjectPackage>>): void => {
+  const seenHashes = new Set<string>();
+  content.assets.forEach((asset) => {
+    if (!isRecord(asset)) throw new Error('INVALID_PACKAGE');
+    const managed = asset.managed === true;
+    if (!managed) return;
+    if (typeof asset.contentHash !== 'string' || !/^[0-9a-f]{64}$/iu.test(asset.contentHash)
+      || asset.storagePath !== `assets/${asset.contentHash}`
+      || seenHashes.has(asset.contentHash)
+      || !pack.manifest.entries.includes(asset.storagePath)
+      || !pack.files[asset.storagePath]) throw new Error('INVALID_PACKAGE');
+    const bytes = pack.files[asset.storagePath];
+    if (createHash('sha256').update(bytes).digest('hex') !== asset.contentHash) throw new Error('INVALID_PACKAGE');
+    seenHashes.add(asset.contentHash);
+  });
+};
+
 export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, input: ImportProjectPackageInput): Promise<ImportProjectPackageResult> => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
@@ -789,6 +806,7 @@ export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, i
   const sourceContent = decodePackageJson<ProjectContentManifest>(pack.files[projectContentManifestName]);
   if (!isProjectManifest(sourceManifest) || sourceManifest.projectId !== pack.manifest.projectId || !isProjectContentManifest(sourceContent, sourceManifest.projectId)) throw new Error('INVALID_PACKAGE');
   if (!pack.manifest.entries.includes(projectManifestName) || !pack.manifest.entries.includes(projectContentManifestName)) throw new Error('INVALID_PACKAGE');
+  validateImportedContentClosure(sourceContent, pack);
   if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === pack.manifest.packageId)) throw new Error('PACKAGE_ALREADY_IMPORTED');
   const sourceMetadata = sourceManifest.metadata;
   const documents = sourceMetadata?.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
