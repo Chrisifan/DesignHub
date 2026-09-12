@@ -6,6 +6,7 @@ import { CanvasWorkspace } from '../../features/canvas/CanvasWorkspace';
 import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
+import type { ImageTool } from '../../features/image-tools/target';
 import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
 import { CompareRevisions } from '../../features/revisions/CompareRevisions';
 import {
@@ -34,6 +35,7 @@ export type WorkbenchProps = {
   onExport: () => void;
   onConnections: () => void;
   onSubmitConversation?: (message: string) => void | Promise<void>;
+  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string }) => void | Promise<void>;
   notify: (message: string) => void;
 };
 
@@ -68,6 +70,7 @@ export const Workbench = ({
   onExport,
   onConnections,
   onSubmitConversation,
+  onSubmitImageTask,
   notify,
 }: WorkbenchProps) => {
   const layersTitleId = useId();
@@ -253,6 +256,13 @@ export const Workbench = ({
       return;
     }
     onConnections();
+  };
+  const runImageTask = (tool: ImageTool, taskPrompt: string): void => {
+    if (!onSubmitImageTask) {
+      onConnections();
+      return;
+    }
+    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
 
   return (
@@ -803,7 +813,7 @@ export const Workbench = ({
                   <Button
                     variant="secondary"
                     icon="plug"
-                    onClick={onConnections}
+                    onClick={() => runImageTask('smart-crop', 'Smart crop while preserving the primary subject')}
                   >
                     {t(locale, '连接', 'Connect')}
                   </Button>
@@ -814,7 +824,7 @@ export const Workbench = ({
                     <strong>{t(locale, '去除背景', 'Remove background')}</strong>
                     <p>{t(locale, '保留主体，生成透明背景副本。', 'Keep the subject and create a transparent-background copy.')}</p>
                   </div>
-                  <Button variant="secondary" icon="plug" onClick={onConnections}>{t(locale, '连接', 'Connect')}</Button>
+                  <Button aria-label={t(locale, '去除背景', 'Remove background')} variant="secondary" icon="wand-sparkles" onClick={() => runImageTask('remove-background', 'Remove the background and preserve the subject with clean edges')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="image-plus" /></span>
@@ -822,7 +832,7 @@ export const Workbench = ({
                     <strong>{t(locale, '替换背景', 'Replace background')}</strong>
                     <p>{t(locale, '使用描述生成新的背景方向。', 'Generate a new background direction from a description.')}</p>
                   </div>
-                  <Button variant="secondary" icon="plug" onClick={onConnections}>{t(locale, '连接', 'Connect')}</Button>
+                  <Button aria-label={t(locale, '替换背景', 'Replace background')} variant="secondary" icon="image-plus" onClick={() => runImageTask('replace-background', 'Replace the background while preserving the original subject')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
               </div>
             )}

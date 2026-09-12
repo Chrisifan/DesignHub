@@ -46,7 +46,7 @@ import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import { createOpenAICompatibleAdapter } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createImageEditHandler, createImageGenerationHandler, imageEditSubmitChannel, imageGenerationSubmitChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
 import { exportSceneToFile } from './export-scene';
 import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
@@ -167,6 +167,26 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
     });
     const service = createAgentTaskService({
       runtime,
+      persistGeneratedImages: async ({ projectId, images }) => {
+        const items = await Promise.all(images.map(async (image, index) => {
+          const fromBase64 = image.base64 ? Buffer.from(image.base64, 'base64') : null;
+          let bytes: Uint8Array;
+          let mimeType = 'image/png';
+          if (fromBase64) bytes = new Uint8Array(fromBase64);
+          else if (image.url) {
+            const response = await fetch(image.url);
+            if (!response.ok) throw new Error('GENERATED_IMAGE_DOWNLOAD_FAILED');
+            mimeType = response.headers.get('content-type')?.split(';', 1)[0] || mimeType;
+            bytes = new Uint8Array(await response.arrayBuffer());
+          } else throw new Error('GENERATED_IMAGE_EMPTY');
+          const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png';
+          return { name: `generated-${index + 1}.${extension}`, mimeType, data: bytes };
+        }));
+        const imported = await createAssetStore(workspace).importAssets({ workspaceId: workspace.workspace.workspaceId, projectId, items });
+        const failures = imported.filter((result) => result.status === 'error');
+        if (failures.length > 0) throw new Error(failures[0].error);
+        return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
+      },
       resolveAdapter: async (connectionId) => {
         if (connectionId !== 'openai-compatible') throw new Error('PROVIDER_NOT_CONFIGURED');
         const baseUrl = process.env.DESIGNHUB_PROVIDER_BASE_URL ?? '';
@@ -335,6 +355,20 @@ app.whenReady().then(() => {
     return createConversationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, conversation) => {
       const service = await getAgentTaskService();
       return service.submitConversation(conversation);
+    })(event, input);
+  });
+  ipcMain.handle(imageGenerationSubmitChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createImageGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, imageInput) => {
+      const service = await getAgentTaskService();
+      return service.submitImageGeneration(imageInput);
+    })(event, input);
+  });
+  ipcMain.handle(imageEditSubmitChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createImageEditHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, imageInput) => {
+      const service = await getAgentTaskService();
+      return service.submitImageEdit(imageInput);
     })(event, input);
   });
   ipcMain.handle(taskCancelChannel, async (event, input) => {

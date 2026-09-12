@@ -90,3 +90,43 @@ it('retries a failed conversation as a new attempt and executes it', async () =>
   expect(retried && runtime.get(retried.id)).toMatchObject({ state: 'completed', result: { text: 'recovered' } });
   expect(runtime.get(first.id)?.state).toBe('failed');
 });
+
+it('runs image generation as a persisted project task and records asset references', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async () => ({ images: [{ url: 'https://cdn.test/generated.png' }], cost: 0.02 }),
+    }),
+    persistGeneratedImages: async () => ['asset-generated'],
+  });
+  const task = await service.submitImageGeneration({
+    projectId: 'project-1', documentId: 'document-1', baseRevisionId: null,
+    designerVersionId: 'designer-v1', connectionId: 'provider-1', prompt: 'A spring market poster', size: '1080x1440', count: 2,
+  });
+  await service.flush();
+  expect(runtime.get(task.id)).toMatchObject({ state: 'completed', capability: 'image-generation', result: { assetIds: ['asset-generated'], imageCount: 1, cost: 0.02 } });
+});
+
+it('runs image editing with an explicit source image and mask', async () => {
+  const runtime = createTaskRuntime();
+  let receivedImage: Blob | undefined;
+  let receivedMask: Blob | undefined;
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async (request) => { receivedImage = request.image; receivedMask = request.mask; return { images: [{ base64: 'not-persisted' }], cost: null }; },
+    }),
+    persistGeneratedImages: async () => ['asset-edited'],
+  });
+  const task = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'document-1', baseRevisionId: 'revision-1',
+    connectionId: 'provider-1', prompt: 'Remove background', image: new Blob(['image']), mask: new Blob(['mask']),
+  });
+  await service.flush();
+  expect(receivedImage).toBeInstanceOf(Blob);
+  expect(receivedMask).toBeInstanceOf(Blob);
+  expect(runtime.get(task.id)).toMatchObject({ state: 'completed', capability: 'image-editing', result: { assetIds: ['asset-edited'], imageCount: 1 } });
+});

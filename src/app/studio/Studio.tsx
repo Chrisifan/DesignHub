@@ -23,6 +23,7 @@ import {
   t,
 } from './ui';
 import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
+import type { ImageTool } from '../../features/image-tools/target';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
 
@@ -440,6 +441,39 @@ export const Studio = ({
       notify(t(locale, '任务已排队。', 'Task queued.'));
     } catch {
       notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
+    }
+  };
+  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string }): Promise<void> => {
+    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+      notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return;
+    }
+    const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
+    if (!documentId) {
+      notify(t(locale, '请先打开文档。', 'Open a document first.'));
+      return;
+    }
+    try {
+      const api = getDesktopApi();
+      const scene = await api.loadDocumentScene?.(workspace.workspaceId, project.id, documentId);
+      const imageLayer = scene?.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder');
+      if (!imageLayer) {
+        notify(t(locale, '当前文档没有受管图像。', 'The current document has no managed image layer.'));
+        return;
+      }
+      const bytes = await api.readAsset?.({ workspaceId: workspace.workspaceId, projectId: project.id, assetId: imageLayer.assetId });
+      if (!bytes) {
+        notify(t(locale, '无法读取目标图像。', 'Could not read the target image.'));
+        return;
+      }
+      const task = await api.submitImageEdit?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: null, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }) });
+      if (!task) {
+        notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
+        return;
+      }
+      notify(t(locale, `${input.tool} 任务已排队。`, `${input.tool} task queued.`));
+    } catch {
+      notify(t(locale, '图像任务提交失败，请检查连接。', 'Image task submission failed. Check the connection.'));
     }
   };
   const openNewDesign = (mode: NewDesignDraft['mode'], personaId?: string) => {
@@ -952,6 +986,7 @@ export const Studio = ({
                 onExport={() => openDelivery({ ...project, documentId: project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId })}
                 onConnections={() => navigate('connections')}
                 onSubmitConversation={(message) => submitProjectConversation(project, message)}
+                onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 notify={notify}
               />
             </div>

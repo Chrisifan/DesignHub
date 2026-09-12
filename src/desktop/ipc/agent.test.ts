@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { createConversationHandler, cancelTaskHandler, retryTaskHandler } from './agent';
+import { createConversationHandler, cancelTaskHandler, createImageEditHandler, createImageGenerationHandler, retryTaskHandler } from './agent';
 import type { TaskRecord } from '../../features/tasks/state';
 
 const makeFixture = (url: string) => {
@@ -49,4 +49,20 @@ it('retries only through the active trusted workspace', async () => {
   const retry = retryTaskHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, taskId) => ({ ...task, id: `${taskId}-retry`, state: 'running' }));
   await expect(retry(fixture.event, { workspaceId: 'workspace-1', taskId: 'task-1' })).resolves.toMatchObject({ id: 'task-1-retry' });
   await expect(retry(fixture.event, { workspaceId: 'workspace-2', taskId: 'task-1' })).resolves.toBeNull();
+});
+
+it('accepts image generation and edit only with validated project bindings', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1' } };
+  const generated = createImageGenerationHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
+    expect(input.prompt).toBe('poster');
+    return task;
+  });
+  await expect(generated(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'poster' })).resolves.toEqual(task);
+  await expect(generated(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: ' ' })).resolves.toBeNull();
+  const edited = createImageEditHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
+    expect(input.image).toBeInstanceOf(Blob);
+    return task;
+  });
+  await expect(edited(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'remove', image: new Blob(['image']) })).resolves.toEqual(task);
 });

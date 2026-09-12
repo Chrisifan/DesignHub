@@ -10,6 +10,7 @@ import type { TaskRecord } from '../features/tasks/state';
 import type { TaskSource } from '../features/tasks/state';
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
 import type { BrandLibraryState } from '../features/brands/constraints';
+import type { ImageEditInput, ImageGenerationInput } from '../features/agent/task-service';
 
 export type ConversationTaskInput = {
   workspaceId: string;
@@ -70,6 +71,8 @@ export type DesktopApi = {
   hasCredential?: (connectionId: string) => Promise<boolean>;
   listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
+  submitImageGeneration?: (input: ImageGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
+  submitImageEdit?: (input: ImageEditInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;
   retryTask?: (workspaceId: string, taskId: string) => Promise<TaskRecord | null>;
   exportDocument?: (input: ExportDocumentInput) => Promise<{ path: string; sha256: string } | null>;

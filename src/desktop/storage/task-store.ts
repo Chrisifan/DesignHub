@@ -19,7 +19,9 @@ const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> =>
   if (!isRecord(value)) return false;
   return (value.text === undefined || typeof value.text === 'string')
     && (value.sceneAssetId === undefined || typeof value.sceneAssetId === 'string')
-    && (value.assetIds === undefined || (Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')));
+    && (value.assetIds === undefined || (Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')))
+    && (value.imageCount === undefined || (Number.isInteger(value.imageCount) && Number(value.imageCount) >= 0))
+    && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0));
 };
 const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && typeof value.id === 'string' && value.id.trim().length > 0

@@ -22,6 +22,8 @@ export type TaskRecord = {
     text?: string;
     assetIds?: string[];
     sceneAssetId?: string;
+    imageCount?: number;
+    cost?: number | null;
   };
 };
 

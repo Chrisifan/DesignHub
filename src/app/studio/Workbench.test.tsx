@@ -217,6 +217,14 @@ it('exposes background editing tools with an explicit connection handoff', () =>
   expect(onConnections).toHaveBeenCalled();
 });
 
+it('submits provider-backed background tools through the active project callback', async () => {
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  render(<Workbench {...makeProps({ onSubmitImageTask })} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '去除背景' })[0]!);
+  await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'remove-background' })));
+});
+
 it('provides the exact English canvas and back labels', () => {
   render(<Workbench {...makeProps({ locale: 'en' })} />);
 
