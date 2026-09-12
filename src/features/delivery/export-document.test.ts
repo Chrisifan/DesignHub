@@ -26,3 +26,34 @@ it('does not overwrite an existing target', async () => {
     render: async () => new Uint8Array([137, 80, 78, 71]),
   })).rejects.toThrow('TARGET_EXISTS');
 });
+
+it('publishes atomically and removes the temporary artifact when publishing fails', async () => {
+  const writes: string[] = [];
+  const removed: string[] = [];
+  await expect(exportDocument({
+    revisionId: 'revision-1', format: 'png', targetPath: '/exports/poster.png',
+    target: {
+      exists: async () => false,
+      write: async (path: string) => { writes.push(path); },
+      rename: async () => { throw new Error('DISK_FULL'); },
+      remove: async (path: string) => { removed.push(path); },
+    },
+    render: async () => new Uint8Array([137, 80, 78, 71]),
+  })).rejects.toThrow('DISK_FULL');
+  expect(writes).toEqual(['/exports/poster.png.tmp']);
+  expect(removed).toEqual(['/exports/poster.png.tmp']);
+});
+
+it('rejects an encoded image whose dimensions do not match the requested export', async () => {
+  await expect(exportDocument({
+    revisionId: 'revision-1', format: 'png', targetPath: '/exports/poster.png',
+    target: { exists: async () => false, write: async () => undefined },
+    render: async () => new Uint8Array([137, 80, 78, 71]),
+    codec: {
+      inspect: async () => ({ format: 'png', width: 2, height: 1, hasAlpha: false }),
+      encode: async () => new Uint8Array(),
+      toPdf: async () => new Uint8Array(),
+    },
+    expectedSize: { width: 3, height: 1 },
+  })).rejects.toThrow('INVALID_SIZE');
+});

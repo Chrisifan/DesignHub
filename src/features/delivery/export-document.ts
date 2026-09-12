@@ -1,8 +1,11 @@
 import type { ExportFormat } from './export-policy';
+import type { CodecAdapter } from './codec';
 
 export type ExportTarget = {
   exists: (path: string) => Promise<boolean>;
   write: (path: string, bytes: Uint8Array) => Promise<void>;
+  rename?: (temporaryPath: string, targetPath: string) => Promise<void>;
+  remove?: (path: string) => Promise<void>;
 };
 
 export type ExportDocumentInput = {
@@ -12,6 +15,8 @@ export type ExportDocumentInput = {
   target: ExportTarget;
   render: () => Promise<Uint8Array>;
   archiveCopy?: (input: { revisionId: string; path: string; sha256: string }) => Promise<void>;
+  codec?: CodecAdapter;
+  expectedSize?: { width: number; height: number };
 };
 
 export type ExportResult = { revisionId: string; path: string; sha256: string; archived: boolean };
@@ -33,10 +38,21 @@ export const exportDocument = async (input: ExportDocumentInput): Promise<Export
   if (await input.target.exists(input.targetPath)) throw new Error('TARGET_EXISTS');
   const bytes = await input.render();
   if (!matchesMagic(input.format, bytes)) throw new Error('INVALID_OUTPUT');
+  if (input.codec && input.format !== 'pdf') {
+    const metadata = await input.codec.inspect(bytes);
+    if (metadata.format !== input.format) throw new Error('INVALID_OUTPUT');
+    if (input.expectedSize && (metadata.width !== input.expectedSize.width || metadata.height !== input.expectedSize.height)) throw new Error('INVALID_SIZE');
+  }
   const sha256 = await hash(bytes);
   const temporaryPath = `${input.targetPath}.tmp`;
-  await input.target.write(temporaryPath, bytes);
-  await input.target.write(input.targetPath, bytes);
-  if (input.archiveCopy) await input.archiveCopy({ revisionId: input.revisionId, path: input.targetPath, sha256 });
+  try {
+    await input.target.write(temporaryPath, bytes);
+    if (input.target.rename) await input.target.rename(temporaryPath, input.targetPath);
+    else await input.target.write(input.targetPath, bytes);
+    if (input.archiveCopy) await input.archiveCopy({ revisionId: input.revisionId, path: input.targetPath, sha256 });
+  } catch (error) {
+    if (input.target.remove) await input.target.remove(temporaryPath).catch(() => undefined);
+    throw error;
+  }
   return { revisionId: input.revisionId, path: input.targetPath, sha256, archived: Boolean(input.archiveCopy) };
 };
