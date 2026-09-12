@@ -957,6 +957,19 @@ const DeliveryPage = ({
       notify?.(t(locale, '项目包导出失败', 'Project package export failed'));
     }
   };
+  const reexport = async (record: ExportHistoryRecord): Promise<void> => {
+    if (!project?.workspaceId) return;
+    try {
+      const api = getDesktopApi();
+      const revisions = await api.loadDocumentRevisions?.(project.workspaceId, project.id, record.documentId);
+      const revision = revisions?.revisions.find((item) => item.revisionId === record.revisionId);
+      if (!revision?.scene) throw new Error('HISTORY_SCENE_UNAVAILABLE');
+      const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: record.documentId, format: record.format, scene: revision.scene });
+      if (result) notify?.(t(locale, `已重新导出到 ${result.path}`, `Re-exported to ${result.path}`));
+    } catch {
+      notify?.(t(locale, '历史修订不可用，请重新导出当前版本。', 'The historical revision is unavailable; export the current version instead.'));
+    }
+  };
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -1111,9 +1124,12 @@ const DeliveryPage = ({
             {exportHistory.length === 0 ? <small>{t(locale, '暂无导出记录。', 'No export records yet.')}</small> : exportHistory.slice(0, 5).map((record) => (
               <div className="export-history-row" key={record.id}>
                 <span>{record.format.toUpperCase()} · {record.revisionId}{record.targetAvailable === false ? ` · ${t(locale, '目标已移动', 'Target moved')}` : ''}</span>
-                <Badge tone={record.status === 'success' ? 'success' : 'warning'}>
-                  {record.status === 'success' ? t(locale, '成功', 'Success') : t(locale, '失败', 'Failed')}
-                </Badge>
+                <span className="export-history-row__actions">
+                  <Badge tone={record.status === 'success' ? 'success' : 'warning'}>
+                    {record.status === 'success' ? t(locale, '成功', 'Success') : t(locale, '失败', 'Failed')}
+                  </Badge>
+                  {record.status === 'success' && <IconButton name="rotate-ccw" label={t(locale, '重新导出', 'Re-export')} onClick={() => { void reexport(record); }} />}
+                </span>
               </div>
             ))}
           </div>}

@@ -894,6 +894,12 @@
   font-size: 12px;
 }
 
+.export-history-row__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .config-section {
   padding-bottom: 22px;
   border-bottom: 1px solid var(--border-subtle);

@@ -245,6 +245,7 @@
 2026-09-13：M07 归档副本失败可恢复（变更 ID M07-20260913-20）。外部导出完成后，项目 `exports/` 归档副本冲突或目标盘失败不再撤销外部产物；导出结果返回 `archived: false` 与错误码，交付页保留外部路径并提示重试。先观察 export-document Red，再 Green；export/IPC/LibraryPages focused 39/39，lint、typecheck、diff check 通过。导出历史记录、归档索引/流式写入、Windows 与可移动磁盘仍开放。
 2026-09-13：M07 导出历史记录（变更 ID M07-20260913-21）。每次桌面导出在工作区 `.designhub/export-history.json` 原子记录项目/文档/修订、格式、目标、哈希、归档结果和成功状态；交付页显示最近记录，历史写入失败不会撤销已发布文件。先补 model/storage/IPC/UI Red，再 Green；focused 4 files/36 tests、lint、typecheck、diff check 通过。外部路径存活检查、归档索引/流式写入、Windows 与人工扫描仍开放。
 2026-09-13：M07 导出历史目标可用性（变更 ID M07-20260913-22）。读取导出历史时检查外部目标是否仍存在，交付页保留记录并明确显示“目标已移动”，不把失效路径当作可用文件。先补 LibraryPages 回归，再 Green；export-history/Library focused 4 files/37 tests、lint、typecheck、diff check 通过。重新导出入口、归档索引/流式写入、Windows 与人工扫描仍开放。
+2026-09-13：M07 历史修订重新导出（变更 ID M07-20260913-23）。成功历史记录提供“重新导出”操作，按记录的文档/修订/格式读取不可变场景并重新选择目标，不覆盖旧文件。先补 LibraryPages Red，再 Green；focused LibraryPages 34/34、lint、typecheck 通过。归档索引/流式写入、Windows 与人工扫描仍开放。
 
 2026-09-13：M03 作品集分析输入边界（变更 ID M03-20260913-05）。视觉分析在适配器调用前拒绝重复/非法来源 ID、来源声明不一致、非 HTTP(S) 图片 URL、无效 Base64、超长描述和超过八项的批次；先观察 portfolio Red，再 Green；portfolio/analysis focused 9/9，lint、typecheck、diff check 通过。真实来源抓取、授权、图像生成和跨平台质量仍开放。
 

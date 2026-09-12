@@ -345,6 +345,17 @@ it('keeps history when its external target has moved', async () => {
   expect(screen.getByText('成功')).toBeInTheDocument();
 });
 
+it('re-exports a historical revision through a new destination', async () => {
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-history', projectId: 'history-export', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-1', sceneAssetId: 'scene-1', assetIds: [], contributions: [], createdAt: '2026-09-13T00:00:00.000Z', scene: { id: 'scene-1', version: 1 as const, width: 100, height: 100, layers: [] } }], timeline: [], finalRevisionId: null }));
+  const exportDocument = vi.fn(async () => ({ path: '/tmp/re-export.png', sha256: 'e'.repeat(64) }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{ id: 'export-history', projectId: 'history-export', documentId: 'doc-1', revisionId: 'revision-history', format: 'png', targetPath: '/tmp/old.png', status: 'success', archived: false, createdAt: '2026-09-13T00:00:00.000Z' }]), loadDocumentRevisions, exportDocument };
+  const project: Project = { id: 'history-export', workspaceId: 'workspace-1', documentId: 'doc-1', name: '历史导出', enName: 'History export', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  render(<Harness initialView="delivery" deliveryProject={project} />);
+  await waitFor(() => expect(screen.getByText('PNG · revision-history')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '重新导出' }));
+  await waitFor(() => expect(exportDocument).toHaveBeenCalledWith(expect.objectContaining({ documentId: 'doc-1', format: 'png', scene: expect.objectContaining({ id: 'scene-1' }) })));
+});
+
 it('reports an archive copy failure while retaining the external export result', async () => {
   const loadDocumentScene = vi.fn(async () => ({ id: 'scene-current', version: 1 as const, width: 100, height: 100, layers: [] }));
   const exportDocument = vi.fn(async () => ({ path: '/tmp/archive.png', sha256: 'd'.repeat(64), archived: false, archiveError: 'TARGET_EXISTS' }));
