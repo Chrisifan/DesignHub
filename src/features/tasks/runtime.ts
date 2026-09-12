@@ -1,27 +1,46 @@
 import type { RevisionStore } from '../revisions/commit-revision';
-import { completeTask, createTaskState, type TaskRecord } from './state';
+import { completeTask, createTaskState, transitionTask, type TaskRecord } from './state';
 
-export type TaskResult = { sceneAssetId: string; assetIds?: string[] };
+export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string };
 
 export type TaskRuntime = {
   get: (taskId: string) => TaskRecord | undefined;
+  list: () => TaskRecord[];
   start: (task: Omit<TaskRecord, 'state' | 'cancelRequested' | 'attempt'>) => TaskRecord;
   cancel: (taskId: string) => TaskRecord | undefined;
+  complete: (taskId: string, result?: TaskResult) => Promise<TaskRecord>;
+  fail: (taskId: string, errorCode: string) => Promise<TaskRecord>;
   finish: (taskId: string, result: TaskResult, revisionStore: RevisionStore) => Promise<TaskRecord>;
+  flush: () => Promise<void>;
 };
 
-export const createTaskRuntime = (): TaskRuntime => {
+export type TaskRuntimeOptions = {
+  initialTasks?: readonly TaskRecord[];
+  persist?: (tasks: readonly TaskRecord[]) => Promise<void>;
+};
+
+export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime => {
   const tasks = new Map<string, TaskRecord>();
   const results = new Map<string, string>();
+  options.initialTasks?.forEach((task) => tasks.set(task.id, structuredClone(task)));
+  let persistence = Promise.resolve();
+  const snapshot = (): TaskRecord[] => [...tasks.values()].map((task) => structuredClone(task));
+  const schedulePersistence = (): void => {
+    if (!options.persist) return;
+    const next = snapshot();
+    persistence = persistence.then(() => options.persist!(next));
+  };
   const get = (taskId: string): TaskRecord | undefined => {
     const task = tasks.get(taskId);
     return task ? structuredClone(task) : undefined;
   };
+  const list = (): TaskRecord[] => snapshot();
   const start = (input: Omit<TaskRecord, 'state' | 'cancelRequested' | 'attempt'>): TaskRecord => {
     const existing = tasks.get(input.id);
     if (existing) return structuredClone(existing);
     const task = createTaskState(input);
     tasks.set(task.id, task);
+    schedulePersistence();
     return structuredClone(task);
   };
   const cancel = (taskId: string): TaskRecord | undefined => {
@@ -29,7 +48,29 @@ export const createTaskRuntime = (): TaskRuntime => {
     if (!task) return undefined;
     task.cancelRequested = true;
     tasks.set(taskId, task);
+    schedulePersistence();
     return structuredClone(task);
+  };
+  const complete = async (taskId: string, result: TaskResult = {}): Promise<TaskRecord> => {
+    const task = tasks.get(taskId);
+    if (!task) throw new Error('TASK_NOT_FOUND');
+    if (task.state === 'completed') return structuredClone(task);
+    if (task.state === 'failed' || task.state === 'cancelled') return structuredClone(task);
+    const completed = completeTask({ ...task, result: { ...result }, updatedAt: new Date().toISOString() });
+    tasks.set(taskId, completed);
+    schedulePersistence();
+    await persistence;
+    return structuredClone(completed);
+  };
+  const fail = async (taskId: string, errorCode: string): Promise<TaskRecord> => {
+    const task = tasks.get(taskId);
+    if (!task) throw new Error('TASK_NOT_FOUND');
+    if (task.state === 'completed' || task.state === 'cancelled') return structuredClone(task);
+    const failed = transitionTask({ ...task, errorCode, updatedAt: new Date().toISOString() }, 'failed');
+    tasks.set(taskId, failed);
+    schedulePersistence();
+    await persistence;
+    return structuredClone(failed);
   };
   const finish = async (taskId: string, result: TaskResult, revisionStore: RevisionStore): Promise<TaskRecord> => {
     const task = tasks.get(taskId);
@@ -37,11 +78,13 @@ export const createTaskRuntime = (): TaskRuntime => {
     const existingRevision = results.get(taskId);
     if (existingRevision) return structuredClone({ ...task, state: 'completed' });
     if (task.cancelRequested) {
-      const cancelled = completeTask(task);
+      const cancelled = completeTask({ ...task, result: { ...result }, updatedAt: new Date().toISOString() });
       tasks.set(taskId, cancelled);
+      schedulePersistence();
+      await persistence;
       return structuredClone(cancelled);
     }
-    if (!task.documentId || !task.source?.id) throw new Error('TASK_BINDING_REQUIRED');
+    if (!task.documentId || !task.source?.id || !result.sceneAssetId) throw new Error('TASK_BINDING_REQUIRED');
     const revision = await revisionStore.commitRevision({
       projectId: task.source.id,
       documentId: task.documentId,
@@ -52,9 +95,12 @@ export const createTaskRuntime = (): TaskRuntime => {
       contributions: task.designerVersionId ? [{ designerVersionId: task.designerVersionId, role: 'revision' }] : [],
     });
     results.set(taskId, revision.revisionId);
-    const completed = completeTask(task);
+    const completed = completeTask({ ...task, result: { ...result }, updatedAt: new Date().toISOString() });
     tasks.set(taskId, completed);
+    schedulePersistence();
+    await persistence;
     return structuredClone(completed);
   };
-  return { get, start, cancel, finish };
+  const flush = async (): Promise<void> => persistence;
+  return { get, list, start, cancel, complete, fail, finish, flush };
 };

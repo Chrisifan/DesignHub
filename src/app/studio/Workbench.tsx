@@ -28,6 +28,7 @@ export type WorkbenchProps = {
   onBack: () => void;
   onExport: () => void;
   onConnections: () => void;
+  onSubmitConversation?: (message: string) => void | Promise<void>;
   notify: (message: string) => void;
 };
 
@@ -58,6 +59,7 @@ export const Workbench = ({
   onBack,
   onExport,
   onConnections,
+  onSubmitConversation,
   notify,
 }: WorkbenchProps) => {
   const layersTitleId = useId();
@@ -159,6 +161,11 @@ export const Workbench = ({
     event.preventDefault();
     if (!prompt.trim()) {
       notify(t(locale, '请输入修改说明', 'Enter an edit request'));
+      return;
+    }
+    if (onSubmitConversation) {
+      onSubmitConversation(prompt.trim());
+      setPrompt('');
       return;
     }
     onConnections();

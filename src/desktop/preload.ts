@@ -5,6 +5,8 @@ import { credentialDeleteChannel, credentialStoreChannel } from './ipc/credentia
 import { designerLoadChannel, designerSaveChannel } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/assets';
 import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
+import { taskListChannel } from './ipc/tasks';
+import { conversationSubmitChannel, taskCancelChannel } from './ipc/agent';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -23,6 +25,9 @@ const api: DesktopApi = {
   saveDocumentScene: (input) => ipcRenderer.invoke(sceneSaveChannel, input),
   storeCredential: (connectionId, secret) => ipcRenderer.invoke(credentialStoreChannel, connectionId, secret),
   deleteCredential: (connectionId) => ipcRenderer.invoke(credentialDeleteChannel, connectionId),
+  listTasks: (workspaceId) => ipcRenderer.invoke(taskListChannel, workspaceId),
+  submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
+  cancelTask: (workspaceId, taskId) => ipcRenderer.invoke(taskCancelChannel, { workspaceId, taskId }),
 };
 
 contextBridge.exposeInMainWorld('designhub', api);

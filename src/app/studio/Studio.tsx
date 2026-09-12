@@ -74,6 +74,7 @@ export const Studio = ({
     size: '1080 × 1440',
     mode: 'manual',
   });
+  const [creationDraftId, setCreationDraftId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     if (!workspace) {
@@ -140,6 +141,31 @@ export const Studio = ({
   const createProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.name.trim()) return;
+    if (draft.mode === 'conversation') {
+      if (!draft.brief.trim()) return;
+      if (!workspace || workspace.openMode !== 'writable') {
+        notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+        return;
+      }
+      const draftId = creationDraftId ?? `creation-${crypto.randomUUID()}`;
+      try {
+        const task = await getDesktopApi().submitConversation?.({
+          workspaceId: workspace.workspaceId,
+          source: { kind: 'creation-draft', id: draftId },
+          connectionId: 'openai-compatible',
+          message: draft.brief.trim(),
+        });
+        if (!task) {
+          notify(t(locale, '模型连接不可用，草稿未提交。', 'Model connection unavailable; draft was not submitted.'));
+          return;
+        }
+        setCreationDraftId(draftId);
+        notify(t(locale, '简报任务已排队，确认后创建项目。', 'Brief task queued; confirm it before creating the project.'));
+      } catch {
+        notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
+      }
+      return;
+    }
     const documentId = crypto.randomUUID();
     if (workspace?.openMode === 'writable') {
       const created = await getDesktopApi().createProjectContainer?.({
@@ -173,6 +199,7 @@ export const Studio = ({
       setQuery('');
       setFilter('active');
       setDraft({ name: '', goal: '', brief: '', personaId: 'paper-type', size: '1080 × 1440', mode: 'manual' });
+      setCreationDraftId(null);
       notify(t(locale, '项目已保存到本地工作区。', 'Project saved to the local workspace.'));
       return;
     }
@@ -206,6 +233,7 @@ export const Studio = ({
       size: '1080 × 1440',
       mode: 'manual',
     });
+    setCreationDraftId(null);
     notify(
       t(
         locale,
@@ -241,6 +269,28 @@ export const Studio = ({
   const openDelivery = (project: Project) => {
     setDeliveryProject(project);
     navigate('delivery');
+  };
+  const submitProjectConversation = async (project: Project, message: string): Promise<void> => {
+    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+      notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return;
+    }
+    try {
+      const task = await getDesktopApi().submitConversation?.({
+        workspaceId: workspace.workspaceId,
+        projectId: project.id,
+        ...(project.documentId ? { documentId: project.documentId } : {}),
+        connectionId: 'openai-compatible',
+        message,
+      });
+      if (!task) {
+        notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
+        return;
+      }
+      notify(t(locale, '任务已排队。', 'Task queued.'));
+    } catch {
+      notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
+    }
   };
   const openNewDesign = (mode: NewDesignDraft['mode'], personaId?: string) => {
     newDesignReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -731,6 +781,7 @@ export const Studio = ({
                 onBack={() => setDocumentOpen(false)}
                 onExport={() => openDelivery(project)}
                 onConnections={() => navigate('connections')}
+                onSubmitConversation={(message) => submitProjectConversation(project, message)}
                 notify={notify}
               />
             </div>

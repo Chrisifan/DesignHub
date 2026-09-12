@@ -173,6 +173,18 @@ it('keeps one context panel open and preserves a prompt when connection setup is
   ).toBeInTheDocument();
 });
 
+it('submits a conversation through the active project service when provided', () => {
+  const onSubmitConversation = vi.fn();
+  render(<Workbench {...makeProps({ onSubmitConversation })} />);
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  const panel = screen.getByRole('complementary', { name: '对话' });
+  const prompt = within(panel).getByRole('textbox', { name: '修改说明' });
+  fireEvent.change(prompt, { target: { value: '调整标题间距' } });
+  fireEvent.click(within(panel).getByRole('button', { name: '发送' }));
+  expect(onSubmitConversation).toHaveBeenCalledWith('调整标题间距');
+  expect(prompt).toHaveValue('');
+});
+
 it('updates preview zoom and grid without changing the document', () => {
   render(<Workbench {...makeProps()} />);
   const canvas = screen.getByRole('region', { name: '设计画布' });

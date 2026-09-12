@@ -23,6 +23,7 @@ import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
 import { ProviderSettings } from '../../features/providers/ProviderSettings';
 import type { ProviderConnection } from '../../features/providers/connection';
+import type { TaskRecord } from '../../features/tasks/state';
 import './library.css';
 
 type LibraryPagesProps = PageProps & {
@@ -565,8 +566,37 @@ const ConnectionsPage = ({
 const TasksPage = ({
   locale,
   navigate,
-}: Pick<PageProps, 'locale' | 'navigate'>) => (
-  <section className="page-content library-page">
+  workspaceId,
+}: Pick<PageProps, 'locale' | 'navigate'> & { workspaceId?: string }) => {
+  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    if (!workspaceId) {
+      setTasks([]);
+      return () => { cancelled = true; };
+    }
+    const request = getDesktopApi().listTasks?.(workspaceId);
+    if (!request) {
+      setTasks([]);
+      return () => { cancelled = true; };
+    }
+    void request.then((stored) => {
+      if (cancelled) return;
+      if (!stored) {
+        setLoadFailed(true);
+        return;
+      }
+      setTasks(stored);
+    }).catch(() => {
+      if (!cancelled) setLoadFailed(true);
+    });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+  const queued = tasks.filter((task) => task.state === 'queued').length;
+  const running = tasks.filter((task) => task.state === 'running').length;
+  return <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型任务', 'Model tasks')}
       eyebrow={t(locale, '运行记录', 'Run history')}
@@ -579,18 +609,32 @@ const TasksPage = ({
     <div className="task-summary">
       <div>
         <span>{t(locale, '排队', 'Queued')}</span>
-        <strong>0</strong>
+          <strong>{queued}</strong>
       </div>
       <div>
         <span>{t(locale, '处理中', 'Running')}</span>
-        <strong>0</strong>
+          <strong>{running}</strong>
       </div>
       <div>
         <span>{t(locale, '本次会话', 'This session')}</span>
-        <strong>0</strong>
+          <strong>{tasks.length}</strong>
       </div>
     </div>
-    <EmptyState
+    {loadFailed ? <EmptyState
+      icon="circle-alert"
+      title={t(locale, '任务读取失败', 'Could not load tasks')}
+      description={t(locale, '请重试，原有任务不会被覆盖。', 'Retry without overwriting existing task records.')}
+    /> : tasks.length > 0 ? <div className="task-list" aria-label={t(locale, '任务列表', 'Task list')}>
+      {tasks.map((task) => <article className="task-row" key={task.id}>
+        <div>
+          <strong>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
+          <small>{task.source?.id ?? task.requestId}</small>
+        </div>
+        <Badge tone={task.state === 'failed' ? 'warning' : task.state === 'completed' ? 'success' : ''}>
+          {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : t(locale, '失败', 'Failed')}
+        </Badge>
+      </article>)}
+    </div> : <EmptyState
       icon="clock"
       title={t(locale, '没有模型任务', 'No model tasks')}
       description={t(
@@ -606,9 +650,9 @@ const TasksPage = ({
       >
         {t(locale, '连接模型', 'Connect models')}
       </Button>
-    </EmptyState>
-  </section>
-);
+    </EmptyState>}
+  </section>;
+};
 
 const DeliveryPage = ({
   locale,
@@ -1141,7 +1185,7 @@ export const LibraryPages = ({
       />
     ),
     connections: <ConnectionsPage locale={locale} navigate={navigate} />,
-    tasks: <TasksPage locale={locale} navigate={navigate} />,
+    tasks: <TasksPage locale={locale} navigate={navigate} workspaceId={workspaceId} />,
     delivery: (
       <DeliveryPage
         locale={locale}

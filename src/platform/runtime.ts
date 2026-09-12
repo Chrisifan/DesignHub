@@ -17,6 +17,9 @@ const unavailableDesktopApi: DesktopApi = {
   saveDocumentScene: async () => false,
   storeCredential: async () => false,
   deleteCredential: async () => false,
+  listTasks: async () => null,
+  submitConversation: async () => null,
+  cancelTask: async () => false,
 };
 
 export const getDesktopApi = (): DesktopApi => {

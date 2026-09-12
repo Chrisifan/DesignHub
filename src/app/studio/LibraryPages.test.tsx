@@ -216,3 +216,15 @@ it('uses functional navigation for the model setup action', () => {
   expect(screen.getByLabelText('current-view')).toHaveTextContent('settings');
   expect(screen.getByRole('heading', { name: '设置' })).toBeInTheDocument();
 });
+
+it('hydrates persisted model tasks in the task view', async () => {
+  const listTasks = vi.fn(async () => [{
+    id: 'task-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1,
+    source: { kind: 'project' as const, id: 'project-1' },
+  }]);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks };
+  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  expect(await screen.findByText('处理中')).toBeInTheDocument();
+  expect(screen.getAllByText('1')).toHaveLength(2);
+  expect(listTasks).toHaveBeenCalledWith('workspace-1');
+});

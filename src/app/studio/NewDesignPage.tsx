@@ -85,7 +85,7 @@ export const NewDesignPage = ({
             <select value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value as NewDesignDraft['size'] })}><option>1080 × 1440</option></select>
           </Field>
           <p className="inline-notice"><Icon name="circle-help" size={16} />{persisted ? t(locale, '项目将保存到当前本地工作区。', 'The project will be saved to the current local workspace.') : t(locale, '此处创建预览草稿，仅本次会话可见，不写入磁盘。', 'Creates a session-only preview draft. Nothing is written to disk.')}</p>
-          <div className="dialog-actions"><Button type="submit" variant="primary" icon="plus" disabled={!draft.name.trim()}>{persisted ? t(locale, '创建项目', 'Create project') : t(locale, '创建预览', 'Create preview')}</Button></div>
+          <div className="dialog-actions"><Button type="submit" variant="primary" icon={draft.mode === 'conversation' ? 'send' : 'plus'} disabled={!draft.name.trim() || (draft.mode === 'conversation' && !draft.brief.trim())}>{draft.mode === 'conversation' ? t(locale, '提交简报', 'Submit brief') : persisted ? t(locale, '创建项目', 'Create project') : t(locale, '创建预览', 'Create preview')}</Button></div>
         </form>
         <DesignerHero personaId={draft.personaId} locale={locale} label={t(locale, '新建设计的当前设计师', 'New design active designer')} />
       </div>

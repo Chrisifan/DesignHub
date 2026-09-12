@@ -5,6 +5,19 @@ import type { DesignerLibraryState } from '../features/designers/persistence';
 import type { AssetImportInput, AssetReadInput, AssetStoreInput } from '../features/assets/asset-store';
 import type { AssetImportResult, ManagedAsset } from '../features/assets/import-assets';
 import type { DesignScene } from '../features/canvas/scene';
+import type { TaskRecord } from '../features/tasks/state';
+import type { TaskSource } from '../features/tasks/state';
+
+export type ConversationTaskInput = {
+  workspaceId: string;
+  projectId?: string;
+  source?: TaskSource;
+  documentId?: string;
+  designerVersionId?: string;
+  baseRevisionId?: string | null;
+  connectionId: string;
+  message: string;
+};
 
 export type WorkspaceCreateInput = {
   parentDirectory: string;
@@ -28,6 +41,9 @@ export type DesktopApi = {
   saveDocumentScene?: (input: { workspaceId: string; projectId: string; documentId: string; scene: DesignScene }) => Promise<boolean>;
   storeCredential?: (connectionId: string, secret: string) => Promise<boolean>;
   deleteCredential?: (connectionId: string) => Promise<boolean>;
+  listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;
+  submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
+  cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;
 };
 
 declare global {

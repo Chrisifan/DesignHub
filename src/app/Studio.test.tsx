@@ -143,3 +143,37 @@ it('hydrates persisted workspace projects and creates through the desktop API', 
   await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', name: 'Created project' })));
   expect(await screen.findByRole('heading', { name: 'Created project' })).toBeInTheDocument();
 });
+
+it('submits project conversation through the desktop task bridge', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
+  const submitConversation = vi.fn(async () => ({ id: 'task-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1 }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, submitConversation };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
+  fireEvent.click(screen.getByRole('button', { name: '打开主海报' }));
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '调整标题' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', projectId: 'project-1', connectionId: 'openai-compatible', message: '调整标题' })));
+});
+
+it('submits conversation creation as a draft task before any project exists', async () => {
+  const listActiveProjects = vi.fn(async () => []);
+  const createProjectContainer = vi.fn(async () => ({ projectId: 'should-not-create' }));
+  const submitConversation = vi.fn(async () => ({ id: 'task-draft-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1 }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, createProjectContainer, submitConversation };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: '项目库' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: 'Drafted project' } });
+  fireEvent.click(screen.getByRole('button', { name: '通过对话' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '创作想法' }), { target: { value: 'Create a spring poster' } });
+  fireEvent.click(screen.getByRole('button', { name: '提交简报' }));
+  await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({
+    workspaceId: 'workspace-1',
+    source: { kind: 'creation-draft', id: expect.any(String) },
+    message: 'Create a spring poster',
+  })));
+  expect(createProjectContainer).not.toHaveBeenCalled();
+});

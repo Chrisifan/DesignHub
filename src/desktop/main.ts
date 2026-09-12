@@ -31,10 +31,18 @@ import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
 import { createWindowOptions } from './window-options';
 import { createCredentialBoundary, createUnavailableCredentialStore } from './security/credentials';
+import { listTasksHandler, taskListChannel } from './ipc/tasks';
+import { loadTaskState } from './storage/task-store';
+import { saveTaskState } from './storage/task-store';
+import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
+import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
+import { createOpenAICompatibleAdapter } from '../features/providers/adapter';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, taskCancelChannel, conversationSubmitChannel } from './ipc/agent';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
 let activeWorkspaceHandle: WorkspaceHandle | null = null;
+let taskServicePromise: Promise<AgentTaskService> | null = null;
 const credentialBoundary = createCredentialBoundary(createUnavailableCredentialStore());
 
 export const createMainProjectStore = (workspace: WorkspaceHandle) => createProjectStore(workspace);
@@ -74,7 +82,34 @@ const createWindow = (): { window: BrowserWindow; trustedUrl: string } => {
 const activateWorkspace = (workspace: WorkspaceHandle): WorkspaceHandle => {
   activeWorkspaceHandle?.close();
   activeWorkspaceHandle = workspace;
+  taskServicePromise = null;
   return workspace;
+};
+
+const getAgentTaskService = (): Promise<AgentTaskService> => {
+  if (!activeWorkspaceHandle) return Promise.reject(new Error('WORKSPACE_NOT_OPEN'));
+  if (taskServicePromise) return taskServicePromise;
+  const workspace = activeWorkspaceHandle;
+  taskServicePromise = (async () => {
+    const initialTasks = await loadTaskState(workspace, workspace.workspace.workspaceId);
+    const runtime: TaskRuntime = createTaskRuntime({
+      initialTasks,
+      persist: async (tasks) => {
+        await saveTaskState(workspace, workspace.workspace.workspaceId, tasks);
+      },
+    });
+    const service = createAgentTaskService({
+      runtime,
+      resolveAdapter: async (connectionId) => {
+        if (connectionId !== 'openai-compatible') throw new Error('PROVIDER_NOT_CONFIGURED');
+        const baseUrl = process.env.DESIGNHUB_PROVIDER_BASE_URL ?? '';
+        const apiKey = process.env.DESIGNHUB_PROVIDER_API_KEY ?? '';
+        return createOpenAICompatibleAdapter({ baseUrl, apiKey });
+      },
+    });
+    return bindAgentTaskService(service);
+  })();
+  return taskServicePromise;
 };
 
 app.whenReady().then(() => {
@@ -154,6 +189,24 @@ app.whenReady().then(() => {
   ipcMain.handle(credentialDeleteChannel, async (event, connectionId) => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return createCredentialDeleteHandler(activeWindow, activeTrustedUrl, credentialBoundary)(event, connectionId);
+  });
+  ipcMain.handle(taskListChannel, async (event, workspaceId) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return listTasksHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadTaskState)(event, workspaceId);
+  });
+  ipcMain.handle(conversationSubmitChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createConversationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, conversation) => {
+      const service = await getAgentTaskService();
+      return service.submitConversation(conversation);
+    })(event, input);
+  });
+  ipcMain.handle(taskCancelChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return cancelTaskHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, taskId) => {
+      const service = await getAgentTaskService();
+      return Boolean(service.cancel(taskId));
+    })(event, input);
   });
 });
 

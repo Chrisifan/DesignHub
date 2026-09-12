@@ -12,7 +12,16 @@ export type TaskRecord = {
   documentId?: string;
   baseRevisionId?: string | null;
   designerVersionId?: string;
+  providerId?: string;
+  capability?: string;
+  createdAt?: string;
+  updatedAt?: string;
   errorCode?: string;
+  result?: {
+    text?: string;
+    assetIds?: string[];
+    sceneAssetId?: string;
+  };
 };
 
 const transitions: Record<TaskState, TaskState[]> = {
