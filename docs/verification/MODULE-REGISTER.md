@@ -240,6 +240,7 @@
 2026-09-13：M04 项目包导入发布原子性（变更 ID M04-20260913-25）。导入 payload 复制移入项目临时目录，在发布和索引之前完成；注入复制失败不会留下 active 项目，原 operationId 可重试。先观察 project-store Red，再 Green；project-store focused 10/10、lint、typecheck 通过。磁盘满、进程终止、大包流式和跨设备仍开放。
 2026-09-13：M05 只读画布写入边界（变更 ID M05-20260913-09）。只读工作区禁用 Workbench/CanvasWorkspace 场景、图层、修订和 provider 任务写入；先观察 Workbench Red，再 Green；Workbench focused 29/29、lint、typecheck 通过。原生只读窗口、Windows 与打包恢复仍开放。
 2026-09-13：M06 终态任务重启幂等（变更 ID M06-20260913-17）。任务运行时加载已完成/失败/取消记录后直接保持终态，不因内存去重表丢失而重复提交修订；先观察 runtime Red，再 Green；runtime focused 6/6、lint、typecheck 通过。真实跨进程回调、远端幂等与打包恢复仍开放。
+2026-09-13：M04 项目包元数据预检（变更 ID M04-20260913-26）。导入前通过共享项目 schema 校验 metadata，畸形文档列表统一返回 `INVALID_PACKAGE` 且不创建项目；先观察 project-store Red，再 Green；project-store focused 11/11、lint、typecheck、diff check 通过。历史迁移、磁盘满和跨设备仍开放。
 
 ## 发布前检查
 

@@ -289,3 +289,30 @@ it('does not publish an imported project when payload copy fails, then allows re
     }
   });
 });
+
+it('rejects malformed imported project metadata before creating a project', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    try {
+      const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43631';
+      const now = new Date().toISOString();
+      const pack = await createProjectPackage({
+        packageId: 'pkg-malformed-metadata',
+        projectId: sourceProjectId,
+        entries: [
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Malformed metadata', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Malformed metadata', documents: 'not-an-array', archived: false, createdAt: now, updatedAt: now } })) },
+          { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
+        ],
+      });
+
+      await expect(importProjectPackageToWorkspace(workspace, {
+        workspaceId: workspace.workspace.workspaceId,
+        operationId: 'import-malformed-metadata',
+        archive: await encodeProjectPackage(pack),
+      })).rejects.toThrow('INVALID_PACKAGE');
+      await expect(createProjectStore(workspace).listActiveProjects()).resolves.toEqual([]);
+    } finally {
+      workspace.close();
+    }
+  });
+});

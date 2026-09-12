@@ -18,7 +18,7 @@ import type {
   TrashProjectInput,
   UpdateProjectMetadataInput,
 } from '../../features/workspace/project-store';
-import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata } from '../../features/projects/metadata';
+import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata, type ProjectMetadataInput } from '../../features/projects/metadata';
 import { canPurge } from '../../features/workspace/trash-policy';
 import { decodeProjectPackage } from '../../features/delivery/project-package';
 import { isSafePackagePath } from '../../features/delivery/package-policy';
@@ -795,6 +795,16 @@ const decodePackageJson = <T>(bytes: Uint8Array | undefined): T => {
   }
 };
 
+const validateImportedMetadata = (metadata: unknown, sourceProjectId: string): ProjectMetadata | undefined => {
+  if (metadata === undefined) return undefined;
+  if (!isRecord(metadata) || metadata.projectId !== sourceProjectId) throw new Error('INVALID_PACKAGE');
+  try {
+    return createProjectMetadata(metadata as unknown as ProjectMetadataInput);
+  } catch {
+    throw new Error('INVALID_PACKAGE');
+  }
+};
+
 const validateImportedContentClosure = (content: ProjectContentManifest, pack: Awaited<ReturnType<typeof decodeProjectPackage>>): void => {
   const seenHashes = new Set<string>();
   content.assets.forEach((asset) => {
@@ -848,7 +858,7 @@ export const importProjectPackageToWorkspace = async (
     if (importedRevisionPathPattern.test(path)) rewriteImportedRevisionState(bytes, sourceManifest.projectId);
   });
   if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === pack.manifest.packageId)) throw new Error('PACKAGE_ALREADY_IMPORTED');
-  const sourceMetadata = sourceManifest.metadata;
+  const sourceMetadata = validateImportedMetadata(sourceManifest.metadata, sourceManifest.projectId);
   const documents = sourceMetadata?.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
     id,
     name,
