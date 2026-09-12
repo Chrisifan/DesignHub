@@ -14,6 +14,42 @@ export type AnalyzePortfolioInput = {
 export type AnalyzePortfolioResult = { taskId: string; designerDraftId: string; sourceIds: string[]; candidates: PersonaProfile[] };
 
 const createTaskId = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`;
+const maxPortfolioSources = 8;
+const maxSourceDescriptionLength = 4000;
+
+const normalizeSourceIds = (ids: readonly string[]): string[] => ids.map((id) => id.trim()).filter(Boolean);
+
+const isValidVisionImage = (image: unknown): image is VisionRequest['image'] => {
+  if (!image || typeof image !== 'object') return false;
+  const value = image as Record<string, unknown>;
+  if (typeof value.url === 'string') {
+    if (value.url.length > 4096) return false;
+    try {
+      const parsed = new URL(value.url);
+      return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && !parsed.username && !parsed.password;
+    } catch {
+      return false;
+    }
+  }
+  if (typeof value.base64 !== 'string' || value.base64.trim().length === 0 || value.base64.length > 20_000_000) return false;
+  return value.mimeType === undefined || (typeof value.mimeType === 'string' && /^image\/[a-z0-9.+-]+$/iu.test(value.mimeType));
+};
+
+const validatePortfolioSources = (sources: readonly PortfolioImageSource[], declaredIds: readonly string[]): string[] => {
+  if (sources.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
+  if (sources.length > maxPortfolioSources) throw new Error('PORTFOLIO_SOURCE_LIMIT');
+  const sourceIds = sources.map((source) => source.id.trim());
+  if (sourceIds.some((id) => !id || id.length > 128 || /[\u0000-\u001F/\\]/u.test(id))) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
+  if (new Set(sourceIds).size !== sourceIds.length) throw new Error('DUPLICATE_SOURCE_ID');
+  if (declaredIds.length > 0 && (declaredIds.length !== sourceIds.length || declaredIds.some((id, index) => id !== sourceIds[index]))) {
+    throw new Error('PORTFOLIO_SOURCE_MISMATCH');
+  }
+  sources.forEach((source) => {
+    if (!source.description.trim() || source.description.length > maxSourceDescriptionLength) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
+    if (!isValidVisionImage(source.image)) throw new Error('INVALID_PORTFOLIO_IMAGE');
+  });
+  return sourceIds;
+};
 const localized = (value: unknown, fallback = ''): LocalizedText => {
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
@@ -57,10 +93,10 @@ const candidatesFromResponse = (text: string, offset: number): PersonaProfile[] 
 
 export const analyzePortfolio = async (input: AnalyzePortfolioInput): Promise<AnalyzePortfolioResult> => {
   if (!input.designerDraftId.trim() || !input.connectionId.trim()) throw new Error('ANALYSIS_BINDING_REQUIRED');
-  const sourceIds = input.sources ? input.sources.map((source) => source.id.trim()).filter(Boolean) : [...new Set((input.sourceIds ?? []).map((id) => id.trim()).filter(Boolean))];
+  const declaredIds = normalizeSourceIds(input.sourceIds ?? []);
+  const sourceIds = input.sources ? validatePortfolioSources(input.sources, declaredIds) : [...new Set(declaredIds)];
   if (sourceIds.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
   if (!input.adapter || !input.sources?.length) throw new Error('VISION_ANALYSIS_UNAVAILABLE');
-  if (input.sources.some((source) => !source.id.trim() || !source.description.trim())) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
   const candidates: PersonaProfile[] = [];
   for (const source of input.sources) {
     const request = { prompt: `Analyse portfolio source ${source.id}. Source description: ${source.description}. Return JSON with a candidates array of reviewable designer profile drafts. Do not invent provenance or claim identity.`, image: source.image };
