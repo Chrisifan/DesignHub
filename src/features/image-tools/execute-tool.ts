@@ -12,7 +12,7 @@ export const executeTool = async (input: ToolExecutionInput, deps: ToolExecution
   if (!validation.ok) throw new Error(validation.reason);
   const layer = deps.getLayer(input.documentId, input.targetLayerId);
   if (!layer) throw new Error('TARGET_NOT_FOUND');
-  if (needsRegion(input.tool as 'remove-object' | 'inpaint' | 'remove-background' | 'resize') && (!input.region || !isRegionInside(input.region, layer))) throw new Error(input.region ? 'REGION_OUT_OF_BOUNDS' : 'REGION_REQUIRED');
+  if (needsRegion(input.tool) && (!input.region || !isRegionInside(input.region, layer))) throw new Error(input.region ? 'REGION_OUT_OF_BOUNDS' : 'REGION_REQUIRED');
   const definition = getToolDefinition(input.tool);
   if (deps.capabilities && !deps.capabilities.includes(definition.capability)) throw new Error('CAPABILITY_UNAVAILABLE');
   if (!definition.requiresConnection) {
