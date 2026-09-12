@@ -30,6 +30,9 @@ export type Project = {
   description: string;
   enDescription: string;
   designers: string[];
+  activeDesignerVersionId?: string;
+  designerSnapshot?: unknown;
+  brandSnapshot?: unknown;
   artwork: Artwork;
   documents: number;
   archived?: boolean;

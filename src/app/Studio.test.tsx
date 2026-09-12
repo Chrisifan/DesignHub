@@ -192,6 +192,19 @@ it('submits project conversation through the desktop task bridge', async () => {
   await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', projectId: 'project-1', connectionId: 'openai-compatible', message: '调整标题' })));
 });
 
+it('uses the persisted designer version and lets a writable project switch designers', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', activeDesignerVersionId: 'paper-type', designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' }, documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
+  const loadDesignerState = vi.fn(async () => ({ profiles: [], defaultId: 'paper-type' }));
+  const updateProjectMetadata = vi.fn(async ({ patch }: { patch: { activeDesignerVersionId?: string; designerSnapshot?: unknown } }) => ({ projectId: 'project-1', workspaceId: 'workspace-1', name: 'Persisted project', activeDesignerVersionId: patch.activeDesignerVersionId, designerSnapshot: patch.designerSnapshot, archived: false, documents: [], createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:01.000Z' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDesignerState, updateProjectMetadata };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
+  const selector = screen.getByRole('combobox', { name: '设计师' });
+  fireEvent.change(selector, { target: { value: 'clear-commerce' } });
+  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ activeDesignerVersionId: 'clear-commerce' }) })));
+});
+
 it('submits conversation creation as a draft task before any project exists', async () => {
   const listActiveProjects = vi.fn(async () => []);
   const createProjectContainer = vi.fn(async () => ({ projectId: 'should-not-create' }));

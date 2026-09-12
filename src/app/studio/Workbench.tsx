@@ -135,7 +135,14 @@ export const Workbench = ({
         operationId: `workbench-${crypto.randomUUID()}`,
         sceneAssetId: scene.id,
         assetIds: scene.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image').map((layer) => layer.assetId),
-        contributions: [],
+        contributions: project.activeDesignerVersionId ? [{
+          designerVersionId: project.activeDesignerVersionId,
+          role: 'lead' as const,
+          designerName: (() => {
+            const snapshot = project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
+            return snapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en'];
+          })(),
+        }] : [],
       });
       if (result) {
         const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);

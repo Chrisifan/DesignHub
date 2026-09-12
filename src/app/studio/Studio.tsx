@@ -6,7 +6,7 @@ import { LibraryPages } from './LibraryPages';
 import { DesignerHero } from './DesignerHero';
 import { NewDesignPage } from './NewDesignPage';
 import { PersonaArtwork } from './PersonaArtwork';
-import { getPersona } from './personas';
+import { getPersona, localize, personaProfiles, type PersonaProfile } from './personas';
 import { Workbench } from './Workbench';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
 import { getDesktopApi } from '../../platform/runtime';
@@ -81,6 +81,7 @@ export const Studio = ({
   const [conversationResult, setConversationResult] = useState<{ taskId: string; text: string } | null>(null);
   const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
   const [projectNameDraft, setProjectNameDraft] = useState('');
+  const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(personaProfiles);
   useEffect(() => {
     let cancelled = false;
     if (!workspace) {
@@ -102,6 +103,9 @@ export const Studio = ({
           description: entry.brief ?? t(locale, '本地项目', 'Local project'),
           enDescription: entry.brief ?? 'Local project',
           designers: ['纸感排版'],
+          activeDesignerVersionId: entry.activeDesignerVersionId,
+          designerSnapshot: entry.designerSnapshot,
+          brandSnapshot: entry.brandSnapshot,
           artwork: 'blank' as const,
           documents: entry.documents?.length ?? 1,
           archived: entry.archived,
@@ -114,6 +118,17 @@ export const Studio = ({
     setSurface('projects');
     return () => { cancelled = true; };
   }, [workspace?.workspaceId, locale]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspace) { setDesignerOptions(personaProfiles); return () => { cancelled = true; }; }
+    const request = getDesktopApi().loadDesignerState?.(workspace.workspaceId);
+    void request?.then((state) => {
+      if (cancelled) return;
+      const byId = new Map((state?.profiles ?? []).map((profile) => [profile.id, profile]));
+      setDesignerOptions([...personaProfiles.map((profile) => byId.get(profile.id) ?? profile), ...(state?.profiles ?? []).filter((profile) => !personaProfiles.some((builtin) => builtin.id === profile.id))]);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [workspace]);
   useEffect(() => {
     if (!workspace || !creationDraftId) return undefined;
     let cancelled = false;
@@ -134,7 +149,7 @@ export const Studio = ({
     setSelected(null);
   };
   const notify = (message: string) => setNotice(message);
-  const updateProject = async (patch: { name?: string; archived?: boolean }): Promise<void> => {
+  const updateProject = async (patch: { name?: string; archived?: boolean; activeDesignerVersionId?: string; designerSnapshot?: unknown }): Promise<void> => {
     if (!workspace || !selected || workspace.openMode !== 'writable') return;
     try {
       const metadata = await getDesktopApi().updateProjectMetadata?.({ workspaceId: workspace.workspaceId, projectId: selected.id, patch });
@@ -147,6 +162,8 @@ export const Studio = ({
         enDescription: metadata.brief ?? project.enDescription,
         documents: metadata.documents.length || project.documents,
         archived: metadata.archived,
+        activeDesignerVersionId: metadata.activeDesignerVersionId,
+        designerSnapshot: metadata.designerSnapshot,
       } : project));
       setSelected((current) => current ? {
         ...current,
@@ -156,11 +173,20 @@ export const Studio = ({
         enDescription: metadata.brief ?? current.enDescription,
         documents: metadata.documents.length || current.documents,
         archived: metadata.archived,
+        activeDesignerVersionId: metadata.activeDesignerVersionId,
+        designerSnapshot: metadata.designerSnapshot,
       } : current);
       notify(t(locale, patch.name ? '项目已重命名' : '项目已归档', patch.name ? 'Project renamed' : 'Project archived'));
     } catch {
       notify(t(locale, '项目更新失败，请重试', 'Project update failed; try again'));
     }
+  };
+  const switchProjectDesigner = async (designerId: string): Promise<void> => {
+    if (!selected || !workspace || workspace.openMode !== 'writable') return;
+    const designer = designerOptions.find((profile) => profile.id === designerId);
+    if (!designer) return;
+    await updateProject({ activeDesignerVersionId: designer.id, designerSnapshot: structuredClone(designer) });
+    notify(t(locale, '设计师已切换', 'Designer switched'));
   };
   const duplicateSelected = async (): Promise<void> => {
     if (!workspace || !selected || workspace.openMode !== 'writable') return;
@@ -260,6 +286,7 @@ export const Studio = ({
         name: draft.name.trim(),
         brief: draft.goal || draft.brief || undefined,
         activeDesignerVersionId: draft.personaId,
+        designerSnapshot: getPersona(draft.personaId),
         documents: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
       });
       if (!created) {
@@ -275,6 +302,8 @@ export const Studio = ({
         description: draft.goal || draft.brief || t(locale, '本地项目', 'Local project'),
         enDescription: draft.goal || draft.brief || 'Local project',
         designers: [getPersona(draft.personaId)?.name.zh ?? '纸感排版'],
+        activeDesignerVersionId: draft.personaId,
+        designerSnapshot: getPersona(draft.personaId),
         artwork: 'blank',
         documents: 1,
       };
@@ -344,6 +373,7 @@ export const Studio = ({
           } as Record<string, string>
         )[name] ?? name);
   const projectPersonaId = (project: Project) => {
+    if (project.activeDesignerVersionId) return project.activeDesignerVersionId;
     const name = project.designers[0];
     return (
       {
@@ -353,6 +383,11 @@ export const Studio = ({
         清晰商业: 'clear-commerce',
       } as Record<string, string>
     )[name] ?? 'paper-type';
+  };
+  const projectDesignerLabel = (project: Project): string => {
+    const snapshot = project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
+    const localizedName = snapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en'];
+    return localizedName ?? designerName(project.designers[0] ?? '纸感排版');
   };
   const openDelivery = (project: Project) => {
     setDeliveryProject(project);
@@ -677,7 +712,7 @@ export const Studio = ({
                           <span className="design-attribution">
                             <PersonaArtwork personaId={projectPersonaId(project)} crop="avatar" />
                             <strong>
-                              {designerName(project.designers[0] ?? '纸感排版')} · {getPersona(projectPersonaId(project))?.version ?? 'v1.0'}
+                              {projectDesignerLabel(project)} · {getPersona(projectPersonaId(project))?.version ?? (project.designerSnapshot as { version?: string } | undefined)?.version ?? 'v1.0'}
                             </strong>
                           </span>
                           <span className="project-meta-end">
@@ -772,6 +807,11 @@ export const Studio = ({
                 locale={locale}
                 label={t(locale, '当前设计师', 'Active designer')}
               />
+              {workspace?.openMode === 'writable' && selected.workspaceId && <Field label={t(locale, '设计师', 'Designer')}>
+                <select value={projectPersonaId(selected)} onChange={(event) => { void switchProjectDesigner(event.target.value); }}>
+                  {designerOptions.filter((profile) => profile.status !== 'archived').map((profile) => <option key={profile.id} value={profile.id}>{localize(locale, profile.name)} · {profile.version}</option>)}
+                </select>
+              </Field>}
               <div className="project-context">
                 <div>
                   <small>{t(locale, '活跃版本', 'ACTIVE VERSION')}</small>

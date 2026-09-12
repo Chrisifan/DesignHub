@@ -99,6 +99,8 @@
 
 2026-09-12：M04 workspace-backed brand CRUD（变更 ID M04-20260912-05）。品牌状态新增 `.designhub/brands.json` 原子存储与受信 `brand:load-state`/`brand:save-state` bridge；品牌页在真实工作区支持加载、新建、编辑、删除，示例预览仍使用只读内置数据。先写 storage/IPC/UI Red，再 Green；focused 4 files/26 tests、lint、typecheck、diff check 通过。项目已有品牌快照不随品牌库编辑自动升级；字体二进制、M06 分析和 Windows/打包门禁仍开放。
 
+2026-09-12：M04 designer attribution/switching（变更 ID M04-20260912-06）。项目列表/详情贯穿 `activeDesignerVersionId` 与设计师快照，工作区项目可显式切换设计师，修订提交记录当前设计师版本和名称快照。修改影响 M04 项目元数据与 M05 工作台历史，Studio/Workbench 直接回归 2 文件/30 测试、lint/typecheck 通过；多贡献者交接和自定义人物图像解析仍开放。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：
