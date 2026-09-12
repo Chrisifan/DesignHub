@@ -216,6 +216,26 @@ it('uses the persisted designer version and lets a writable project switch desig
   await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ activeDesignerVersionId: 'clear-commerce' }) })));
 });
 
+it('shows every project contributor in the card and detail view', async () => {
+  const listActiveProjects = vi.fn(async () => [{
+    projectId: 'project-team',
+    name: '协作项目',
+    activeDesignerVersionId: 'paper-type',
+    contributorDesignerVersionIds: ['paper-type', 'natural-story'],
+    designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' },
+    documents: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }],
+  }]);
+  const loadDesignerState = vi.fn(async () => ({ profiles: [], defaultId: 'paper-type' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDesignerState };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'read-only' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  const card = await screen.findByRole('button', { name: '协作项目' });
+  expect(within(card).getByLabelText('版本署名')).toHaveTextContent('纸感排版');
+  expect(within(card).getByLabelText('版本署名')).toHaveTextContent('自然叙事');
+  fireEvent.click(card);
+  expect(screen.getByLabelText('版本署名')).toHaveTextContent('纸感排版');
+  expect(screen.getByLabelText('版本署名')).toHaveTextContent('自然叙事');
+});
+
 it('opens each persisted document with its own size and scene target', async () => {
   const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: '多尺寸项目', documents: [{ id: 'doc-main', name: '主海报', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }, { id: 'doc-square', name: '方图', width: 720, height: 720, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
   const loadDocumentScene = vi.fn(async () => null);

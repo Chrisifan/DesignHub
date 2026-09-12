@@ -186,6 +186,8 @@
 
 2026-09-13：M04 项目复制/导入关联链路（变更 ID M04-20260913-16）。项目复制与项目包导入保留文档的 `sourceDocumentId`、`sourceRevisionId` 和 `finalizedRevisionId`，不再丢失关联尺寸来源。先新增 project-store Red，再 Green；project-store/metadata 12/12、lint、typecheck、diff check 通过。跨设备包闭包和大包流式处理仍属 M07 发布门禁。
 
+2026-09-13：M04 项目多设计师展示（变更 ID M04-20260913-17）。项目卡片和详情页展示贡献者去重并集及对应人物形象；主设计师仍保留版本号，缺少当前档案时使用历史 ID 回退，读写权限不改变署名可见性。先新增 Studio Red，再 Green；Studio/DesignerHero/Workbench 47/47、lint、typecheck、diff check 通过。历史名称迁移和真实提供方署名仍开放。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

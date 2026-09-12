@@ -516,6 +516,17 @@ export const Studio = ({
     const localizedName = snapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en'];
     return localizedName ?? designerName(project.designers[0] ?? '纸感排版');
   };
+  const projectContributorIds = (project: Project): string[] => {
+    const ids = [...new Set(project.contributorDesignerVersionIds?.length
+      ? project.contributorDesignerVersionIds
+      : (project.activeDesignerVersionId ? [project.activeDesignerVersionId] : []))];
+    return ids.length > 0 ? ids : [projectPersonaId(project)];
+  };
+  const projectContributorLabel = (project: Project): string => projectContributorIds(project).map((id, index) => {
+    if (index === 0) return projectDesignerLabel(project);
+    const profile = designerOptions.find((entry) => entry.id === id);
+    return profile ? localize(locale, profile.name) : id;
+  }).join(' · ');
   const openDelivery = (project: Project) => {
     setDeliveryProject(project);
     navigate('delivery');
@@ -899,10 +910,13 @@ export const Studio = ({
                         </p>
                         <div className="project-meta">
                           <span className="design-attribution">
-                            <PersonaArtwork personaId={projectPersonaId(project)} crop="avatar" />
+                            <span className="design-attribution-avatars">
+                              {projectContributorIds(project).slice(0, 3).map((designerId) => <PersonaArtwork key={designerId} personaId={designerId} crop="avatar" profile={designerOptions.find((profile) => profile.id === designerId)} />)}
+                            </span>
                             <strong>
                               {projectDesignerLabel(project)} · {getPersona(projectPersonaId(project))?.version ?? (project.designerSnapshot as { version?: string } | undefined)?.version ?? 'v1.0'}
                             </strong>
+                            {projectContributorIds(project).length > 1 && <span className="design-attribution-contributors" aria-label={t(locale, '版本署名', 'Revision credits')}>{projectContributorLabel(project)}</span>}
                           </span>
                           <span className="project-meta-end">
                             {project.workspaceId ? t(locale, '本地', 'Local') : t(locale, '示例', 'Example')}
@@ -997,6 +1011,10 @@ export const Studio = ({
                 locale={locale}
                 label={t(locale, '当前设计师', 'Active designer')}
               />
+              {projectContributorIds(selected).length > 1 && <p className="project-credit-summary" aria-label={t(locale, '版本署名', 'Revision credits')}>
+                <span>{t(locale, '版本署名', 'Revision credits')}</span>
+                <strong>{projectContributorLabel(selected)}</strong>
+              </p>}
               {workspace?.openMode === 'writable' && selected.workspaceId && <Field label={t(locale, '设计师', 'Designer')}>
                 <select value={projectPersonaId(selected)} onChange={(event) => { void switchProjectDesigner(event.target.value); }}>
                   {designerOptions.filter((profile) => profile.status !== 'archived').map((profile) => <option key={profile.id} value={profile.id}>{localize(locale, profile.name)} · {profile.version}</option>)}
