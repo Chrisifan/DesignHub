@@ -4,6 +4,7 @@ import type { CredentialBoundary } from '../security/credentials';
 
 export const credentialStoreChannel = 'credential:store';
 export const credentialDeleteChannel = 'credential:delete';
+export const credentialStatusChannel = 'credential:status';
 
 type CredentialSender = {
   mainFrame: { url: string };
@@ -48,6 +49,11 @@ export const createCredentialStoreHandler = (window: CredentialWindow, trustedUr
 export const createCredentialDeleteHandler = (window: CredentialWindow, trustedUrl: string, boundary: CredentialBoundary) => async (event: CredentialRequest, connectionId: unknown): Promise<boolean> => {
   if (!isTrustedCredentialRequest(event, window, trustedUrl) || !validConnectionId(connectionId)) return false;
   return boundary.deleteCredential(connectionId);
+};
+
+export const createCredentialStatusHandler = (window: CredentialWindow, trustedUrl: string, boundary: Pick<CredentialBoundary, 'hasCredential'>) => async (event: CredentialRequest, connectionId: unknown): Promise<boolean> => {
+  if (!isTrustedCredentialRequest(event, window, trustedUrl) || !validConnectionId(connectionId)) return false;
+  return boundary.hasCredential(connectionId);
 };
 
 export type CredentialWindowLike = BrowserWindow;

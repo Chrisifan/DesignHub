@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import type { Locale } from '../../app/i18n';
 import { Badge, Button, Field, Icon, t } from '../../app/studio/ui';
@@ -9,22 +9,32 @@ export type ProviderSettingsProps = {
   connections: readonly ProviderConnection[];
   onStoreCredential: (connectionId: string, secret: string) => Promise<boolean>;
   onDeleteCredential: (connectionId: string) => Promise<boolean>;
+  onCheckCredential?: (connectionId: string) => Promise<boolean>;
 };
 export const ProviderSettings = ({
   locale,
   connections,
   onStoreCredential,
   onDeleteCredential,
+  onCheckCredential,
 }: ProviderSettingsProps) => {
   const [selectedId, setSelectedId] = useState(connections[0]?.id ?? '');
+  const [configured, setConfigured] = useState<Record<string, boolean>>(() => Object.fromEntries(connections.map((connection) => [connection.id, connection.status === 'connected'])));
   const [secret, setSecret] = useState('');
   const [message, setMessage] = useState('');
   const selected = connections.find((connection) => connection.id === selectedId);
+  useEffect(() => {
+    if (!onCheckCredential || !selectedId) return undefined;
+    let cancelled = false;
+    void onCheckCredential(selectedId).then((value) => { if (!cancelled) setConfigured((current) => ({ ...current, [selectedId]: value })); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [onCheckCredential, selectedId]);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selected || secret.length === 0) return;
     const stored = await onStoreCredential(selected.id, secret);
     setSecret('');
+    if (stored) setConfigured((current) => ({ ...current, [selected.id]: true }));
     setMessage(
       stored
         ? t(locale, '凭据已保存到系统安全存储。', 'Credential saved to system secure storage.')
@@ -34,6 +44,7 @@ export const ProviderSettings = ({
   const remove = async () => {
     if (!selected) return;
     const deleted = await onDeleteCredential(selected.id);
+    if (deleted) setConfigured((current) => ({ ...current, [selected.id]: false }));
     setMessage(
       deleted
         ? t(locale, '凭据已删除。', 'Credential deleted.')
@@ -60,7 +71,7 @@ export const ProviderSettings = ({
           </Field>
           {selected && (
             <div>
-              <p><Badge tone={selected.status === 'connected' ? 'success' : ''}>{selected.status === 'connected' ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge></p>
+              <p><Badge tone={configured[selected.id] ? 'success' : ''}>{configured[selected.id] ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge></p>
               <p>{t(locale, '能力', 'Capabilities')}: {selected.capabilities.join(', ')}</p>
               <form onSubmit={submit}>
                 <Field label={t(locale, 'API 密钥', 'API key')} hint={t(locale, '输入后仅发送到桌面主进程并立即清空。', 'Sent to the desktop host and cleared immediately after saving.')}>

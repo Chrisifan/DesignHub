@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import type { DesktopApi } from '../platform/contracts';
-import { credentialDeleteChannel, credentialStoreChannel } from './ipc/credentials';
+import { credentialDeleteChannel, credentialStatusChannel, credentialStoreChannel } from './ipc/credentials';
 import { designerLoadChannel, designerSaveChannel } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/assets';
 import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
@@ -46,6 +46,7 @@ const api: DesktopApi = {
   setFinalDocumentRevision: (input) => ipcRenderer.invoke(revisionFinalizeChannel, input),
   storeCredential: (connectionId, secret) => ipcRenderer.invoke(credentialStoreChannel, connectionId, secret),
   deleteCredential: (connectionId) => ipcRenderer.invoke(credentialDeleteChannel, connectionId),
+  hasCredential: (connectionId) => ipcRenderer.invoke(credentialStatusChannel, connectionId),
   listTasks: (workspaceId) => ipcRenderer.invoke(taskListChannel, workspaceId),
   submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
   cancelTask: (workspaceId, taskId) => ipcRenderer.invoke(taskCancelChannel, { workspaceId, taskId }),

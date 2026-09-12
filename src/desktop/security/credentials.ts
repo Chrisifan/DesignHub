@@ -7,6 +7,7 @@ export type SystemCredentialStore = {
 export type CredentialBoundary = {
   storeCredential: (connectionId: string, secret: string) => Promise<boolean>;
   deleteCredential: (connectionId: string) => Promise<boolean>;
+  hasCredential: (connectionId: string) => Promise<boolean>;
 };
 
 const isCredentialInput = (connectionId: string, secret?: string): boolean =>
@@ -27,6 +28,14 @@ export const createCredentialBoundary = (store: SystemCredentialStore): Credenti
     try {
       await store.deleteCredential(connectionId);
       return true;
+    } catch {
+      return false;
+    }
+  },
+  hasCredential: async (connectionId) => {
+    if (!isCredentialInput(connectionId)) return false;
+    try {
+      return Boolean(await store.getCredential?.(connectionId));
     } catch {
       return false;
     }

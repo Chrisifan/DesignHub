@@ -26,6 +26,16 @@ it('keeps provider secret retrieval internal to the host', async () => {
   expect('getCredential' in boundary).toBe(false);
 });
 
+it('reports configured state without exposing plaintext', async () => {
+  const store = createInMemoryCredentialStore();
+  const boundary = createCredentialBoundary(store);
+  await expect(boundary.hasCredential('provider-1')).resolves.toBe(false);
+  await boundary.storeCredential('provider-1', 'secret');
+  await expect(boundary.hasCredential('provider-1')).resolves.toBe(true);
+  await boundary.deleteCredential('provider-1');
+  await expect(boundary.hasCredential('provider-1')).resolves.toBe(false);
+});
+
 it('rejects invalid input and never falls back to plaintext storage', async () => {
   const writes: string[] = [];
   const store = {

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { createCredentialStoreHandler } from './credentials';
+import { createCredentialStatusHandler, createCredentialStoreHandler } from './credentials';
 
 const makeFixture = (url: string) => {
   const mainFrame = { url };
@@ -10,7 +10,7 @@ const makeFixture = (url: string) => {
 it('accepts only the canonical trusted renderer location', async () => {
   const fixture = makeFixture('http://localhost:5173/?mode=preview');
   let stored = false;
-  const boundary = { storeCredential: async () => { stored = true; return true; }, deleteCredential: async () => true };
+  const boundary = { storeCredential: async () => { stored = true; return true; }, deleteCredential: async () => true, hasCredential: async () => false };
   const handler = createCredentialStoreHandler(fixture.window, 'http://localhost:5173/?mode=preview', boundary);
   await handler(fixture.event, 'provider-1', 'secret');
   expect(stored).toBe(true);
@@ -18,4 +18,13 @@ it('accepts only the canonical trusted renderer location', async () => {
   const altered = makeFixture('http://localhost:5173/?mode=other');
   const rejected = await handler(altered.event, 'provider-1', 'secret');
   expect(rejected).toBe(false);
+});
+
+it('returns only configured status and never the credential value', async () => {
+  const fixture = makeFixture('http://localhost:5173/?mode=preview');
+  const handler = createCredentialStatusHandler(fixture.window, 'http://localhost:5173/?mode=preview', {
+    hasCredential: async (connectionId) => connectionId === 'provider-1',
+  });
+  await expect(handler(fixture.event, 'provider-1')).resolves.toBe(true);
+  await expect(handler(fixture.event, 'missing')).resolves.toBe(false);
 });

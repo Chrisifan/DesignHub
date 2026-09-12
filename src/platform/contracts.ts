@@ -67,6 +67,7 @@ export type DesktopApi = {
   setFinalDocumentRevision?: (input: { workspaceId: string; projectId: string; documentId: string; revisionId: string }) => Promise<boolean | null>;
   storeCredential?: (connectionId: string, secret: string) => Promise<boolean>;
   deleteCredential?: (connectionId: string) => Promise<boolean>;
+  hasCredential?: (connectionId: string) => Promise<boolean>;
   listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
   cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;

@@ -586,7 +586,16 @@ const BrandsPage = ({
 const ConnectionsPage = ({
   locale,
   navigate,
-}: Pick<PageProps, 'locale' | 'navigate'>) => (
+}: Pick<PageProps, 'locale' | 'navigate'>) => {
+  const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    let cancelled = false;
+    const checks = availableConnections.map(async (connection) => [connection.id, await getDesktopApi().hasCredential?.(connection.id) ?? false] as const);
+    void Promise.all(checks).then((entries) => { if (!cancelled) setConnectionState(Object.fromEntries(entries)); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+  const connections = availableConnections.map((connection) => ({ ...connection, status: connectionState[connection.id] ? 'connected' as const : 'not-configured' as const }));
+  return (
   <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型连接', 'Model connections')}
@@ -617,9 +626,18 @@ const ConnectionsPage = ({
       </EmptyState>
       <ProviderSettings
         locale={locale}
-        connections={availableConnections}
-        onStoreCredential={async (connectionId, secret) => getDesktopApi().storeCredential?.(connectionId, secret) ?? false}
-        onDeleteCredential={async (connectionId) => getDesktopApi().deleteCredential?.(connectionId) ?? false}
+        connections={connections}
+        onCheckCredential={async (connectionId) => getDesktopApi().hasCredential?.(connectionId) ?? false}
+        onStoreCredential={async (connectionId, secret) => {
+          const stored = await (getDesktopApi().storeCredential?.(connectionId, secret) ?? false);
+          if (stored) setConnectionState((current) => ({ ...current, [connectionId]: true }));
+          return stored;
+        }}
+        onDeleteCredential={async (connectionId) => {
+          const deleted = await (getDesktopApi().deleteCredential?.(connectionId) ?? false);
+          if (deleted) setConnectionState((current) => ({ ...current, [connectionId]: false }));
+          return deleted;
+        }}
       />
       <div className="capability-matrix">
         <div className="matrix-heading">
@@ -636,7 +654,7 @@ const ConnectionsPage = ({
               <Icon name={icon} size={17} />
               {label}
             </span>
-            <Badge>{t(locale, '未配置', 'Not configured')}</Badge>
+            <Badge tone={connectionState['openai-compatible'] ? 'success' : ''}>{connectionState['openai-compatible'] ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge>
           </div>
         ))}
       </div>
@@ -650,7 +668,8 @@ const ConnectionsPage = ({
       )}
     </p>
   </section>
-);
+  );
+};
 
 const TasksPage = ({
   locale,

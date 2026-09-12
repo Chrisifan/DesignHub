@@ -16,8 +16,10 @@ import {
 import { createContentSecurityPolicy } from './csp';
 import {
   createCredentialDeleteHandler,
+  createCredentialStatusHandler,
   createCredentialStoreHandler,
   credentialDeleteChannel,
+  credentialStatusChannel,
   credentialStoreChannel,
 } from './ipc/credentials';
 import { recreateWindowOnActivate } from './lifecycle';
@@ -319,6 +321,10 @@ app.whenReady().then(() => {
   ipcMain.handle(credentialDeleteChannel, async (event, connectionId) => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return createCredentialDeleteHandler(activeWindow, activeTrustedUrl, credentialBoundary)(event, connectionId);
+  });
+  ipcMain.handle(credentialStatusChannel, async (event, connectionId) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return createCredentialStatusHandler(activeWindow, activeTrustedUrl, credentialBoundary)(event, connectionId);
   });
   ipcMain.handle(taskListChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
