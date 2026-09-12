@@ -106,6 +106,9 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       documentId: input.documentId.trim(),
       baseRevisionId: input.baseRevisionId ?? null,
       ...(input.designerVersionId ? { designerVersionId: input.designerVersionId } : {}),
+      ...('model' in input && input.model ? { model: input.model } : {}),
+      ...('size' in input && input.size ? { size: input.size } : {}),
+      ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}),
       ...('tool' in input && input.tool ? { tool: input.tool } : {}),
       ...('region' in input && input.region ? { region: { ...input.region } } : {}),
       providerId: input.connectionId.trim(),
@@ -190,6 +193,9 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
         connectionId: previous.providerId,
         prompt: previous.requestText,
+        ...(previous.model ? { model: previous.model } : {}),
+        ...(previous.size ? { size: previous.size } : {}),
+        ...(previous.count === undefined ? {} : { count: previous.count }),
       }, 'generate');
       return running;
     }

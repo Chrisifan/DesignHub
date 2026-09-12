@@ -197,6 +197,31 @@ it('retries a failed image generation with the image adapter and preserves its c
   expect(chatCalls).toBe(0);
 });
 
+it('preserves image generation model, size and count across retries', async () => {
+  const runtime = createTaskRuntime();
+  const requests: Array<{ model?: string; size?: string; count?: number }> = [];
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async (request) => {
+        requests.push(request);
+        if (requests.length === 1) throw Object.assign(new Error('offline'), { kind: 'http' });
+        return { images: [{ base64: 'generated' }], cost: null };
+      },
+    }),
+    persistGeneratedImages: async () => ['asset-retried-params'],
+  });
+  const first = await service.submitImageGeneration({ projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'retry params', model: 'image-model', size: '1024x1024', count: 2 });
+  await service.flush();
+  await service.retry(first.id);
+  await service.flush();
+  expect(requests).toEqual([
+    { prompt: 'retry params', model: 'image-model', size: '1024x1024', count: 2 },
+    { prompt: 'retry params', model: 'image-model', size: '1024x1024', count: 2 },
+  ]);
+});
+
 it('does not retry image editing without a recoverable source image', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({

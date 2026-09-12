@@ -26,6 +26,9 @@ export type TaskRecord = {
   designerVersionId?: string;
   providerId?: string;
   capability?: string;
+  model?: string;
+  size?: string;
+  count?: number;
   tool?: ImageTool;
   region?: Region;
   createdAt?: string;
