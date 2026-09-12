@@ -63,6 +63,45 @@ it('submits a rights-confirmed portfolio analysis task for a workspace designer 
   await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', source: expect.objectContaining({ kind: 'designer-draft' }), message: expect.stringContaining('https://example.com/portfolio.png') })));
 });
 
+it('reviews a completed portfolio candidate and persists the published profile', async () => {
+  const saveDesignerState = vi.fn(async () => true);
+  const candidate = {
+    id: 'portfolio-candidate-1', name: { zh: '作品集候选', en: 'Portfolio candidate' }, signature: { zh: '分析草稿', en: 'Analysis draft' }, summary: { zh: '克制构成', en: 'Restrained composition' }, principle: { zh: '保留层次', en: 'Keep hierarchy' }, personaCode: 'PORTFOLIO-1', version: 'v0.1', status: 'draft', artworkAssetId: 'asset-portrait', artworkUrl: 'asset://asset-portrait', artworkAlt: { zh: '候选形象', en: 'Candidate portrait' }, tags: [], referenceCount: 0, styleDna: { palette: [], typography: { zh: '', en: '' }, composition: { zh: '', en: '' }, texture: { zh: '', en: '' } }, negativeRules: [], portfolioSheets: [],
+  };
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    submitConversation: vi.fn(async () => ({ id: 'task-complete', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1 })),
+    listTasks: vi.fn(async () => [{ id: 'task-complete', requestId: 'request-1', state: 'completed' as const, cancelRequested: false, attempt: 1, source: { kind: 'designer-draft' as const, id: 'designer-draft-1' }, result: { text: JSON.stringify({ candidates: [candidate] }) } }]),
+    saveDesignerState,
+  };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-1" />);
+  fireEvent.click(await screen.findByRole('button', { name: '创建' }));
+  fireEvent.click(screen.getByRole('button', { name: '作品集' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '作品来源' }), { target: { value: 'https://example.com/portfolio.png' } });
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  const candidateButton = await screen.findByRole('button', { name: /作品集候选/ });
+  fireEvent.click(candidateButton);
+  fireEvent.click(screen.getByRole('button', { name: '发布预览' }));
+  await waitFor(() => expect(saveDesignerState).toHaveBeenCalledWith('workspace-1', expect.objectContaining({ profiles: expect.arrayContaining([expect.objectContaining({ status: 'published', artworkAssetId: 'asset-portrait', artworkUrl: 'asset://asset-portrait' })]) })));
+});
+
+it('does not show fabricated candidates when the completed portfolio task failed', async () => {
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    submitConversation: vi.fn(async () => ({ id: 'task-failed', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1 })),
+    listTasks: vi.fn(async () => [{ id: 'task-failed', requestId: 'request-1', state: 'failed' as const, cancelRequested: false, attempt: 1, source: { kind: 'designer-draft' as const, id: 'designer-draft-2' }, errorCode: 'PROVIDER_REQUEST_FAILED' }]),
+  };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-1" />);
+  fireEvent.click(await screen.findByRole('button', { name: '创建' }));
+  fireEvent.click(screen.getByRole('button', { name: '作品集' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '作品来源' }), { target: { value: 'https://example.com/portfolio.png' } });
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: /候选/ })).not.toBeInTheDocument());
+  expect(screen.getByRole('alert')).toHaveTextContent('作品集分析失败');
+});
+
 it('presents three example candidates and marks preview publish as session-only', () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: '创建' }));
