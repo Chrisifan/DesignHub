@@ -38,6 +38,8 @@ import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import { createOpenAICompatibleAdapter } from '../features/providers/adapter';
 import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
+import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
+import { exportSceneToFile } from './export-scene';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -213,6 +215,19 @@ app.whenReady().then(() => {
     return retryTaskHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, taskId) => {
       const service = await getAgentTaskService();
       return service.retry(taskId);
+    })(event, input);
+  });
+  ipcMain.handle(exportDocumentChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return exportDocumentHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, exportInput) => {
+      const extension = exportInput.format === 'jpeg' ? 'jpg' : exportInput.format;
+      const result = await dialog.showSaveDialog(activeWindow!, {
+        defaultPath: `designhub-${exportInput.documentId}.${extension}`,
+        filters: [{ name: exportInput.format.toUpperCase(), extensions: [extension] }],
+      });
+      if (result.canceled || !result.filePath) return null;
+      const exported = await exportSceneToFile({ scene: exportInput.scene, format: exportInput.format, targetPath: result.filePath, background: exportInput.background });
+      return { path: exported.path, sha256: exported.sha256 };
     })(event, input);
   });
 });

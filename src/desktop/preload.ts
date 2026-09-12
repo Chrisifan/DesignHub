@@ -7,6 +7,7 @@ import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/as
 import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
 import { taskListChannel } from './ipc/tasks';
 import { conversationSubmitChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
+import { exportDocumentChannel } from './ipc/export';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -29,6 +30,7 @@ const api: DesktopApi = {
   submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
   cancelTask: (workspaceId, taskId) => ipcRenderer.invoke(taskCancelChannel, { workspaceId, taskId }),
   retryTask: (workspaceId, taskId) => ipcRenderer.invoke(taskRetryChannel, { workspaceId, taskId }),
+  exportDocument: (input) => ipcRenderer.invoke(exportDocumentChannel, input),
 };
 
 contextBridge.exposeInMainWorld('designhub', api);

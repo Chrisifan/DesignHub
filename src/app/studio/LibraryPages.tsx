@@ -21,6 +21,7 @@ import {
 } from './ui';
 import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
+import { createScene } from '../../features/canvas/scene';
 import { ProviderSettings } from '../../features/providers/ProviderSettings';
 import type { ProviderConnection } from '../../features/providers/connection';
 import type { TaskRecord } from '../../features/tasks/state';
@@ -679,6 +680,7 @@ const DeliveryPage = ({
   navigate,
   onFormatChange,
   onArchiveCopyChange,
+  notify,
 }: {
   locale: Locale;
   project?: Project | null;
@@ -687,7 +689,9 @@ const DeliveryPage = ({
   navigate: PageProps['navigate'];
   onFormatChange: (format: DeliveryFormat) => void;
   onArchiveCopyChange: (value: boolean) => void;
+  notify?: (message: string) => void;
 }) => {
+  const [exporting, setExporting] = useState(false);
   const formatDescription =
     format === 'jpeg'
       ? t(
@@ -707,6 +711,19 @@ const DeliveryPage = ({
             'PNG uses sRGB and keeps the current canvas pixel dimensions.',
           );
   const projectName = project ? t(locale, project.name, project.enName) : '';
+  const exportCurrent = async (): Promise<void> => {
+    if (!project?.workspaceId || !project.documentId) return;
+    setExporting(true);
+    try {
+      const api = getDesktopApi();
+      const scene = await api.loadDocumentScene?.(project.workspaceId, project.id, project.documentId)
+        ?? createScene({ id: project.documentId, width: 1080, height: 1440, layers: [] });
+      const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: project.documentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}) });
+      if (result) notify?.(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
+    } catch {
+      notify?.(t(locale, '导出失败，请重试。', 'Export failed. Try again.'));
+    } finally { setExporting(false); }
+  };
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -737,11 +754,7 @@ const DeliveryPage = ({
                 {t(locale, '1080 × 1440 像素 · sRGB', '1080 × 1440 px · sRGB')}
               </p>
               <small className="source-note">
-                {t(
-                  locale,
-                  '工作台编辑不会反映在此缩略图；实际渲染与导出尚未接入。',
-                  'Workbench edits are not reflected in this thumbnail; actual rendering and export are not connected.',
-                )}
+                  {t(locale, '导出将读取当前文档场景。', 'Export reads the current document scene.')}
               </small>
             </div>
           </div>
@@ -845,8 +858,8 @@ const DeliveryPage = ({
                 )}
               </span>
             </div>
-            <Button variant="primary" icon="download" disabled>
-              {t(locale, '导出', 'Export')}
+            <Button variant="primary" icon="download" disabled={!project?.workspaceId || !project.documentId || exporting} onClick={() => { void exportCurrent(); }}>
+              {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
             </Button>
           </div>
         </div>
@@ -1212,6 +1225,7 @@ export const LibraryPages = ({
         navigate={navigate}
         onFormatChange={setDeliveryFormat}
         onArchiveCopyChange={setArchiveCopy}
+        notify={notify}
       />
     ),
     storage: (

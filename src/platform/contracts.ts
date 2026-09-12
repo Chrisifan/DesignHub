@@ -19,6 +19,15 @@ export type ConversationTaskInput = {
   message: string;
 };
 
+export type ExportDocumentInput = {
+  workspaceId: string;
+  projectId: string;
+  documentId: string;
+  format: 'png' | 'jpeg' | 'webp' | 'pdf';
+  scene: DesignScene;
+  background?: string;
+};
+
 export type WorkspaceCreateInput = {
   parentDirectory: string;
   name: string;
@@ -45,6 +54,7 @@ export type DesktopApi = {
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
   cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;
   retryTask?: (workspaceId: string, taskId: string) => Promise<TaskRecord | null>;
+  exportDocument?: (input: ExportDocumentInput) => Promise<{ path: string; sha256: string } | null>;
 };
 
 declare global {
