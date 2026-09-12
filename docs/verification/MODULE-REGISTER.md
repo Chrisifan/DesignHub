@@ -207,6 +207,8 @@
 
 2026-09-13：M08 检索启动顺序修复（变更 ID M08-20260913-13）。Projects 页面等待持久化索引重建完成后再查询，避免首次打开时查询竞态造成项目短暂消失。先新增 Studio Red，再 Green；focused Studio 1/1、lint、typecheck、diff check 通过。崩溃恢复与大工作区基准仍开放。
 
+2026-09-13：M01/M08 检索 IPC 输入校验（变更 ID M08-20260913-14）。重建通道拒绝 malformed records before storage invocation, preserving the trusted bridge contract. 先新增 search IPC Red，再 Green；focused 2/2、lint、typecheck 通过。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

@@ -29,6 +29,7 @@ it('rejects malformed and untrusted search requests', async () => {
   const search = vi.fn(async () => []);
   const untrustedEvent = { ...event, senderFrame: { url: 'file:///app/evil.html' } };
   await expect(rebuildSearchHandler(window as never, trustedUrl, () => workspace, rebuild)(event as never, { workspaceId: 'workspace-1', records: 'bad' })).resolves.toBe(false);
+  await expect(rebuildSearchHandler(window as never, trustedUrl, () => workspace, rebuild)(event as never, { workspaceId: 'workspace-1', records: [{}] })).resolves.toBe(false);
   await expect(searchQueryHandler(window as never, trustedUrl, () => workspace, search)(untrustedEvent as never, { workspaceId: 'workspace-1' })).resolves.toBeNull();
   expect(rebuild).not.toHaveBeenCalled();
   expect(search).not.toHaveBeenCalled();
