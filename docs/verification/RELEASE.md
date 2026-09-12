@@ -62,3 +62,5 @@ Browser preview tests are not evidence for the native gates above. No release ar
 
 - Delivery now exposes WebP, backed by the existing native export codec. Focused delivery/Library suites passed 39/39; color-profile fidelity and packaged codec verification remain open.
 - Delivery source selection now exports the explicitly finalized revision scene when requested, with a fail-closed error when the revision snapshot is unavailable. `LibraryPages` focused suite passed 22/22; full regression is required because this changes the M04 revision-to-M07 delivery boundary.
+
+- Post-M07 finalized-delivery regression: `pnpm test:unit` 84 files/303 tests, `pnpm test:integration` 23 files/100 tests, `pnpm test:e2e` 24/24, `pnpm test:native` 2 passed/1 skipped (packaged path not configured), `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff --check` all passed on 2026-09-13. The packaged macOS executable was not rerun in this pass because the existing artifact predates the renderer-only change; Windows, signing, keychain persistence, provider quality, and manual image QA remain external gates.
