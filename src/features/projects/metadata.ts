@@ -44,6 +44,7 @@ export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief
 };
 
 const clone = <T>(value: T): T => structuredClone(value);
+const documentIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u;
 
 const normalizeContributorIds = (activeDesignerVersionId: string | undefined, contributorDesignerVersionIds: string[] | undefined): string[] | undefined => {
   const contributors = [...new Set((contributorDesignerVersionIds ?? []).map((id) => id.trim()).filter(Boolean))];
@@ -53,9 +54,14 @@ const normalizeContributorIds = (activeDesignerVersionId: string | undefined, co
 };
 
 const validateDocument = (document: Omit<ProjectDocumentMetadata, 'updatedAt'>): void => {
-  if (!document.id || !document.name.trim() || !Number.isFinite(document.width) || !Number.isFinite(document.height) || document.width <= 0 || document.height <= 0) {
+  if (!documentIdPattern.test(document.id) || !document.name.trim() || !Number.isFinite(document.width) || !Number.isFinite(document.height) || document.width <= 0 || document.height <= 0) {
     throw new Error('INVALID_DOCUMENT');
   }
+};
+
+const validateDocumentList = (documents: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>): void => {
+  const ids = documents.map((document) => document.id);
+  if (new Set(ids).size !== ids.length) throw new Error('INVALID_DOCUMENT');
 };
 
 const normalizeDocument = (document: Omit<ProjectDocumentMetadata, 'updatedAt'>, updatedAt: string): ProjectDocumentMetadata => {
@@ -77,7 +83,11 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
     ...(normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) ? { contributorDesignerVersionIds: normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) } : {}),
     ...(input.designerSnapshot === undefined ? {} : { designerSnapshot: clone(input.designerSnapshot) }),
     ...(input.brandSnapshot === undefined ? {} : { brandSnapshot: clone(input.brandSnapshot) }),
-    documents: (input.documents ?? []).map((document) => normalizeDocument(document, updatedAt)),
+    documents: (() => {
+      const documents = input.documents ?? [];
+      validateDocumentList(documents);
+      return documents.map((document) => normalizeDocument(document, updatedAt));
+    })(),
     archived: input.archived ?? false,
     createdAt,
     updatedAt,
@@ -91,7 +101,10 @@ export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectM
   const updatedAt = new Date(Math.max(now, Number.isNaN(previous) ? now : previous + 1)).toISOString();
   const nextDocuments = patch.documents === undefined
     ? metadata.documents
-    : patch.documents.map((document) => normalizeDocument(document, updatedAt));
+    : (() => {
+      validateDocumentList(patch.documents!);
+      return patch.documents!.map((document) => normalizeDocument(document, updatedAt));
+    })();
   return {
     ...clone(metadata),
     ...(patch.name === undefined ? {} : { name: patch.name.trim() }),

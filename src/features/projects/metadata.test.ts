@@ -29,6 +29,16 @@ it('rejects an empty project name and invalid document dimensions', () => {
   expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documents: [{ id: 'doc-1', name: 'Poster', width: 0, height: 100 }] })).toThrow('INVALID_DOCUMENT');
 });
 
+it('rejects duplicate or path-like document identities', () => {
+  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documents: [
+    { id: 'doc-1', name: 'Poster', width: 100, height: 100 },
+    { id: 'doc-1', name: 'Square', width: 100, height: 100 },
+  ] })).toThrow('INVALID_DOCUMENT');
+  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documents: [
+    { id: '../outside', name: 'Poster', width: 100, height: 100 },
+  ] })).toThrow('INVALID_DOCUMENT');
+});
+
 it('keeps designer and brand snapshots immutable when updated', () => {
   const designer = { versionId: 'v1', name: '纸感排版', rules: ['保留留白'] };
   const brand = { version: 'v2', colors: ['#fff'] };
