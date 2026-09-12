@@ -36,9 +36,14 @@ const createNodeCodec = (): CodecAdapter => {
     const metadata = await inspect(bytes);
     const document = await PDFDocument.create();
     const page = document.addPage([metadata.width, metadata.height]);
+    const imageBytes = metadata.format === 'webp'
+      ? new Uint8Array(await sharp(Buffer.from(bytes)).flatten({ background: '#ffffff' }).jpeg().toBuffer())
+      : bytes;
     const image = metadata.format === 'png'
       ? await document.embedPng(bytes)
-      : await document.embedJpg(bytes);
+      : metadata.format === 'jpeg'
+        ? await document.embedJpg(bytes)
+        : await document.embedJpg(imageBytes);
     page.drawImage(image, { x: 0, y: 0, width: metadata.width, height: metadata.height });
     return new Uint8Array(await document.save());
   };

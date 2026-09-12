@@ -47,3 +47,12 @@ it('generates a standard PDF page from a real PNG', async () => {
   expect(page.getWidth()).toBe(3);
   expect(page.getHeight()).toBe(2);
 });
+
+it('generates a standard PDF page from a real WebP', async () => {
+  const codec = createNodeCodec();
+  const source = await transparentPng();
+  const webp = await codec.encode(source, { format: 'webp' });
+  const pdf = await codec.toPdf(webp);
+  const document = await PDFDocument.load(pdf);
+  expect(document.getPageCount()).toBe(1);
+});
