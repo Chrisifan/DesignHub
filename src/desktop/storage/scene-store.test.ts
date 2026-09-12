@@ -60,6 +60,7 @@ it('does not expose malformed scenes and refuses writes in read-only or invalid 
   const path = join(workspace.workspace.directory, 'projects', projectId, 'documents', sceneFileName('doc-1'));
   await writeFile(path, '{bad json', 'utf8');
   await expect(loadDocumentScene(workspace, workspace.workspace.workspaceId, projectId, 'doc-1')).resolves.toBeNull();
+  expect(() => sceneFileName('../escape')).toThrow('INVALID_DOCUMENT_ID');
   await expect(saveDocumentScene(workspace, workspace.workspace.workspaceId, projectId, '../escape', scene)).rejects.toThrow('INVALID_DOCUMENT_ID');
   await expect(loadDocumentScene(workspace, workspace.workspace.workspaceId, '00000000-0000-4000-8000-000000000000', 'doc-1')).resolves.toBeNull();
 

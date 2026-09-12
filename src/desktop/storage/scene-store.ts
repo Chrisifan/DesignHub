@@ -11,12 +11,12 @@ import { resolveProjectDirectory } from './project-store';
 const documentIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u;
 const documentsDirectoryName = 'documents';
 
-export const sceneFileName = (documentId: string): string => `${documentId}.scene.json`;
-
 const validateDocumentId = (documentId: string): string => {
   if (!documentIdPattern.test(documentId)) throw new Error('INVALID_DOCUMENT_ID');
   return documentId;
 };
+
+export const sceneFileName = (documentId: string): string => `${validateDocumentId(documentId)}.scene.json`;
 
 const getProjectDirectory = (handle: WorkspaceHandle, workspaceId: string, projectId: string, writable: boolean): string => {
   if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');

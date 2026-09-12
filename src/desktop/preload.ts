@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopApi } from '../platform/contracts';
 import { credentialDeleteChannel, credentialStoreChannel } from './ipc/credentials';
 import { designerLoadChannel, designerSaveChannel } from './ipc/designers';
+import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/assets';
+import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -14,6 +16,11 @@ const api: DesktopApi = {
   updateProjectMetadata: (input) => ipcRenderer.invoke('project:update-metadata', input),
   loadDesignerState: (workspaceId) => ipcRenderer.invoke(designerLoadChannel, workspaceId),
   saveDesignerState: (workspaceId, state) => ipcRenderer.invoke(designerSaveChannel, { workspaceId, state }),
+  listAssets: (input) => ipcRenderer.invoke(assetListChannel, input),
+  importAssets: (input) => ipcRenderer.invoke(assetImportChannel, input),
+  readAsset: (input) => ipcRenderer.invoke(assetReadChannel, input),
+  loadDocumentScene: (workspaceId, projectId, documentId) => ipcRenderer.invoke(sceneLoadChannel, { workspaceId, projectId, documentId }),
+  saveDocumentScene: (input) => ipcRenderer.invoke(sceneSaveChannel, input),
   storeCredential: (connectionId, secret) => ipcRenderer.invoke(credentialStoreChannel, connectionId, secret),
   deleteCredential: (connectionId) => ipcRenderer.invoke(credentialDeleteChannel, connectionId),
 };

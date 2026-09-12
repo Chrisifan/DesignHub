@@ -10,6 +10,11 @@ const unavailableDesktopApi: DesktopApi = {
   updateProjectMetadata: async () => null,
   loadDesignerState: async () => null,
   saveDesignerState: async () => false,
+  listAssets: async () => null,
+  importAssets: async () => null,
+  readAsset: async () => null,
+  loadDocumentScene: async () => null,
+  saveDocumentScene: async () => false,
   storeCredential: async () => false,
   deleteCredential: async () => false,
 };

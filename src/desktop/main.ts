@@ -21,7 +21,11 @@ import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore } from './storage/project-store';
 import { createProjectContainerHandler, getProjectMetadataHandler, listActiveProjectsHandler, projectCreateChannel, projectListChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, updateProjectMetadataHandler } from './ipc/projects';
 import { designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, saveDesignerStateHandler } from './ipc/designers';
+import { assetImportChannel, assetListChannel, assetReadChannel, importAssetsHandler, listAssetsHandler, readAssetHandler } from './ipc/assets';
+import { createAssetStore } from './storage/asset-store';
 import { loadDesignerState, saveDesignerState } from './storage/designer-store';
+import { loadDocumentScene, saveDocumentScene } from './storage/scene-store';
+import { loadDocumentSceneHandler, saveDocumentSceneHandler, sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
 import { runStorageSmoke } from './storage/storage-smoke';
 import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
@@ -122,6 +126,18 @@ app.whenReady().then(() => {
   ipcMain.handle(designerSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return saveDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, state) => saveDesignerState(workspace, workspace.workspace.workspaceId, state))(event, input);
+  });
+  ipcMain.handle(assetListChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return listAssetsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, assetInput) => createAssetStore(workspace).listAssets(assetInput))(event, input);
+  });
+  ipcMain.handle(assetImportChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return importAssetsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, assetInput) => createAssetStore(workspace).importAssets(assetInput))(event, input);
+  });
+  ipcMain.handle(assetReadChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return readAssetHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, assetInput) => createAssetStore(workspace).readAsset(assetInput))(event, input);
   });
   ipcMain.handle(sceneLoadChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
