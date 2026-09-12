@@ -348,6 +348,77 @@ it("polls a running portfolio task until completed candidates are available", as
   }
 });
 
+it("submits a description analysis task and reviews completed candidates in a workspace", async () => {
+  const candidate = {
+    id: "description-candidate-1",
+    name: { zh: "描述候选", en: "Description candidate" },
+    signature: { zh: "风格草稿", en: "Style draft" },
+    summary: { zh: "克制排版", en: "Restrained type" },
+    principle: { zh: "保留呼吸感", en: "Keep breathing room" },
+    personaCode: "DESCRIPTION-1",
+    version: "v0.1",
+    status: "draft",
+    artworkUrl: "",
+    artworkAlt: { zh: "候选", en: "Candidate" },
+    tags: [],
+    referenceCount: 0,
+    styleDna: {
+      palette: [],
+      typography: { zh: "", en: "" },
+      composition: { zh: "", en: "" },
+      texture: { zh: "", en: "" },
+    },
+    negativeRules: [],
+    portfolioSheets: [],
+  };
+  const submitConversation = vi.fn(async () => ({
+    id: "task-description",
+    requestId: "request-description",
+    state: "running" as const,
+    cancelRequested: false,
+    attempt: 1,
+  }));
+  const listTasks = vi.fn(async () => [
+    {
+      id: "task-description",
+      requestId: "request-description",
+      state: "completed" as const,
+      cancelRequested: false,
+      attempt: 1,
+      source: { kind: "designer-draft" as const, id: "designer-draft-description" },
+      result: { text: JSON.stringify({ candidates: [candidate] }) },
+    },
+  ]);
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    submitConversation,
+    listTasks,
+  };
+  render(
+    <DesignerLibrary
+      locale="zh-CN"
+      notify={vi.fn()}
+      workspaceId="workspace-description"
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
+    target: { value: "克制、纸张和清晰层级" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "生成" }));
+  const candidateButton = await screen.findByRole("button", {
+    name: /描述候选/,
+  });
+  expect(submitConversation).toHaveBeenCalledWith(
+    expect.objectContaining({
+      workspaceId: "workspace-description",
+      source: expect.objectContaining({ kind: "designer-draft" }),
+      message: expect.stringContaining("克制、纸张和清晰层级"),
+    }),
+  );
+  expect(candidateButton).toBeInTheDocument();
+});
+
 it("presents three example candidates and marks preview publish as session-only", () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "创建" }));

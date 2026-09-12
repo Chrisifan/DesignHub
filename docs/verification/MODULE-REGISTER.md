@@ -132,6 +132,8 @@
 
 2026-09-13：macOS packaged native 回归（变更 ID REL-20260913-02）。使用现有 `out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub` 设置 `DESIGNHUB_PACKAGED_APP_PATH` 执行 `pnpm test:native`，source smoke、main storage 与 packaged storage 共 3/3 通过；Windows、签名/公证、升级卸载与钥匙串持久化仍开放。
 
+2026-09-13：M03 描述建师任务闭环（变更 ID M03-20260913-02）。工作区内按描述创建设计师时提交 `designer-draft` 任务，消息包含风格说明与创作原则；完成任务解析为候选，运行中复用 500ms/12 次有界轮询，失败或不可用不展示伪造候选；无工作区示例仍保持离线预览。先新增描述路径 Red 回归，再 Green；`DesignerLibrary` focused 16/16、lint、typecheck、diff check 通过。真实 provider、授权来源传输、人物位图和跨平台图像质量仍开放。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

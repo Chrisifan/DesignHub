@@ -133,7 +133,7 @@ export const DesignerLibrary = ({
   const [candidateProfiles, setCandidateProfiles] = useState<PersonaProfile[]>(
     [],
   );
-  const [portfolioTaskId, setPortfolioTaskId] = useState<string>();
+  const [analysisTaskId, setAnalysisTaskId] = useState<string>();
   const [publishedInSession, setPublishedInSession] = useState(false);
   const [creationError, setCreationError] = useState("");
   const [newDraft, setNewDraft] = useState<DesignerDraft>(emptyDraft);
@@ -237,7 +237,7 @@ export const DesignerLibrary = ({
     setPortfolioSources("");
     setSelectedCandidateId(undefined);
     setCandidateProfiles([]);
-    setPortfolioTaskId(undefined);
+    setAnalysisTaskId(undefined);
     setPublishedInSession(false);
     setCreationError("");
     setEditor({ mode: "new" });
@@ -366,7 +366,7 @@ export const DesignerLibrary = ({
     }
     setCreationError("");
     setCandidateProfiles([]);
-    setPortfolioTaskId(undefined);
+    setAnalysisTaskId(undefined);
     setCandidatePhase("review");
     if (creationSource === "portfolio" && !workspaceId) {
       setCandidatePhase("form");
@@ -379,14 +379,18 @@ export const DesignerLibrary = ({
       );
       return;
     }
-    if (creationSource === "portfolio" && workspaceId) {
+    if (workspaceId) {
       const draftId = `designer-${crypto.randomUUID()}`;
       const api = getDesktopApi();
+      const message =
+        creationSource === "portfolio"
+          ? `Analyse this portfolio for a designer persona:\n${portfolioSources.trim()}`
+          : `Create a designer persona from this style description.\nStyle summary: ${activeDraft.summary.trim()}\nCreative principle: ${activeDraft.principle.trim()}`;
       const request = api.submitConversation?.({
         workspaceId,
         source: { kind: "designer-draft", id: draftId },
         connectionId: "openai-compatible",
-        message: `Analyse this portfolio for a designer persona:\n${portfolioSources.trim()}`,
+        message,
       });
       if (!request) {
         setCandidatePhase("form");
@@ -418,12 +422,16 @@ export const DesignerLibrary = ({
             return;
           }
           if (completed?.state === "failed") throw new Error("ANALYSIS_FAILED");
-          setPortfolioTaskId(task.id);
+          setAnalysisTaskId(task.id);
           setCreationError(
             t(
               locale,
-              "作品集分析任务仍在处理中，请稍后重试查看。",
-              "Portfolio analysis is still running; check again shortly.",
+              creationSource === "portfolio"
+                ? "作品集分析任务仍在处理中，请稍后重试查看。"
+                : "风格描述任务仍在处理中，请稍后重试查看。",
+              creationSource === "portfolio"
+                ? "Portfolio analysis is still running; check again shortly."
+                : "Style description analysis is still running; check again shortly.",
             ),
           );
         })
@@ -440,7 +448,7 @@ export const DesignerLibrary = ({
     }
   };
   useEffect(() => {
-    if (!portfolioTaskId || !workspaceId || !editor) return;
+    if (!analysisTaskId || !workspaceId || !editor) return;
     let cancelled = false;
     let attempts = 0;
     let timer: number | undefined;
@@ -452,21 +460,21 @@ export const DesignerLibrary = ({
         if (!listTasks) throw new Error("TASK_LIST_UNAVAILABLE");
         const tasks = (await listTasks(workspaceId)) ?? [];
         if (cancelled) return;
-        const task = tasks.find((item) => item.id === portfolioTaskId);
+        const task = tasks.find((item) => item.id === analysisTaskId);
         if (task?.state === "completed" && task.result?.text) {
           setCandidateProfiles(parsePortfolioCandidates(task.result.text));
-          setPortfolioTaskId(undefined);
+          setAnalysisTaskId(undefined);
           setCreationError("");
           return;
         }
         if (task?.state === "failed" || attempts >= 12) {
-          setPortfolioTaskId(undefined);
+          setAnalysisTaskId(undefined);
           setCandidateProfiles([]);
           setCreationError(
             t(
               locale,
-              "作品集分析失败，未生成候选。",
-              "Portfolio analysis failed; no candidates were generated.",
+              "分析失败，未生成候选。",
+              "Analysis failed; no candidates were generated.",
             ),
           );
           return;
@@ -476,13 +484,13 @@ export const DesignerLibrary = ({
         }, 500);
       } catch {
         if (cancelled) return;
-        setPortfolioTaskId(undefined);
+        setAnalysisTaskId(undefined);
         setCandidateProfiles([]);
         setCreationError(
           t(
             locale,
-            "作品集分析失败，未生成候选。",
-            "Portfolio analysis failed; no candidates were generated.",
+            "分析失败，未生成候选。",
+            "Analysis failed; no candidates were generated.",
           ),
         );
       }
@@ -494,7 +502,7 @@ export const DesignerLibrary = ({
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [editor, locale, portfolioTaskId, workspaceId]);
+  }, [analysisTaskId, editor, locale, workspaceId]);
   const publishPreview = () => {
     if (!selectedCandidateId) {
       setCreationError(
@@ -686,6 +694,7 @@ export const DesignerLibrary = ({
           source={creationSource}
           candidates={candidateProfiles}
           candidatePhase={candidatePhase}
+          allowExampleCandidates={Boolean(!workspaceId)}
           rightsConfirmed={rightsConfirmed}
           portfolioSources={portfolioSources}
           selectedCandidateId={selectedCandidateId}
@@ -714,6 +723,7 @@ const DesignerEditorModal = ({
   source,
   candidates,
   candidatePhase,
+  allowExampleCandidates,
   rightsConfirmed,
   portfolioSources,
   selectedCandidateId,
@@ -736,6 +746,7 @@ const DesignerEditorModal = ({
   source: "description" | "portfolio";
   candidates: PersonaProfile[];
   candidatePhase: "form" | "review";
+  allowExampleCandidates: boolean;
   rightsConfirmed: boolean;
   portfolioSources: string;
   selectedCandidateId?: string;
@@ -803,7 +814,7 @@ const DesignerEditorModal = ({
         <CandidateReview
           locale={locale}
           candidates={candidates}
-          allowExamples={source === "description"}
+          allowExamples={source === "description" && allowExampleCandidates}
           selectedCandidateId={selectedCandidateId}
           publishedInSession={publishedInSession}
           error={error}
