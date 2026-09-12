@@ -55,8 +55,13 @@ type DesignerLibraryProps = {
 };
 
 const mergeProfiles = (persisted: PersonaProfile[] | undefined): PersonaProfile[] => {
+  const persistedById = new Map((persisted ?? []).map((profile) => [profile.id, profile]));
+  const builtins = personaProfiles.map((builtin) => {
+    const stored = persistedById.get(builtin.id);
+    return stored && stored.status === 'archived' ? { ...builtin, status: 'archived' as const } : builtin;
+  });
   const custom = (persisted ?? []).filter((profile) => !personaProfiles.some((builtin) => builtin.id === profile.id));
-  return [...personaProfiles, ...custom];
+  return [...builtins, ...custom];
 };
 
 export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, readOnly = false }: DesignerLibraryProps) => {
@@ -76,9 +81,14 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
   const [creationError, setCreationError] = useState('');
   const [newDraft, setNewDraft] = useState<DesignerDraft>(emptyDraft);
   const [editDrafts, setEditDrafts] = useState<Record<string, DesignerDraft>>({});
+  const [loading, setLoading] = useState(Boolean(workspaceId));
+  const [loadFailed, setLoadFailed] = useState(false);
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
     let cancelled = false;
     isHydrating.current = Boolean(workspaceId);
+    setLoading(Boolean(workspaceId));
+    setLoadFailed(false);
     const hydrate = async () => {
       if (!workspaceId) {
         if (!cancelled) {
@@ -95,7 +105,11 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
       try {
         next = await getDesktopApi().loadDesignerState?.(workspaceId) ?? null;
       } catch {
-        next = null;
+        if (!cancelled) {
+          setLoadFailed(true);
+          setLoading(false);
+        }
+        return;
       }
       if (cancelled) return;
       const nextProfiles = mergeProfiles(next?.profiles);
@@ -106,6 +120,7 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
       setNewDraft(next?.drafts?.newDraft ? { ...emptyDraft, ...next.drafts.newDraft } : emptyDraft);
       setEditDrafts(Object.fromEntries(Object.entries(next?.drafts?.editDrafts ?? {}).map(([id, draft]) => [id, { ...emptyDraft, ...draft }])));
       isHydrating.current = false;
+      setLoading(false);
     };
     void hydrate();
     return () => { cancelled = true; };
@@ -121,7 +136,7 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
       },
     };
     const request = getDesktopApi().saveDesignerState?.(workspaceId, state);
-    if (request) void request.catch(() => undefined);
+    if (request) saveQueue.current = saveQueue.current.catch(() => undefined).then(() => request.catch(() => undefined));
   }, [defaultId, editDrafts, newDraft, profiles, readOnly, workspaceId]);
   const selected = profiles.find((profile) => profile.id === selectedId);
   const activeDraft = editor?.mode === 'edit' ? editDrafts[editor.profileId] ?? (selected ? profileToDraft(selected, locale) : emptyDraft) : newDraft;
@@ -130,7 +145,7 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
     else setNewDraft(draft);
   };
   const openCreate = () => {
-    if (readOnly) return;
+    if (readOnly || loading || loadFailed) return;
     setCreationSource('description');
     setCandidatePhase('form');
     setRightsConfirmed(false);
@@ -141,7 +156,7 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
     setEditor({ mode: 'new' });
   };
   const openEdit = () => {
-    if (readOnly) return;
+    if (readOnly || loading || loadFailed) return;
     if (!selected) return;
     setEditDrafts((previous) => previous[selected.id] ? previous : { ...previous, [selected.id]: profileToDraft(selected, locale) });
     setEditor({ mode: 'edit', profileId: selected.id });
@@ -154,6 +169,12 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
     if (editor?.mode === 'edit') {
       const edited = profiles.find((profile) => profile.id === editor.profileId);
       if (!edited) return;
+      if (edited.status === 'built-in') {
+        setEditDrafts((previous) => ({ ...previous, [edited.id]: activeDraft }));
+        setEditor(null);
+        notify(t(locale, '已保留为草稿', 'Kept as a draft'));
+        return;
+      }
       const nextProfile: PersonaProfile = { ...edited, id: edited.status === 'published' ? `custom-${crypto.randomUUID()}` : edited.id, name: localized(activeDraft.name), signature: localized(activeDraft.signature), summary: localized(activeDraft.summary), principle: localized(activeDraft.principle), personaCode: activeDraft.personaCode, version: activeDraft.version, status: edited.status === 'published' ? 'draft' : edited.status, tags, styleDna: { palette, typography: localized(activeDraft.typography), composition: localized(activeDraft.composition), texture: localized(activeDraft.texture) }, negativeRules };
       setProfiles((previous) => edited.status === 'published' ? [nextProfile, ...previous] : previous.map((profile) => profile.id === editor.profileId ? nextProfile : profile));
       if (edited.status === 'published') setSelectedId(nextProfile.id);
@@ -185,7 +206,7 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
     notify(t(locale, '已在本次示例会话中发布，不会写入磁盘。', 'Published in this example session only; nothing was written to disk.'));
   };
   const deleteSelected = () => {
-    if (readOnly) return;
+    if (readOnly || loading || loadFailed) return;
     if (!selected || selected.status === 'built-in') return;
     if (selected.referenceCount > 0) {
       setProfiles((previous) => previous.map((profile) => profile.id === selected.id ? { ...profile, status: 'archived' } : profile));
@@ -197,7 +218,7 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
     notify(t(locale, '档案已移除', 'Profile removed'));
   };
   const duplicateSelected = () => {
-    if (readOnly) return;
+    if (readOnly || loading || loadFailed) return;
     if (!selected) return;
     const id = `derived-${crypto.randomUUID()}`;
     const profile: PersonaProfile = { ...selected, id, name: localized(`${localize(locale, selected.name)} ${t(locale, '派生版', 'Derived')}`), status: 'draft', version: 'v0.1', referenceCount: 0, artworkUrl: `/personas/${id}.png`, artworkAlt: localized(`${localize(locale, selected.name)} ${t(locale, '派生版', 'Derived')}`) };
@@ -209,8 +230,8 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
     <section className="page-content library-page designer-library-page">
       <PageHeader title={t(locale, '设计师', 'Designers')} eyebrow={t(locale, '创作档案', 'Creative profiles')} description={t(locale, '管理设计风格、人物形象与创作规则。', 'Manage style, character artwork and creative rules.')} />
       <div className="library-split library-split--designer">
-        <PersonaRepository locale={locale} profiles={profiles} selectedId={selectedId} query={query} statusFilter={statusFilter} defaultId={defaultId} onQueryChange={setQuery} onStatusFilterChange={setStatusFilter} onSelect={setSelectedId} onCreate={readOnly ? undefined : openCreate} />
-        <PersonaInspector locale={locale} profile={selected} isDefault={selectedId === defaultId} readOnly={readOnly} onEdit={openEdit} onDelete={deleteSelected} onDuplicate={duplicateSelected} onSetDefault={() => { if (readOnly) return; setDefaultId(selectedId); notify(t(locale, '已设为会话默认', 'Set as session default')); }} onUseForNew={() => { if (onUseForNew && selected) onUseForNew(selected.id); else notify(t(locale, '请从项目库新建', 'Start a new design from Projects')); }} />
+        <PersonaRepository locale={locale} profiles={profiles} selectedId={selectedId} query={query} statusFilter={statusFilter} defaultId={defaultId} onQueryChange={setQuery} onStatusFilterChange={setStatusFilter} onSelect={setSelectedId} onCreate={readOnly || loading || loadFailed ? undefined : openCreate} />
+        <PersonaInspector locale={locale} profile={selected} isDefault={selectedId === defaultId} readOnly={readOnly || loading || loadFailed} onEdit={openEdit} onDelete={deleteSelected} onDuplicate={duplicateSelected} onSetDefault={() => { if (readOnly || loading || loadFailed) return; setDefaultId(selectedId); notify(t(locale, '已设为会话默认', 'Set as session default')); }} onUseForNew={() => { if (onUseForNew && selected) onUseForNew(selected.id); else notify(t(locale, '请从项目库新建', 'Start a new design from Projects')); }} />
       </div>
       <p className="page-footnote"><Icon name="circle-help" size={14} />{readOnly ? t(locale, '当前工作区只读，设计师档案不可修改。', 'This workspace is read-only; designer profiles cannot be changed.') : t(locale, '人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。', 'When character bitmaps are unavailable, profiles and drafts are saved to the current workspace.')}</p>
       {editor && <DesignerEditorModal locale={locale} draft={activeDraft} mode={editor.mode} source={creationSource} candidatePhase={candidatePhase} rightsConfirmed={rightsConfirmed} portfolioSources={portfolioSources} selectedCandidateId={selectedCandidateId} publishedInSession={publishedInSession} error={creationError} onSourceChange={setCreationSource} onRightsConfirmed={setRightsConfirmed} onPortfolioSourcesChange={setPortfolioSources} onCandidatePhaseChange={setCandidatePhase} onCandidateSelect={setSelectedCandidateId} onRequestCandidates={requestCandidates} onPublish={publishPreview} onDraftChange={setActiveDraft} onClose={() => setEditor(null)} onSubmit={saveDraft} />}

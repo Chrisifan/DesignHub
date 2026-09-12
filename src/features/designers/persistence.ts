@@ -19,6 +19,14 @@ const isLocalizedText = (value: unknown): boolean => isRecord(value)
   && typeof value.zh === 'string'
   && typeof value.en === 'string';
 
+const isArtwork = (value: unknown): boolean => value === 'market' || value === 'objects' || value === 'type' || value === 'blank';
+
+const isPortfolioSheet = (value: unknown): boolean => isRecord(value)
+  && typeof value.id === 'string'
+  && isArtwork(value.artwork)
+  && isLocalizedText(value.title)
+  && isLocalizedText(value.note);
+
 const isPersonaProfile = (value: unknown): value is PersonaProfile => {
   if (!isRecord(value)) return false;
   const status = value.status;
@@ -46,7 +54,8 @@ const isPersonaProfile = (value: unknown): value is PersonaProfile => {
     && isLocalizedText(styleDna.texture)
     && Array.isArray(value.negativeRules)
     && value.negativeRules.every((rule) => isLocalizedText(rule))
-    && Array.isArray(value.portfolioSheets);
+    && Array.isArray(value.portfolioSheets)
+    && value.portfolioSheets.every((sheet) => isPortfolioSheet(sheet));
 };
 
 const isDraftState = (value: unknown): value is DesignerDraftState => isRecord(value)
