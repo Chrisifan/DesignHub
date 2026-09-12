@@ -73,7 +73,7 @@ type DeliveryFormat = 'png' | 'jpeg' | 'pdf';
 type StorageTab = 'trash' | 'backup';
 
 const availableConnections: readonly ProviderConnection[] = [
-  { id: 'openai-compatible', label: 'OpenAI compatible', status: 'not-configured', capabilities: ['conversation', 'image-generation', 'image-editing'] },
+  { id: 'openai-compatible', label: 'OpenAI compatible', status: 'not-configured', capabilities: ['conversation', 'vision-analysis', 'image-generation', 'image-editing'] },
 ];
 
 const assets: AssetItem[] = [
@@ -648,6 +648,7 @@ const ConnectionsPage = ({
         </div>
         {[
           ['message-square', t(locale, '对话', 'Conversation')],
+          ['eye', t(locale, '视觉分析', 'Vision analysis')],
           ['image', t(locale, '图像生成', 'Image generation')],
           ['wand-sparkles', t(locale, '图像编辑', 'Image editing')],
         ].map(([icon, label]) => (

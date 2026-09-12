@@ -1,5 +1,6 @@
 export const providerCapabilities = [
   'conversation',
+  'vision-analysis',
   'image-generation',
   'image-editing',
 ] as const;
