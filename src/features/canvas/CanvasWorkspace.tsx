@@ -76,7 +76,13 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     const request = getDesktopApi().loadDocumentScene?.(workspaceId, projectId, documentId);
     if (!request) return undefined;
     void request.then((stored) => {
-      if (!cancelled && stored) onSceneChange?.(stored);
+      if (cancelled) return;
+      if (stored) {
+        onSceneChange?.(stored);
+        return;
+      }
+      const save = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId, documentId, scene });
+      if (save) void save.catch(() => undefined);
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [documentId, onSceneChange, projectId, workspaceId]);

@@ -44,3 +44,13 @@ it('saves inspector scene changes through the desktop bridge', async () => {
     scene: expect.objectContaining({ layers: [expect.objectContaining({ id: 'text-1', x: 42 })] }),
   })));
 });
+
+it('persists the initial scene when a workspace document has no stored scene', async () => {
+  const loadDocumentScene = vi.fn(async () => null);
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, saveDocumentScene };
+  render(<CanvasWorkspace locale="zh-CN" scene={initial} workspaceId="workspace-1" projectId="project-1" documentId="doc-1" />);
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'doc-1', scene: initial,
+  })));
+});
