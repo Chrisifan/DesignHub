@@ -1,0 +1,87 @@
+import { useMemo, useState } from 'react';
+import { Ellipse, Layer, Line, Rect, Stage, Text } from 'react-konva';
+
+import { getMessages, type Locale } from '../../app/i18n';
+import { Button } from '../../app/studio/ui';
+import { Inspector } from './Inspector';
+import { LayerList } from './LayerList';
+import {
+  fitViewport,
+  isLayerInteractive,
+  moveLayer,
+  replaceSceneLayer,
+  resizeLayer,
+  selectLayerIds,
+  type DesignScene,
+  type SceneLayer,
+  type ViewportState,
+} from './scene';
+
+export type CanvasWorkspaceProps = {
+  locale: Locale;
+  scene: DesignScene;
+  onSceneChange?: (scene: DesignScene) => void;
+};
+
+const initialViewport: ViewportState = { zoom: 1, offsetX: 0, offsetY: 0 };
+
+const stageDimensions = { width: 900, height: 620 };
+
+const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void, onMove: (next: SceneLayer) => void) => {
+  const common = {
+    key: layer.id,
+    x: layer.x,
+    y: layer.y,
+    width: layer.width,
+    height: layer.height,
+    rotation: layer.rotation,
+    opacity: layer.opacity,
+    visible: layer.visible,
+    draggable: isLayerInteractive(layer),
+    onClick: onSelect,
+    onTap: onSelect,
+    onDragEnd: (event: { target: { x: () => number; y: () => number } }) => onMove(moveLayer(layer, { x: event.target.x(), y: event.target.y() })),
+    stroke: selected ? '#2f7cf6' : layer.type === 'shape' ? layer.stroke : '#6f7682',
+    strokeWidth: selected ? 2 : layer.type === 'shape' ? layer.strokeWidth : 1,
+  };
+  if (layer.type === 'text') return <Text {...common} text={layer.text} fontFamily={layer.fontFamily} fontSize={layer.fontSize} fontStyle={layer.fontWeight} align={layer.align} fill={layer.color} />;
+  if (layer.type === 'shape' && layer.kind === 'ellipse') return <Ellipse {...common} radiusX={layer.width / 2} radiusY={layer.height / 2} x={layer.x + layer.width / 2} y={layer.y + layer.height / 2} fill={layer.fill} />;
+  if (layer.type === 'shape' && layer.kind === 'line') return <Line {...common} points={[0, 0, layer.width, layer.height]} stroke={selected ? '#2f7cf6' : layer.stroke} />;
+  return <Rect {...common} fill={layer.type === 'shape' ? layer.fill : '#d7dce5'} dash={layer.type === 'image' ? [8, 6] : undefined} />;
+};
+
+export const CanvasWorkspace = ({ locale, scene, onSceneChange }: CanvasWorkspaceProps) => {
+  const messages = getMessages(locale);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [viewport, setViewport] = useState<ViewportState>(initialViewport);
+  const selectedLayer = useMemo(() => scene.layers.find((layer) => layer.id === selectedIds[0]), [scene.layers, selectedIds]);
+  const select = (ids: string[]) => setSelectedIds(selectLayerIds(scene, ids));
+  const replace = (layer: SceneLayer) => onSceneChange?.(replaceSceneLayer(scene, layer));
+  const updateLayer = (layer: SceneLayer) => {
+    const next = layer.width > 0 && layer.height > 0 ? layer : resizeLayer(layer, { width: Math.max(1, layer.width), height: Math.max(1, layer.height) });
+    replace(next);
+  };
+  return (
+    <section className="canvas-workspace" aria-label={messages.canvasTitle}>
+      <header>
+        <h1>{messages.canvasTitle}</h1>
+        <div>
+          <Button icon="maximize-2" onClick={() => setViewport(fitViewport(scene, stageDimensions))}>{messages.canvasFit}</Button>
+          <Button icon="scan" onClick={() => setViewport(initialViewport)}>{messages.canvasReset}</Button>
+        </div>
+      </header>
+      <div className="canvas-workspace__body">
+        <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} />
+        <div className="canvas-workspace__stage" style={{ overflow: 'auto' }}>
+          <Stage width={stageDimensions.width} height={stageDimensions.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
+            <Layer>
+              <Rect x={0} y={0} width={scene.width} height={scene.height} fill="#ffffff" listening={false} />
+              {scene.layers.map((layer) => renderLayer(layer, selectedIds.includes(layer.id), () => select([layer.id]), updateLayer))}
+            </Layer>
+          </Stage>
+        </div>
+        <Inspector locale={locale} layer={selectedLayer} onChange={updateLayer} />
+      </div>
+    </section>
+  );
+};
