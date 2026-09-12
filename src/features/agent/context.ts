@@ -2,7 +2,6 @@ export type ContextAsset = {
   id: string;
   projectId: string;
 };
-
 export const selectContextAssets = (
   assets: ContextAsset[],
   projectId: string,
@@ -17,4 +16,3 @@ export const selectContextAssets = (
     .map((asset) => asset.id)
     .filter((id, index, ids) => ids.indexOf(id) === index);
 };
-

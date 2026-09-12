@@ -17,7 +17,6 @@ it('exposes only the M04, M05, and M07 tool contracts', () => {
     reason: 'TOOL_NOT_ALLOWED',
   });
 });
-
 it('requires a project target and object parameters for an allowed tool', () => {
   expect(validateAgentToolRequest({ tool: 'inspect-scene', target: {}, params: {} })).toEqual({
     ok: false,
@@ -37,4 +36,3 @@ it('rejects target identifiers that attempt to escape the project boundary', () 
     params: { operation: 'resize' },
   })).toEqual({ ok: false, reason: 'INVALID_TARGET' });
 });
-

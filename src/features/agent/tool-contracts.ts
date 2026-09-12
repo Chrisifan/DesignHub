@@ -12,7 +12,6 @@ export type AgentToolRequest = {
   target: Record<string, unknown>;
   params: unknown;
 };
-
 export type AgentToolValidation =
   | { ok: true }
   | { ok: false; reason: 'TOOL_NOT_ALLOWED' | 'TARGET_REQUIRED' | 'INVALID_TARGET' | 'PARAMS_REQUIRED' | 'UNSAFE_PARAMS' };
@@ -42,4 +41,3 @@ export const validateAgentToolRequest = (request: AgentToolRequest): AgentToolVa
   if (hasUnsafeKey(request.params)) return { ok: false, reason: 'UNSAFE_PARAMS' };
   return { ok: true };
 };
-

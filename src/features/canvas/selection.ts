@@ -17,4 +17,3 @@ export const normalizeRegion = (start: { x: number; y: number }, end: { x: numbe
   width: Math.abs(end.x - start.x),
   height: Math.abs(end.y - start.y),
 });
-

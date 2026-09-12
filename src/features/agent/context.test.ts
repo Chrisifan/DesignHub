@@ -8,7 +8,6 @@ it('does not implicitly read another project in the workspace', () => {
   expect(selectContextAssets(assets, 'p1', ['a', 'b'], [])).toEqual(['a']);
   expect(selectContextAssets(assets, 'p1', [], ['b'])).toEqual(['b']);
 });
-
 it('does not upload unrequested project assets', () => {
   const assets = [
     { id: 'a', projectId: 'p1' },
@@ -19,4 +18,3 @@ it('does not upload unrequested project assets', () => {
   expect(selectContextAssets(assets, 'p1', [], [])).toEqual([]);
   expect(selectContextAssets(assets, 'p1', ['a'], [])).toEqual(['a']);
 });
-
