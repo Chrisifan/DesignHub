@@ -51,6 +51,17 @@ it('exposes the design canvas and routes project and export actions', () => {
   expect(props.onExport).toHaveBeenCalledOnce();
 });
 
+it('bootstraps an empty document with its persisted dimensions', () => {
+  const sizedProject: Project = {
+    ...project,
+    documentEntries: [{ id: 'square-doc', name: '方图', width: 1080, height: 1080 }],
+  };
+  render(<Workbench {...makeProps({ project: sizedProject, documentId: 'square-doc' })} />);
+  expect(screen.getByText('1080 × 1080 px')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  expect(screen.getByRole('spinbutton', { name: '高度' })).toHaveValue(1080);
+});
+
 it('makes layer visibility and text properties observable on the example preview', () => {
   render(<Workbench {...makeProps()} />);
   const canvas = screen.getByRole('region', { name: '设计画布' });

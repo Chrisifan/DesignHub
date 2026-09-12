@@ -146,6 +146,8 @@
 
 2026-09-13：M04 素材拖放与剪贴板导入（变更 ID M04-20260913-03）。工作区素材主区域新增拖放和剪贴板图像导入，统一走受管 `asset:import` bridge；无名剪贴板图像生成 `clipboard.<ext>` 名称，示例/只读仍不写入。先新增 LibraryPages Red，再 Green；focused 24/24、lint、typecheck、diff check 通过。原生拖放、解码质量、Windows 与大图性能仍开放。
 
+2026-09-13：M05 多文档尺寸场景初始化（变更 ID M05-20260913-02）。工作台空白场景初始化改用当前文档持久化宽高，避免关联方图显示正确元数据但编辑场景仍为海报尺寸。先新增 Workbench Red，再 Green；focused 23/23、lint、typecheck、diff check 通过。进程恢复、原生字体/IME、Windows 与大图性能仍开放。
+
 2026-09-13：macOS packaged native 回归（变更 ID REL-20260913-02）。使用现有 `out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub` 设置 `DESIGNHUB_PACKAGED_APP_PATH` 执行 `pnpm test:native`，source smoke、main storage 与 packaged storage 共 3/3 通过；Windows、签名/公证、升级卸载与钥匙串持久化仍开放。
 
 2026-09-13：M03 描述建师任务闭环（变更 ID M03-20260913-02）。工作区内按描述创建设计师时提交 `designer-draft` 任务，消息包含风格说明与创作原则；完成任务解析为候选，运行中复用 500ms/12 次有界轮询，失败或不可用不展示伪造候选；无工作区示例仍保持离线预览。先新增描述路径 Red 回归，再 Green；`DesignerLibrary` focused 16/16、lint、typecheck、diff check 通过。真实 provider、授权来源传输、人物位图和跨平台图像质量仍开放。

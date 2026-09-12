@@ -58,7 +58,7 @@ const createInitialScene = (project: Project, documentId?: string): DesignScene 
         { id: 'background', type: 'image' as const, assetId: 'placeholder', x: 0, y: 0, width, height, rotation: 0, opacity: 1, visible: true, locked: false },
         titleLayer,
       ];
-  return createScene({ id: `${project.id}-scene`, width: 1080, height: 1440, layers });
+  return createScene({ id: `${project.id}-scene`, width, height, layers });
 };
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
