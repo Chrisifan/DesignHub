@@ -17,6 +17,17 @@ it('runs a conversation task and stores the assistant result', async () => {
   expect(runtime.get(task.id)).toMatchObject({ state: 'completed', result: { text: '好的，已整理简报' } });
 });
 
+it('persists a conversation cost when the provider reports one', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'priced response', cost: 0.0123 }) }),
+  });
+  const task = await service.submitConversation({ projectId: 'project-1', connectionId: 'provider-1', message: 'priced request' });
+  await service.flush();
+  expect(runtime.get(task.id)).toMatchObject({ state: 'completed', result: { text: 'priced response', cost: 0.0123 } });
+});
+
 it('persists the user-visible request text for draft review without credentials', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({

@@ -229,6 +229,7 @@
 2026-09-13：M05 画布草稿项目隔离（变更 ID M05-20260913-08）。`EditSession` 默认草稿键同时包含项目与文档 ID，避免同名文档跨项目恢复；先执行跨项目恢复 Red，再 Green；canvas recovery integration 5/5、canvas unit 18/18、typecheck 通过。影响 M06/M07 项目上下文消费者，崩溃耐久、IME 与跨平台存储仍开放。
 2026-09-13：M07 导出目标迟到冲突保护（变更 ID M07-20260913-19）。导出在渲染/编码后再次检查目标路径，目标在初次检查后出现时返回 `TARGET_EXISTS`，不写入或重命名临时文件；先执行迟到目标 Red，再 Green；export-document focused 6/6、lint、typecheck 通过。目标盘故障、原子 no-replace 和 Windows 仍开放。
 2026-09-13：M06 图片任务空结果保护（变更 ID M06-20260913-14）。图片生成/编辑适配器返回空列表时任务失败并记录 `IMAGE_RESULT_EMPTY`，不产生伪候选。先执行空结果 Red，再 Green；task-service focused 12/12、lint、typecheck 通过。真实提供方部分成功语义、远端取消与跨平台仍开放。
+2026-09-13：M06 对话成本持久化（变更 ID M06-20260913-15）。对话任务完成时保存适配器报告的 `cost`（未知保留 `null`），避免任务列表丢失费用上下文；先执行成本丢失 Red，再 Green；task-service focused 13/13、lint、typecheck 通过。真实提供方账单和 usage 对账仍开放。
 2026-09-13：M02/M04 项目文件符号链接边界（变更 ID M02-20260913-16）。项目 manifest、内容清单、SQLite 与废纸篓元数据读取前验证为项目目录内普通文件；外部同身份 manifest 以 `PROJECT_NOT_FOUND` fail-closed。先执行真实 symlink Red，再 Green；project-store integration 16/16、lint、typecheck 通过。Windows reparse point 与最终检查后的竞态仍开放。
 2026-09-13：M01/M02 工作区 manifest 符号链接边界（变更 ID M01-20260913-05）。工作区打开在普通格式与未来格式只读路径均拒绝 symlink manifest，避免外部身份被接受；先执行真实 symlink Red，再 Green；workspace-open integration 11/11、lint、typecheck 通过。Windows reparse point 与最终检查后的竞态仍开放。
 

@@ -82,7 +82,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       try {
         const adapter = await options.resolveAdapter(input.connectionId);
         const response = await adapter.chat({ messages: [{ role: 'user', content: input.message }] }, controller.signal);
-        await options.runtime.complete(task.id, { text: response.text });
+        await options.runtime.complete(task.id, { text: response.text, cost: response.cost });
       } catch (error) {
         if (controller.signal.aborted) {
           await options.runtime.complete(task.id);
