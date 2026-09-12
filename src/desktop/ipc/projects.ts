@@ -56,7 +56,7 @@ const isMetadataInput = (value: unknown): value is UpdateProjectMetadataInput =>
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
   if (!isWorkspaceId(input.workspaceId) || !isWorkspaceId(input.projectId) || typeof input.patch !== 'object' || input.patch === null || Array.isArray(input.patch)) return false;
-  return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'activeDesignerVersionId', 'designerSnapshot', 'brandSnapshot', 'documents', 'archived'].includes(key));
+  return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'activeDesignerVersionId', 'contributorDesignerVersionIds', 'designerSnapshot', 'brandSnapshot', 'documents', 'archived'].includes(key));
 };
 
 export const listActiveProjectsHandler = (

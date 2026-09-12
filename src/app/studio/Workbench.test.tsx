@@ -304,6 +304,28 @@ it('records the active designer snapshot as a revision contribution', async () =
   })));
 });
 
+it('records additional project contributors with distinct revision roles', async () => {
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null }));
+  const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-team' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, commitDocumentRevision };
+  const scene = createScene({ id: 'scene-team', width: 1080, height: 1440, layers: [] });
+  const attributed = {
+    ...project,
+    activeDesignerVersionId: 'designer-lead',
+    designerSnapshot: { name: { zh: '主设计师', en: 'Lead designer' }, version: 'v2.0' },
+    contributorDesignerVersionIds: ['designer-lead', 'designer-direction'],
+  };
+  render(<Workbench {...makeProps({ project: attributed, workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  fireEvent.click(screen.getByRole('button', { name: '保存版本' }));
+  await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({
+    contributions: [
+      { designerVersionId: 'designer-lead', role: 'lead', designerName: '主设计师' },
+      { designerVersionId: 'designer-direction', role: 'direction' },
+    ],
+  })));
+});
+
 it('can continue from a revision scene snapshot and branches the next save from it', async () => {
   const olderScene = createScene({ id: 'scene-old', width: 1080, height: 1440, layers: [] });
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-old', projectId: 'spring-market', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-old', sceneAssetId: 'scene-old', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z', scene: olderScene }], timeline: [], finalRevisionId: null }));

@@ -932,6 +932,35 @@ button:disabled {
   font-size: 12px;
   font-weight: 500;
 }
+.project-contributors {
+  margin: 18px 0 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.project-contributors legend {
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.project-contributors .muted {
+  max-width: 720px;
+  margin: 6px 0 10px;
+}
+.project-contributors__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.project-contributor-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
 .section-title {
   display: flex;
   align-items: center;

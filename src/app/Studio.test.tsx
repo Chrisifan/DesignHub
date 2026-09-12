@@ -4,6 +4,7 @@ import { App } from './App';
 import { Studio } from './studio/Studio';
 import type { ProjectMetadata } from '../features/projects/metadata';
 import type { UpdateProjectMetadataInput } from '../features/workspace/project-store';
+import { createScene } from '../features/canvas/scene';
 
 beforeEach(() => {
   localStorage.clear();
@@ -272,6 +273,28 @@ it('creates a related-size document from a finalized source revision', async () 
     }),
   })));
   expect((await screen.findAllByText('社媒方图')).length).toBeGreaterThan(0);
+});
+
+it('copies and scales the finalized source scene into a related-size document', async () => {
+  const listActiveProjects = vi.fn(async () => [{
+    projectId: 'project-related-scene',
+    name: '场景关联项目',
+    documents: [{ id: 'doc-main', name: '主海报', width: 1000, height: 500, finalizedRevisionId: 'revision-final', updatedAt: '2026-09-12T00:00:00.000Z' }],
+  }]);
+  const sourceScene = createScene({ id: 'scene-final', width: 1000, height: 500, layers: [{ id: 'title', type: 'text', text: '标题', fontFamily: 'Inter', fontSize: 40, fontWeight: 'bold', align: 'left', color: '#000', x: 100, y: 50, width: 400, height: 60, rotation: 0, opacity: 1, visible: true, locked: false }] });
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-final', projectId: 'project-related-scene', documentId: 'doc-main', parentRevisionId: null, operationId: 'op-final', sceneAssetId: 'scene-final', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z', scene: sourceScene }], timeline: [], finalRevisionId: 'revision-final' }));
+  const updateProjectMetadata = vi.fn(async ({ patch }: UpdateProjectMetadataInput): Promise<ProjectMetadata> => ({ projectId: 'project-related-scene', workspaceId: 'workspace-1', name: '场景关联项目', documents: (patch.documents ?? []).map((document) => ({ ...document, updatedAt: '2026-09-13T00:00:00.000Z' })), archived: false, createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-13T00:00:00.000Z' }));
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDocumentRevisions, updateProjectMetadata, saveDocumentScene };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: '场景关联项目' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '场景关联项目' }));
+  fireEvent.click(screen.getByRole('button', { name: '新建尺寸' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '文档名称' }), { target: { value: '方图' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '500' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: '高度' }), { target: { value: '500' } });
+  fireEvent.click(screen.getByRole('button', { name: '创建尺寸' }));
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-related-scene', documentId: expect.stringMatching(/^doc-/), scene: expect.objectContaining({ width: 500, height: 500, layers: [expect.objectContaining({ x: 50, y: 50, width: 200, height: 60 })] }) })));
 });
 
 it('submits conversation creation as a draft task before any project exists', async () => {

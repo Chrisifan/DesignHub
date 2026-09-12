@@ -15,6 +15,7 @@ export type ProjectMetadata = {
   name: string;
   brief?: string;
   activeDesignerVersionId?: string;
+  contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
   documents: ProjectDocumentMetadata[];
@@ -29,6 +30,7 @@ export type ProjectMetadataInput = {
   name: string;
   brief?: string;
   activeDesignerVersionId?: string;
+  contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
   documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
@@ -37,7 +39,7 @@ export type ProjectMetadataInput = {
   updatedAt?: string;
 };
 
-export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'activeDesignerVersionId' | 'designerSnapshot' | 'brandSnapshot' | 'archived'>> & {
+export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'activeDesignerVersionId' | 'contributorDesignerVersionIds' | 'designerSnapshot' | 'brandSnapshot' | 'archived'>> & {
   documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
 };
 
@@ -65,6 +67,7 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
     name: input.name.trim(),
     ...(input.brief === undefined ? {} : { brief: input.brief }),
     ...(input.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: input.activeDesignerVersionId }),
+    ...(input.contributorDesignerVersionIds === undefined ? {} : { contributorDesignerVersionIds: [...new Set(input.contributorDesignerVersionIds.filter((id) => id.trim()))] }),
     ...(input.designerSnapshot === undefined ? {} : { designerSnapshot: clone(input.designerSnapshot) }),
     ...(input.brandSnapshot === undefined ? {} : { brandSnapshot: clone(input.brandSnapshot) }),
     documents: (input.documents ?? []).map((document) => normalizeDocument(document, updatedAt)),
@@ -87,6 +90,7 @@ export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectM
     ...(patch.name === undefined ? {} : { name: patch.name.trim() }),
     ...(patch.brief === undefined ? {} : { brief: patch.brief }),
     ...(patch.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: patch.activeDesignerVersionId }),
+    ...(patch.contributorDesignerVersionIds === undefined ? {} : { contributorDesignerVersionIds: [...new Set(patch.contributorDesignerVersionIds.filter((id) => id.trim()))] }),
     ...(patch.designerSnapshot === undefined ? {} : { designerSnapshot: clone(patch.designerSnapshot) }),
     ...(patch.brandSnapshot === undefined ? {} : { brandSnapshot: clone(patch.brandSnapshot) }),
     documents: clone(nextDocuments),

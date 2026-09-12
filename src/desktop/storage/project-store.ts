@@ -505,6 +505,7 @@ const initializeProject = (
     name,
     brief: input.brief,
     activeDesignerVersionId: input.activeDesignerVersionId,
+    contributorDesignerVersionIds: input.contributorDesignerVersionIds,
     designerSnapshot: input.designerSnapshot,
     brandSnapshot: input.brandSnapshot,
     documents: input.documents,
@@ -532,7 +533,7 @@ const initializeProject = (
     name,
     formatVersion: projectFormatVersion,
     createdAt,
-    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.designerSnapshot !== undefined || input.brandSnapshot !== undefined || input.documents !== undefined ? { metadata } : {}),
+    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.contributorDesignerVersionIds !== undefined || input.designerSnapshot !== undefined || input.brandSnapshot !== undefined || input.documents !== undefined ? { metadata } : {}),
   };
   writeFileSync(join(temporaryDirectory, projectManifestName), `${JSON.stringify(projectManifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
   writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ formatVersion: projectFormatVersion, projectId: operation.projectId, assets: [] }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
@@ -649,6 +650,7 @@ const toActiveProject = (manifest: ProjectManifest): ActiveProject => {
     name: metadata.name,
     ...(metadata.brief === undefined ? {} : { brief: metadata.brief }),
     ...(metadata.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: metadata.activeDesignerVersionId }),
+    ...(metadata.contributorDesignerVersionIds === undefined ? {} : { contributorDesignerVersionIds: [...metadata.contributorDesignerVersionIds] }),
     ...(metadata.designerSnapshot === undefined ? {} : { designerSnapshot: structuredClone(metadata.designerSnapshot) }),
     ...(metadata.brandSnapshot === undefined ? {} : { brandSnapshot: structuredClone(metadata.brandSnapshot) }),
     documents: structuredClone(metadata.documents),
@@ -739,6 +741,7 @@ const duplicateProject = async (handle: WorkspaceHandle, input: DuplicateProject
     name: input.name?.trim() || `${sourceMetadata.name} copy`,
     brief: sourceMetadata.brief,
     activeDesignerVersionId: sourceMetadata.activeDesignerVersionId,
+    contributorDesignerVersionIds: sourceMetadata.contributorDesignerVersionIds,
     designerSnapshot: sourceMetadata.designerSnapshot,
     brandSnapshot: sourceMetadata.brandSnapshot,
     documents: sourceMetadata.documents.map(({ id, name, width, height, finalizedRevisionId }) => ({ id, name, width, height, finalizedRevisionId })),
@@ -787,6 +790,7 @@ export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, i
     name: sourceManifest.name,
     brief: sourceMetadata?.brief,
     activeDesignerVersionId: sourceMetadata?.activeDesignerVersionId,
+    contributorDesignerVersionIds: sourceMetadata?.contributorDesignerVersionIds,
     designerSnapshot: sourceMetadata?.designerSnapshot,
     brandSnapshot: sourceMetadata?.brandSnapshot,
     documents,

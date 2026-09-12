@@ -6,6 +6,7 @@ export type CreateProjectContainerInput = {
   name: string;
   brief?: string;
   activeDesignerVersionId?: string;
+  contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
   documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
@@ -37,6 +38,7 @@ export type ActiveProject = {
   name: string;
   brief?: string;
   activeDesignerVersionId?: string;
+  contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
   documents?: ProjectDocumentMetadata[];

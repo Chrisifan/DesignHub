@@ -25,6 +25,7 @@ import {
 import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
 import type { ProjectDocumentMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool } from '../../features/image-tools/target';
+import { resizeScene } from '../../features/image-tools/local-transform';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
 
@@ -123,6 +124,7 @@ export const Studio = ({
           enDescription: entry.brief ?? 'Local project',
           designers: ['纸感排版'],
           activeDesignerVersionId: entry.activeDesignerVersionId,
+          contributorDesignerVersionIds: entry.contributorDesignerVersionIds,
           designerSnapshot: entry.designerSnapshot,
           brandSnapshot: entry.brandSnapshot,
           artwork: 'blank' as const,
@@ -192,6 +194,7 @@ export const Studio = ({
         documentEntries: metadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
         archived: metadata.archived,
         activeDesignerVersionId: metadata.activeDesignerVersionId,
+        contributorDesignerVersionIds: metadata.contributorDesignerVersionIds,
         designerSnapshot: metadata.designerSnapshot,
       } : project));
       setSelected((current) => current ? {
@@ -204,6 +207,7 @@ export const Studio = ({
         documentEntries: metadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
         archived: metadata.archived,
         activeDesignerVersionId: metadata.activeDesignerVersionId,
+        contributorDesignerVersionIds: metadata.contributorDesignerVersionIds,
         designerSnapshot: metadata.designerSnapshot,
       } : current);
       notify(t(locale, patch.name ? '项目已重命名' : '项目已归档', patch.name ? 'Project renamed' : 'Project archived'));
@@ -242,10 +246,21 @@ export const Studio = ({
       ...(entry.sourceRevisionId ? { sourceRevisionId: entry.sourceRevisionId } : {}),
       ...(entry.finalizedRevisionId ? { finalizedRevisionId: entry.finalizedRevisionId } : {}),
     }));
-    documents.push({ id: `doc-${crypto.randomUUID()}`, name: relatedName.trim(), width, height, sourceDocumentId: source.id, sourceRevisionId: source.finalizedRevisionId, finalizedRevisionId: null });
+    const relatedDocumentId = `doc-${crypto.randomUUID()}`;
+    documents.push({ id: relatedDocumentId, name: relatedName.trim(), width, height, sourceDocumentId: source.id, sourceRevisionId: source.finalizedRevisionId, finalizedRevisionId: null });
     await updateProject({ documents });
+    const sourceRevisions = await getDesktopApi().loadDocumentRevisions?.(workspace.workspaceId, selected.id, source.id);
+    const sourceRevision = sourceRevisions?.revisions.find((revision) => revision.revisionId === source.finalizedRevisionId);
+    if (sourceRevision?.scene) {
+      try {
+        const converted = resizeScene(sourceRevision.scene, { width, height });
+        await getDesktopApi().saveDocumentScene?.({ workspaceId: workspace.workspaceId, projectId: selected.id, documentId: relatedDocumentId, scene: { ...converted, id: relatedDocumentId } });
+      } catch {
+        notify(t(locale, '布局转换失败，已创建空白尺寸稿', 'Layout conversion failed; an empty size document was created'));
+      }
+    }
     setRelatedDialog(false);
-    setActiveDocumentId(documents[documents.length - 1]!.id);
+    setActiveDocumentId(relatedDocumentId);
     notify(t(locale, '关联尺寸已创建', 'Related size created'));
   };
   const switchProjectDesigner = async (designerId: string): Promise<void> => {
@@ -254,6 +269,15 @@ export const Studio = ({
     if (!designer) return;
     await updateProject({ activeDesignerVersionId: designer.id, designerSnapshot: structuredClone(designer) });
     notify(t(locale, '设计师已切换', 'Designer switched'));
+  };
+  const toggleProjectContributor = async (designerId: string): Promise<void> => {
+    if (!selected || !workspace || workspace.openMode !== 'writable') return;
+    const current = selected.contributorDesignerVersionIds ?? (selected.activeDesignerVersionId ? [selected.activeDesignerVersionId] : []);
+    const next = current.includes(designerId) ? current.filter((id) => id !== designerId) : [...current, designerId];
+    const activeId = selected.activeDesignerVersionId;
+    const normalized = activeId && !next.includes(activeId) ? [activeId, ...next] : next;
+    await updateProject({ contributorDesignerVersionIds: normalized });
+    notify(t(locale, '署名已更新', 'Contributors updated'));
   };
   const duplicateSelected = async (): Promise<void> => {
     if (!workspace || !selected || workspace.openMode !== 'writable') return;
@@ -956,6 +980,19 @@ export const Studio = ({
                   {designerOptions.filter((profile) => profile.status !== 'archived').map((profile) => <option key={profile.id} value={profile.id}>{localize(locale, profile.name)} · {profile.version}</option>)}
                 </select>
               </Field>}
+              {workspace?.openMode === 'writable' && selected.workspaceId && <fieldset className="project-contributors">
+                <legend>{t(locale, '版本署名', 'Revision credits')}</legend>
+                <p className="muted">{t(locale, '可为同一版本添加多位设计师。当前设计师始终作为主署名。', 'Add multiple designers to the same revision. The active designer remains the lead credit.')}</p>
+                <div className="project-contributors__list">
+                  {designerOptions.filter((profile) => profile.status !== 'archived').map((profile) => {
+                    const contributorIds = selected.contributorDesignerVersionIds ?? (selected.activeDesignerVersionId ? [selected.activeDesignerVersionId] : []);
+                    return <label key={profile.id} className="project-contributor-option">
+                      <input type="checkbox" checked={contributorIds.includes(profile.id)} disabled={profile.id === selected.activeDesignerVersionId} onChange={() => { void toggleProjectContributor(profile.id); }} />
+                      <span>{localize(locale, profile.name)} · {profile.version}</span>
+                    </label>;
+                  })}
+                </div>
+              </fieldset>}
               <div className="project-context">
                 <div>
                   <small>{t(locale, '活跃版本', 'ACTIVE VERSION')}</small>

@@ -53,3 +53,5 @@ Browser preview tests are not evidence for the native gates above. No release ar
 - Immediate-completion designer task regression: completed results returned directly by submission are now reviewed without a second list call. Latest unit count is 83 files/296 tests; integration 23 files/100 tests, E2E 24/24, lint, typecheck, build, diff check, and native source smoke passed. The existing packaged executable also passed 3/3 native tests; it was not rebuilt for this renderer-only fix.
 
 - Related-size document entry: a finalized source document can create an independent 1080x1080 (or user-specified) document while preserving source document/revision provenance. Focused Studio/metadata regression passed 22/22; automatic layout conversion and cross-document visual QA remain open release gates.
+
+- Multi-contributor attribution and related-scene conversion: project credits can include multiple designer versions, revisions preserve lead/direction roles, and related-size creation scales the finalized source scene into an independent document. Affected focused suite passed 53/53; semantic layout reflow and human visual QA remain release gates.

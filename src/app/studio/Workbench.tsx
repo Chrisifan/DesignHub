@@ -158,6 +158,18 @@ export const Workbench = ({
     if (!textLayer || textLayer.locked) return;
     persistScene(replaceSceneLayer(scene, { ...textLayer, ...patch }));
   };
+  const revisionContributions = (role: 'lead' | 'revision' = 'lead'): Array<{ designerVersionId: string; role: 'lead' | 'direction' | 'revision'; designerName?: string }> => {
+    const ids = [...new Set(project.contributorDesignerVersionIds ?? (project.activeDesignerVersionId ? [project.activeDesignerVersionId] : []))];
+    return ids.map((designerVersionId, index) => ({
+      designerVersionId,
+      role: index === 0 ? role : 'direction',
+      ...(index === 0 ? (() => {
+        const snapshot = project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
+        const designerName = snapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en'];
+        return designerName ? { designerName } : {};
+      })() : {}),
+    }));
+  };
   const saveRevision = async (): Promise<void> => {
     if (!workspaceId || !documentId || revisionBusy) return;
     setRevisionBusy(true);
@@ -170,14 +182,7 @@ export const Workbench = ({
         operationId: `workbench-${crypto.randomUUID()}`,
         sceneAssetId: scene.id,
         assetIds: scene.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image').map((layer) => layer.assetId),
-        contributions: project.activeDesignerVersionId ? [{
-          designerVersionId: project.activeDesignerVersionId,
-          role: 'lead' as const,
-          designerName: (() => {
-            const snapshot = project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
-            return snapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en'];
-          })(),
-        }] : [],
+        contributions: revisionContributions(),
         scene,
       });
       if (result) {
@@ -204,11 +209,7 @@ export const Workbench = ({
     if (!workspaceId || !documentId || !entry || revisionBusy || entry.candidate.assetIds.length === 0) return;
     setRevisionBusy(true);
     try {
-      const contribution = project.activeDesignerVersionId ? [{
-        designerVersionId: project.activeDesignerVersionId,
-        role: 'revision' as const,
-        designerName: (project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined)?.name?.[locale === 'zh-CN' ? 'zh' : 'en'],
-      }] : [];
+      const contribution = revisionContributions('revision');
       const committed = await getDesktopApi().commitDocumentRevision?.({
         workspaceId,
         projectId: project.id,

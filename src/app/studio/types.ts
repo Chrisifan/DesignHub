@@ -31,6 +31,7 @@ export type Project = {
   enDescription: string;
   designers: string[];
   activeDesignerVersionId?: string;
+  contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
   artwork: Artwork;
