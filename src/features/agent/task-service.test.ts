@@ -106,7 +106,19 @@ it('runs image generation as a persisted project task and records asset referenc
     designerVersionId: 'designer-v1', connectionId: 'provider-1', prompt: 'A spring market poster', size: '1080x1440', count: 2,
   });
   await service.flush();
-  expect(runtime.get(task.id)).toMatchObject({ state: 'completed', capability: 'image-generation', result: { assetIds: ['asset-generated'], imageCount: 1, cost: 0.02 } });
+  expect(runtime.get(task.id)).toMatchObject({ state: 'completed', capability: 'image-generation', baseRevisionId: null, result: { assetIds: ['asset-generated'], imageCount: 1, cost: 0.02, candidate: { baseRevisionId: null, assetIds: ['asset-generated'] } } });
+});
+
+it('records the submitted revision as a candidate base without changing the active document', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: '', cost: null }), generateImage: async () => ({ images: [{ url: 'https://cdn.test/generated.png' }], cost: null }) }),
+    persistGeneratedImages: async () => ['asset-candidate'],
+  });
+  const task = await service.submitImageGeneration({ projectId: 'project-1', documentId: 'document-1', baseRevisionId: 'revision-current', connectionId: 'provider-1', prompt: 'candidate' });
+  await service.flush();
+  expect(runtime.get(task.id)).toMatchObject({ baseRevisionId: 'revision-current', result: { candidate: { baseRevisionId: 'revision-current', assetIds: ['asset-candidate'] } } });
 });
 
 it('runs image editing with an explicit source image and mask', async () => {

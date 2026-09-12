@@ -1,7 +1,9 @@
 import type { RevisionStore } from '../revisions/commit-revision';
 import { completeTask, createTaskState, retryTask, transitionTask, type TaskRecord } from './state';
 
-export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null };
+import type { TaskCandidate } from './state';
+
+export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null; candidate?: TaskCandidate };
 
 export type TaskRuntime = {
   get: (taskId: string) => TaskRecord | undefined;

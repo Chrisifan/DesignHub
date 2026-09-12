@@ -2,6 +2,14 @@ export type TaskState = 'queued' | 'running' | 'completed' | 'failed' | 'cancell
 
 export type TaskSource = { kind: 'project' | 'creation-draft' | 'designer-draft'; id: string };
 
+export type TaskCandidate = {
+  id: string;
+  baseRevisionId: string | null;
+  assetIds: string[];
+  sceneAssetId?: string;
+  createdAt: string;
+};
+
 export type TaskRecord = {
   id: string;
   requestId: string;
@@ -24,6 +32,7 @@ export type TaskRecord = {
     sceneAssetId?: string;
     imageCount?: number;
     cost?: number | null;
+    candidate?: TaskCandidate;
   };
 };
 

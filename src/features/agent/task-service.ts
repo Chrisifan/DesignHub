@@ -117,7 +117,18 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}) }, controller.signal) : undefined);
         if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
         const assetIds = options.persistGeneratedImages ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images }) : [];
-        await options.runtime.complete(task.id, { assetIds, imageCount: response.images.length, cost: response.cost });
+        await options.runtime.complete(task.id, {
+          assetIds,
+          imageCount: response.images.length,
+          cost: response.cost,
+          candidate: {
+            id: `candidate-${task.id}`,
+            baseRevisionId: task.baseRevisionId ?? null,
+            assetIds: [...assetIds],
+            ...(assetIds[0] ? { sceneAssetId: assetIds[0] } : {}),
+            createdAt: new Date().toISOString(),
+          },
+        });
       } catch (error) {
         if (controller.signal.aborted) await options.runtime.complete(task.id);
         else await options.runtime.fail(task.id, errorCode(error));

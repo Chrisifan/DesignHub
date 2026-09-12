@@ -17,11 +17,19 @@ const isTaskSource = (value: unknown): value is TaskSource => isRecord(value)
   && value.id.trim().length > 0;
 const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> => {
   if (!isRecord(value)) return false;
+  const candidate = value.candidate;
+  const candidateValid = candidate === undefined || (isRecord(candidate)
+    && typeof candidate.id === 'string' && candidate.id.trim().length > 0
+    && (candidate.baseRevisionId === null || typeof candidate.baseRevisionId === 'string')
+    && Array.isArray(candidate.assetIds) && candidate.assetIds.every((id) => typeof id === 'string')
+    && (candidate.sceneAssetId === undefined || typeof candidate.sceneAssetId === 'string')
+    && typeof candidate.createdAt === 'string');
   return (value.text === undefined || typeof value.text === 'string')
     && (value.sceneAssetId === undefined || typeof value.sceneAssetId === 'string')
     && (value.assetIds === undefined || (Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')))
     && (value.imageCount === undefined || (Number.isInteger(value.imageCount) && Number(value.imageCount) >= 0))
-    && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0));
+    && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0))
+    && candidateValid;
 };
 const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && typeof value.id === 'string' && value.id.trim().length > 0
