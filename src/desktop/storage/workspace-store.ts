@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { constants, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -137,9 +137,10 @@ const readWorkspaceManifestFile = (path: string): { content: string; manifest: W
 };
 
 const readManifest = async (directory: string): Promise<WorkspaceManifest> => {
+  const path = join(directory, workspaceManifestName);
   let value: unknown;
   try {
-    value = JSON.parse(await readFile(join(directory, workspaceManifestName), 'utf8')) as unknown;
+    value = JSON.parse(readRegularFile(path, 'INVALID_WORKSPACE_MANIFEST')) as unknown;
   } catch {
     throw new Error('INVALID_WORKSPACE_MANIFEST');
   }
@@ -148,11 +149,17 @@ const readManifest = async (directory: string): Promise<WorkspaceManifest> => {
 };
 
 const readManifestIfPresent = async (directory: string): Promise<WorkspaceManifest | null> => {
-  let value: unknown;
+  const path = join(directory, workspaceManifestName);
   try {
-    value = JSON.parse(await readFile(join(directory, workspaceManifestName), 'utf8')) as unknown;
+    lstatSync(path);
   } catch (error) {
     if (errorCode(error) === 'ENOENT') return null;
+    throw new Error('INVALID_WORKSPACE_MANIFEST');
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(readRegularFile(path, 'INVALID_WORKSPACE_MANIFEST')) as unknown;
+  } catch {
     throw new Error('INVALID_WORKSPACE_MANIFEST');
   }
   if (!isWorkspaceManifest(value)) throw new Error('INVALID_WORKSPACE_MANIFEST');

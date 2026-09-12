@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, mkdir, readFile, realpath, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -100,6 +100,21 @@ it('opens a newer manifest read-only without taking the writer lock', async () =
   first.close();
   second.close();
   writer.close();
+});
+
+it('rejects an external symlink for a newer workspace manifest before opening read-only', async () => {
+  const parent = await createTemporaryDirectory();
+  const created = await createWorkspace({ parentDirectory: parent, name: '未来格式外链' });
+  created.close();
+  const manifestPath = join(created.workspace.directory, workspaceManifestName);
+  const original = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
+  const externalPath = join(parent, 'external-workspace.json');
+  await writeFile(externalPath, `${JSON.stringify({ ...original, formatVersion: 2 })}\n`);
+  await unlink(manifestPath);
+  await symlink(externalPath, manifestPath);
+
+  await expect(openWorkspace(created.workspace.directory, 1)).rejects.toThrow('INVALID_WORKSPACE_MANIFEST');
+  await expect(readFile(externalPath, 'utf8')).resolves.toContain('"formatVersion":2');
 });
 
 it('opens a newer manifest read-only without recovering migration markers', async () => {
