@@ -124,7 +124,12 @@ export const createEditSession = <T>(initial: T, options: EditSessionOptions): E
     record(result);
     return true;
   };
-  const cancel = (): T => { if (batchStart !== null) { draft = clone(batchStart); batchStart = null; } return clone(draft); };
+  const cancel = (): T => {
+    aiToken = '';
+    aiBaseline = '';
+    if (batchStart !== null) { draft = clone(batchStart); batchStart = null; }
+    return clone(draft);
+  };
   const clear = (): T => { assertWritable(); return record(initial); };
   const isReadOnly = (): boolean => options.readOnly === true;
   const hasUnsavedChanges = (): boolean => JSON.stringify(draft) !== JSON.stringify(persisted);
