@@ -1018,7 +1018,7 @@ export const Workbench = ({
             ? t(locale, '可见', 'Visible')
             : t(locale, '隐藏', 'Hidden')}
         </span>
-        <span>{t(locale, '示例会话', 'Example session')}</span>
+        <span>{workspaceId ? t(locale, '本地会话', 'Local session') : t(locale, '示例会话', 'Example session')}</span>
       </footer>
     </section>
   );

@@ -292,6 +292,12 @@ it('provides the exact English canvas and back labels', () => {
   expect(screen.getByText('Unsaved preview')).toBeInTheDocument();
 });
 
+it('labels a workspace-backed workbench as a local session', () => {
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1' })} />);
+  expect(screen.getByText('本地会话')).toBeInTheDocument();
+  expect(screen.queryByText('示例会话')).not.toBeInTheDocument();
+});
+
 it('renders the persisted canvas workspace for a real project document', () => {
   const scene = createScene({ id: 'scene-1', width: 1080, height: 1440, layers: [] });
   render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
