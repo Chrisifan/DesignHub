@@ -3,7 +3,7 @@ import { constants, lstatSync as lstat, realpathSync as realpath } from 'node:fs
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
-import type { WorkspaceSettings } from '../../features/workspace/settings';
+import { isWorkspaceSettings, type WorkspaceSettings } from '../../features/workspace/settings';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
 
@@ -11,23 +11,7 @@ export const workspaceSettingsFileName = 'settings.json';
 const internalDirectoryName = '.designhub';
 
 export type { WorkspaceBackupSettings, WorkspaceSettings } from '../../features/workspace/settings';
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
-
-const isOptionalPath = (value: unknown): value is string | null => value === null
-  || (typeof value === 'string' && value.length <= 4096 && !/[\u0000-\u001F]/u.test(value));
-
-const isTimestamp = (value: unknown): value is string | null => value === null
-  || (typeof value === 'string' && !Number.isNaN(Date.parse(value)));
-
-export const isWorkspaceSettings = (value: unknown): value is WorkspaceSettings => {
-  if (!isRecord(value) || value.formatVersion !== 1 || !isRecord(value.backup)) return false;
-  const backup = value.backup;
-  return (backup.schedule === 'manual' || backup.schedule === 'daily' || backup.schedule === 'weekly')
-    && isOptionalPath(backup.destinationParentDirectory)
-    && isTimestamp(backup.lastRunAt)
-    && isOptionalPath(backup.lastArtifactPath);
-};
+export { isWorkspaceSettings } from '../../features/workspace/settings';
 
 const getInternalDirectory = (handle: WorkspaceHandle, workspaceId: string, writable: boolean): string => {
   if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
@@ -52,7 +36,7 @@ export const loadWorkspaceSettings = async (handle: WorkspaceHandle, workspaceId
     if (!isWorkspaceSettings(value)) throw new Error('INVALID_WORKSPACE_SETTINGS');
     return structuredClone(value);
   } catch (error) {
-    if (isRecord(error) && error.code === 'ENOENT') return null;
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return null;
     if (error instanceof SyntaxError) throw new Error('INVALID_WORKSPACE_SETTINGS');
     throw error;
   }

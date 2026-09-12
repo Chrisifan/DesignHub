@@ -1,6 +1,6 @@
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import { isWorkspaceSettings, type WorkspaceSettings } from '../../features/workspace/settings';
 import { isTrustedWorkspaceRequest } from './workspace';
-import { isWorkspaceSettings, type WorkspaceSettings } from '../storage/settings-store';
 
 export const settingsLoadChannel = 'workspace:settings-load';
 export const settingsSaveChannel = 'workspace:settings-save';
