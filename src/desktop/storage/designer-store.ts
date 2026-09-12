@@ -35,12 +35,24 @@ const getWorkspaceDirectory = (handle: WorkspaceHandle, workspaceId: string, wri
   return getInternalDirectory(handle.workspace.directory);
 };
 
+const assertRegularDesignerFile = (path: string, allowMissing: boolean): void => {
+  try {
+    const status = lstatSync(path);
+    if (!status.isFile() || status.isSymbolicLink()) throw new Error('INVALID_DESIGNER_STATE');
+  } catch (error) {
+    if (allowMissing && typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return;
+    if (error instanceof Error && error.message === 'INVALID_DESIGNER_STATE') throw error;
+    throw new Error('INVALID_DESIGNER_STATE');
+  }
+};
+
 export const loadDesignerState = async (
   handle: WorkspaceHandle,
   workspaceId: string,
 ): Promise<DesignerLibraryState | null> => {
   const directory = getWorkspaceDirectory(handle, workspaceId, false);
   const filePath = join(directory, designersFileName);
+  assertRegularDesignerFile(filePath, true);
   try {
     await access(filePath, constants.R_OK);
     const value: unknown = JSON.parse(await readFile(filePath, 'utf8'));
@@ -61,6 +73,7 @@ export const saveDesignerState = async (
   const directory = getWorkspaceDirectory(handle, workspaceId, true);
   if (!isDesignerLibraryState(state)) throw new Error('INVALID_DESIGNER_STATE');
   const destination = join(directory, designersFileName);
+  assertRegularDesignerFile(destination, true);
   const temporary = join(directory, `.${designersFileName}.tmp-${randomUUID()}`);
   try {
     await writeFile(temporary, `${JSON.stringify(cloneDesignerState(state), null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });

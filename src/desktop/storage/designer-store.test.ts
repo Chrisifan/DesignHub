@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -52,4 +52,14 @@ it('returns no state for malformed data and refuses writes in read-only workspac
     reopened.close();
     workspace.close();
   }
+});
+
+it('rejects a symlinked designer state instead of reading outside the workspace', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const filePath = join(workspace.workspace.directory, '.designhub', designersFileName);
+  const externalPath = join(workspace.workspace.directory, '..', 'external-designers.json');
+  await writeFile(externalPath, JSON.stringify({ profiles: [], defaultId: 'builtin-v1' }), 'utf8');
+  await symlink(externalPath, filePath);
+  await expect(loadDesignerState(workspace, workspace.workspace.workspaceId)).rejects.toThrow('INVALID_DESIGNER_STATE');
+  workspace.close();
 });

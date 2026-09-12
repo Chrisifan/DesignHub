@@ -222,6 +222,9 @@
 2026-09-13：M04 新建项目尺寸预设（变更 ID M04-20260913-19）。新增受限尺寸解析契约并让本地项目/预览创建实际使用所选 `1080 × 1440`、`1080 × 1080` 或 `1920 × 1080` 文档尺寸；无效/超大值在创建前拒绝。先新增 size Red，再 Green；size/Studio 2 files/353 tests、lint、typecheck、diff check 通过。影响 M04 创建、M05 场景初始化与 M07 交付尺寸，任意自定义尺寸仍通过工作台调整工具处理。
 
 2026-09-13：M06 任务状态符号链接边界（变更 ID M06-20260913-13）。`tasks.json` 读取/写入拒绝符号链接，避免跨工作区加载或替换外部任务状态；外部目标保持不变。先执行真实 symlink Red，再 Green；task-store/IPC 4/4、task-recovery integration 100/100、lint、typecheck、diff check 通过。影响 M06 任务恢复、M08 任务列表及 M02 备份清单，Windows reparse point 与最终检查后的竞态仍开放。
+2026-09-13：M03 设计师状态符号链接边界（变更 ID M03-20260913-04）。`designers.json` 读取和写入拒绝外部符号链接，避免跨工作区读取或替换设计师库状态；先执行真实 symlink Red，再 Green；designer-store focused 3/3、lint、typecheck 通过。影响 M03/M04/M06 设计师消费者，Windows reparse point 与最终检查后的竞态仍开放。
+2026-09-13：M04 品牌与修订状态符号链接边界（变更 ID M04-20260913-20）。`brands.json` 与按文档保存的修订状态拒绝外部符号链接，避免跨工作区读取；先执行真实 symlink Red，再 Green；brand-store 4/4、revision-store 3/3、lint、typecheck 通过。影响 M04/M05/M06/M07 历史与导出消费者，Windows reparse point 与最终检查后的竞态仍开放。
+2026-09-13：M07 项目包路径唯一性边界（变更 ID M07-20260913-18）。项目包创建和 ZIP 解码拒绝重复 manifest 路径，避免同一路径 payload 的歧义覆盖；先执行 duplicate-path Red，再 Green；project-package focused 5/5、lint、typecheck 通过。影响 M04 导入和 M08 发布流程，大包流式与跨设备闭包仍开放。
 
 ## 发布前检查
 
