@@ -253,3 +253,39 @@ it('rejects malformed imported revision files before publishing a project contai
     }
   });
 });
+
+it('does not publish an imported project when payload copy fails, then allows retry', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    try {
+      const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43631';
+      const now = new Date().toISOString();
+      const pack = await createProjectPackage({
+        packageId: 'pkg-import-copy-failure',
+        projectId: sourceProjectId,
+        entries: [
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Copy failure', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Copy failure', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
+          { path: 'documents/doc-1.scene.json', kind: 'manifest', bytes: new TextEncoder().encode('{"id":"doc-1","width":100,"height":100,"layers":[]}') },
+        ],
+      });
+      const archive = await encodeProjectPackage(pack);
+
+      await expect(importProjectPackageToWorkspace(workspace, {
+        workspaceId: workspace.workspace.workspaceId,
+        operationId: 'import-copy-failure',
+        archive,
+      }, { failAt: 'import-file-copy' })).rejects.toThrow('INJECTED_IMPORT_FILE_COPY_FAILURE');
+      await expect(createProjectStore(workspace).listActiveProjects()).resolves.toEqual([]);
+
+      const retried = await importProjectPackageToWorkspace(workspace, {
+        workspaceId: workspace.workspace.workspaceId,
+        operationId: 'import-copy-failure',
+        archive,
+      });
+      await expect(createProjectStore(workspace).getProjectMetadata(retried.projectId)).resolves.toMatchObject({ name: 'Copy failure' });
+    } finally {
+      workspace.close();
+    }
+  });
+});

@@ -237,6 +237,7 @@
 2026-09-13：M02/M04 项目文件符号链接边界（变更 ID M02-20260913-16）。项目 manifest、内容清单、SQLite 与废纸篓元数据读取前验证为项目目录内普通文件；外部同身份 manifest 以 `PROJECT_NOT_FOUND` fail-closed。先执行真实 symlink Red，再 Green；project-store integration 16/16、lint、typecheck 通过。Windows reparse point 与最终检查后的竞态仍开放。
 2026-09-13：M01/M02 工作区 manifest 符号链接边界（变更 ID M01-20260913-05）。工作区打开在普通格式与未来格式只读路径均拒绝 symlink manifest，避免外部身份被接受；先执行真实 symlink Red，再 Green；workspace-open integration 11/11、lint、typecheck 通过。Windows reparse point 与最终检查后的竞态仍开放。
 2026-09-13：M01 工作区 manifest 异步竞态回归（变更 ID M01-20260913-06）。symlink 校验保留异步 `readFile` 路径，恢复目录替换故障注入；workspace-open/open-identity 12/12、lint、typecheck 通过。
+2026-09-13：M04 项目包导入发布原子性（变更 ID M04-20260913-25）。导入 payload 复制移入项目临时目录，在发布和索引之前完成；注入复制失败不会留下 active 项目，原 operationId 可重试。先观察 project-store Red，再 Green；project-store focused 10/10、lint、typecheck 通过。磁盘满、进程终止、大包流式和跨设备仍开放。
 
 ## 发布前检查
 

@@ -92,6 +92,7 @@ type ProjectStoreOptions = {
   failAt?: ProjectStoreFault;
   getLiveReferenceCount?: (projectId: string) => number;
   onRestoreDestinationReserved?: (directory: string) => void;
+  prepareProject?: (temporaryDirectory: string, projectId: string) => void;
 };
 
 export type ProjectStoreFault = 'database-write'
@@ -102,7 +103,8 @@ export type ProjectStoreFault = 'database-write'
   | 'restore-after-reservation'
   | 'restore-after-copy'
   | 'restore-after-source-delete'
-  | 'purge-after-delete';
+  | 'purge-after-delete'
+  | 'import-file-copy';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
@@ -580,6 +582,7 @@ const createProject = (handle: WorkspaceHandle, options: ProjectStoreOptions, in
       mkdirSync(temporaryDirectory);
       ownsTemporaryDirectory = true;
       initializeProject(temporaryDirectory, input, operation, name, options.failAt);
+      options.prepareProject?.(temporaryDirectory, operation.projectId);
       if (options.failAt === 'publish') throw new Error('INJECTED_PUBLISH_FAILURE');
       renameSync(temporaryDirectory, projectDirectory);
       ownsTemporaryDirectory = false;
@@ -821,7 +824,11 @@ const rewriteImportedRevisionState = (bytes: Uint8Array, projectId: string): Uin
   return new TextEncoder().encode(`${JSON.stringify({ ...value, revisions }, null, 2)}\n`);
 };
 
-export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, input: ImportProjectPackageInput): Promise<ImportProjectPackageResult> => {
+export const importProjectPackageToWorkspace = async (
+  handle: WorkspaceHandle,
+  input: ImportProjectPackageInput,
+  options: ProjectStoreOptions = {},
+): Promise<ImportProjectPackageResult> => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
   if (workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
@@ -851,7 +858,32 @@ export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, i
     ...(sourceRevisionId !== undefined ? { sourceRevisionId } : {}),
     ...(finalizedRevisionId !== undefined ? { finalizedRevisionId } : {}),
   })) ?? [];
-  const created = createProject(handle, {}, {
+  const created = createProject(handle, {
+    ...options,
+    prepareProject: (temporaryDirectory, projectId) => {
+      let copiedFiles = 0;
+      pack.manifest.entries.forEach((path) => {
+        if (!isSafePackagePath(path) || path === projectManifestName || path === projectContentManifestName || path === projectDatabaseName) return;
+        const bytes = pack.files[path];
+        if (!bytes) throw new Error('INVALID_PACKAGE');
+        if (options.failAt === 'import-file-copy' && copiedFiles === 0) {
+          copiedFiles += 1;
+          throw new Error('INJECTED_IMPORT_FILE_COPY_FAILURE');
+        }
+        const target = join(temporaryDirectory, path);
+        const relativeTarget = relative(temporaryDirectory, target);
+        if (!relativeTarget || relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || relativeTarget.includes(`..${sep}`)) throw new Error('INVALID_PACKAGE');
+        mkdirSync(dirname(target), { recursive: true });
+        const importedBytes = importedRevisionPathPattern.test(path) ? rewriteImportedRevisionState(bytes, projectId) : bytes;
+        writeFileSync(target, importedBytes, { flag: 'wx' });
+        copiedFiles += 1;
+      });
+      const generatedManifestPath = join(temporaryDirectory, projectManifestName);
+      const generatedManifest = readJson(generatedManifestPath, 'INVALID_PROJECT_MANIFEST') as ProjectManifest;
+      writeFileSync(generatedManifestPath, `${JSON.stringify({ ...generatedManifest, importedPackageId: pack.manifest.packageId }, null, 2)}\n`, { encoding: 'utf8' });
+      writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ ...sourceContent, projectId }, null, 2)}\n`, { encoding: 'utf8' });
+    },
+  }, {
     workspaceId: input.workspaceId,
     operationId: input.operationId,
     name: sourceManifest.name,
@@ -862,24 +894,6 @@ export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, i
     brandSnapshot: sourceMetadata?.brandSnapshot,
     documents,
   });
-  const destination = resolveProjectDirectory(handle, created.projectId);
-  if (!destination) throw new Error('PROJECT_NOT_FOUND');
-  const destinationRoot = realpathSync(destination);
-  pack.manifest.entries.forEach((path) => {
-    if (!isSafePackagePath(path) || path === projectManifestName || path === projectContentManifestName || path === projectDatabaseName) return;
-    const target = join(destinationRoot, path);
-    const relativeTarget = relative(destinationRoot, target);
-    if (!relativeTarget || relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || relativeTarget.includes(`..${sep}`)) throw new Error('INVALID_PACKAGE');
-    const bytes = pack.files[path];
-    if (!bytes) throw new Error('INVALID_PACKAGE');
-    mkdirSync(dirname(target), { recursive: true });
-    const importedBytes = importedRevisionPathPattern.test(path) ? rewriteImportedRevisionState(bytes, created.projectId) : bytes;
-    writeFileSync(target, importedBytes, { flag: 'wx' });
-  });
-  const destinationManifestPath = join(destinationRoot, projectManifestName);
-  const destinationManifest = readJson(destinationManifestPath, 'INVALID_PROJECT_MANIFEST') as ProjectManifest;
-  writeFileSync(destinationManifestPath, `${JSON.stringify({ ...destinationManifest, importedPackageId: pack.manifest.packageId }, null, 2)}\n`, { encoding: 'utf8' });
-  writeFileSync(join(destinationRoot, projectContentManifestName), `${JSON.stringify({ ...sourceContent, projectId: created.projectId }, null, 2)}\n`, { encoding: 'utf8' });
   return created;
 };
 
@@ -1019,7 +1033,7 @@ const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOpt
 export const createProjectStore = (handle: WorkspaceHandle, options: ProjectStoreOptions = {}): ProjectStore => ({
   createProjectContainer: async (input): Promise<CreateProjectContainerResult> => createProject(handle, options, input),
   duplicateProject: async (input): Promise<CreateProjectContainerResult> => duplicateProject(handle, input),
-  importProjectPackage: async (input): Promise<ImportProjectPackageResult> => importProjectPackageToWorkspace(handle, input),
+  importProjectPackage: async (input): Promise<ImportProjectPackageResult> => importProjectPackageToWorkspace(handle, input, options),
   listActiveProjects: async (): Promise<ActiveProject[]> => listActiveProjects(handle),
   getProjectMetadata: async (projectId): Promise<ProjectMetadata | null> => getProjectMetadata(handle, projectId),
   updateProjectMetadata: async (input): Promise<ProjectMetadata> => updateProjectMetadataForHandle(handle, input),
