@@ -123,6 +123,14 @@ app.whenReady().then(() => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return saveDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, state) => saveDesignerState(workspace, workspace.workspace.workspaceId, state))(event, input);
   });
+  ipcMain.handle(sceneLoadChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return loadDocumentSceneHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectId, documentId) => loadDocumentScene(workspace, workspace.workspace.workspaceId, projectId, documentId))(event, input);
+  });
+  ipcMain.handle(sceneSaveChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return saveDocumentSceneHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectId, documentId, scene) => saveDocumentScene(workspace, workspace.workspace.workspaceId, projectId, documentId, scene))(event, input);
+  });
   ipcMain.handle(credentialStoreChannel, async (event, connectionId, secret) => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return createCredentialStoreHandler(activeWindow, activeTrustedUrl, credentialBoundary)(event, connectionId, secret);
