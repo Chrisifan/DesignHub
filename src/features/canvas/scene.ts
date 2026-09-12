@@ -13,6 +13,7 @@ export type LayerBase = {
 export type ImageLayer = LayerBase & {
   type: 'image';
   assetId: string;
+  role?: 'content' | 'reference';
 };
 
 export type TextLayer = LayerBase & {
@@ -75,9 +76,10 @@ const isLayerBase = (value: Record<string, unknown>): boolean => (
 
 const isImageLayer = (value: Record<string, unknown>): boolean => (
   value.type === 'image'
-  && hasAllowedKeys(value, ['id', 'type', 'assetId', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'visible', 'locked'])
+  && hasAllowedKeys(value, ['id', 'type', 'assetId', 'role', 'x', 'y', 'width', 'height', 'rotation', 'opacity', 'visible', 'locked'])
   && isLayerBase(value)
   && isNonBlank(value.assetId)
+  && (value.role === undefined || value.role === 'content' || value.role === 'reference')
 );
 
 const isTextLayer = (value: Record<string, unknown>): boolean => (
@@ -179,6 +181,50 @@ export const replaceSceneLayer = (scene: DesignScene, nextLayer: SceneLayer): De
 export const selectLayerIds = (scene: DesignScene, selectedIds: string[]): string[] => {
   const available = new Set(scene.layers.map((layer) => layer.id));
   return [...new Set(selectedIds)].filter((id) => available.has(id));
+};
+
+export type AssetSceneAction = {
+  assetId: string;
+  mode: 'place' | 'reference' | 'replace';
+  selectedIds: string[];
+};
+
+const nextLayerId = (scene: DesignScene, assetId: string, prefix = 'image'): string => {
+  const base = `${prefix}-${assetId.replace(/[^a-z0-9_-]/giu, '-').slice(0, 48) || 'asset'}`;
+  let candidate = base;
+  let suffix = 2;
+  while (scene.layers.some((layer) => layer.id === candidate)) candidate = `${base}-${suffix++}`;
+  return candidate;
+};
+
+export const applyAssetToScene = (scene: DesignScene, action: AssetSceneAction): { scene: DesignScene; selectedIds: string[] } => {
+  if (!isNonBlank(action.assetId)) throw new Error('ASSET_REQUIRED');
+  const selected = new Set(selectLayerIds(scene, action.selectedIds));
+  if (action.mode === 'replace') {
+    const target = scene.layers.find((layer) => selected.has(layer.id) && layer.type === 'image');
+    if (target?.type === 'image') {
+      const nextLayer: ImageLayer = { ...clone(target), assetId: action.assetId, role: 'content' };
+      return { scene: replaceSceneLayer(scene, nextLayer), selectedIds: [nextLayer.id] };
+    }
+  }
+  const role = action.mode === 'reference' ? 'reference' : 'content';
+  const width = Math.max(1, Math.round(scene.width * 0.72));
+  const height = Math.max(1, Math.round(scene.height * 0.72));
+  const layer: ImageLayer = {
+    id: nextLayerId(scene, action.assetId, role === 'reference' ? 'reference' : 'image'),
+    type: 'image',
+    assetId: action.assetId,
+    role,
+    x: Math.round((scene.width - width) / 2),
+    y: Math.round((scene.height - height) / 2),
+    width,
+    height,
+    rotation: 0,
+    opacity: role === 'reference' ? 0.55 : 1,
+    visible: true,
+    locked: role === 'reference',
+  };
+  return { scene: createScene({ ...scene, layers: [...scene.layers, layer] }), selectedIds: [layer.id] };
 };
 
 export const fitViewport = (scene: DesignScene, available: { width: number; height: number }): ViewportState => {

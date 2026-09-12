@@ -2,7 +2,7 @@ import { useEffect, useId, useState, type CSSProperties, type FormEvent } from '
 
 import type { Locale } from '../i18n';
 import type { Project } from './types';
-import { CanvasWorkspace } from '../../features/canvas/CanvasWorkspace';
+import { CanvasWorkspace, type CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
@@ -41,6 +41,8 @@ export type WorkbenchProps = {
   operatorName?: string;
   modelConnected?: boolean;
   notify: (message: string) => void;
+  assetAction?: CanvasAssetAction;
+  onAssetActionHandled?: (actionId: string) => void;
 };
 
 const createInitialScene = (project: Project, documentId?: string): DesignScene => {
@@ -79,6 +81,8 @@ export const Workbench = ({
   operatorName = '',
   modelConnected = false,
   notify,
+  assetAction,
+  onAssetActionHandled,
 }: WorkbenchProps) => {
   const layersTitleId = useId();
   const contextTitleId = useId();
@@ -562,6 +566,8 @@ export const Workbench = ({
                 workspaceId={workspaceId}
                 projectId={project.id}
                 documentId={documentId}
+                assetAction={assetAction}
+                onAssetActionHandled={onAssetActionHandled}
               />
             ) : (
               <>

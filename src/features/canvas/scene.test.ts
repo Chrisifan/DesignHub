@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 
 import {
   createScene,
+  applyAssetToScene,
   isLayerInteractive,
   parseScene,
   reorderLayers,
@@ -69,4 +70,21 @@ it('keeps multi-selection scoped to existing unique layer ids', () => {
   const scene = createScene({ id: 'scene-2', width: 800, height: 600, layers: [imageLayer, { ...imageLayer, id: 'image-2' }] });
 
   expect(selectLayerIds(scene, ['image-2', 'image-1', 'image-2', 'missing'])).toEqual(['image-2', 'image-1']);
+});
+
+it('places, references, and replaces image assets without mutating the source scene', () => {
+  const scene = createScene({ id: 'scene-assets', width: 1000, height: 800, layers: [{ ...imageLayer, id: 'image-existing', assetId: 'old-asset', width: 400, height: 300 }] });
+
+  const placed = applyAssetToScene(scene, { assetId: 'asset-new', mode: 'place', selectedIds: [] });
+  expect(placed.scene.layers).toHaveLength(2);
+  expect(placed.scene.layers.at(-1)).toMatchObject({ type: 'image', assetId: 'asset-new', role: 'content' });
+  expect(placed.selectedIds).toEqual([expect.any(String)]);
+
+  const referenced = applyAssetToScene(scene, { assetId: 'asset-reference', mode: 'reference', selectedIds: [] });
+  expect(referenced.scene.layers.at(-1)).toMatchObject({ type: 'image', assetId: 'asset-reference', role: 'reference', locked: true });
+
+  const replaced = applyAssetToScene(scene, { assetId: 'asset-replacement', mode: 'replace', selectedIds: ['image-existing'] });
+  expect(replaced.scene.layers).toHaveLength(1);
+  expect(replaced.scene.layers[0]).toMatchObject({ id: 'image-existing', assetId: 'asset-replacement', role: 'content' });
+  expect(scene.layers[0]).toMatchObject({ assetId: 'old-asset' });
 });

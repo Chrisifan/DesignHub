@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ellipse, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
 
 import { getMessages, type Locale } from '../../app/i18n';
@@ -8,6 +8,7 @@ import { Inspector } from './Inspector';
 import { LayerList } from './LayerList';
 import {
   createScene,
+  applyAssetToScene,
   fitViewport,
   isLayerInteractive,
   moveLayer,
@@ -20,6 +21,12 @@ import {
   type ViewportState,
 } from './scene';
 
+export type CanvasAssetAction = {
+  id: string;
+  assetId: string;
+  mode: 'place' | 'reference' | 'replace';
+};
+
 export type CanvasWorkspaceProps = {
   locale: Locale;
   scene: DesignScene;
@@ -27,6 +34,8 @@ export type CanvasWorkspaceProps = {
   workspaceId?: string;
   projectId?: string;
   documentId?: string;
+  assetAction?: CanvasAssetAction;
+  onAssetActionHandled?: (actionId: string) => void;
 };
 
 const initialViewport: ViewportState = { zoom: 1, offsetX: 0, offsetY: 0 };
@@ -67,12 +76,14 @@ const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void,
   return <Rect {...common} fill={layer.type === 'shape' ? layer.fill : '#d7dce5'} dash={layer.type === 'image' ? [8, 6] : undefined} />;
 };
 
-export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId, assetAction, onAssetActionHandled }: CanvasWorkspaceProps) => {
   const messages = getMessages(locale);
   const canvasReady = useMemo(canRenderCanvas, []);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewport, setViewport] = useState<ViewportState>(initialViewport);
   const [assetImages, setAssetImages] = useState<Record<string, HTMLImageElement>>({});
+  const [sceneHydrated, setSceneHydrated] = useState(!workspaceId || !projectId || !documentId);
+  const handledAssetAction = useRef<string | undefined>(undefined);
   const selectedLayer = useMemo(() => scene.layers.find((layer) => layer.id === selectedIds[0]), [scene.layers, selectedIds]);
   useEffect(() => {
     if (!workspaceId || !projectId) return undefined;
@@ -91,7 +102,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     return () => { cancelled = true; };
   }, [projectId, scene.layers, workspaceId]);
   useEffect(() => {
-    if (!workspaceId || !projectId || !documentId) return undefined;
+    if (!workspaceId || !projectId || !documentId) { setSceneHydrated(true); return undefined; }
     let cancelled = false;
     const request = getDesktopApi().loadDocumentScene?.(workspaceId, projectId, documentId);
     if (!request) return undefined;
@@ -99,10 +110,12 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
       if (cancelled) return;
       if (stored) {
         onSceneChange?.(stored);
+        setSceneHydrated(true);
         return;
       }
       const save = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId, documentId, scene });
       if (save) void save.catch(() => undefined);
+      setSceneHydrated(true);
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [documentId, onSceneChange, projectId, workspaceId]);
@@ -114,6 +127,14 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
       if (request) void request.catch(() => undefined);
     }
   };
+  useEffect(() => {
+    if (!sceneHydrated || !assetAction || handledAssetAction.current === assetAction.id) return;
+    const applied = applyAssetToScene(scene, { assetId: assetAction.assetId, mode: assetAction.mode, selectedIds });
+    handledAssetAction.current = assetAction.id;
+    persist(applied.scene);
+    setSelectedIds(applied.selectedIds);
+    onAssetActionHandled?.(assetAction.id);
+  }, [assetAction, onAssetActionHandled, scene, sceneHydrated, selectedIds]);
   const replace = (layer: SceneLayer): void => persist(replaceSceneLayer(scene, layer));
   const move = (layerId: string, direction: 'up' | 'down'): void => {
     const index = scene.layers.findIndex((layer) => layer.id === layerId);

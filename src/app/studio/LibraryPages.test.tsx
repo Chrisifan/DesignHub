@@ -11,11 +11,13 @@ const Harness = ({
   deliveryProject,
   workspaceId,
   projectId,
+  onAssetAction,
 }: {
   initialView?: Exclude<View, 'projects'>;
   deliveryProject?: Project | null;
   workspaceId?: string;
   projectId?: string;
+  onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
 }) => {
   const [view, setView] = useState<View>(initialView);
   const [theme, setTheme] = useState<Theme>('system');
@@ -41,6 +43,7 @@ const Harness = ({
           deliveryProject={deliveryProject}
           workspaceId={workspaceId}
           projectId={projectId}
+          onAssetAction={onAssetAction}
         />
       )}
     </>
@@ -152,6 +155,21 @@ it('keeps external asset references visibly unmanaged in project details', async
   const details = screen.getByLabelText('素材详情');
   expect(within(details).getAllByText('外部引用').length).toBeGreaterThan(0);
   expect(within(details).queryByText('受管副本')).not.toBeInTheDocument();
+});
+
+it('exposes explicit asset placement actions from project details', async () => {
+  const onAssetAction = vi.fn();
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => [{
+    id: 'asset-action', name: '可用原图', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true,
+  }]) };
+  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" onAssetAction={onAssetAction} />);
+  const details = await screen.findByLabelText('素材详情');
+  fireEvent.click(within(details).getByRole('button', { name: '放入画布' }));
+  expect(onAssetAction).toHaveBeenCalledWith({ assetId: 'asset-action', mode: 'place', projectId: 'project-1' });
+  fireEvent.click(within(details).getByRole('button', { name: '作为参考' }));
+  expect(onAssetAction).toHaveBeenCalledWith({ assetId: 'asset-action', mode: 'reference', projectId: 'project-1' });
+  fireEvent.click(within(details).getByRole('button', { name: '替换选中图像' }));
+  expect(onAssetAction).toHaveBeenCalledWith({ assetId: 'asset-action', mode: 'replace', projectId: 'project-1' });
 });
 
 it('loads managed asset bytes for the selected workspace preview', async () => {

@@ -559,6 +559,19 @@
   margin-bottom: 6px;
 }
 
+.asset-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.asset-detail-actions .ui-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 11px;
+}
+
 .asset-collection > .empty-state {
   grid-column: 1 / -1;
 }

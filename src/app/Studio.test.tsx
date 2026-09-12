@@ -230,6 +230,21 @@ it('opens each persisted document with its own size and scene target', async () 
   expect(screen.getByText('1080 × 1080 px')).toBeInTheDocument();
 });
 
+it('routes asset actions from the library into the selected project canvas', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-assets', name: '素材项目', documents: [{ id: 'doc-main', name: '主海报', width: 800, height: 600, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
+  const listAssets = vi.fn(async () => [{ id: 'asset-action', name: '原图', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true }]);
+  const loadDocumentScene = vi.fn(async () => null);
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, listAssets, loadDocumentScene, saveDocumentScene };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: '素材项目' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '素材库' }));
+  const details = await screen.findByLabelText('素材详情');
+  fireEvent.click(within(details).getByRole('button', { name: '放入画布' }));
+  await waitFor(() => expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument());
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-assets', documentId: 'doc-main', scene: expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ assetId: 'asset-action' })]) }) })));
+});
+
 it('creates a related-size document from a finalized source revision', async () => {
   const listActiveProjects = vi.fn(async () => [{
     projectId: 'project-related',

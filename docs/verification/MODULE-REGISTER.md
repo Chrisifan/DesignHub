@@ -156,6 +156,8 @@
 
 2026-09-13：M05 图层管理操作（变更 ID M05-20260913-03）。CanvasWorkspace 图层列表新增上下移、复制、删除，所有操作生成新校验场景并通过既有 scene bridge 持久化，复制自动生成唯一 ID 并选中副本。先新增 CanvasWorkspace Red，再 Green；focused 5/5、lint、typecheck、diff check 通过。多选语义编辑、遮罩质量、Windows 与大图性能仍开放。
 
+2026-09-13：M04/M05/M07 素材详情动作与画布接入（变更 ID M04-20260913-04）。素材详情新增“放入画布”“作为参考”“替换选中图像”三个独立动作，Studio 路由到当前项目文档并通过 scene bridge 持久化；参考图层显式标记并从 SVG 交付排除。先新增 scene/CanvasWorkspace/LibraryPages/Studio/export Red，再 Green；focused 5 files/60 tests、lint、typecheck、diff check 通过。外部引用下载、解码器尺寸、栅格合成、Windows 与人工图像质量仍开放。
+
 2026-09-13：M05/M07 组合回归（变更 ID REL-20260913-05）。图层管理与多文档交付改动后串行执行 unit 84 files/308 tests、integration 23 files/100 tests、browser E2E 24/24、native 2 passed/1 skipped、lint、typecheck、build 与 diff check，全部退出 0。未配置 packaged executable；Windows、签名/公证、真实 provider、颜色管理和人工图像质量仍开放。
 
 2026-09-13：macOS packaged native 回归（变更 ID REL-20260913-02）。使用现有 `out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub` 设置 `DESIGNHUB_PACKAGED_APP_PATH` 执行 `pnpm test:native`，source smoke、main storage 与 packaged storage 共 3/3 通过；Windows、签名/公证、升级卸载与钥匙串持久化仍开放。

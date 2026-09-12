@@ -47,6 +47,7 @@ type LibraryPagesProps = PageProps & {
   onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
   operatorName?: string;
   onOperatorNameChange?: (name: string) => void;
+  onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
 };
 
 type Localized = { zh: string; en: string };
@@ -225,6 +226,7 @@ const AssetsPage = ({
   projectId,
   readOnly,
   notify,
+  onAssetAction,
 }: {
   locale: Locale;
   query: string;
@@ -239,6 +241,7 @@ const AssetsPage = ({
   projectId?: string;
   readOnly?: boolean;
   notify?: (message: string) => void;
+  onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
 }) => {
   const [managedAssets, setManagedAssets] = useState<ManagedAsset[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string>();
@@ -439,6 +442,13 @@ const AssetsPage = ({
               </Badge>
             </DetailRow>
           </dl>
+          {usingManagedAssets && selected.managed !== false && onAssetAction && (
+            <div className="asset-detail-actions" role="group" aria-label={t(locale, '素材操作', 'Asset actions')}>
+              <Button icon="image" onClick={() => onAssetAction({ assetId: selected.id, mode: 'place', projectId })}>{t(locale, '放入画布', 'Place on canvas')}</Button>
+              <Button icon="eye" onClick={() => onAssetAction({ assetId: selected.id, mode: 'reference', projectId })}>{t(locale, '作为参考', 'Use as reference')}</Button>
+              <Button icon="rotate-ccw" onClick={() => onAssetAction({ assetId: selected.id, mode: 'replace', projectId })}>{t(locale, '替换选中图像', 'Replace selected image')}</Button>
+            </div>
+          )}
           <p className="panel-note">
             <Icon name="lock" size={15} />
             {t(
@@ -1477,6 +1487,7 @@ export const LibraryPages = ({
   onWorkspaceChange,
   operatorName,
   onOperatorNameChange,
+  onAssetAction,
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
@@ -1505,6 +1516,7 @@ export const LibraryPages = ({
         projectId={projectId}
         readOnly={readOnly}
         notify={notify}
+        onAssetAction={onAssetAction}
       />
     ),
     brands: (

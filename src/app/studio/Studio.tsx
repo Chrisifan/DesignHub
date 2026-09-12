@@ -8,6 +8,7 @@ import { NewDesignPage } from './NewDesignPage';
 import { PersonaArtwork } from './PersonaArtwork';
 import { getPersona, localize, personaProfiles, type PersonaProfile } from './personas';
 import { Workbench } from './Workbench';
+import type { CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
 import { getDesktopApi } from '../../platform/runtime';
 import {
@@ -97,6 +98,7 @@ export const Studio = ({
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(personaProfiles);
   const [modelConnected, setModelConnected] = useState(false);
   const [operatorName, setOperatorName] = useState(readOperatorName);
+  const [pendingAssetAction, setPendingAssetAction] = useState<(CanvasAssetAction & { projectId?: string }) | null>(null);
   const updateOperatorName = (value: string): void => {
     const next = value.slice(0, 80);
     setOperatorName(next);
@@ -177,6 +179,21 @@ export const Studio = ({
     setSurface(next);
     setDocumentOpen(false);
     setSelected(null);
+  };
+  const routeAssetAction = (input: { assetId: string; mode: CanvasAssetAction['mode']; projectId?: string }): void => {
+    const project = projects.find((entry) => entry.id === input.projectId) ?? projects[0];
+    const documentId = project?.documentEntries?.[0]?.id ?? project?.documentId;
+    if (!project || !documentId) {
+      notify(t(locale, '请先创建项目', 'Create a project first'));
+      return;
+    }
+    setPendingAssetAction({ id: crypto.randomUUID(), assetId: input.assetId, mode: input.mode, projectId: project.id });
+    setSelected(project);
+    setActiveDocumentId(documentId);
+    setDocumentOpen(true);
+    setSurface('projects');
+    setView('projects');
+    notify(t(locale, input.mode === 'replace' ? '已准备替换图像' : input.mode === 'reference' ? '已准备参考图层' : '已准备放入画布', input.mode === 'replace' ? 'Ready to replace the selected image' : input.mode === 'reference' ? 'Ready to add a reference layer' : 'Ready to place on canvas'));
   };
   const notify = (message: string) => setNotice(message);
   const updateProject = async (patch: ProjectMetadataPatch): Promise<void> => {
@@ -1117,6 +1134,8 @@ export const Studio = ({
                 onSubmitConversation={(message) => submitProjectConversation(project, message)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
+                assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}
+                onAssetActionHandled={(actionId) => setPendingAssetAction((current) => current?.id === actionId ? null : current)}
                 operatorName={operatorName}
                 modelConnected={modelConnected}
                 notify={notify}
@@ -1141,6 +1160,7 @@ export const Studio = ({
                   notify={notify}
                   navigate={navigate}
                   onUseForNew={(personaId) => openNewDesign('manual', personaId)}
+                  onAssetAction={routeAssetAction}
                   theme={theme}
                   onThemeChange={onThemeChange}
                   onLocaleChange={onLocaleChange}

@@ -73,3 +73,23 @@ it('duplicates and deletes layers through the scene persistence bridge', async (
   fireEvent.click(screen.getByRole('button', { name: '删除图层' }));
   await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ layers: [] }) })));
 });
+
+it('applies a pending asset action after hydrating the workspace scene', async () => {
+  const loadDocumentScene = vi.fn(async () => editable);
+  const saveDocumentScene = vi.fn(async () => true);
+  const onSceneChange = vi.fn();
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, saveDocumentScene };
+  render(<CanvasWorkspace
+    locale="zh-CN"
+    scene={initial}
+    workspaceId="workspace-1"
+    projectId="project-1"
+    documentId="doc-1"
+    onSceneChange={onSceneChange}
+    assetAction={{ id: 'action-1', assetId: 'asset-1', mode: 'place' }}
+  />);
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({
+    scene: expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ assetId: 'asset-1', type: 'image' })]) }),
+  })));
+  expect(onSceneChange).toHaveBeenCalledWith(expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ assetId: 'asset-1' })]) }));
+});
