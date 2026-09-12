@@ -196,8 +196,26 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
       setCreationError(t(locale, '请先确认拥有分析这些来源的权利。', 'Confirm rights before analysing these sources.'));
       return;
     }
+    if (creationSource === 'portfolio' && !portfolioSources.trim()) {
+      setCreationError(t(locale, '请先添加作品集来源。', 'Add at least one portfolio source first.'));
+      return;
+    }
     setCreationError('');
     setCandidatePhase('review');
+    if (creationSource === 'portfolio' && workspaceId) {
+      const draftId = `designer-${crypto.randomUUID()}`;
+      const request = getDesktopApi().submitConversation?.({
+        workspaceId,
+        source: { kind: 'designer-draft', id: draftId },
+        connectionId: 'openai-compatible',
+        message: `Analyse this portfolio for a designer persona:\n${portfolioSources.trim()}`,
+      });
+      void request?.then((task) => {
+        if (task) notify(t(locale, '作品集分析任务已排队。', 'Portfolio analysis task queued.'));
+      }).catch(() => {
+        notify(t(locale, '作品集分析提交失败。', 'Portfolio analysis could not be submitted.'));
+      });
+    }
   };
   const publishPreview = () => {
     if (!selectedCandidateId) {

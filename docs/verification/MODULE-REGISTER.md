@@ -81,6 +81,7 @@
 2026-09-12：M08 诊断包导出（变更 ID M08-20260912-02）。新增受信 `diagnostics:export` IPC/preload 合约和原生 JSON 保存；设置页启用本地诊断包导出，仅允许脱敏 `runtime/errorCode` 字段。先执行 IPC Red 再实现；diagnostics IPC、LibraryPages、lint、typecheck 通过。取消/磁盘错误恢复、Windows 和人工扫描仍开放。
 2026-09-12：M05 初始场景引导（变更 ID M05-20260912-08）。真实项目文档首次打开且无场景文件时，`CanvasWorkspace` 通过受控 bridge 保存初始有限场景，使未编辑项目也能导出；已有场景继续只读加载。先新增空场景保存 Red，再 Green；CanvasWorkspace 3/3、lint、typecheck 通过。影响 M07 导出消费者，已完成直接回归。
 2026-09-12：M07 native codec 启动回归（变更 ID M07-20260912-04）。将 Sharp/pdf-lib 从主进程顶层导入改为导出调用懒加载，修复打包 Electron storage smoke 启动超时；更新 bridge 白名单并重打包。macOS arm64 `pnpm test:native` 3/3、build、lint、typecheck 通过。
+2026-09-12：M03 作品集分析桥接（变更 ID M03-20260912-02）。权利确认且输入来源非空时，DesignerLibrary 通过 `designer-draft` 来源提交分析任务，再进入候选审阅；未连接模型时仍保留诚实失败状态。先新增 bridge Red，再 Green；DesignerLibrary focused、lint、typecheck 通过。真实模型候选生成、授权来源下载与跨平台仍开放。
 
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 

@@ -51,6 +51,18 @@ it('requires portfolio rights confirmation before entering candidate review', ()
   expect(screen.getByText('请先确认拥有分析这些来源的权利。')).toBeInTheDocument();
 });
 
+it('submits a rights-confirmed portfolio analysis task for a workspace designer draft', async () => {
+  const submitConversation = vi.fn(async () => ({ id: 'task-portfolio', requestId: 'request-portfolio', state: 'running' as const, cancelRequested: false, attempt: 1 }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, submitConversation };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-1" />);
+  fireEvent.click(await screen.findByRole('button', { name: '创建' }));
+  fireEvent.click(screen.getByRole('button', { name: '作品集' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '作品来源' }), { target: { value: 'https://example.com/portfolio.png' } });
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', source: expect.objectContaining({ kind: 'designer-draft' }), message: expect.stringContaining('https://example.com/portfolio.png') })));
+});
+
 it('presents three example candidates and marks preview publish as session-only', () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: '创建' }));
