@@ -1,6 +1,6 @@
 # DesignHub V1 Release Verification
 
-Status: prepared for execution. This record distinguishes browser preview evidence from native Electron, real-provider, and signed-package evidence.
+Status: prepared for execution. Local/offline V1 paths are implemented and regression-tested; this record distinguishes browser preview evidence from native Electron, real-provider, and signed-package evidence.
 
 ## REL01: Spring Market end-to-end journey
 
@@ -40,3 +40,9 @@ Browser preview tests are not evidence for the native gates above. No release ar
 - Latest application regression after M03 portfolio task bridging, M05 scene bootstrap, M06 retry/review, M07 desktop export, and M08 diagnostics export: `pnpm test:unit` 73 files/231 tests, `pnpm test:integration` 22 files/96 tests, `pnpm test:e2e` 24/24, `DESIGNHUB_PACKAGED_APP_PATH=out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub pnpm test:native` 3/3, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff --check` all passed.
 - The implemented offline path now includes workspace project creation/reopen, designer persistence and artwork rendering, project-scoped asset import/list/read, document scene hydration/save through Konva, and provider credential write/delete without renderer read-back.
 - The implemented local delivery path now also includes inspector scene persistence/bootstrap, native PNG/JPEG/PDF export with hash, redacted diagnostics export, explicit task retry execution, and creation-draft brief review before project creation.
+
+## 2026-09-13 execution evidence
+
+- Portfolio designer analysis now polls a running task to completion with a bounded 12-attempt/500ms schedule; the focused `DesignerLibrary` suite reports 15/15 passed, including failed, unavailable, and fake-timer completion paths.
+- Latest full regression after image-tool selection, candidate persistence/finalization, portfolio review and polling: unit 83 files/294 tests, integration 23 files/100 tests, browser E2E 24/24, native 2 passed/1 skipped (packaged executable path not configured), `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff --check` all passed.
+- Remaining release gates are external: real provider quality/cost/cancellation, authorized portfolio transport, native generated persona assets, Windows host behavior, signed/notarized artifacts, keychain persistence, cross-device package closure, advanced codec fidelity, large-image performance, and human visual QA.

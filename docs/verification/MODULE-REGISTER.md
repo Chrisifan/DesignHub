@@ -1,17 +1,17 @@
 # 模块测试、checklist 与回归登记
 
-创建：2026-09-08；更新：2026-09-12。本文件是实施与回归协议。Electron 框架已选；M01–M08 的可验证契约已落地，未覆盖的平台、真实模型、签名与人工质量前提继续单列。
+创建：2026-09-08；更新：2026-09-13。本文件是实施与回归协议。Electron 框架已选；M01–M08 的可验证契约已落地，未覆盖的平台、真实模型、签名与人工质量前提继续单列。
 
 | 模块 | 当前状态 | 实现前测试/清单文件 | 必须回归的直接消费者 |
 | --- | --- | --- | --- |
 | M01 | 部分验证；基础外壳、bridge、规则、构建与 macOS 原生 smoke 已完成，双平台/发布门禁开放 | [M01 记录](M01.md) | M02–M08 |
-| M02 | 实施中；Tasks 1–5 工作区格式、单写者锁、项目/废纸篓/备份存储与 Electron 工作区入口已完成；项目持久化 UI、Windows 与发布验证开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
-| M03 | 部分验证；设计师发布/默认/归档、作品集权利确认、工作区持久化与只读/内置/不可变回归已完成，历史集成与真实分析仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
-| M04 | 部分验证；简报确认、项目容器、项目元数据快照与重开/归档回归已完成，素材、修订与 M06 对话依赖仍开放 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
+| M02 | 部分验证；工作区格式、单写者锁、项目/废纸篓/备份存储、Electron 入口与项目包导入导出已完成；Windows 与发布验证开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
+| M03 | 部分验证；设计师发布/默认/归档、作品集候选审阅、工作区持久化、只读/内置/不可变回归与有界轮询已完成；真实分析、素材生成与历史集成仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
+| M04 | 部分验证；简报确认、项目容器、项目元数据快照、品牌/设计师归属、修订与图像候选定稿已完成；跨设备包闭包、崩溃恢复与实时提供方仍开放 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
 | M05 | 部分验证；画布 schema、Konva 编辑、中文文本、遮罩、撤销/恢复与工作区文档场景持久化已实现；大图、IME、跨平台原生与视觉性能开放 | `docs/verification/M05.md` | M06、M07、M08 |
-| M06 | 部分验证；连接边界、上下文隔离、任务状态/幂等、设计师交接与草稿任务已实现；真实提供方、系统钥匙串、持久化任务与完整对话闭环开放 | `docs/verification/M06.md` | M03、M04、M07、M08 |
-| M07 | 部分验证；工具目标、版本绑定导出、项目/只读包策略已实现；真实编码器、归档闭包、原生 worker 与人工图像质量开放 | `docs/verification/M07.md` | M02、M04、M08 |
-| M08 | 部分验证；本地检索、诊断白名单、设置与发布验收入口已实现；原生双平台、签名、真实模型和全链路证据开放 | `docs/verification/M08.md` | 改动涉及的基础模块与整条交付旅程 |
+| M06 | 部分验证；连接边界、上下文隔离、任务状态/幂等、重试/取消、设计师交接、草稿任务与图像候选审阅已实现；真实提供方、系统钥匙串与远端取消语义开放 | `docs/verification/M06.md` | M03、M04、M07、M08 |
+| M07 | 部分验证；工具目标、选区/遮罩、版本绑定导出、项目/只读包策略已实现；真实编码器、归档闭包、原生 worker 与人工图像质量开放 | `docs/verification/M07.md` | M02、M04、M08 |
+| M08 | 部分验证；本地检索、诊断白名单、设置、候选审阅与发布验收入口已实现；原生双平台、签名、真实模型和全链路证据开放 | `docs/verification/M08.md` | 改动涉及的基础模块与整条交付旅程 |
 
 ## 模块记录的必填内容
 
@@ -87,6 +87,8 @@
 2026-09-12：M02 workspace management UI/bridge（变更 ID M02-20260912-02）。新增项目废纸篓与工作区备份的受信 IPC/preload 合约；Storage 页面接入真实废纸篓列表、恢复/永久删除确认、备份创建和备份恢复后重新打开工作区。先执行 IPC/UI Red，再 Green；focused IPC 4/4、Storage UI 1/1、lint/typecheck 通过。计划中的定时备份、Windows/打包恢复与原生文件对话框门禁仍开放。
 
 2026-09-12：M04 project operations UI/duplication（变更 ID M04-20260912-03）。新增项目复制存储与受信 `project:duplicate` bridge；项目详情页接入重命名、归档、复制，保留只读工作区禁写约束。先执行存储/Studio Red，再 Green；focused project storage/IPC/Studio 31 tests、lint、typecheck、build 通过。跨工作区项目包、流式归档与完整历史闭包仍按 M07 开放。
+
+2026-09-13：M03 portfolio completion polling（变更 ID M03-20260913-01）。作品集分析任务在首次查询仍为 `running` 时，使用 500ms 有界轮询读取同一任务；完成结果才解析候选，失败、查询异常、超时和组件卸载都会清理状态/计时器并显示恢复文案。先补 fake-timer Red 回归，再 Green；`DesignerLibrary` focused 15/15、`pnpm lint`、`pnpm typecheck`、`git diff --check` 通过。真实 provider、授权来源传输、原生人物素材和跨平台图像质量仍开放。
 
 2026-09-12：M07 project package ZIP/export（变更 ID M07-20260912-05）。采用 `fflate` 0.8.2；新增包清单编解码、受信 `project:package-export` bridge、项目目录闭包导出和交付页入口。先执行 codec/IPC/UI Red，再 Green；focused 22 tests、lint、typecheck、build 通过。导入解包、流式大文件、跨设备闭包与 Windows 原生对话框仍开放。
 2026-09-12：M07 project package ZIP/import（变更 ID M07-20260912-07）。新增受信 `project:package-import` bridge、原生 ZIP 选择、包清单验证、项目元数据/文档场景/受管素材提取与来源包去重标记；项目库加入导入入口。先执行 storage/IPC/Studio Red，再 Green；focused 21 tests、unit 77/249、integration 22/97、lint、typecheck、build、diff check 全部通过。流式大包、Windows 对话框、跨设备闭包与人工扫描仍开放。
