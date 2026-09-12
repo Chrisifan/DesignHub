@@ -130,6 +130,8 @@
 
 2026-09-13：最终整体验证（变更 ID REL-20260913-01）。在最新主分支串行完成 `pnpm test:unit`（83 files/294 tests）、`pnpm test:integration`（23 files/100 tests）、`pnpm test:e2e`（24/24）、`pnpm test:native`（2 passed/1 skipped，未设置 `DESIGNHUB_PACKAGED_APP_PATH`）、`pnpm lint`、`pnpm typecheck`、`pnpm build` 与 `git diff --check`，全部退出 0。native 必须在 build 完成后单独执行；并行 build/native 的一次尝试出现启动时序失败，单独重跑确认无代码回归。`.idea/` 为用户已有未跟踪目录，未纳入提交。
 
+2026-09-13：macOS packaged native 回归（变更 ID REL-20260913-02）。使用现有 `out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub` 设置 `DESIGNHUB_PACKAGED_APP_PATH` 执行 `pnpm test:native`，source smoke、main storage 与 packaged storage 共 3/3 通过；Windows、签名/公证、升级卸载与钥匙串持久化仍开放。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。
