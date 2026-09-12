@@ -37,6 +37,7 @@ export type WorkbenchProps = {
   onSubmitConversation?: (message: string) => void | Promise<void>;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string) => void | Promise<void>;
+  modelConnected?: boolean;
   notify: (message: string) => void;
 };
 
@@ -73,6 +74,7 @@ export const Workbench = ({
   onSubmitConversation,
   onSubmitImageTask,
   onSubmitImageGeneration,
+  modelConnected = false,
   notify,
 }: WorkbenchProps) => {
   const layersTitleId = useId();
@@ -678,14 +680,12 @@ export const Workbench = ({
                 <div className="workbench-context-note">
                   <Icon name="plug" size={18} />
                   <div>
-                    <strong>
-                      {t(locale, '尚未连接模型', 'No model connected')}
-                    </strong>
+                    <strong>{modelConnected ? t(locale, '模型已连接', 'Model connected') : t(locale, '尚未连接模型', 'No model connected')}</strong>
                     <p>
                       {t(
                         locale,
-                        '发送时将前往模型连接，输入会保留。',
-                        'Sending opens model connections and keeps your draft.',
+                        modelConnected ? '输入会提交到当前连接。' : '发送时将前往模型连接，输入会保留。',
+                        modelConnected ? 'Your request will use the active connection.' : 'Sending opens model connections and keeps your draft.',
                       )}
                     </p>
                   </div>

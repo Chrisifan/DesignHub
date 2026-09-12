@@ -89,6 +89,7 @@ export const Studio = ({
   const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(personaProfiles);
+  const [modelConnected, setModelConnected] = useState(false);
   const [operatorName, setOperatorName] = useState(readOperatorName);
   const updateOperatorName = (value: string): void => {
     const next = value.slice(0, 80);
@@ -133,6 +134,13 @@ export const Studio = ({
     setSurface('projects');
     return () => { cancelled = true; };
   }, [workspace?.workspaceId, locale]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspace) { setModelConnected(false); return () => { cancelled = true; }; }
+    const request = getDesktopApi().hasCredential?.('openai-compatible');
+    void request?.then((value) => { if (!cancelled) setModelConnected(Boolean(value)); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [workspace?.workspaceId]);
   useEffect(() => {
     let cancelled = false;
     if (!workspace) { setDesignerOptions(personaProfiles); return () => { cancelled = true; }; }
@@ -1019,6 +1027,7 @@ export const Studio = ({
                 onSubmitConversation={(message) => submitProjectConversation(project, message)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt) => submitProjectImageGeneration(project, prompt)}
+                modelConnected={modelConnected}
                 notify={notify}
               />
             </div>

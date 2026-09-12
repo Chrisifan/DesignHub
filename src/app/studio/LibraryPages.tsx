@@ -614,8 +614,8 @@ const ConnectionsPage = ({
         title={t(locale, '尚未连接模型', 'No models connected')}
         description={t(
           locale,
-          '当前仍可浏览示例、编辑画布与配置导出。连接适配器尚未包含在此 UI 示例中。',
-          'You can still browse the example, edit the canvas and configure delivery. Connection adapters are not included in this UI example.',
+          '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
+          'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
         )}
       >
         <Button
@@ -666,8 +666,8 @@ const ConnectionsPage = ({
       <Icon name="lock" size={15} />
       {t(
         locale,
-        '此页面不收集密钥，也不会伪装连接检测。接入受支持适配器后才会显示凭据入口。',
-        'This page does not collect keys or simulate connection checks. Credential controls appear only when a supported adapter is available.',
+        '此页面不收集密钥，也不会伪装连接检测。状态只显示本机安全存储中的配置结果。',
+        'This page does not collect keys or simulate checks. Status reflects configuration in local secure storage.',
       )}
     </p>
   </section>

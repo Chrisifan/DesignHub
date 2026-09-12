@@ -195,6 +195,12 @@ it('submits a generation request through the active project service', async () =
   await waitFor(() => expect(onSubmitImageGeneration).toHaveBeenCalledWith('生成春季市集主视觉'));
 });
 
+it('shows a connected model state when the host confirms a credential', () => {
+  render(<Workbench {...makeProps({ modelConnected: true })} />);
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  expect(screen.getByText('模型已连接')).toBeInTheDocument();
+});
+
 it('updates preview zoom and grid without changing the document', () => {
   render(<Workbench {...makeProps()} />);
   const canvas = screen.getByRole('region', { name: '设计画布' });
