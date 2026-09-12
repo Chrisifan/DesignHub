@@ -509,3 +509,33 @@ it('lets a failed task create a new retry attempt through the desktop bridge', a
   expect((await screen.findAllByText('处理中')).length).toBeGreaterThan(0);
   expect(screen.getByText('2')).toBeInTheDocument();
 });
+
+it('does not offer an implicit retry for portfolio vision tasks without retained images', async () => {
+  const listTasks = vi.fn(async () => [{
+    id: 'task-portfolio', requestId: 'request-portfolio', state: 'failed' as const, cancelRequested: false, attempt: 1,
+    source: { kind: 'designer-draft' as const, id: 'designer-draft-1' }, capability: 'vision-analysis',
+    requestText: 'Portfolio analysis: source-a', errorCode: 'PROVIDER_REQUEST_FAILED',
+  }]);
+  const retryTask = vi.fn(async () => null);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask };
+  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  await screen.findByText('失败');
+  expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+  expect(screen.getByText('请重新选择作品集来源')).toBeInTheDocument();
+  expect(retryTask).not.toHaveBeenCalled();
+});
+
+it('does not offer an implicit retry for image edits without a recoverable source', async () => {
+  const listTasks = vi.fn(async () => [{
+    id: 'task-edit', requestId: 'request-edit', state: 'failed' as const, cancelRequested: false, attempt: 1,
+    source: { kind: 'project' as const, id: 'project-1' }, capability: 'image-editing',
+    requestText: '去除背景', errorCode: 'PROVIDER_REQUEST_FAILED',
+  }]);
+  const retryTask = vi.fn(async () => null);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask };
+  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  await screen.findByText('失败');
+  expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+  expect(screen.getByText('请重新选择原图')).toBeInTheDocument();
+  expect(retryTask).not.toHaveBeenCalled();
+});

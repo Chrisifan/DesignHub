@@ -282,6 +282,28 @@ it('does not retry regional image editing without a persisted mask', async () =>
     region: { x: 1, y: 2, width: 10, height: 12 }, tool: 'remove-object',
   });
   await service.flush();
+  expect(runtime.get(first.id)).toMatchObject({ hasMask: true });
+  expect(runtime.get(first.id)?.state).toBe('failed');
+  await expect(service.retry(first.id)).resolves.toBeUndefined();
+  expect(runtime.list()).toHaveLength(1);
+});
+
+it('does not retry image editing when an unpersisted mask was submitted', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async () => { throw Object.assign(new Error('offline'), { kind: 'http' }); },
+    }),
+    loadSourceImage: async () => new Blob(['managed image'], { type: 'image/png' }),
+  });
+  const first = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'masked edit',
+    image: new Blob(['image']), sourceAssetId: 'asset-source', mask: new Blob(['mask']),
+  });
+  await service.flush();
+  expect(runtime.get(first.id)).toMatchObject({ hasMask: true });
   expect(runtime.get(first.id)?.state).toBe('failed');
   await expect(service.retry(first.id)).resolves.toBeUndefined();
   expect(runtime.list()).toHaveLength(1);

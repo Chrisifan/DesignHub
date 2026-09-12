@@ -23,6 +23,7 @@ export type TaskRecord = {
   source?: TaskSource;
   documentId?: string;
   sourceAssetId?: string;
+  hasMask?: boolean;
   baseRevisionId?: string | null;
   designerVersionId?: string;
   providerId?: string;

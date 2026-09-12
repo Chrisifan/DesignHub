@@ -831,7 +831,9 @@ const TasksPage = ({
           {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART' ? t(locale, '结果未知', 'Result unknown') : t(locale, '失败', 'Failed')}
         </Badge>
         {(task.state === 'queued' || task.state === 'running') && <Button variant="secondary" icon="x" onClick={() => { void stopTask(task.id); }}>{t(locale, '停止', 'Stop')}</Button>}
-        {(task.state === 'failed' || task.state === 'cancelled') && <Button variant="secondary" icon="rotate-ccw" onClick={() => { void retryTask(task.id); }}>{t(locale, '重试', 'Retry')}</Button>}
+        {(task.state === 'failed' || task.state === 'cancelled') && task.capability === 'vision-analysis' && <small>{t(locale, '请重新选择作品集来源', 'Select portfolio sources again')}</small>}
+        {(task.state === 'failed' || task.state === 'cancelled') && task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region) && <small>{t(locale, '请重新选择原图', 'Select the source image again')}</small>}
+        {(task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region)) && <Button variant="secondary" icon="rotate-ccw" onClick={() => { void retryTask(task.id); }}>{t(locale, '重试', 'Retry')}</Button>}
       </article>)}
     </div> : <EmptyState
       icon="clock"

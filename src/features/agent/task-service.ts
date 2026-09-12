@@ -150,6 +150,9 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       ...('tool' in input && input.tool ? { tool: input.tool } : {}),
       ...('region' in input && input.region ? { region: { ...input.region } } : {}),
       ...('sourceAssetId' in input && input.sourceAssetId ? { sourceAssetId: input.sourceAssetId } : {}),
+      ...(capability === 'image-editing'
+        ? { hasMask: 'mask' in input ? Boolean(input.mask) : false }
+        : {}),
       providerId: input.connectionId.trim(),
       capability,
       createdAt: new Date().toISOString(),
@@ -233,7 +236,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const previous = options.runtime.get(taskId);
     if (!previous?.requestText || !previous.providerId || !previous.source?.id) return undefined;
     if (previous.capability === 'image-editing') {
-      if (previous.source.kind !== 'project' || !previous.documentId || !previous.sourceAssetId || previous.region || !options.loadSourceImage) return undefined;
+      if (previous.source.kind !== 'project' || !previous.documentId || !previous.sourceAssetId || previous.region || previous.hasMask !== false || !options.loadSourceImage) return undefined;
       const image = await options.loadSourceImage({ projectId: previous.source.id, assetId: previous.sourceAssetId });
       if (!image) return undefined;
       const retried = options.runtime.retry(taskId);
