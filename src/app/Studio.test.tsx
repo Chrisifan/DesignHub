@@ -155,6 +155,20 @@ it('hydrates persisted workspace projects and creates through the desktop API', 
   expect(await screen.findByRole('heading', { name: 'Created project' })).toBeInTheDocument();
 });
 
+it('waits for the persisted search index rebuild before querying it', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project' }]);
+  let releaseRebuild!: () => void;
+  const rebuildSearchIndex = vi.fn(() => new Promise<boolean>((resolve) => { const release = () => resolve(true); releaseRebuild = release; }));
+  const searchProjects = vi.fn(async () => [{ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'doc-1', title: 'Persisted project', contributorIds: [] }]);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, rebuildSearchIndex, searchProjects };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
+  expect(rebuildSearchIndex).toHaveBeenCalledOnce();
+  expect(searchProjects).not.toHaveBeenCalled();
+  releaseRebuild();
+  await waitFor(() => expect(searchProjects).toHaveBeenCalledWith({ workspaceId: 'workspace-1', query: '' }));
+});
+
 it('imports a project package and refreshes the persisted project list', async () => {
   const listActiveProjects = vi.fn()
     .mockResolvedValueOnce([])

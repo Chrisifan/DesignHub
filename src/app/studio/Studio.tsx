@@ -365,8 +365,8 @@ export const Studio = ({
       return undefined;
     }
     let cancelled = false;
-    void (getDesktopApi().rebuildSearchIndex?.(workspace.workspaceId, searchRecords) ?? Promise.resolve(false)).catch(() => false);
-    void (getDesktopApi().searchProjects?.({ workspaceId: workspace.workspaceId, query }) ?? Promise.resolve(null)).then((results) => {
+    const rebuilt = getDesktopApi().rebuildSearchIndex?.(workspace.workspaceId, searchRecords) ?? Promise.resolve(true);
+    void rebuilt.then(() => getDesktopApi().searchProjects?.({ workspaceId: workspace.workspaceId, query }) ?? null).then((results) => {
       if (!cancelled && results) setPersistedSearchIds(results.map((item) => item.projectId));
     }).catch(() => undefined);
     return () => { cancelled = true; };
