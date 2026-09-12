@@ -804,6 +804,7 @@ const DeliveryPage = ({
   notify?: (message: string) => void;
 }) => {
   const [exporting, setExporting] = useState(false);
+  const [source, setSource] = useState<'current' | 'final'>('current');
   const formatDescription =
     format === 'jpeg'
       ? t(
@@ -824,17 +825,32 @@ const DeliveryPage = ({
           );
   const projectName = project ? t(locale, project.name, project.enName) : '';
   const persistedProject = Boolean(project?.workspaceId);
+  const currentDocument = project?.documentEntries?.find((entry) => entry.id === project.documentId) ?? project?.documentEntries?.[0];
+  const finalizedRevisionId = currentDocument?.finalizedRevisionId ?? null;
+  const hasFinalizedRevision = Boolean(project?.workspaceId && project?.documentId && finalizedRevisionId);
+  useEffect(() => {
+    if (!hasFinalizedRevision && source === 'final') setSource('current');
+  }, [hasFinalizedRevision, source]);
   const exportCurrent = async (): Promise<void> => {
     if (!project?.workspaceId || !project.documentId) return;
     setExporting(true);
     try {
       const api = getDesktopApi();
-      const scene = await api.loadDocumentScene?.(project.workspaceId, project.id, project.documentId)
-        ?? createScene({ id: project.documentId, width: 1080, height: 1440, layers: [] });
+      let scene;
+      if (source === 'final' && finalizedRevisionId) {
+        const revisions = await api.loadDocumentRevisions?.(project.workspaceId, project.id, project.documentId);
+        const finalRevision = revisions?.revisions.find((revision) => revision.revisionId === finalizedRevisionId)
+          ?? (revisions?.finalRevisionId ? revisions.revisions.find((revision) => revision.revisionId === revisions.finalRevisionId) : undefined);
+        if (!finalRevision?.scene) throw new Error('FINAL_SCENE_UNAVAILABLE');
+        scene = finalRevision.scene;
+      } else {
+        scene = await api.loadDocumentScene?.(project.workspaceId, project.id, project.documentId)
+          ?? createScene({ id: project.documentId, width: currentDocument?.width ?? 1080, height: currentDocument?.height ?? 1440, layers: [] });
+      }
       const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: project.documentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}) });
       if (result) notify?.(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
     } catch {
-      notify?.(t(locale, '导出失败，请重试。', 'Export failed. Try again.'));
+      notify?.(t(locale, source === 'final' ? '定稿读取失败，请重试。' : '导出失败，请重试。', source === 'final' ? 'Could not read the finalized revision. Try again.' : 'Export failed. Try again.'));
     } finally { setExporting(false); }
   };
   const exportPackage = async (): Promise<void> => {
@@ -876,13 +892,12 @@ const DeliveryPage = ({
               <h2>{projectName}</h2>
               <p>
                 {(() => {
-                  const document = project.documentEntries?.find((entry) => entry.id === project.documentId) ?? project.documentEntries?.[0];
-                  const dimensions = `${document?.width ?? 1080} × ${document?.height ?? 1440}`;
+                  const dimensions = `${currentDocument?.width ?? 1080} × ${currentDocument?.height ?? 1440}`;
                   return t(locale, `${dimensions} 像素 · sRGB`, `${dimensions} px · sRGB`);
                 })()}
               </p>
               <small className="source-note">
-                  {t(locale, '导出将读取当前文档场景。', 'Export reads the current document scene.')}
+                  {t(locale, source === 'final' ? '导出将读取已定稿修订。' : '导出将读取当前文档场景。', source === 'final' ? 'Export reads the finalized revision.' : 'Export reads the current document scene.')}
               </small>
             </div>
           </div>
@@ -940,10 +955,11 @@ const DeliveryPage = ({
           </div>
           <div className="config-grid">
             <Field label={t(locale, '来源', 'Source')}>
-              <select value="example" disabled>
-                <option value="example">
+              <select value={source} onChange={(event) => setSource(event.target.value as 'current' | 'final')}>
+                <option value="current">
                   {t(locale, persistedProject ? '当前文档' : '示例原稿', persistedProject ? 'Current document' : 'Example source artwork')}
                 </option>
+                {hasFinalizedRevision && <option value="final">{t(locale, '已定稿', 'Finalized revision')}</option>}
               </select>
             </Field>
             <Field label={t(locale, '颜色空间', 'Color space')}>
@@ -967,8 +983,8 @@ const DeliveryPage = ({
               <small>
                 {t(
                   locale,
-                  persistedProject ? '导出会读取当前文档，并可选择归档副本。' : '仅配置选项；示例不会写入 exports 目录。',
-                  persistedProject ? 'Export reads the current document and can archive a copy.' : 'Configuration only; the example does not write to the exports directory.',
+                  persistedProject ? (source === 'final' ? '导出会读取已定稿修订，并可选择归档副本。' : '导出会读取当前文档，并可选择归档副本。') : '仅配置选项；示例不会写入 exports 目录。',
+                  persistedProject ? (source === 'final' ? 'Export reads the finalized revision and can archive a copy.' : 'Export reads the current document and can archive a copy.') : 'Configuration only; the example does not write to the exports directory.',
                 )}
               </small>
             </span>

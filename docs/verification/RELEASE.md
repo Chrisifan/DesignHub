@@ -61,3 +61,4 @@ Browser preview tests are not evidence for the native gates above. No release ar
 - New-design now carries persisted custom persona options into its selector and hero. Focused NewDesignPage regression passed 3/3; native generated bitmap persistence remains an external gate.
 
 - Delivery now exposes WebP, backed by the existing native export codec. Focused delivery/Library suites passed 39/39; color-profile fidelity and packaged codec verification remain open.
+- Delivery source selection now exports the explicitly finalized revision scene when requested, with a fail-closed error when the revision snapshot is unavailable. `LibraryPages` focused suite passed 22/22; full regression is required because this changes the M04 revision-to-M07 delivery boundary.

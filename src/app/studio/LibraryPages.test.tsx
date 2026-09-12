@@ -222,6 +222,20 @@ it('exposes WebP alongside the supported delivery formats', () => {
   expect(screen.getByRole('button', { name: 'WEBP' })).toBeInTheDocument();
 });
 
+it('lets delivery explicitly export the finalized document revision', async () => {
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-final', projectId: 'final-project', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-final', sceneAssetId: 'scene-final', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z', scene: { id: 'scene-final', version: 1 as const, width: 100, height: 100, layers: [] } }], timeline: [], finalRevisionId: 'revision-final' }));
+  const loadDocumentScene = vi.fn(async () => ({ id: 'scene-current', version: 1 as const, width: 100, height: 100, layers: [] }));
+  const exportDocument = vi.fn(async () => ({ path: '/tmp/final.png', sha256: 'a'.repeat(64) }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, loadDocumentScene, exportDocument };
+  const project: Project = { id: 'final-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '定稿项目', enName: 'Final project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100, finalizedRevisionId: 'revision-final' }] };
+  render(<Harness initialView="delivery" deliveryProject={project} />);
+  fireEvent.change(screen.getByRole('combobox', { name: '来源' }), { target: { value: 'final' } });
+  fireEvent.click(screen.getByRole('button', { name: '导出' }));
+  await waitFor(() => expect(exportDocument).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ id: 'scene-final' }) })));
+  expect(loadDocumentRevisions).toHaveBeenCalledWith('workspace-1', 'final-project', 'doc-1');
+  expect(loadDocumentScene).not.toHaveBeenCalled();
+});
+
 it('offers project package export for persisted projects', async () => {
   const exportProjectPackage = vi.fn(async () => ({ path: '/tmp/project.zip', sha256: 'a'.repeat(64) }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, exportProjectPackage };
