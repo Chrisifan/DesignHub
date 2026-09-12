@@ -35,6 +35,7 @@ export type CanvasWorkspaceProps = {
   workspaceId?: string;
   projectId?: string;
   documentId?: string;
+  readOnly?: boolean;
   assetAction?: CanvasAssetAction;
   onAssetActionHandled?: (actionId: string) => void;
 };
@@ -77,7 +78,7 @@ const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void,
   return <Rect {...common} fill={layer.type === 'shape' ? layer.fill : '#d7dce5'} dash={layer.type === 'image' ? [8, 6] : undefined} />;
 };
 
-export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId, assetAction, onAssetActionHandled }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId, readOnly = false, assetAction, onAssetActionHandled }: CanvasWorkspaceProps) => {
   const messages = getMessages(locale);
   const canvasReady = useMemo(canRenderCanvas, []);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -123,6 +124,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   }, [documentId, onSceneChange, projectId, workspaceId]);
   const select = (ids: string[]) => setSelectedIds(selectLayerIds(scene, ids));
   const persist = (nextScene: DesignScene): void => {
+    if (readOnly) return;
     onSceneChange?.(nextScene);
     if (workspaceId && projectId && documentId) {
       const request = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId, documentId, scene: nextScene });
@@ -179,7 +181,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     persist(createScene({ ...scene, layers: scene.layers.map((layer) => byId.get(layer.id) ?? layer) }));
   };
   return (
-    <section className="canvas-workspace" aria-label={messages.canvasTitle}>
+    <section className="canvas-workspace" aria-label={messages.canvasTitle} data-read-only={readOnly || undefined}>
       <header>
         <h1>{messages.canvasTitle}</h1>
         <div>
@@ -188,7 +190,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
         </div>
       </header>
       <div className="canvas-workspace__body">
-        <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} />
+        <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} readOnly={readOnly} />
         <div className="canvas-workspace__stage" style={{ overflow: 'auto' }}>
           {canvasReady ? <Stage width={stageDimensions.width} height={stageDimensions.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
             <Layer>
@@ -197,7 +199,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
             </Layer>
           </Stage> : <div className="canvas-workspace__fallback" role="img" aria-label={messages.canvasTitle}>{messages.canvasUnavailable}</div>}
         </div>
-        <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} />
+        <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} readOnly={readOnly} />
       </div>
     </section>
   );

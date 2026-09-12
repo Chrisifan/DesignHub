@@ -1152,6 +1152,7 @@ export const Studio = ({
                 onAssetActionHandled={(actionId) => setPendingAssetAction((current) => current?.id === actionId ? null : current)}
                 operatorName={operatorName}
                 modelConnected={modelConnected}
+                readOnly={workspace?.openMode === 'read-only'}
                 notify={notify}
               />
             </div>

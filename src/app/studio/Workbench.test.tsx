@@ -298,6 +298,26 @@ it('labels a workspace-backed workbench as a local session', () => {
   expect(screen.queryByText('示例会话')).not.toBeInTheDocument();
 });
 
+it('keeps a read-only workspace from persisting edits or submitting tasks', async () => {
+  const saveDocumentScene = vi.fn(async () => true);
+  const onSubmitConversation = vi.fn();
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, saveDocumentScene };
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', readOnly: true, onSubmitConversation, onSubmitImageTask })} />);
+
+  expect(screen.getByRole('textbox', { name: '标题文字' })).toBeDisabled();
+  expect(saveDocumentScene).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '提交修改' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  expect(onSubmitConversation).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '去除背景' }));
+  expect(onSubmitImageTask).not.toHaveBeenCalled();
+});
+
 it('renders the persisted canvas workspace for a real project document', () => {
   const scene = createScene({ id: 'scene-1', width: 1080, height: 1440, layers: [] });
   render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);

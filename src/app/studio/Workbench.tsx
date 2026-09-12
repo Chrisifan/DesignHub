@@ -42,6 +42,7 @@ export type WorkbenchProps = {
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
   modelConnected?: boolean;
+  readOnly?: boolean;
   notify: (message: string) => void;
   assetAction?: CanvasAssetAction;
   onAssetActionHandled?: (actionId: string) => void;
@@ -88,6 +89,7 @@ export const Workbench = ({
   onSubmitImageGeneration,
   operatorName = '',
   modelConnected = false,
+  readOnly = false,
   notify,
   assetAction,
   onAssetActionHandled,
@@ -154,6 +156,7 @@ export const Workbench = ({
   };
 
   const persistScene = (nextScene: DesignScene): void => {
+    if (readOnly) return;
     setScene(nextScene);
     if (workspaceId && documentId) {
       const request = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId: project.id, documentId, scene: nextScene });
@@ -168,6 +171,7 @@ export const Workbench = ({
     setOpacity(Math.round(textLayer.opacity * 100));
   };
   const updateTextLayer = (patch: Partial<Pick<TextLayer, 'text' | 'x' | 'y' | 'opacity'>>): void => {
+    if (readOnly) return;
     const textLayer = scene.layers.find((layer): layer is TextLayer => layer.type === 'text');
     if (!textLayer || textLayer.locked) return;
     persistScene(replaceSceneLayer(scene, { ...textLayer, ...patch }));
@@ -185,7 +189,7 @@ export const Workbench = ({
     }));
   };
   const saveRevision = async (): Promise<void> => {
-    if (!workspaceId || !documentId || revisionBusy) return;
+    if (readOnly || !workspaceId || !documentId || revisionBusy) return;
     setRevisionBusy(true);
     try {
       const result = await getDesktopApi().commitDocumentRevision?.({
@@ -210,7 +214,7 @@ export const Workbench = ({
     } finally { setRevisionBusy(false); }
   };
   const finalizeRevision = async (revisionId: string): Promise<void> => {
-    if (!workspaceId || !documentId || revisionBusy) return;
+    if (readOnly || !workspaceId || !documentId || revisionBusy) return;
     setRevisionBusy(true);
     try {
       const result = await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId });
@@ -220,7 +224,7 @@ export const Workbench = ({
   };
   const finalizeCandidate = async (candidateId: string): Promise<void> => {
     const entry = candidateFor(candidateId);
-    if (!workspaceId || !documentId || !entry || revisionBusy || entry.candidate.assetIds.length === 0) return;
+    if (readOnly || !workspaceId || !documentId || !entry || revisionBusy || entry.candidate.assetIds.length === 0) return;
     setRevisionBusy(true);
     try {
       const contribution = revisionContributions('revision');
@@ -250,6 +254,7 @@ export const Workbench = ({
     finally { setRevisionBusy(false); }
   };
   const continueCandidate = (candidateId: string): void => {
+    if (readOnly) return;
     const entry = candidateFor(candidateId);
     const assetId = entry?.candidate.assetIds[0];
     if (!entry || !assetId) return;
@@ -310,12 +315,15 @@ export const Workbench = ({
   } as CSSProperties;
 
   const updateVisibility = (layer: LayerId): void => {
+    if (readOnly) return;
     setVisibility((current) => ({ ...current, [layer]: !current[layer] }));
   };
   const updateLocked = (layer: LayerId): void => {
+    if (readOnly) return;
     setLocked((current) => ({ ...current, [layer]: !current[layer] }));
   };
   const updatePosition = (axis: 'x' | 'y', rawValue: string): void => {
+    if (readOnly) return;
     const value = Number(rawValue);
     if (Number.isFinite(value)) {
       const nextValue = clamp(value, -999, 999);
@@ -332,6 +340,7 @@ export const Workbench = ({
   };
   const submitPrompt = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
+    if (readOnly) return;
     if (!prompt.trim()) {
       notify(t(locale, '请输入修改说明', 'Enter an edit request'));
       return;
@@ -344,6 +353,7 @@ export const Workbench = ({
     onConnections();
   };
   const submitGeneration = (): void => {
+    if (readOnly) return;
     if (!prompt.trim()) {
       notify(t(locale, '请输入生成说明', 'Enter a generation prompt'));
       return;
@@ -355,6 +365,7 @@ export const Workbench = ({
     void Promise.resolve(onSubmitImageGeneration(prompt.trim(), currentRevisionId)).then(() => setPrompt('')).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
   const submitImageTask = (tool: ImageTool, taskPrompt: string, region?: Region): void => {
+    if (readOnly) return;
     if (!onSubmitImageTask) {
       onConnections();
       return;
@@ -587,6 +598,7 @@ export const Workbench = ({
                 locale={locale}
                 scene={scene}
                 onSceneChange={(nextScene) => { syncTextState(nextScene); setScene(nextScene); }}
+                readOnly={readOnly}
                 workspaceId={workspaceId}
                 projectId={project.id}
                 documentId={documentId}
@@ -693,7 +705,7 @@ export const Workbench = ({
                       <input
                         aria-label={t(locale, '标题文字', 'Title text')}
                         value={title}
-                        disabled={locked.text}
+                        disabled={readOnly || locked.text}
                         onChange={(event) => { const value = event.target.value; setTitle(value); updateTextLayer({ text: value }); }}
                       />
                     </Field>
@@ -706,7 +718,7 @@ export const Workbench = ({
                             min="-999"
                             max="999"
                             value={position.x}
-                            disabled={locked.text}
+                            disabled={readOnly || locked.text}
                             onChange={(event) =>
                               updatePosition('x', event.target.value)
                             }
@@ -718,7 +730,7 @@ export const Workbench = ({
                             min="-999"
                             max="999"
                             value={position.y}
-                            disabled={locked.text}
+                            disabled={readOnly || locked.text}
                             onChange={(event) =>
                               updatePosition('y', event.target.value)
                             }
@@ -737,7 +749,7 @@ export const Workbench = ({
                         min="0"
                         max="100"
                         value={opacity}
-                        disabled={locked.text}
+                        disabled={readOnly || locked.text}
                         aria-label={t(locale, '不透明度', 'Opacity')}
                         onChange={(event) => { const value = Number(event.target.value); setOpacity(value); updateTextLayer({ opacity: value / 100 }); }}
                       />
@@ -791,6 +803,7 @@ export const Workbench = ({
                     <textarea
                       rows={6}
                       value={prompt}
+                      disabled={readOnly}
                       placeholder={t(
                         locale,
                         '描述希望调整的内容…',
@@ -804,13 +817,14 @@ export const Workbench = ({
                       variant="secondary"
                       icon="plug"
                       onClick={onConnections}
+                      disabled={readOnly}
                     >
                       {t(locale, '连接', 'Connect')}
                     </Button>
-                    <Button variant="ai" icon="arrow-up-right" type="submit">
+                    <Button variant="ai" icon="arrow-up-right" type="submit" disabled={readOnly}>
                       {t(locale, '发送', 'Send')}
                     </Button>
-                    <Button variant="ai" icon="sparkles" type="button" onClick={submitGeneration}>
+                    <Button variant="ai" icon="sparkles" type="button" onClick={submitGeneration} disabled={readOnly}>
                       {t(locale, '生成', 'Generate')}
                     </Button>
                   </div>
@@ -827,7 +841,7 @@ export const Workbench = ({
                     workspaceId ? 'The current document scene is saved to the workspace. Revision events appear after a version is committed.' : 'This example session contains only its baseline. Preview edits are not saved as a version.',
                   )}
                 </p>
-                {workspaceId && <Button variant="secondary" icon="save" disabled={revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>}
+                {workspaceId && <Button variant="secondary" icon="save" disabled={readOnly || revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>}
                 <ol className="workbench-history-list">
                 {tasks.filter((task) => task.state === 'completed' && task.result?.candidate).map((task) => {
                   const candidate = task.result!.candidate!;
@@ -841,8 +855,8 @@ export const Workbench = ({
                       <div className="workbench-history-actions">
                         <Button variant="ghost" onClick={() => setCandidatePreviewId((current) => current === candidate.id ? null : candidate.id)}>{t(locale, '查看', 'View')}</Button>
                         {latest && <Button variant="ghost" onClick={() => setCompareRevisionId((current) => current === candidate.id ? null : candidate.id)}>{t(locale, '比较', 'Compare')}</Button>}
-                        <Button variant="ghost" disabled={revisionBusy} onClick={() => continueCandidate(candidate.id)}>{t(locale, '继续', 'Continue')}</Button>
-                        <Button variant="ghost" disabled={revisionBusy} onClick={() => { void finalizeCandidate(candidate.id); }}>{t(locale, '定稿', 'Finalize')}</Button>
+                        <Button variant="ghost" disabled={readOnly || revisionBusy} onClick={() => continueCandidate(candidate.id)}>{t(locale, '继续', 'Continue')}</Button>
+                        <Button variant="ghost" disabled={readOnly || revisionBusy} onClick={() => { void finalizeCandidate(candidate.id); }}>{t(locale, '定稿', 'Finalize')}</Button>
                       </div>
                       {candidatePreviewId === candidate.id && <p role="status">{t(locale, `候选素材 ${candidate.assetIds.join(', ')}`, `Candidate assets ${candidate.assetIds.join(', ')}`)}</p>}
                       {compareRevisionId === candidate.id && latest && <CompareRevisions left={{ revisionId: candidate.id, sceneAssetId: candidate.sceneAssetId ?? candidate.assetIds[0] ?? 'candidate', assetIds: candidate.assetIds }} right={latest} />}
@@ -858,8 +872,8 @@ export const Workbench = ({
                       {revision.contributions.length > 0 && <p className="workbench-history-contributors"><span>{t(locale, '贡献', 'Contributors')}:</span> {revision.contributions.map((contribution) => `${contribution.designerName ?? contribution.designerVersionId} · ${contributionRoleLabel(locale, contribution.role)}`).join('，')}</p>}
                       {revision.operatorName && <p className="workbench-history-operator"><span>{t(locale, '操作者', 'Operator')}:</span> {revision.operatorName}</p>}
                       <div className="workbench-history-actions">
-                        {revisionState.finalRevisionId !== revision.revisionId && <Button variant="ghost" disabled={revisionBusy} onClick={() => { void finalizeRevision(revision.revisionId); }}>{t(locale, '定稿', 'Finalize')}</Button>}
-                        {revision.scene && <Button variant="ghost" disabled={revisionBusy} onClick={() => { persistScene(revision.scene!); syncTextState(revision.scene!); setRevisionBaseId(revision.revisionId); notify(t(locale, '已载入旧版', 'Older version loaded')); }}>{t(locale, '继续', 'Continue')}</Button>}
+                        {revisionState.finalRevisionId !== revision.revisionId && <Button variant="ghost" disabled={readOnly || revisionBusy} onClick={() => { void finalizeRevision(revision.revisionId); }}>{t(locale, '定稿', 'Finalize')}</Button>}
+                        {revision.scene && <Button variant="ghost" disabled={readOnly || revisionBusy} onClick={() => { persistScene(revision.scene!); syncTextState(revision.scene!); setRevisionBaseId(revision.revisionId); notify(t(locale, '已载入旧版', 'Older version loaded')); }}>{t(locale, '继续', 'Continue')}</Button>}
                         {revisionState.revisions.length > 1 && <Button variant="ghost" onClick={() => setCompareRevisionId((current) => current === revision.revisionId ? null : revision.revisionId)}>{t(locale, '比较', 'Compare')}</Button>}
                       </div>
                       {compareRevisionId === revision.revisionId && <CompareRevisions left={revision} right={revisionState.revisions[revisionState.revisions.length - 1]} />}
@@ -889,11 +903,11 @@ export const Workbench = ({
                     <strong>{t(locale, '调整尺寸', 'Resize canvas')}</strong>
                     <p>{t(locale, '本地处理，可撤销或继续编辑。', 'Local transform; continue editing after apply.')}</p>
                     <div className="workbench-coordinate-grid">
-                      <Field label={t(locale, '宽度', 'Width')}><input type="number" min="1" value={resizeWidth} onChange={(event) => setResizeWidth(Number(event.target.value))} /></Field>
-                      <Field label={t(locale, '高度', 'Height')}><input type="number" min="1" value={resizeHeight} onChange={(event) => setResizeHeight(Number(event.target.value))} /></Field>
+                      <Field label={t(locale, '宽度', 'Width')}><input type="number" min="1" value={resizeWidth} disabled={readOnly} onChange={(event) => setResizeWidth(Number(event.target.value))} /></Field>
+                      <Field label={t(locale, '高度', 'Height')}><input type="number" min="1" value={resizeHeight} disabled={readOnly} onChange={(event) => setResizeHeight(Number(event.target.value))} /></Field>
                     </div>
                   </div>
-                  <Button variant="secondary" onClick={() => {
+                  <Button variant="secondary" disabled={readOnly} onClick={() => {
                     try {
                       persistScene(resizeScene(scene, { width: resizeWidth, height: resizeHeight }));
                       notify(t(locale, '尺寸已更新', 'Canvas resized'));
@@ -918,6 +932,7 @@ export const Workbench = ({
                   </div>
                   <Button
                     variant="secondary"
+                    disabled={readOnly}
                     onClick={() => {
                       setRotation((value) => value - 90);
                       notify(t(locale, '已旋转预览', 'Preview rotated'));
@@ -943,6 +958,7 @@ export const Workbench = ({
                   <Button
                     variant="secondary"
                     icon="plug"
+                    disabled={readOnly}
                     onClick={() => runImageTask('smart-crop', 'Smart crop while preserving the primary subject')}
                   >
                     {t(locale, '连接', 'Connect')}
@@ -954,7 +970,7 @@ export const Workbench = ({
                     <strong>{t(locale, '去除背景', 'Remove background')}</strong>
                     <p>{t(locale, '保留主体，生成透明背景副本。', 'Keep the subject and create a transparent-background copy.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '去除背景', 'Remove background')} variant="secondary" icon="wand-sparkles" onClick={() => runImageTask('remove-background', 'Remove the background and preserve the subject with clean edges')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '去除背景', 'Remove background')} variant="secondary" icon="wand-sparkles" disabled={readOnly} onClick={() => runImageTask('remove-background', 'Remove the background and preserve the subject with clean edges')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="image-plus" /></span>
@@ -962,7 +978,7 @@ export const Workbench = ({
                     <strong>{t(locale, '替换背景', 'Replace background')}</strong>
                     <p>{t(locale, '使用描述生成新的背景方向。', 'Generate a new background direction from a description.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '替换背景', 'Replace background')} variant="secondary" icon="image-plus" onClick={() => runImageTask('replace-background', 'Replace the background while preserving the original subject')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '替换背景', 'Replace background')} variant="secondary" icon="image-plus" disabled={readOnly} onClick={() => runImageTask('replace-background', 'Replace the background while preserving the original subject')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="eraser" /></span>
@@ -970,7 +986,7 @@ export const Workbench = ({
                     <strong>{t(locale, '移除对象', 'Remove object')}</strong>
                     <p>{t(locale, '移除选区中的对象并保留周围细节。', 'Remove an object from a selected region while preserving nearby detail.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '移除对象', 'Remove object')} variant="secondary" icon="eraser" onClick={() => runImageTask('remove-object', 'Remove the selected object and reconstruct the surrounding detail')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '移除对象', 'Remove object')} variant="secondary" icon="eraser" disabled={readOnly} onClick={() => runImageTask('remove-object', 'Remove the selected object and reconstruct the surrounding detail')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="paintbrush" /></span>
@@ -978,7 +994,7 @@ export const Workbench = ({
                     <strong>{t(locale, '局部重绘', 'Inpaint')}</strong>
                     <p>{t(locale, '根据描述重绘选区内容。', 'Redraw a selected region from a description.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '局部重绘', 'Inpaint')} variant="secondary" icon="paintbrush" onClick={() => runImageTask('inpaint', 'Inpaint the selected region according to the requested direction')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '局部重绘', 'Inpaint')} variant="secondary" icon="paintbrush" disabled={readOnly} onClick={() => runImageTask('inpaint', 'Inpaint the selected region according to the requested direction')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="expand" /></span>
@@ -986,7 +1002,7 @@ export const Workbench = ({
                     <strong>{t(locale, '扩展画布', 'Expand canvas')}</strong>
                     <p>{t(locale, '延展画布边缘并保持主体构图。', 'Extend the canvas while preserving the primary composition.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '扩展画布', 'Expand canvas')} variant="secondary" icon="expand" onClick={() => runImageTask('expand', 'Expand the canvas edges while preserving the primary composition')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '扩展画布', 'Expand canvas')} variant="secondary" icon="expand" disabled={readOnly} onClick={() => runImageTask('expand', 'Expand the canvas edges while preserving the primary composition')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="scan-line" /></span>
@@ -994,7 +1010,7 @@ export const Workbench = ({
                     <strong>{t(locale, '放大图像', 'Upscale image')}</strong>
                     <p>{t(locale, '提升图像尺寸并尽量保留细节。', 'Increase image resolution while preserving detail.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '放大图像', 'Upscale image')} variant="secondary" icon="scan-line" onClick={() => runImageTask('upscale', 'Upscale the image while preserving important details')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '放大图像', 'Upscale image')} variant="secondary" icon="scan-line" disabled={readOnly} onClick={() => runImageTask('upscale', 'Upscale the image while preserving important details')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
                 {pendingRegionalTool && <MaskEditor
                   locale={locale}
@@ -1006,6 +1022,7 @@ export const Workbench = ({
                     submitImageTask(pendingRegionalTool.tool, pendingRegionalTool.prompt, region);
                     setPendingRegionalTool(null);
                   }}
+                  readOnly={readOnly}
                   onCancel={() => setPendingRegionalTool(null)}
                   onClear={() => setToolRegion(undefined)}
                 />}

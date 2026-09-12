@@ -11,6 +11,7 @@ export type LayerListProps = {
   onDuplicate?: (id: string) => void;
   onDelete?: (id: string) => void;
   onRename?: (id: string, name: string) => void;
+  readOnly?: boolean;
 };
 
 const layerLabel = (layer: SceneLayer): string => {
@@ -19,7 +20,7 @@ const layerLabel = (layer: SceneLayer): string => {
   return `${layer.kind} ${layer.id}`;
 };
 
-export const LayerList = ({ locale, layers, selectedIds, onSelect, onMove, onDuplicate, onDelete, onRename }: LayerListProps) => {
+export const LayerList = ({ locale, layers, selectedIds, onSelect, onMove, onDuplicate, onDelete, onRename, readOnly = false }: LayerListProps) => {
   const messages = getMessages(locale);
   return (
     <aside className="canvas-layer-list" aria-label={messages.canvasLayers}>
@@ -41,13 +42,13 @@ export const LayerList = ({ locale, layers, selectedIds, onSelect, onMove, onDup
               {layer.locked && <span aria-label={messages.canvasLocked}>*</span>}
             </button>
             <span className="canvas-layer-actions">
-              {onMove && <>
+              {!readOnly && onMove && <>
                 <IconButton name="arrow-up" label={locale === 'zh-CN' ? '上移图层' : 'Move layer up'} onClick={() => onMove(layer.id, 'up')} disabled={displayIndex === 0} />
                 <IconButton name="arrow-down" label={locale === 'zh-CN' ? '下移图层' : 'Move layer down'} onClick={() => onMove(layer.id, 'down')} disabled={displayIndex === layers.length - 1} />
               </>}
-              {onDuplicate && <IconButton name="copy" label={locale === 'zh-CN' ? '复制图层' : 'Duplicate layer'} onClick={() => onDuplicate(layer.id)} />}
-              {onDelete && <IconButton name="trash-2" label={locale === 'zh-CN' ? '删除图层' : 'Delete layer'} onClick={() => onDelete(layer.id)} />}
-              {onRename && <IconButton name="settings" label={locale === 'zh-CN' ? '重命名图层' : 'Rename layer'} onClick={() => {
+              {!readOnly && onDuplicate && <IconButton name="copy" label={locale === 'zh-CN' ? '复制图层' : 'Duplicate layer'} onClick={() => onDuplicate(layer.id)} />}
+              {!readOnly && onDelete && <IconButton name="trash-2" label={locale === 'zh-CN' ? '删除图层' : 'Delete layer'} onClick={() => onDelete(layer.id)} />}
+              {!readOnly && onRename && <IconButton name="settings" label={locale === 'zh-CN' ? '重命名图层' : 'Rename layer'} onClick={() => {
                 const name = window.prompt(locale === 'zh-CN' ? '图层名称' : 'Layer name', layer.name ?? '');
                 if (name !== null) onRename(layer.id, name);
               }} />}
