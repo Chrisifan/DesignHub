@@ -41,3 +41,12 @@ it('does not let a current-token AI result overwrite a newer local draft', () =>
   expect(session.applyAiResult({ id: 'scene-1', value: 2 }, token)).toBe(false);
   expect(session.getDraft()).toEqual({ id: 'scene-1', value: 1 });
 });
+
+it('scopes the default persisted draft key to both project and document', () => {
+  const projectA = createEditSession(base, { projectId: 'project-a', documentId: 'shared-doc', sceneAssetId: 'scene-a' });
+  projectA.update({ value: 7 });
+  projectA.persistDraft();
+
+  const projectB = createEditSession(base, { projectId: 'project-b', documentId: 'shared-doc', sceneAssetId: 'scene-b' });
+  expect(projectB.recover()).toEqual(base);
+});

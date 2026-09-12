@@ -39,7 +39,7 @@ const makeToken = (): string => `${Date.now()}-${Math.random().toString(36).slic
 export const createEditSession = <T>(initial: T, options: EditSessionOptions): EditSession<T> => {
   const revisionStore = options.revisionStore ?? getRevisionStore();
   const storage = options.storage ?? (typeof localStorage === 'undefined' ? undefined : localStorage);
-  const storageKey = options.storageKey ?? `designhub.canvas.draft.${options.documentId}`;
+  const storageKey = options.storageKey ?? `designhub.canvas.draft.${encodeURIComponent(options.projectId)}.${encodeURIComponent(options.documentId)}`;
   let draft = clone(initial);
   let persisted = clone(initial);
   let committedRevisionId = options.baseRevisionId ?? null;
