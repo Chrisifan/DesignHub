@@ -84,3 +84,20 @@ it('disables mutation actions in a read-only workspace', async () => {
   expect(screen.queryByRole('button', { name: '创建' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled();
 });
+
+it('does not allow a draft profile to become the session default', () => {
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: '草稿设计师' } });
+  fireEvent.click(screen.getByRole('button', { name: '保留' }));
+  expect(screen.getByRole('button', { name: '设默认' })).toBeDisabled();
+});
+
+it('restores a referenced archived profile without changing its built-in or published status', () => {
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: /清晰商业/ }));
+  fireEvent.click(screen.getByRole('button', { name: '删除' }));
+  expect(screen.getByRole('button', { name: '恢复' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+  expect(screen.getByRole('button', { name: '删除' })).toBeInTheDocument();
+});

@@ -123,7 +123,7 @@ export const PersonaRepository = ({
                 aria-pressed={selected}
                 onClick={() => onSelect(profile.id)}
               >
-                <span className="persona-repository-row__avatar"><PersonaArtwork personaId={profile.id} crop="avatar" /></span>
+                <span className="persona-repository-row__avatar"><PersonaArtwork personaId={profile.id} profile={profile} crop="avatar" /></span>
                 <span className="persona-repository-row__body">
                   <span className="persona-repository-row__title">
                     <strong>{localize(locale, profile.name)}</strong>
