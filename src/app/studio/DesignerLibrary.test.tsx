@@ -419,6 +419,59 @@ it("submits a description analysis task and reviews completed candidates in a wo
   expect(candidateButton).toBeInTheDocument();
 });
 
+it("reviews a description task that completes during submission without listing tasks", async () => {
+  const candidate = {
+    id: "description-immediate-candidate",
+    name: { zh: "即时候选", en: "Immediate candidate" },
+    signature: { zh: "即时草稿", en: "Immediate draft" },
+    summary: { zh: "清晰层级", en: "Clear hierarchy" },
+    principle: { zh: "克制", en: "Restrained" },
+    personaCode: "DESCRIPTION-IMMEDIATE",
+    version: "v0.1",
+    status: "draft",
+    artworkUrl: "",
+    artworkAlt: { zh: "候选", en: "Candidate" },
+    tags: [],
+    referenceCount: 0,
+    styleDna: {
+      palette: [],
+      typography: { zh: "", en: "" },
+      composition: { zh: "", en: "" },
+      texture: { zh: "", en: "" },
+    },
+    negativeRules: [],
+    portfolioSheets: [],
+  };
+  const submitConversation = vi.fn(async () => ({
+    id: "task-description-immediate",
+    requestId: "request-description-immediate",
+    state: "completed" as const,
+    cancelRequested: false,
+    attempt: 1,
+    result: { text: JSON.stringify({ candidates: [candidate] }) },
+  }));
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    submitConversation,
+  };
+  render(
+    <DesignerLibrary
+      locale="zh-CN"
+      notify={vi.fn()}
+      workspaceId="workspace-description-immediate"
+    />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
+    target: { value: "即时、清晰、克制" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "生成" }));
+  expect(
+    await screen.findByRole("button", { name: /即时候选/ }),
+  ).toBeInTheDocument();
+  expect(submitConversation).toHaveBeenCalledOnce();
+});
+
 it("presents three example candidates and marks preview publish as session-only", () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "创建" }));

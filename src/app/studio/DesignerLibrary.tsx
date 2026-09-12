@@ -23,6 +23,7 @@ import { Button, Field, Icon, Modal, PageHeader, t } from "./ui";
 import { getDesktopApi } from "../../platform/runtime";
 import type { DesignerDraftState } from "../../features/designers/persistence";
 import { parsePortfolioCandidates } from "../../features/agent/analyze-portfolio";
+import type { TaskRecord } from "../../features/tasks/state";
 
 type DesignerDraft = {
   name: string;
@@ -403,24 +404,32 @@ export const DesignerLibrary = ({
         );
         return;
       }
+      const consumeCompletedTask = (candidateTask: TaskRecord): boolean => {
+        if (candidateTask.state === "completed" && candidateTask.result?.text) {
+          setCandidateProfiles(parsePortfolioCandidates(candidateTask.result.text));
+          setCreationError("");
+          notify(
+            t(
+              locale,
+              creationSource === "portfolio"
+                ? "作品集分析已完成，请审核候选。"
+                : "风格描述分析已完成，请审核候选。",
+              creationSource === "portfolio"
+                ? "Portfolio analysis completed; review the candidates."
+                : "Style description analysis completed; review the candidates.",
+            ),
+          );
+          return true;
+        }
+        return false;
+      };
       void request
         .then(async (task) => {
           if (!task) throw new Error("ANALYSIS_UNAVAILABLE");
+          if (consumeCompletedTask(task)) return;
           const tasks = (await api.listTasks?.(workspaceId)) ?? [];
           const completed = tasks.find((item) => item.id === task.id);
-          if (completed?.state === "completed" && completed.result?.text) {
-            setCandidateProfiles(
-              parsePortfolioCandidates(completed.result.text),
-            );
-            notify(
-              t(
-                locale,
-                "作品集分析已完成，请审核候选。",
-                "Portfolio analysis completed; review the candidates.",
-              ),
-            );
-            return;
-          }
+          if (completed && consumeCompletedTask(completed)) return;
           if (completed?.state === "failed") throw new Error("ANALYSIS_FAILED");
           setAnalysisTaskId(task.id);
           setCreationError(
