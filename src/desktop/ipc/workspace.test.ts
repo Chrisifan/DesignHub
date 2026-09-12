@@ -5,6 +5,7 @@ import {
   isTrustedWorkspaceRequest,
   openWorkspaceHandler,
 } from './workspace';
+import { createProjectContainerHandler, listActiveProjectsHandler } from './projects';
 
 const createFixture = () => {
   const mainFrame = { url: 'file:///app/index.html' };
@@ -56,4 +57,21 @@ it('opens a selected workspace through the same trusted-frame gate', async () =>
   ).resolves.toMatchObject({ workspaceId: 'workspace-2', openMode: 'read-only' });
   expect(openWorkspace).toHaveBeenCalledWith('/tmp/workspace');
   expect(isTrustedWorkspaceRequest(event as never, window as never, trustedUrl)).toBe(true);
+});
+
+it('lists and creates projects only for the active trusted workspace', async () => {
+  const { window, event, trustedUrl } = createFixture();
+  const workspace = { workspace: { workspaceId: 'workspace-1' } } as never;
+  const listProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'A project' }]);
+  await expect(listActiveProjectsHandler(window as never, trustedUrl, () => workspace, listProjects)(event as never, 'workspace-1')).resolves.toEqual([
+    { projectId: 'project-1', name: 'A project' },
+  ]);
+  const createProject = vi.fn(async (_workspace, input) => ({ projectId: `created-${input.name}` }));
+  await expect(createProjectContainerHandler(window as never, trustedUrl, () => workspace, createProject)(event as never, {
+    workspaceId: 'workspace-1',
+    operationId: 'op-1',
+    name: 'New project',
+  })).resolves.toEqual({ projectId: 'created-New project' });
+  expect(createProject).toHaveBeenCalledOnce();
+  await expect(listActiveProjectsHandler(window as never, trustedUrl, () => workspace, listProjects)(event as never, 'other')).resolves.toBeNull();
 });

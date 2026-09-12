@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it } from 'vitest';
 import { App } from './App';
+import { Studio } from './studio/Studio';
 
 beforeEach(() => {
   localStorage.clear();
+  Reflect.deleteProperty(window, 'designhub');
 });
 const enter = () => {
   render(<App />);
@@ -117,4 +119,27 @@ it('preserves the originating project when opening delivery from a document', ()
   fireEvent.click(screen.getByRole('button', { name: '导出' }));
   expect(screen.getByRole('heading', { name: '导出交付' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: '日常之物' })).toBeInTheDocument();
+});
+
+it('hydrates persisted workspace projects and creates through the desktop API', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project' }]);
+  const createProjectContainer = vi.fn(async () => ({ projectId: 'project-2' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, createProjectContainer };
+  render(
+    <Studio
+      locale="zh-CN"
+      theme="system"
+      workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }}
+      onLocaleChange={() => undefined}
+      onThemeChange={() => undefined}
+      onExit={() => undefined}
+    />,
+  );
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
+  expect(listActiveProjects).toHaveBeenCalledWith('workspace-1');
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: 'Created project' } });
+  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
+  await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', name: 'Created project' })));
+  expect(await screen.findByRole('heading', { name: 'Created project' })).toBeInTheDocument();
 });

@@ -8,6 +8,7 @@ import type { WorkspaceDescriptor, WorkspaceHandle } from '../../features/worksp
 import type {
   CreateProjectContainerInput,
   CreateProjectContainerResult,
+  ActiveProject,
   ProjectStore,
   RestoreProjectResult,
   TrashedProject,
@@ -199,8 +200,8 @@ const getManagedRootDirectory = (workspaceDirectory: string, name: string): stri
   return directory;
 };
 
-const validateWorkspace = (workspace: WorkspaceDescriptor, workspaceId: string): { directory: string; projectsDirectory: string; trashDirectory: string; indexDirectory: string } => {
-  if (workspace.openMode !== 'writable') throw new Error('WORKSPACE_NOT_WRITABLE');
+const validateWorkspace = (workspace: WorkspaceDescriptor, workspaceId: string, requireWritable = true): { directory: string; projectsDirectory: string; trashDirectory: string; indexDirectory: string } => {
+  if (requireWritable && workspace.openMode !== 'writable') throw new Error('WORKSPACE_NOT_WRITABLE');
   if (workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
 
   const directory = realpathSync(workspace.directory);
@@ -594,6 +595,22 @@ const removeTrashMetadata = (projectDirectory: string): void => {
   rmSync(join(projectDirectory, trashMetadataName), { force: true });
 };
 
+const listActiveProjects = (handle: WorkspaceHandle): ActiveProject[] => {
+  const workspace = handle.workspace;
+  const paths = validateWorkspace(workspace, workspace.workspaceId, false);
+  if (workspace.openMode !== 'writable') {
+    return scanPublishedProjects(paths.projectsDirectory)
+      .map(({ manifest }) => ({ projectId: manifest.projectId, name: manifest.name }))
+      .sort((left, right) => left.name.localeCompare(right.name) || left.projectId.localeCompare(right.projectId));
+  }
+  const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
+  try {
+    return index.prepare('SELECT project_id as projectId, display_name as name FROM projects ORDER BY display_name, project_id').all() as ActiveProject[];
+  } finally {
+    index.close();
+  }
+};
+
 const listTrashedProjects = (handle: WorkspaceHandle): TrashedProject[] => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
@@ -729,6 +746,7 @@ const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOpt
 
 export const createProjectStore = (handle: WorkspaceHandle, options: ProjectStoreOptions = {}): ProjectStore => ({
   createProjectContainer: async (input): Promise<CreateProjectContainerResult> => createProject(handle, options, input),
+  listActiveProjects: async (): Promise<ActiveProject[]> => listActiveProjects(handle),
   moveProjectToTrash: async (input): Promise<TrashedProject> => moveProjectToTrash(handle, options, input),
   listTrashedProjects: async (): Promise<TrashedProject[]> => listTrashedProjects(handle),
   restoreProjectFromTrash: async (input): Promise<RestoreProjectResult> => restoreProjectFromTrash(handle, options, input),

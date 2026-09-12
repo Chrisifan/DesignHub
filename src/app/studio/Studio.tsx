@@ -9,6 +9,7 @@ import { PersonaArtwork } from './PersonaArtwork';
 import { getPersona } from './personas';
 import { Workbench } from './Workbench';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
+import { getDesktopApi } from '../../platform/runtime';
 import {
   ArtworkPreview,
   Badge,
@@ -74,12 +75,35 @@ export const Studio = ({
     mode: 'manual',
   });
   useEffect(() => {
-    setProjects(workspace ? [] : exampleProjects);
+    let cancelled = false;
+    if (!workspace) {
+      setProjects(exampleProjects);
+    } else {
+      setProjects([]);
+      const request = getDesktopApi().listActiveProjects?.(workspace.workspaceId);
+      if (!request) {
+        setProjects([]);
+      }
+      void request?.then((entries) => {
+        if (cancelled || !entries) return;
+        setProjects(entries.map((entry) => ({
+          id: entry.projectId,
+          name: entry.name,
+          enName: entry.name,
+          description: t(locale, '本地项目', 'Local project'),
+          enDescription: 'Local project',
+          designers: ['纸感排版'],
+          artwork: 'blank' as const,
+          documents: 1,
+        })));
+      }).catch(() => undefined);
+    }
     setSelected(null);
     setDocumentOpen(false);
     setView('projects');
     setSurface('projects');
-  }, [workspace?.workspaceId]);
+    return () => { cancelled = true; };
+  }, [workspace?.workspaceId, locale]);
   const navigate = (next: View) => {
     setView(next);
     setSurface(next);
@@ -110,9 +134,43 @@ export const Studio = ({
     setDocumentOpen(false);
     setView('projects');
   };
-  const createProject = (event: FormEvent<HTMLFormElement>) => {
+  const createProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.name.trim()) return;
+    if (workspace?.openMode === 'writable') {
+      const created = await getDesktopApi().createProjectContainer?.({
+        workspaceId: workspace.workspaceId,
+        operationId: crypto.randomUUID(),
+        name: draft.name.trim(),
+      });
+      if (!created) {
+        notify(t(locale, '无法保存项目，请检查工作区。', 'Could not save the project. Check the workspace.'));
+        return;
+      }
+      const project: Project = {
+        id: created.projectId,
+        name: draft.name.trim(),
+        enName: draft.name.trim(),
+        description: draft.goal || draft.brief || t(locale, '本地项目', 'Local project'),
+        enDescription: draft.goal || draft.brief || 'Local project',
+        designers: [getPersona(draft.personaId)?.name.zh ?? '纸感排版'],
+        artwork: 'blank',
+        documents: 1,
+      };
+      setProjects((previous) => [project, ...previous]);
+      setSurface('projects');
+      setSelected(project);
+      setView('projects');
+      setQuery('');
+      setFilter('active');
+      setDraft({ name: '', goal: '', brief: '', personaId: 'paper-type', size: '1080 × 1440', mode: 'manual' });
+      notify(t(locale, '项目已保存到本地工作区。', 'Project saved to the local workspace.'));
+      return;
+    }
+    if (workspace) {
+      notify(t(locale, '当前工作区为只读模式，无法创建项目。', 'This workspace is read-only; projects cannot be created.'));
+      return;
+    }
     const project: Project = {
       id: `preview-${crypto.randomUUID()}`,
       name: draft.name.trim(),
@@ -359,6 +417,7 @@ export const Studio = ({
               onDraftChange={setDraft}
               onCreate={createProject}
               onBack={backFromNewDesign}
+              persisted={workspace?.openMode === 'writable'}
             />
           )}
           {surface === 'projects' && view === 'projects' && !selected && (
@@ -677,6 +736,7 @@ export const Studio = ({
                   locale={locale}
                   view={item.view as Exclude<View, 'projects'>}
                   deliveryProject={deliveryProject}
+                  workspaceId={workspace?.workspaceId}
                   notify={notify}
                   navigate={navigate}
                   onUseForNew={(personaId) => openNewDesign('manual', personaId)}

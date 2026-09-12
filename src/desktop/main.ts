@@ -19,6 +19,7 @@ import {
 } from './ipc/credentials';
 import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore } from './storage/project-store';
+import { createProjectContainerHandler, listActiveProjectsHandler, projectCreateChannel, projectListChannel } from './ipc/projects';
 import { runStorageSmoke } from './storage/storage-smoke';
 import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
@@ -95,6 +96,14 @@ app.whenReady().then(() => {
       activeTrustedUrl,
       async (workspaceDirectory) => activateWorkspace(await openWorkspace(workspaceDirectory)),
     )(event, directory);
+  });
+  ipcMain.handle(projectListChannel, async (event, workspaceId) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return listActiveProjectsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace) => createProjectStore(workspace).listActiveProjects())(event, workspaceId);
+  });
+  ipcMain.handle(projectCreateChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createProjectContainerHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).createProjectContainer(projectInput))(event, input);
   });
   ipcMain.handle(credentialStoreChannel, async (event, connectionId, secret) => {
     if (!activeWindow || !activeTrustedUrl) return false;
