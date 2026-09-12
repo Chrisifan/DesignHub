@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -70,5 +70,22 @@ it('does not write task state in a read-only workspace', async () => {
   } finally {
     readOnly.close();
     workspace.close();
+  }
+});
+
+it('rejects task state symlinks instead of reading or replacing external files', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const externalRoot = await mkdtemp(join(tmpdir(), 'designhub-task-external-'));
+  try {
+    const path = join(workspace.workspace.directory, '.designhub', tasksFileName);
+    const externalPath = join(externalRoot, 'tasks.json');
+    await writeFile(externalPath, `${JSON.stringify([task])}\n`);
+    await symlink(externalPath, path);
+    await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).rejects.toThrow('INVALID_TASK_STATE');
+    await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [task])).rejects.toThrow('INVALID_TASK_STATE');
+    await expect(readFile(externalPath, 'utf8')).resolves.toContain('task-1');
+  } finally {
+    workspace.close();
+    await rm(externalRoot, { recursive: true, force: true });
   }
 });

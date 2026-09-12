@@ -65,8 +65,20 @@ const validateWorkspace = (handle: WorkspaceHandle, workspaceId: string, writabl
   return join(internal, tasksFileName);
 };
 
+const assertRegularTaskFile = (path: string, allowMissing: boolean): void => {
+  try {
+    const status = lstatSync(path);
+    if (!status.isFile() || status.isSymbolicLink()) throw new Error('INVALID_TASK_STATE');
+  } catch (error) {
+    if (allowMissing && isRecord(error) && error.code === 'ENOENT') return;
+    if (error instanceof Error && error.message === 'INVALID_TASK_STATE') throw error;
+    throw new Error('INVALID_TASK_STATE');
+  }
+};
+
 export const loadTaskState = async (handle: WorkspaceHandle, workspaceId: string): Promise<TaskRecord[]> => {
   const path = validateWorkspace(handle, workspaceId, false);
+  assertRegularTaskFile(path, true);
   try {
     await access(path, constants.R_OK);
   } catch (error) {
@@ -87,6 +99,7 @@ export const loadTaskState = async (handle: WorkspaceHandle, workspaceId: string
 export const saveTaskState = async (handle: WorkspaceHandle, workspaceId: string, tasks: readonly TaskRecord[]): Promise<boolean> => {
   const path = validateWorkspace(handle, workspaceId, true);
   if (!tasks.every(isTaskRecord)) throw new Error('INVALID_TASK_STATE');
+  assertRegularTaskFile(path, true);
   const temporary = join(join(path, '..'), `.${tasksFileName}.tmp-${randomUUID()}`);
   try {
     await writeFile(temporary, `${JSON.stringify(tasks, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
