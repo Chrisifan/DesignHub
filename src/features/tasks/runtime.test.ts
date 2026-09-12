@@ -1,7 +1,8 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import { createTaskRuntime } from './runtime';
 import type { TaskRecord } from './state';
+import type { RevisionStore } from '../revisions/commit-revision';
 
 const baseTask: TaskRecord = {
   id: 'task-1',
@@ -67,4 +68,20 @@ it('creates a new queued attempt when a failed task is explicitly retried', asyn
   expect(retried.attempt).toBe(2);
   expect(runtime.get('task-1')?.state).toBe('failed');
   expect(runtime.get(retried.id)?.requestId).toBe('request-1');
+});
+
+it('does not commit a hydrated completed task again after restart', async () => {
+  const completedTask: TaskRecord = {
+    ...baseTask,
+    documentId: 'doc-1',
+    state: 'completed',
+    result: { sceneAssetId: 'scene-1', assetIds: ['asset-1'] },
+  };
+  const revisionStore = { commitRevision: vi.fn(async () => ({ revisionId: 'revision-duplicate' })) };
+  const runtime = createTaskRuntime({ initialTasks: [completedTask] });
+
+  const result = await runtime.finish('task-1', { sceneAssetId: 'scene-1', assetIds: ['asset-1'] }, revisionStore as unknown as RevisionStore);
+
+  expect(result.state).toBe('completed');
+  expect(revisionStore.commitRevision).not.toHaveBeenCalled();
 });

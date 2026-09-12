@@ -97,6 +97,7 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     if (!task) throw new Error('TASK_NOT_FOUND');
     const existingRevision = results.get(taskId);
     if (existingRevision) return structuredClone({ ...task, state: 'completed' });
+    if (task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled') return structuredClone(task);
     if (task.cancelRequested) {
       const cancelled = completeTask({ ...task, result: { ...result }, updatedAt: new Date().toISOString() });
       tasks.set(taskId, cancelled);
