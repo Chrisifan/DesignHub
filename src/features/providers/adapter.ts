@@ -38,6 +38,7 @@ export type MainOnlyAdapterOptions = {
 };
 
 export type OpenAICompatibleAdapter = {
+  capabilities: typeof providerCapabilities;
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
   streamChat: (request: ChatRequest, signal?: AbortSignal) => AsyncIterable<ChatStreamEvent>;
   analyzeVision: (request: VisionRequest, signal?: AbortSignal) => Promise<ChatResponse>;
@@ -293,5 +294,5 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
       return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { base64: redact(item.b64_json) } : {}) };
     }) : [], cost: null };
   };
-  return { chat, streamChat, analyzeVision, generateImage, editImage };
+  return { capabilities: providerCapabilities, chat, streamChat, analyzeVision, generateImage, editImage };
 };

@@ -17,6 +17,9 @@ describe('OpenAI-compatible provider adapter', () => {
       'image-generation': true,
       'image-editing': true,
     });
+    expect(createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key' }).capabilities).toEqual([
+      'conversation', 'vision-analysis', 'image-generation', 'image-editing',
+    ]);
   });
 
   it('sends non-streaming chat requests without exposing the API key', async () => {
