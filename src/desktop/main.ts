@@ -24,9 +24,11 @@ import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore, resolveProjectDirectory } from './storage/project-store';
 import { createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listTrashedProjectsHandler, moveProjectToTrashHandler, projectCreateChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, updateProjectMetadataHandler } from './ipc/projects';
 import { designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, saveDesignerStateHandler } from './ipc/designers';
+import { brandLoadChannel, brandSaveChannel, loadBrandStateHandler, saveBrandStateHandler } from './ipc/brands';
 import { assetImportChannel, assetListChannel, assetReadChannel, importAssetsHandler, listAssetsHandler, readAssetHandler } from './ipc/assets';
 import { createAssetStore } from './storage/asset-store';
 import { loadDesignerState, saveDesignerState } from './storage/designer-store';
+import { loadBrandState, saveBrandState } from './storage/brand-store';
 import { loadDocumentScene, saveDocumentScene } from './storage/scene-store';
 import { commitDocumentRevision, loadDocumentRevisions, setFinalDocumentRevision } from './storage/revision-store';
 import { loadDocumentSceneHandler, saveDocumentSceneHandler, sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
@@ -231,6 +233,14 @@ app.whenReady().then(() => {
   ipcMain.handle(designerSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return saveDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, state) => saveDesignerState(workspace, workspace.workspace.workspaceId, state))(event, input);
+  });
+  ipcMain.handle(brandLoadChannel, async (event, workspaceId) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return loadBrandStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadBrandState)(event, workspaceId);
+  });
+  ipcMain.handle(brandSaveChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return saveBrandStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, state) => saveBrandState(workspace, workspace.workspace.workspaceId, state))(event, input);
   });
   ipcMain.handle(assetListChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;

@@ -97,6 +97,8 @@
 2026-09-12：真实工作区状态文案（变更 ID UI-20260912-04）。目标文件为 `src/app/studio/Studio.tsx`、`src/app/studio/Workbench.tsx`、`src/app/studio/LibraryPages.tsx`；影响 M04 项目/素材状态、M05 工作台历史、M07 交付相邻页面。持久项目显示 `Local`/`Saved`，示例预览保留 `Example`/`Unsaved preview`，并同步真实项目历史与素材说明。unit 77 files/245 tests、integration 22 files/97 tests、lint、typecheck、build、diff check 全部通过；无数据契约变化，直接消费者已完成回归。
 2026-09-12：真实项目交付/品牌/素材说明（变更 ID UI-20260912-05）。目标文件为 `src/app/studio/LibraryPages.tsx`；真实项目不再显示示例原稿/示例元数据说明，品牌快照、受管素材和导出状态按工作区语义展示；示例预览仍保留只读提示。LibraryPages focused 17 tests、lint、typecheck、diff check 通过。
 
+2026-09-12：M04 workspace-backed brand CRUD（变更 ID M04-20260912-05）。品牌状态新增 `.designhub/brands.json` 原子存储与受信 `brand:load-state`/`brand:save-state` bridge；品牌页在真实工作区支持加载、新建、编辑、删除，示例预览仍使用只读内置数据。先写 storage/IPC/UI Red，再 Green；focused 4 files/26 tests、lint、typecheck、diff check 通过。项目已有品牌快照不随品牌库编辑自动升级；字体二进制、M06 分析和 Windows/打包门禁仍开放。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：

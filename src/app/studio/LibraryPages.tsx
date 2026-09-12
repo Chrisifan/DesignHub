@@ -16,6 +16,7 @@ import {
   Field,
   Icon,
   IconButton,
+  Modal,
   PageHeader,
   t,
 } from './ui';
@@ -23,6 +24,8 @@ import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
 import { createScene } from '../../features/canvas/scene';
 import { ProviderSettings } from '../../features/providers/ProviderSettings';
+import { BrandEditor } from '../../features/brands/BrandEditor';
+import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { TrashedProject } from '../../features/workspace/project-store';
@@ -155,6 +158,28 @@ const brands: BrandKit[] = [
     copy: { zh: '少即是多。', en: 'Less, but better.' },
   },
 ];
+
+const brandRecords: Brand[] = brands.map((brand) => ({
+  id: brand.id,
+  name: brand.name.zh,
+  version: brand.version,
+  logo: `${brand.id}-mark`,
+  colorPalette: brand.id === 'spring' ? ['#F4EFE7', '#24262B', '#8C7057'] : ['#D8F1ED', '#173B43', '#4AAE9B'],
+  fonts: brand.font.zh.split(' / '),
+  tone: brand.tone.zh,
+  fixedCopy: brand.copy.zh,
+  sizes: ['1080x1440', '1080x1080'],
+}));
+
+const recordToKit = (record: Brand): BrandKit => ({
+  id: record.id,
+  name: { zh: record.name ?? record.id, en: record.name ?? record.id },
+  description: { zh: record.description ?? '工作区品牌规则', en: record.description ?? 'Workspace brand rules' },
+  version: record.version,
+  tone: { zh: record.tone, en: record.tone },
+  font: { zh: record.fonts.join(' / '), en: record.fonts.join(' / ') },
+  copy: { zh: record.fixedCopy, en: record.fixedCopy },
+});
 
 const localize = (locale: Locale, value: Localized): string =>
   t(locale, value.zh, value.en);
@@ -397,7 +422,45 @@ const BrandsPage = ({
   onSelect: (id: string) => void;
   workspaceId?: string;
 }) => {
-  const selected = brands.find((brand) => brand.id === selectedId) ?? brands[0];
+  const [records, setRecords] = useState<Brand[]>(brandRecords);
+  const [editor, setEditor] = useState<Brand | null>(null);
+  const [deletePending, setDeletePending] = useState<Brand | null>(null);
+  const [loading, setLoading] = useState(Boolean(workspaceId));
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceId) { setRecords(brandRecords); setLoading(false); return () => { cancelled = true; }; }
+    setLoading(true);
+    const request = getDesktopApi().loadBrandState?.(workspaceId);
+    void request?.then((state) => {
+      if (cancelled) return;
+      setRecords(state?.brands?.length ? state.brands : brandRecords);
+      setLoading(false);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+  const kits = records.map(recordToKit);
+  const selected = kits.find((brand) => brand.id === selectedId) ?? kits[0];
+  const selectedRecord = records.find((record) => record.id === selected?.id) ?? records[0];
+  const persist = async (next: Brand[]): Promise<void> => {
+    setRecords(next);
+    if (workspaceId) {
+      const saved = await getDesktopApi().saveBrandState?.(workspaceId, { brands: next });
+      if (!saved) throw new Error('BRAND_SAVE_FAILED');
+    }
+  };
+  const saveBrand = async (brand: Brand): Promise<void> => {
+    const next = records.some((record) => record.id === brand.id)
+      ? records.map((record) => record.id === brand.id ? brand : record)
+      : [brand, ...records];
+    try { await persist(next); onSelect(brand.id); setEditor(null); }
+    catch { /* keep the editor open so the user can retry */ }
+  };
+  const removeBrand = async (): Promise<void> => {
+    if (!deletePending) return;
+    try { await persist(records.filter((record) => record.id !== deletePending.id)); setDeletePending(null); }
+    catch { /* keep confirmation open so the user can retry */ }
+  };
+  if (!selected || loading) return <section className="page-content library-page"><EmptyState icon="palette" title={t(locale, '正在加载', 'Loading')} description={t(locale, '正在读取品牌包。', 'Loading brand kits.')} /></section>;
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -414,7 +477,7 @@ const BrandsPage = ({
           className="brand-list"
           aria-label={t(locale, '品牌包列表', 'Brand kit list')}
         >
-          {brands.map((brand, index) => (
+        {kits.map((brand, index) => (
             <button
               type="button"
               key={brand.id}
@@ -494,8 +557,15 @@ const BrandsPage = ({
               workspaceId ? 'Projects continue using their creation-time brand snapshot.' : 'Example projects are not automatically upgraded to the current brand version.',
             )}
           </p>
+          {workspaceId && <div className="dialog-actions brand-actions">
+            <Button icon="pencil" onClick={() => { if (selectedRecord) setEditor(selectedRecord); }}>{t(locale, '编辑', 'Edit')}</Button>
+            <Button icon="trash-2" onClick={() => { if (selectedRecord) setDeletePending(selectedRecord); }}>{t(locale, '删除', 'Delete')}</Button>
+          </div>}
         </aside>
       </div>
+      {workspaceId && <div className="brand-create-row"><Button variant="secondary" icon="plus" onClick={() => setEditor({ id: `brand-${crypto.randomUUID()}`, name: '', version: 'v1', logo: '', colorPalette: [], fonts: [], tone: '', fixedCopy: '', sizes: [] })}>{t(locale, '新建', 'New')}</Button></div>}
+      {editor && <Modal title={editor.name ? t(locale, '编辑品牌', 'Edit brand') : t(locale, '新建品牌', 'New brand')} locale={locale} onClose={() => setEditor(null)}><BrandEditor brand={editor} locale={locale} onSave={(brand) => { void saveBrand(brand); }} /></Modal>}
+      {deletePending && <Modal title={t(locale, '删除品牌', 'Delete brand')} locale={locale} onClose={() => setDeletePending(null)}><p className="muted">{t(locale, `确认删除 ${deletePending.name ?? deletePending.id}？`, `Delete ${deletePending.name ?? deletePending.id}?`)}</p><div className="dialog-actions"><Button onClick={() => setDeletePending(null)}>{t(locale, '取消', 'Cancel')}</Button><Button variant="primary" icon="trash-2" onClick={() => { void removeBrand(); }}>{t(locale, '删除', 'Delete')}</Button></div></Modal>}
     </section>
   );
 };

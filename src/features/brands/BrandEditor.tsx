@@ -29,6 +29,7 @@ export const BrandEditor = ({ brand, locale, onSave }: BrandEditorProps) => {
   const update = <K extends keyof Brand>(field: K, value: Brand[K]) => setDraft((current) => ({ ...current, [field]: value }));
   return (
     <form aria-label={messages.brandEditorLabel} onSubmit={(event) => { event.preventDefault(); onSave({ ...structuredClone(draft), colorPalette: parseList(colorPaletteText), fonts: parseList(fontsText), sizes: parseList(sizesText) }); }}>
+      <Field label={messages.brandName}><input value={draft.name ?? ''} onChange={(event) => update('name', event.target.value)} /></Field>
       <Field label={messages.brandLogo}><input value={draft.logo} onChange={(event) => update('logo', event.target.value)} /></Field>
       <Field label={messages.brandPalette}><input value={colorPaletteText} onChange={(event) => setColorPaletteText(event.target.value)} /></Field>
       <Field label={messages.brandFonts}><input value={fontsText} onChange={(event) => setFontsText(event.target.value)} /></Field>

@@ -1,0 +1,48 @@
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
+
+import { createBrandSnapshot, type Brand } from '../../features/brands/constraints';
+import { createWorkspace } from './workspace-store';
+import { loadBrandState, saveBrandState, brandsFileName } from './brand-store';
+
+const brand: Brand = {
+  id: 'spring', version: 'v1', name: 'Spring', logo: 'mark',
+  colorPalette: ['#fff'], fonts: ['Geist'], tone: 'Calm', fixedCopy: 'Hello', sizes: ['1080x1440'],
+};
+
+it('persists brands inside the workspace and restores them after reopening', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'designhub-brand-'));
+  try {
+    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
+    await saveBrandState(handle, handle.workspace.workspaceId, { brands: [brand] });
+    handle.close();
+    const reopened = await (await import('./workspace-store')).openWorkspace(handle.workspace.directory);
+    await expect(loadBrandState(reopened, reopened.workspace.workspaceId)).resolves.toEqual({ brands: [brand] });
+    reopened.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('writes an atomic schema and rejects malformed persisted content', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'designhub-brand-'));
+  try {
+    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
+    await saveBrandState(handle, handle.workspace.workspaceId, { brands: [brand] });
+    const path = join(handle.workspace.directory, '.designhub', brandsFileName);
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ brands: [brand] });
+    await writeFile(path, '{"brands":[{"id":"bad"}]}');
+    await expect(loadBrandState(handle, handle.workspace.workspaceId)).rejects.toThrow('INVALID_BRAND_STATE');
+    handle.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('keeps project snapshots independent from later persisted brand edits', () => {
+  const snapshot = createBrandSnapshot(brand);
+  brand.colorPalette.push('#000');
+  expect(snapshot.colorPalette).toEqual(['#fff']);
+});

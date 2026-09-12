@@ -13,6 +13,7 @@ import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
 import { projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
 import { projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 import { revisionCommitChannel, revisionFinalizeChannel, revisionLoadChannel } from './ipc/revisions';
+import { brandLoadChannel, brandSaveChannel } from './ipc/brands';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -33,6 +34,8 @@ const api: DesktopApi = {
   exportProjectPackage: (input) => ipcRenderer.invoke(projectPackageExportChannel, input),
   loadDesignerState: (workspaceId) => ipcRenderer.invoke(designerLoadChannel, workspaceId),
   saveDesignerState: (workspaceId, state) => ipcRenderer.invoke(designerSaveChannel, { workspaceId, state }),
+  loadBrandState: (workspaceId) => ipcRenderer.invoke(brandLoadChannel, workspaceId),
+  saveBrandState: (workspaceId, state) => ipcRenderer.invoke(brandSaveChannel, { workspaceId, state }),
   listAssets: (input) => ipcRenderer.invoke(assetListChannel, input),
   importAssets: (input) => ipcRenderer.invoke(assetImportChannel, input),
   readAsset: (input) => ipcRenderer.invoke(assetReadChannel, input),

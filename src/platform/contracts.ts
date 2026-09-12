@@ -9,6 +9,7 @@ import type { DesignScene } from '../features/canvas/scene';
 import type { TaskRecord } from '../features/tasks/state';
 import type { TaskSource } from '../features/tasks/state';
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
+import type { BrandLibraryState } from '../features/brands/constraints';
 
 export type ConversationTaskInput = {
   workspaceId: string;
@@ -54,6 +55,8 @@ export type DesktopApi = {
   exportProjectPackage?: (input: { workspaceId: string; projectId: string }) => Promise<{ path: string; sha256: string } | null>;
   loadDesignerState?: (workspaceId: string) => Promise<DesignerLibraryState | null>;
   saveDesignerState?: (workspaceId: string, state: DesignerLibraryState) => Promise<boolean>;
+  loadBrandState?: (workspaceId: string) => Promise<BrandLibraryState | null>;
+  saveBrandState?: (workspaceId: string, state: BrandLibraryState) => Promise<boolean>;
   listAssets?: (input: AssetStoreInput) => Promise<ManagedAsset[] | null>;
   importAssets?: (input: AssetImportInput) => Promise<AssetImportResult[] | null>;
   readAsset?: (input: AssetReadInput) => Promise<Uint8Array | null>;

@@ -1,6 +1,8 @@
 export type Brand = {
   id: string;
   version: string;
+  name?: string;
+  description?: string;
   logo: string;
   colorPalette: string[];
   fonts: string[];
@@ -8,6 +10,28 @@ export type Brand = {
   fixedCopy: string;
   sizes: string[];
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+
+export const isBrand = (value: unknown): value is Brand => {
+  if (!isRecord(value)) return false;
+  return typeof value.id === 'string' && value.id.trim().length > 0
+    && typeof value.version === 'string' && value.version.trim().length > 0
+    && (value.name === undefined || typeof value.name === 'string')
+    && (value.description === undefined || typeof value.description === 'string')
+    && typeof value.logo === 'string'
+    && Array.isArray(value.colorPalette) && value.colorPalette.every((entry) => typeof entry === 'string')
+    && Array.isArray(value.fonts) && value.fonts.every((entry) => typeof entry === 'string')
+    && typeof value.tone === 'string'
+    && typeof value.fixedCopy === 'string'
+    && Array.isArray(value.sizes) && value.sizes.every((entry) => typeof entry === 'string');
+};
+
+export type BrandLibraryState = { brands: Brand[] };
+
+export const isBrandLibraryState = (value: unknown): value is BrandLibraryState => isRecord(value)
+  && Array.isArray(value.brands)
+  && value.brands.every((brand) => isBrand(brand));
 
 export type BrandSnapshot = Brand & {
   source: { brandId: string; version: string };

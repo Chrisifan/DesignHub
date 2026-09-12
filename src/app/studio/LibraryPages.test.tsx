@@ -170,6 +170,23 @@ it('shows honest unavailable states for connections and delivery', () => {
   expect(screen.getByRole('button', { name: '导出' })).toBeDisabled();
 });
 
+it('hydrates a workspace brand library and persists create/edit/delete actions', async () => {
+  const loadBrandState = vi.fn(async () => ({ brands: [{ id: 'local', name: '本地品牌', version: 'v1', logo: 'mark', colorPalette: ['#000'], fonts: ['Geist'], tone: '清晰', fixedCopy: '开始', sizes: ['1080x1080'] }] }));
+  const saveBrandState = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadBrandState, saveBrandState };
+  render(<Harness initialView="brands" workspaceId="workspace-1" />);
+  expect(await screen.findByRole('heading', { name: '本地品牌' })).toBeInTheDocument();
+  expect(loadBrandState).toHaveBeenCalledWith('workspace-1');
+  fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+  const edit = screen.getByRole('dialog', { name: '编辑品牌' });
+  fireEvent.change(within(edit).getByLabelText('语气'), { target: { value: '更清晰' } });
+  fireEvent.submit(within(edit).getByRole('form', { name: '品牌编辑' }));
+  await waitFor(() => expect(saveBrandState).toHaveBeenCalledWith('workspace-1', expect.objectContaining({ brands: [expect.objectContaining({ tone: '更清晰' })] })));
+  fireEvent.click(screen.getByRole('button', { name: '删除' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '删除品牌' })).getByRole('button', { name: '删除' }));
+  await waitFor(() => expect(saveBrandState).toHaveBeenCalledTimes(2));
+});
+
 it('derives the delivery preview from the selected project', () => {
   const project: Project = {
     id: 'objects',
