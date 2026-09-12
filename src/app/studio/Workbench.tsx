@@ -131,7 +131,7 @@ export const Workbench = ({
     return () => { cancelled = true; };
   }, [documentId, workspaceId]);
 
-  const currentRevisionId = revisionState.finalRevisionId ?? revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? null;
+  const currentRevisionId = revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? revisionState.finalRevisionId ?? null;
   const candidateFor = (candidateId: string): { task: TaskRecord; candidate: TaskCandidate } | undefined => {
     for (const task of tasks) {
       if (task.result?.candidate?.id === candidateId) return { task, candidate: task.result.candidate };
