@@ -150,6 +150,8 @@
 
 2026-09-13：M07 多文档交付选择（变更 ID M07-20260913-11）。交付页在多文档项目中提供文档选择，所选文档统一驱动预览尺寸、当前/定稿修订读取和导出请求，并在切换文档时重置来源选择。先新增 LibraryPages Red，再 Green；focused 25/25、lint、typecheck、diff check 通过。批量导出、归档流式包、Windows 与人工图像质量仍开放。
 
+2026-09-13：M07 项目归档副本（变更 ID M07-20260913-12）。交付页“同时归档到项目”选项接入平台导出契约，Electron 主进程在当前可写项目 `exports/` 目录独占写入导出副本，外部目标仍为主产物；只读工作区拒绝归档写入。先新增 LibraryPages/IPC Red，再 Green；focused 27/27、lint、typecheck、diff check 通过。归档索引、流式包、Windows 与碰撞恢复体验仍开放。
+
 2026-09-13：M05 图层管理操作（变更 ID M05-20260913-03）。CanvasWorkspace 图层列表新增上下移、复制、删除，所有操作生成新校验场景并通过既有 scene bridge 持久化，复制自动生成唯一 ID 并选中副本。先新增 CanvasWorkspace Red，再 Green；focused 5/5、lint、typecheck、diff check 通过。多选语义编辑、遮罩质量、Windows 与大图性能仍开放。
 
 2026-09-13：M05/M07 组合回归（变更 ID REL-20260913-05）。图层管理与多文档交付改动后串行执行 unit 84 files/308 tests、integration 23 files/100 tests、browser E2E 24/24、native 2 passed/1 skipped、lint、typecheck、build 与 diff check，全部退出 0。未配置 packaged executable；Windows、签名/公证、真实 provider、颜色管理和人工图像质量仍开放。

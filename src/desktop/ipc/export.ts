@@ -8,7 +8,7 @@ export const exportDocumentChannel = 'document:export';
 type ExportSender = { mainFrame: { url: string }; getURL: () => string };
 type ExportRequest = { sender: ExportSender; senderFrame: { url: string } | null };
 type ExportWindow = { webContents: ExportSender };
-export type ExportBridgeInput = { workspaceId: string; projectId: string; documentId: string; format: ExportFormat; scene: DesignScene; background?: string };
+export type ExportBridgeInput = { workspaceId: string; projectId: string; documentId: string; format: ExportFormat; scene: DesignScene; background?: string; archiveCopy?: boolean };
 export type ExportBridgeResult = { path: string; sha256: string };
 
 const isFormat = (value: unknown): value is ExportFormat => value === 'png' || value === 'jpeg' || value === 'webp' || value === 'pdf';

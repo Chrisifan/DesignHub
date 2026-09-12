@@ -880,7 +880,7 @@ const DeliveryPage = ({
         scene = await api.loadDocumentScene?.(project.workspaceId, project.id, activeDocumentId)
           ?? createScene({ id: activeDocumentId, width: currentDocument?.width ?? 1080, height: currentDocument?.height ?? 1440, layers: [] });
       }
-      const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}) });
+      const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
       if (result) notify?.(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
     } catch {
       notify?.(t(locale, source === 'final' ? '定稿读取失败，请重试。' : '导出失败，请重试。', source === 'final' ? 'Could not read the finalized revision. Try again.' : 'Export failed. Try again.'));

@@ -30,6 +30,7 @@ export type ExportDocumentInput = {
   format: 'png' | 'jpeg' | 'webp' | 'pdf';
   scene: DesignScene;
   background?: string;
+  archiveCopy?: boolean;
 };
 
 export type WorkspaceCreateInput = {

@@ -15,7 +15,7 @@ export const renderSceneSvg = (scene: DesignScene): string => {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}"><rect width="100%" height="100%" fill="#ffffff" />${layers}</svg>`;
 };
 
-export const exportSceneToFile = async (input: { scene: DesignScene; format: ExportFormat; targetPath: string; background?: string }): Promise<ExportResult> => {
+export const exportSceneToFile = async (input: { scene: DesignScene; format: ExportFormat; targetPath: string; background?: string; archiveCopy?: (input: { revisionId: string; path: string; sha256: string }) => Promise<void> }): Promise<ExportResult> => {
   const [{ default: sharp }, { createSharpCodec }] = await Promise.all([
     import('sharp'),
     import('../features/delivery/node-codec'),
@@ -29,6 +29,7 @@ export const exportSceneToFile = async (input: { scene: DesignScene; format: Exp
     background: input.background,
     codec,
     expectedSize: { width: input.scene.width, height: input.scene.height },
+    ...(input.archiveCopy ? { archiveCopy: input.archiveCopy } : {}),
     target: {
       exists: async (path) => access(path).then(() => true).catch(() => false),
       write: async (path, bytes) => { await writeFile(path, bytes); },

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { basename, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 
@@ -394,7 +394,23 @@ app.whenReady().then(() => {
         filters: [{ name: exportInput.format.toUpperCase(), extensions: [extension] }],
       });
       if (result.canceled || !result.filePath) return null;
-      const exported = await exportSceneToFile({ scene: exportInput.scene, format: exportInput.format, targetPath: result.filePath, background: exportInput.background });
+      const exported = await exportSceneToFile({
+        scene: exportInput.scene,
+        format: exportInput.format,
+        targetPath: result.filePath,
+        background: exportInput.background,
+        ...(exportInput.archiveCopy ? {
+          archiveCopy: async ({ path }) => {
+            if (_workspace.workspace.openMode !== 'writable') throw new Error('ARCHIVE_REQUIRES_WRITABLE');
+            const projectDirectory = resolveProjectDirectory(_workspace, exportInput.projectId);
+            if (!projectDirectory) throw new Error('PROJECT_NOT_FOUND');
+            const archiveDirectory = join(projectDirectory, 'exports');
+            await mkdir(archiveDirectory, { recursive: true });
+            const archivePath = join(archiveDirectory, basename(path));
+            await writeFile(archivePath, await readFile(path), { flag: 'wx' });
+          },
+        } : {}),
+      });
       return { path: exported.path, sha256: exported.sha256 };
     })(event, input);
   });
