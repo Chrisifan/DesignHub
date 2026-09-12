@@ -1,9 +1,6 @@
 import { access, rename, unlink, writeFile } from 'node:fs/promises';
 
-import sharp from 'sharp';
-
 import type { DesignScene } from '../features/canvas/scene';
-import { createSharpCodec } from '../features/delivery/node-codec';
 import { exportDocument, type ExportResult } from '../features/delivery/export-document';
 import type { ExportFormat } from '../features/delivery/export-policy';
 
@@ -19,6 +16,10 @@ export const renderSceneSvg = (scene: DesignScene): string => {
 };
 
 export const exportSceneToFile = async (input: { scene: DesignScene; format: ExportFormat; targetPath: string; background?: string }): Promise<ExportResult> => {
+  const [{ default: sharp }, { createSharpCodec }] = await Promise.all([
+    import('sharp'),
+    import('../features/delivery/node-codec'),
+  ]);
   const codec = createSharpCodec();
   const rendered = new Uint8Array(await sharp(Buffer.from(renderSceneSvg(input.scene))).png().toBuffer());
   return exportDocument({
