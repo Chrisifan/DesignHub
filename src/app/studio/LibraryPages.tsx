@@ -750,12 +750,14 @@ const TasksPage = ({
       title={t(locale, '任务读取失败', 'Could not load tasks')}
       description={t(locale, '请重试，原有任务不会被覆盖。', 'Retry without overwriting existing task records.')}
     /> : tasks.length > 0 ? <div className="task-list" aria-label={t(locale, '任务列表', 'Task list')}>
-      {tasks.map((task) => <article className="task-row" key={task.id}>
-        <div>
-          <strong>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
-          <small>{task.source?.id ?? task.requestId}</small>
-          {task.requestText && <small>{task.requestText}</small>}
-        </div>
+          {tasks.map((task) => <article className="task-row" key={task.id}>
+            <div>
+              <strong>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
+              <small>{task.source?.id ?? task.requestId}</small>
+              {task.requestText && <small>{task.requestText}</small>}
+              {task.result?.imageCount !== undefined && <small>{t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`)}</small>}
+              {task.result?.cost !== undefined && task.result.cost !== null && <small>{t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`)}</small>}
+            </div>
         <Badge tone={task.state === 'failed' ? 'warning' : task.state === 'completed' ? 'success' : ''}>
           {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : t(locale, '失败', 'Failed')}
         </Badge>

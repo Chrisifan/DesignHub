@@ -282,12 +282,14 @@ it('hydrates persisted model tasks in the task view', async () => {
   const listTasks = vi.fn(async () => [{
     id: 'task-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1,
     source: { kind: 'project' as const, id: 'project-1' },
+    capability: 'image-generation', result: { imageCount: 2, cost: 0.04 },
   }]);
   window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks };
   render(<Harness initialView="tasks" workspaceId="workspace-1" />);
   expect((await screen.findAllByText('处理中')).length).toBeGreaterThan(0);
   expect(screen.getAllByText('1')).toHaveLength(2);
   expect(listTasks).toHaveBeenCalledWith('workspace-1');
+  expect(screen.getByText('2 张图')).toBeInTheDocument();
 });
 
 it('lets a running task be stopped through the desktop bridge', async () => {
