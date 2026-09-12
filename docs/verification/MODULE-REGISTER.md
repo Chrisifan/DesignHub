@@ -138,6 +138,8 @@
 
 2026-09-13：M03 新建设计自定义人物（变更 ID M03-20260913-05）。新建设计页接收工作区设计师档案列表，允许选用自定义档案并在选择器/人物 Hero 使用其 artwork；缺少图像仍显示待生成状态。先新增 NewDesignPage Red，再 Green；focused 3/3、lint、typecheck、diff check 通过。真实人物素材生成和跨平台图像质量仍开放。
 
+2026-09-13：M07 WebP 交付格式（变更 ID M07-20260913-09）。交付页格式选择器补齐底层已有的 WebP 编码能力，沿用现有导出 bridge、尺寸和失败语义。先新增 LibraryPages Red，再 Green；delivery/Library focused 6 files/39 tests、lint、typecheck、diff check 通过。颜色管理、打包 codec 与人工图像质量仍开放。
+
 2026-09-13：macOS packaged native 回归（变更 ID REL-20260913-02）。使用现有 `out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub` 设置 `DESIGNHUB_PACKAGED_APP_PATH` 执行 `pnpm test:native`，source smoke、main storage 与 packaged storage 共 3/3 通过；Windows、签名/公证、升级卸载与钥匙串持久化仍开放。
 
 2026-09-13：M03 描述建师任务闭环（变更 ID M03-20260913-02）。工作区内按描述创建设计师时提交 `designer-draft` 任务，消息包含风格说明与创作原则；完成任务解析为候选，运行中复用 500ms/12 次有界轮询，失败或不可用不展示伪造候选；无工作区示例仍保持离线预览。先新增描述路径 Red 回归，再 Green；`DesignerLibrary` focused 16/16、lint、typecheck、diff check 通过。真实 provider、授权来源传输、人物位图和跨平台图像质量仍开放。

@@ -59,3 +59,5 @@ Browser preview tests are not evidence for the native gates above. No release ar
 - Custom persona artwork now remains visible on project detail pages for persisted non-built-in profiles, with an explicit unavailable fallback when no artwork is available. Focused `DesignerHero` regression passed 1/1; generated bitmap persistence remains an external gate.
 
 - New-design now carries persisted custom persona options into its selector and hero. Focused NewDesignPage regression passed 3/3; native generated bitmap persistence remains an external gate.
+
+- Delivery now exposes WebP, backed by the existing native export codec. Focused delivery/Library suites passed 39/39; color-profile fidelity and packaged codec verification remain open.

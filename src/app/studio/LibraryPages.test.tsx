@@ -216,6 +216,12 @@ it('derives the delivery preview from the selected project', () => {
   expect(screen.queryByText('定稿')).not.toBeInTheDocument();
 });
 
+it('exposes WebP alongside the supported delivery formats', () => {
+  const project: Project = { id: 'webp-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: 'WebP 项目', enName: 'WebP project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  render(<Harness initialView="delivery" deliveryProject={project} />);
+  expect(screen.getByRole('button', { name: 'WEBP' })).toBeInTheDocument();
+});
+
 it('offers project package export for persisted projects', async () => {
   const exportProjectPackage = vi.fn(async () => ({ path: '/tmp/project.zip', sha256: 'a'.repeat(64) }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, exportProjectPackage };

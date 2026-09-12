@@ -69,7 +69,7 @@ type BrandKit = {
   font: Localized;
   copy: Localized;
 };
-type DeliveryFormat = 'png' | 'jpeg' | 'pdf';
+type DeliveryFormat = 'png' | 'jpeg' | 'webp' | 'pdf';
 type StorageTab = 'trash' | 'backup';
 
 const availableConnections: readonly ProviderConnection[] = [
@@ -917,7 +917,7 @@ const DeliveryPage = ({
               role="group"
               aria-label={t(locale, '输出格式', 'Output format')}
             >
-              {(['png', 'jpeg', 'pdf'] as DeliveryFormat[]).map((option) => (
+              {(['png', 'jpeg', 'webp', 'pdf'] as DeliveryFormat[]).map((option) => (
                 <button
                   type="button"
                   key={option}
