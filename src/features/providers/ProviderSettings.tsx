@@ -45,7 +45,7 @@ export const ProviderSettings = ({
       <div className="settings-section-heading">
         <span className="settings-icon"><Icon name="plug" size={19} /></span>
         <div>
-          <h2 id="provider-settings-title">{t(locale, '模型连接', 'Model connections')}</h2>
+          <h2 id="provider-settings-title">{t(locale, '连接凭据', 'Connection credentials')}</h2>
           <p>{t(locale, '密钥仅写入系统安全存储，不会读回界面。', 'Keys are written to system secure storage and never read back into the interface.')}</p>
         </div>
       </div>
