@@ -45,6 +45,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const task = options.runtime.start({
       id: taskId(),
       requestId: requestId(),
+      requestText: input.message.trim(),
       source,
       ...(input.documentId ? { documentId: input.documentId } : {}),
       ...(input.baseRevisionId === undefined ? {} : { baseRevisionId: input.baseRevisionId }),

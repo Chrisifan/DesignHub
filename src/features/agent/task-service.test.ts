@@ -17,6 +17,19 @@ it('runs a conversation task and stores the assistant result', async () => {
   expect(runtime.get(task.id)).toMatchObject({ state: 'completed', result: { text: '好的，已整理简报' } });
 });
 
+it('persists the user-visible request text for draft review without credentials', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }) }),
+  });
+  const task = await service.submitConversation({
+    source: { kind: 'creation-draft', id: 'creation-2' },
+    connectionId: 'provider-1', message: 'Use a restrained editorial layout',
+  });
+  expect(task.requestText).toBe('Use a restrained editorial layout');
+});
+
 it('marks provider failures and supports local cancellation', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({

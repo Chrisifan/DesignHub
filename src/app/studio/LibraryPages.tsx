@@ -637,6 +637,7 @@ const TasksPage = ({
         <div>
           <strong>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
           <small>{task.source?.id ?? task.requestId}</small>
+          {task.requestText && <small>{task.requestText}</small>}
         </div>
         <Badge tone={task.state === 'failed' ? 'warning' : task.state === 'completed' ? 'success' : ''}>
           {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : t(locale, '失败', 'Failed')}

@@ -5,6 +5,7 @@ export type TaskSource = { kind: 'project' | 'creation-draft' | 'designer-draft'
 export type TaskRecord = {
   id: string;
   requestId: string;
+  requestText?: string;
   state: TaskState;
   cancelRequested: boolean;
   attempt: number;

@@ -67,6 +67,7 @@
 2026-09-12：M06 creation-draft 回接（变更 ID M06-20260912-02）。对话创建现在通过稳定的 `creation-draft` 来源提交持久任务，UI 不再在对话模式直接创建项目；项目工作台对话继续使用 `project` 来源。回归范围为 task service、agent IPC、Studio/NewDesignPage、任务列表；focused 6 files/8 tests、lint、typecheck、diff check 通过。真实 provider、审阅后建项目、原生密钥链与跨平台任务恢复仍开放。
 2026-09-12：M07 codec/export follow-up（变更 ID M07-20260912-02）。导出入口现在实际调用 Sharp/pdf-lib 将 renderer 输出转换为目标 PNG/JPEG/WebP/PDF，并拒绝未知源格式；新增真实透明 PNG→JPEG 与 GIF 拒绝回归。M07 codec/export focused 6/6、unit、integration、lint、typecheck、build、diff check 通过；ICC/字体、原生 worker、真实文件对话框与归档流式包仍开放。
 2026-09-12：M06 task cancellation UI（变更 ID M06-20260912-03）。任务列表为排队/运行任务增加停止操作，成功调用 host bridge 后将条目标记为 cancelled；新增 LibraryPages 回归，focused unit、lint、typecheck、diff check 通过。远端取消语义仍按 provider 能力保持未验证。
+2026-09-12：M06 draft review metadata（变更 ID M06-20260912-04）。持久任务增加脱敏的用户可见 `requestText`，任务列表显示简报/请求摘要，支持重启后的草稿审阅；没有保存凭据或隐藏提示。focused task/storage/UI、lint、typecheck、diff check 通过。
 
 2026-09-12：最终回归（变更 ID REL-20260912-01）。最终树执行 unit 63 文件/181 测试、integration 22 文件/96 测试、browser E2E 24/24、native 2 passed/1 skipped、lint/typecheck/build/diff check 全部通过；仅 packaged storage、真实模型/codec、系统钥匙串、Windows 与签名发布保留为外部门禁。
 

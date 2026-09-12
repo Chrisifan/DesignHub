@@ -24,6 +24,7 @@ const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> =>
 const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && typeof value.id === 'string' && value.id.trim().length > 0
   && typeof value.requestId === 'string' && value.requestId.trim().length > 0
+  && (value.requestText === undefined || typeof value.requestText === 'string')
   && isTaskState(value.state)
   && typeof value.cancelRequested === 'boolean'
   && Number.isInteger(value.attempt) && Number(value.attempt) > 0
