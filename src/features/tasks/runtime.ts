@@ -26,7 +26,15 @@ export type TaskRuntimeOptions = {
 export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime => {
   const tasks = new Map<string, TaskRecord>();
   const results = new Map<string, string>();
-  options.initialTasks?.forEach((task) => tasks.set(task.id, structuredClone(task)));
+  let recoveredInterruptedTask = false;
+  options.initialTasks?.forEach((task) => {
+    if (task.state === 'queued' || task.state === 'running') {
+      recoveredInterruptedTask = true;
+      tasks.set(task.id, structuredClone({ ...task, state: 'failed', cancelRequested: false, errorCode: 'RESULT_UNKNOWN_AFTER_RESTART', updatedAt: new Date().toISOString() }));
+      return;
+    }
+    tasks.set(task.id, structuredClone(task));
+  });
   let persistence = Promise.resolve();
   const snapshot = (): TaskRecord[] => [...tasks.values()].map((task) => structuredClone(task));
   const schedulePersistence = (): void => {
@@ -34,6 +42,7 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     const next = snapshot();
     persistence = persistence.then(() => options.persist!(next));
   };
+  if (recoveredInterruptedTask) schedulePersistence();
   const get = (taskId: string): TaskRecord | undefined => {
     const task = tasks.get(taskId);
     return task ? structuredClone(task) : undefined;

@@ -17,7 +17,17 @@ it('hydrates persisted tasks and exposes a cloned list', () => {
   const runtime = createTaskRuntime({ initialTasks: [baseTask] });
   const listed = runtime.list();
   listed[0]!.state = 'failed';
-  expect(runtime.get('task-1')?.state).toBe('running');
+  expect(runtime.get('task-1')?.state).toBe('failed');
+  expect(runtime.get('task-1')?.errorCode).toBe('RESULT_UNKNOWN_AFTER_RESTART');
+});
+
+it('persists restart recovery so an interrupted task can be explicitly retried', async () => {
+  const writes: Array<readonly TaskRecord[]> = [];
+  const runtime = createTaskRuntime({ initialTasks: [baseTask], persist: async (tasks) => { writes.push(tasks); } });
+  await runtime.flush();
+  expect(writes.at(-1)?.[0]).toMatchObject({ state: 'failed', errorCode: 'RESULT_UNKNOWN_AFTER_RESTART' });
+  const retried = runtime.retry('task-1');
+  expect(retried).toMatchObject({ state: 'queued', attempt: 2 });
 });
 
 it('serializes mutations through one persistence queue', async () => {

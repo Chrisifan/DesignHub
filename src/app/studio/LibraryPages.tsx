@@ -828,7 +828,7 @@ const TasksPage = ({
               {task.result?.cost !== undefined && task.result.cost !== null && <small>{t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`)}</small>}
             </div>
         <Badge tone={task.state === 'failed' ? 'warning' : task.state === 'completed' ? 'success' : ''}>
-          {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : t(locale, '失败', 'Failed')}
+          {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART' ? t(locale, '结果未知', 'Result unknown') : t(locale, '失败', 'Failed')}
         </Badge>
         {(task.state === 'queued' || task.state === 'running') && <Button variant="secondary" icon="x" onClick={() => { void stopTask(task.id); }}>{t(locale, '停止', 'Stop')}</Button>}
         {(task.state === 'failed' || task.state === 'cancelled') && <Button variant="secondary" icon="rotate-ccw" onClick={() => { void retryTask(task.id); }}>{t(locale, '重试', 'Retry')}</Button>}
