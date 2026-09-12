@@ -217,6 +217,18 @@ it('uses functional navigation for the model setup action', () => {
   expect(screen.getByRole('heading', { name: '设置' })).toBeInTheDocument();
 });
 
+it('loads workspace trash entries and restores them through the desktop bridge', async () => {
+  const listTrashedProjects = vi.fn(async () => [{ projectId: 'project-1', originalRelativePath: 'projects/project-1', deletedAt: '2026-09-12T00:00:00.000Z' }]);
+  const restoreProjectFromTrash = vi.fn(async () => ({ projectId: 'project-1', restoredRelativePath: 'projects/project-1' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTrashedProjects, restoreProjectFromTrash };
+  render(<Harness initialView="storage" workspaceId="workspace-1" />);
+
+  expect(await screen.findByText('project-1')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '恢复' }));
+  await waitFor(() => expect(restoreProjectFromTrash).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1' }));
+  expect(await screen.findByText('废纸篓为空')).toBeInTheDocument();
+});
+
 it('exports a redacted diagnostics preview through the desktop bridge', async () => {
   const exportDiagnostics = vi.fn(async () => '/tmp/designhub-diagnostics.json');
   window.designhub = { chooseWorkspaceDirectory: async () => null, exportDiagnostics };

@@ -20,7 +20,7 @@ import {
 } from './ipc/credentials';
 import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore } from './storage/project-store';
-import { createProjectContainerHandler, getProjectMetadataHandler, listActiveProjectsHandler, projectCreateChannel, projectListChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, updateProjectMetadataHandler } from './ipc/projects';
+import { createProjectContainerHandler, getProjectMetadataHandler, listActiveProjectsHandler, listTrashedProjectsHandler, moveProjectToTrashHandler, projectCreateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, updateProjectMetadataHandler } from './ipc/projects';
 import { designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, saveDesignerStateHandler } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel, importAssetsHandler, listAssetsHandler, readAssetHandler } from './ipc/assets';
 import { createAssetStore } from './storage/asset-store';
@@ -42,6 +42,8 @@ import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, ret
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
 import { exportSceneToFile } from './export-scene';
 import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
+import { backupCreateChannel, backupRestoreChannel, createBackupHandler, restoreBackupHandler } from './ipc/backup';
+import { createWorkspaceBackupStore } from './storage/backup-store';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -158,6 +160,22 @@ app.whenReady().then(() => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return updateProjectMetadataHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, metadataInput) => createProjectStore(workspace).updateProjectMetadata(metadataInput))(event, input);
   });
+  ipcMain.handle(projectListTrashChannel, async (event, workspaceId) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return listTrashedProjectsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace) => createProjectStore(workspace).listTrashedProjects())(event, workspaceId);
+  });
+  ipcMain.handle(projectTrashChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return moveProjectToTrashHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).moveProjectToTrash(projectInput))(event, input);
+  });
+  ipcMain.handle(projectRestoreTrashChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return restoreProjectFromTrashHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).restoreProjectFromTrash(projectInput))(event, input);
+  });
+  ipcMain.handle(projectPurgeTrashChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return purgeProjectFromTrashHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).purgeProjectFromTrash(projectInput))(event, input);
+  });
   ipcMain.handle(designerLoadChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return loadDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadDesignerState)(event, workspaceId);
@@ -243,6 +261,15 @@ app.whenReady().then(() => {
       await writeFile(result.filePath, JSON.stringify(diagnostic, null, 2), 'utf8');
       return result.filePath;
     })(event, input);
+  });
+  ipcMain.handle(backupCreateChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createBackupHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, destinationParentDirectory) => createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory }))(event, input);
+  });
+  ipcMain.handle(backupRestoreChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    if (!activeWorkspaceHandle) return null;
+    return restoreBackupHandler(activeWindow, activeTrustedUrl, (restoreInput) => createWorkspaceBackupStore(activeWorkspaceHandle!).restoreBackup(restoreInput))(event, input);
   });
 });
 

@@ -43,6 +43,7 @@ type StudioProps = {
   onLocaleChange: (locale: Locale) => void;
   onThemeChange: (theme: Theme) => void;
   onExit: () => void;
+  onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
 };
 
 export const Studio = ({
@@ -52,6 +53,7 @@ export const Studio = ({
   onLocaleChange,
   onThemeChange,
   onExit,
+  onWorkspaceChange,
 }: StudioProps) => {
   const [view, setView] = useState<View>('projects');
   const [surface, setSurface] = useState<StudioSurface>('projects');
@@ -830,6 +832,7 @@ export const Studio = ({
                   theme={theme}
                   onThemeChange={onThemeChange}
                   onLocaleChange={onLocaleChange}
+                  onWorkspaceChange={onWorkspaceChange}
                 />
               </div>
             ))}

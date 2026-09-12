@@ -167,6 +167,7 @@ export const App = () => {
           onLocaleChange={changeLocale}
           onThemeChange={changeTheme}
           onExit={() => setEntered(false)}
+          onWorkspaceChange={setWorkspace}
         />
       ) : (
         <section className="welcome" aria-labelledby="welcome-title">

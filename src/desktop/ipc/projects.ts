@@ -1,4 +1,4 @@
-import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, UpdateProjectMetadataInput } from '../../features/workspace/project-store';
+import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../../features/workspace/project-store';
 import type { ProjectMetadata } from '../../features/projects/metadata';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { isTrustedWorkspaceRequest } from './workspace';
@@ -7,6 +7,10 @@ export const projectListChannel = 'project:list-active';
 export const projectCreateChannel = 'project:create';
 export const projectMetadataGetChannel = 'project:get-metadata';
 export const projectMetadataUpdateChannel = 'project:update-metadata';
+export const projectListTrashChannel = 'project:list-trash';
+export const projectTrashChannel = 'project:trash';
+export const projectRestoreTrashChannel = 'project:restore-trash';
+export const projectPurgeTrashChannel = 'project:purge-trash';
 
 type ProjectSender = {
   mainFrame: { url: string };
@@ -21,6 +25,11 @@ type ProjectRequest = {
 type ProjectWindow = { webContents: ProjectSender };
 
 const isWorkspaceId = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+const isTrashInput = (value: unknown): value is TrashProjectInput => {
+  if (typeof value !== 'object' || value === null) return false;
+  const input = value as Record<string, unknown>;
+  return isWorkspaceId(input.workspaceId) && isWorkspaceId(input.projectId);
+};
 
 const isCreateInput = (value: unknown): value is CreateProjectContainerInput => {
   if (typeof value !== 'object' || value === null) return false;
@@ -87,4 +96,53 @@ export const updateProjectMetadataHandler = (
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
   return updateMetadata(workspace, input);
+};
+
+export const listTrashedProjectsHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  listProjects: (workspace: WorkspaceHandle) => Promise<TrashedProject[]>,
+) => async (event: ProjectRequest, workspaceId: unknown): Promise<TrashedProject[] | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isWorkspaceId(workspaceId)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== workspaceId) return null;
+  return listProjects(workspace);
+};
+
+export const moveProjectToTrashHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  moveProject: (workspace: WorkspaceHandle, input: TrashProjectInput) => Promise<TrashedProject>,
+) => async (event: ProjectRequest, input: unknown): Promise<TrashedProject | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTrashInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return moveProject(workspace, input);
+};
+
+export const restoreProjectFromTrashHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  restoreProject: (workspace: WorkspaceHandle, input: TrashProjectInput) => Promise<RestoreProjectResult>,
+) => async (event: ProjectRequest, input: unknown): Promise<RestoreProjectResult | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTrashInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return restoreProject(workspace, input);
+};
+
+export const purgeProjectFromTrashHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  purgeProject: (workspace: WorkspaceHandle, input: TrashProjectInput) => Promise<void>,
+) => async (event: ProjectRequest, input: unknown): Promise<boolean | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTrashInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  await purgeProject(workspace, input);
+  return true;
 };

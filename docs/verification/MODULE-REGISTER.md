@@ -84,6 +84,8 @@
 2026-09-12：M03 作品集分析桥接（变更 ID M03-20260912-02）。权利确认且输入来源非空时，DesignerLibrary 通过 `designer-draft` 来源提交分析任务，再进入候选审阅；未连接模型时仍保留诚实失败状态。先新增 bridge Red，再 Green；DesignerLibrary focused、lint、typecheck 通过。真实模型候选生成、授权来源下载与跨平台仍开放。
 2026-09-12：最终整体验证（变更 ID REL-20260912-02）。最新树执行 `pnpm test:unit` 73 files/231 tests、`pnpm test:integration` 22 files/96 tests、`pnpm test:e2e` 24/24、macOS arm64 packaged `pnpm test:native` 3/3、`pnpm lint`、`pnpm typecheck`、`pnpm build`、`git diff --check`，全部通过。开放项仍为真实 provider/模型质量、原生系统钥匙串、Windows、签名/公证、项目 ZIP 跨设备闭包、ICC/字体与人工图像质量。
 
+2026-09-12：M02 workspace management UI/bridge（变更 ID M02-20260912-02）。新增项目废纸篓与工作区备份的受信 IPC/preload 合约；Storage 页面接入真实废纸篓列表、恢复/永久删除确认、备份创建和备份恢复后重新打开工作区。先执行 IPC/UI Red，再 Green；focused IPC 4/4、Storage UI 1/1、lint/typecheck 通过。计划中的定时备份、Windows/打包恢复与原生文件对话框门禁仍开放。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：

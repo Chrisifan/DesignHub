@@ -25,6 +25,8 @@ import { createScene } from '../../features/canvas/scene';
 import { ProviderSettings } from '../../features/providers/ProviderSettings';
 import type { ProviderConnection } from '../../features/providers/connection';
 import type { TaskRecord } from '../../features/tasks/state';
+import type { TrashedProject } from '../../features/workspace/project-store';
+import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
 import './library.css';
 
 type LibraryPagesProps = PageProps & {
@@ -37,6 +39,7 @@ type LibraryPagesProps = PageProps & {
   workspaceId?: string;
   readOnly?: boolean;
   projectId?: string;
+  onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
 };
 
 type Localized = { zh: string; en: string };
@@ -872,19 +875,109 @@ const StoragePage = ({
   locale,
   tab,
   onTabChange,
+  workspaceId,
+  readOnly = false,
+  onWorkspaceChange,
+  notify,
 }: {
   locale: Locale;
   tab: StorageTab;
   onTabChange: (tab: StorageTab) => void;
-}) => (
+  workspaceId?: string;
+  readOnly?: boolean;
+  onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
+  notify?: (message: string) => void;
+}) => {
+  const [trash, setTrash] = useState<TrashedProject[]>([]);
+  const [loadingTrash, setLoadingTrash] = useState(false);
+  const [backupPath, setBackupPath] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceId || readOnly) {
+      setTrash([]);
+      return () => { cancelled = true; };
+    }
+    setLoadingTrash(true);
+    void getDesktopApi().listTrashedProjects?.(workspaceId).then((entries) => {
+      if (!cancelled) setTrash(entries ?? []);
+    }).catch(() => {
+      if (!cancelled) notify?.(t(locale, '废纸篓读取失败', 'Could not load trash'));
+    }).finally(() => {
+      if (!cancelled) setLoadingTrash(false);
+    });
+    return () => { cancelled = true; };
+  }, [locale, notify, readOnly, workspaceId]);
+  const restore = async (projectId: string): Promise<void> => {
+    if (!workspaceId || readOnly) return;
+    setBusy(true);
+    try {
+      const result = await getDesktopApi().restoreProjectFromTrash?.({ workspaceId, projectId });
+      if (result) {
+        setTrash((current) => current.filter((entry) => entry.projectId !== projectId));
+        notify?.(t(locale, '项目已恢复', 'Project restored'));
+      }
+    } catch {
+      notify?.(t(locale, '恢复失败，请重试', 'Restore failed; try again'));
+    } finally { setBusy(false); }
+  };
+  const purge = async (projectId: string): Promise<void> => {
+    if (!workspaceId || readOnly || !window.confirm(t(locale, '永久删除此项目？', 'Permanently delete this project?'))) return;
+    setBusy(true);
+    try {
+      const result = await getDesktopApi().purgeProjectFromTrash?.({ workspaceId, projectId });
+      if (result) {
+        setTrash((current) => current.filter((entry) => entry.projectId !== projectId));
+        notify?.(t(locale, '项目已删除', 'Project deleted'));
+      }
+    } catch {
+      notify?.(t(locale, '删除失败，项目可能仍被引用', 'Delete failed; the project may still be referenced'));
+    } finally { setBusy(false); }
+  };
+  const createBackup = async (): Promise<void> => {
+    if (!workspaceId || readOnly) return;
+    setBusy(true);
+    try {
+      const destination = await getDesktopApi().chooseWorkspaceDirectory();
+      if (!destination) return;
+      const artifact = await getDesktopApi().createWorkspaceBackup?.(workspaceId, destination);
+      if (artifact) {
+        setBackupPath(artifact.directory);
+        notify?.(t(locale, '备份已创建', 'Backup created'));
+      }
+    } catch {
+      notify?.(t(locale, '备份失败，请重试', 'Backup failed; try again'));
+    } finally { setBusy(false); }
+  };
+  const restoreBackup = async (): Promise<void> => {
+    if (readOnly) return;
+    setBusy(true);
+    try {
+      const backupDirectory = await getDesktopApi().chooseWorkspaceDirectory();
+      if (!backupDirectory) return;
+      const destinationParentDirectory = await getDesktopApi().chooseWorkspaceDirectory();
+      if (!destinationParentDirectory) return;
+      const restored = await getDesktopApi().restoreWorkspaceBackup?.({ backupDirectory, destinationParentDirectory });
+      if (!restored) return;
+      const opened = await getDesktopApi().openWorkspace?.(restored.directory);
+      if (opened) {
+        onWorkspaceChange?.(opened);
+        notify?.(t(locale, '备份已恢复', 'Backup restored'));
+      }
+    } catch {
+      notify?.(t(locale, '恢复失败，请重试', 'Restore failed; try again'));
+    } finally { setBusy(false); }
+  };
+  const hasWorkspace = Boolean(workspaceId);
+  return (
   <section className="page-content library-page">
     <PageHeader
       title={t(locale, '工作区管理', 'Workspace management')}
       eyebrow={t(locale, '本地内容', 'Local content')}
       description={t(
         locale,
-        '检查废纸篓与本地备份状态。示例不访问工作区磁盘。',
-        'Review trash and local backup state. The example does not access workspace storage.',
+        hasWorkspace ? '检查废纸篓与本地备份状态。' : '打开工作区后管理废纸篓与备份。',
+        hasWorkspace ? 'Review trash and local backup state.' : 'Open a workspace to manage trash and backups.',
       )}
     />
     <div
@@ -910,15 +1003,24 @@ const StoragePage = ({
     </div>
     {tab === 'trash' ? (
       <div className="storage-panel">
-        <EmptyState
+        {!hasWorkspace || readOnly ? <EmptyState
           icon="trash-2"
-          title={t(locale, '废纸篓为空', 'Trash is empty')}
+          title={readOnly ? t(locale, '只读工作区', 'Read-only workspace') : t(locale, '废纸篓为空', 'Trash is empty')}
           description={t(
             locale,
-            '删除的项目、文档和素材会显示原位置、删除时间与引用限制。内容不会自动过期。',
-            'Deleted projects, documents and assets show their original location, deletion time and reference limits. Items do not expire automatically.',
+            readOnly ? '只读模式下不能修改废纸篓。' : '删除的项目、文档和素材会显示原位置、删除时间与引用限制。',
+            readOnly ? 'Trash cannot be modified in read-only mode.' : 'Deleted projects, documents and assets show their original location, deletion time and reference limits.',
           )}
-        />
+        /> : loadingTrash ? <p className="storage-loading">{t(locale, '读取中', 'Loading')}</p> : trash.length === 0 ? <EmptyState
+          icon="trash-2"
+          title={t(locale, '废纸篓为空', 'Trash is empty')}
+          description={t(locale, '删除的项目不会自动过期。', 'Deleted projects do not expire automatically.')}
+        /> : <div className="trash-list" aria-label={t(locale, '废纸篓项目', 'Trash items')}>
+          {trash.map((entry) => <article className="trash-row" key={entry.projectId}>
+            <div><strong>{entry.projectId}</strong><small>{entry.originalRelativePath}</small><small>{new Date(entry.deletedAt).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en')}</small></div>
+            <div className="trash-actions"><Button variant="secondary" icon="rotate-ccw" disabled={busy} onClick={() => { void restore(entry.projectId); }}>{t(locale, '恢复', 'Restore')}</Button><Button variant="ghost" icon="trash-2" disabled={busy} onClick={() => { void purge(entry.projectId); }}>{t(locale, '删除', 'Delete')}</Button></div>
+          </article>)}
+        </div>}
       </div>
     ) : (
       <div className="storage-panel backup-panel">
@@ -931,45 +1033,38 @@ const StoragePage = ({
               {t(locale, '本地备份', 'Local backup')}
             </p>
             <h2>
-              {t(
-                locale,
-                '尚未配置备份位置',
-                'No backup destination configured',
-              )}
+              {backupPath ? t(locale, '备份已就绪', 'Backup ready') : t(locale, '尚未配置备份位置', 'No backup destination configured')}
             </h2>
             <p>
               {t(
                 locale,
-                '备份默认不上传云端。需要桌面目录选择和真实校验能力后才能启用。',
-                'Backups are not uploaded by default. Desktop folder selection and real verification are required before activation.',
+                backupPath ?? t(locale, '备份默认不上传云端。', 'Backups are not uploaded by default.'),
+                backupPath ?? 'Backups are not uploaded by default.',
               )}
             </p>
           </div>
-          <Badge>{t(locale, '不可用', 'Unavailable')}</Badge>
+          <Badge>{backupPath ? t(locale, '已验证', 'Verified') : t(locale, '未配置', 'Not configured')}</Badge>
         </div>
         <dl className="details-list backup-facts">
           <DetailRow label={t(locale, '上次成功', 'Last success')}>
-            {t(locale, '无记录', 'No record')}
+            {backupPath ? t(locale, '刚刚', 'Just now') : t(locale, '无记录', 'No record')}
           </DetailRow>
           <DetailRow label={t(locale, '目标位置', 'Destination')}>
-            {t(locale, '未选择', 'Not selected')}
+            {backupPath ?? t(locale, '未选择', 'Not selected')}
           </DetailRow>
           <DetailRow label={t(locale, '备份周期', 'Schedule')}>
-            {t(locale, '未启用', 'Not enabled')}
+            {backupPath ? t(locale, '手动', 'Manual') : t(locale, '未启用', 'Not enabled')}
           </DetailRow>
         </dl>
-        <span className="disabled-action disabled-action--left">
-          <Button icon="settings" disabled>
-            {t(locale, '配置', 'Configure')}
-          </Button>
-          <small>
-            {t(locale, '需要桌面目录能力', 'Desktop folder access required')}
-          </small>
-        </span>
+        <div className="storage-actions">
+          <Button icon="download" disabled={!hasWorkspace || readOnly || busy} onClick={() => { void createBackup(); }}>{t(locale, '创建备份', 'Create backup')}</Button>
+          <Button icon="upload" disabled={readOnly || busy} onClick={() => { void restoreBackup(); }}>{t(locale, '恢复备份', 'Restore backup')}</Button>
+        </div>
       </div>
     )}
   </section>
-);
+  );
+};
 
 const ThemeChoice = ({
   locale,
@@ -1184,6 +1279,7 @@ export const LibraryPages = ({
   workspaceId,
   readOnly = false,
   projectId,
+  onWorkspaceChange,
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
@@ -1240,6 +1336,10 @@ export const LibraryPages = ({
         locale={locale}
         tab={storageTab}
         onTabChange={setStorageTab}
+        workspaceId={workspaceId}
+        readOnly={readOnly}
+        onWorkspaceChange={onWorkspaceChange}
+        notify={notify}
       />
     ),
     settings: (

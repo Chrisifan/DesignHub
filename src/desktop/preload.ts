@@ -9,6 +9,8 @@ import { taskListChannel } from './ipc/tasks';
 import { conversationSubmitChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { exportDocumentChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
+import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
+import { projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -18,6 +20,12 @@ const api: DesktopApi = {
   createProjectContainer: (input) => ipcRenderer.invoke('project:create', input),
   getProjectMetadata: (workspaceId, projectId) => ipcRenderer.invoke('project:get-metadata', { workspaceId, projectId }),
   updateProjectMetadata: (input) => ipcRenderer.invoke('project:update-metadata', input),
+  listTrashedProjects: (workspaceId) => ipcRenderer.invoke(projectListTrashChannel, workspaceId),
+  moveProjectToTrash: (input) => ipcRenderer.invoke(projectTrashChannel, input),
+  restoreProjectFromTrash: (input) => ipcRenderer.invoke(projectRestoreTrashChannel, input),
+  purgeProjectFromTrash: (input) => ipcRenderer.invoke(projectPurgeTrashChannel, input),
+  createWorkspaceBackup: (workspaceId, destinationParentDirectory) => ipcRenderer.invoke(backupCreateChannel, { workspaceId, destinationParentDirectory }),
+  restoreWorkspaceBackup: (input) => ipcRenderer.invoke(backupRestoreChannel, input),
   loadDesignerState: (workspaceId) => ipcRenderer.invoke(designerLoadChannel, workspaceId),
   saveDesignerState: (workspaceId, state) => ipcRenderer.invoke(designerSaveChannel, { workspaceId, state }),
   listAssets: (input) => ipcRenderer.invoke(assetListChannel, input),
