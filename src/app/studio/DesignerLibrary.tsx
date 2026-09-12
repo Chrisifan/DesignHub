@@ -133,6 +133,7 @@ export const DesignerLibrary = ({
   const [candidateProfiles, setCandidateProfiles] = useState<PersonaProfile[]>(
     [],
   );
+  const [portfolioTaskId, setPortfolioTaskId] = useState<string>();
   const [publishedInSession, setPublishedInSession] = useState(false);
   const [creationError, setCreationError] = useState("");
   const [newDraft, setNewDraft] = useState<DesignerDraft>(emptyDraft);
@@ -236,6 +237,7 @@ export const DesignerLibrary = ({
     setPortfolioSources("");
     setSelectedCandidateId(undefined);
     setCandidateProfiles([]);
+    setPortfolioTaskId(undefined);
     setPublishedInSession(false);
     setCreationError("");
     setEditor({ mode: "new" });
@@ -364,6 +366,7 @@ export const DesignerLibrary = ({
     }
     setCreationError("");
     setCandidateProfiles([]);
+    setPortfolioTaskId(undefined);
     setCandidatePhase("review");
     if (creationSource === "portfolio" && !workspaceId) {
       setCandidatePhase("form");
@@ -387,7 +390,13 @@ export const DesignerLibrary = ({
       });
       if (!request) {
         setCandidatePhase("form");
-        setCreationError(t(locale, "当前工作区未连接模型，无法分析作品集。", "No connected model is available for portfolio analysis."));
+        setCreationError(
+          t(
+            locale,
+            "当前工作区未连接模型，无法分析作品集。",
+            "No connected model is available for portfolio analysis.",
+          ),
+        );
         return;
       }
       void request
@@ -409,6 +418,7 @@ export const DesignerLibrary = ({
             return;
           }
           if (completed?.state === "failed") throw new Error("ANALYSIS_FAILED");
+          setPortfolioTaskId(task.id);
           setCreationError(
             t(
               locale,
@@ -429,6 +439,62 @@ export const DesignerLibrary = ({
         });
     }
   };
+  useEffect(() => {
+    if (!portfolioTaskId || !workspaceId || !editor) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: number | undefined;
+    const poll = async (): Promise<void> => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const listTasks = getDesktopApi().listTasks;
+        if (!listTasks) throw new Error("TASK_LIST_UNAVAILABLE");
+        const tasks = (await listTasks(workspaceId)) ?? [];
+        if (cancelled) return;
+        const task = tasks.find((item) => item.id === portfolioTaskId);
+        if (task?.state === "completed" && task.result?.text) {
+          setCandidateProfiles(parsePortfolioCandidates(task.result.text));
+          setPortfolioTaskId(undefined);
+          setCreationError("");
+          return;
+        }
+        if (task?.state === "failed" || attempts >= 12) {
+          setPortfolioTaskId(undefined);
+          setCandidateProfiles([]);
+          setCreationError(
+            t(
+              locale,
+              "作品集分析失败，未生成候选。",
+              "Portfolio analysis failed; no candidates were generated.",
+            ),
+          );
+          return;
+        }
+        timer = window.setTimeout(() => {
+          void poll();
+        }, 500);
+      } catch {
+        if (cancelled) return;
+        setPortfolioTaskId(undefined);
+        setCandidateProfiles([]);
+        setCreationError(
+          t(
+            locale,
+            "作品集分析失败，未生成候选。",
+            "Portfolio analysis failed; no candidates were generated.",
+          ),
+        );
+      }
+    };
+    timer = window.setTimeout(() => {
+      void poll();
+    }, 500);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [editor, locale, portfolioTaskId, workspaceId]);
   const publishPreview = () => {
     if (!selectedCandidateId) {
       setCreationError(
