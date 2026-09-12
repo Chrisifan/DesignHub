@@ -1,4 +1,6 @@
-export type BackupSchedule = 'manual' | 'daily' | 'weekly';
+import type { BackupSchedule } from './settings';
+
+export type { BackupSchedule } from './settings';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

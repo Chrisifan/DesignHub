@@ -73,6 +73,7 @@ const backupWorkspaceDirectoryName = 'workspace';
 const internalDirectoryName = '.designhub';
 const managedDirectoryNames = [internalDirectoryName, 'projects', 'shared-assets', 'trash'] as const;
 const projectIndexPath = `${internalDirectoryName}/project-index.sqlite`;
+const workspaceSettingsPath = `${internalDirectoryName}/settings.json`;
 const writerLockPrefix = `${internalDirectoryName}/writer-lock.sqlite`;
 const sqliteSidecarPattern = /-(?:journal|shm|wal)$/u;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -240,7 +241,7 @@ const getManagedInternalEntryPolicy = (
 ): ManagedInternalEntryPolicy => {
   if (kind === 'directory' && relativePath === internalDirectoryName) return 'domain';
   if (kind !== 'file') return 'unmanaged';
-  if (relativePath === projectIndexPath) return 'domain';
+  if (relativePath === projectIndexPath || relativePath === workspaceSettingsPath) return 'domain';
   if (relativePath === writerLockPrefix
     || isSqliteSidecarOf(relativePath, projectIndexPath)
     || isSqliteSidecarOf(relativePath, writerLockPrefix)) return 'transient';

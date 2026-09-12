@@ -11,6 +11,7 @@ import type { TaskSource } from '../features/tasks/state';
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
 import type { BrandLibraryState } from '../features/brands/constraints';
 import type { ImageEditInput, ImageGenerationInput } from '../features/agent/task-service';
+import type { WorkspaceSettings } from '../features/workspace/settings';
 
 export type ConversationTaskInput = {
   workspaceId: string;
@@ -54,6 +55,8 @@ export type DesktopApi = {
   purgeProjectFromTrash?: (input: TrashProjectInput) => Promise<boolean | null>;
   createWorkspaceBackup?: (workspaceId: string, destinationParentDirectory: string) => Promise<BackupArtifact | null>;
   restoreWorkspaceBackup?: (input: { backupDirectory: string; destinationParentDirectory: string }) => Promise<RestoreBackupResult | null>;
+  loadWorkspaceSettings?: (workspaceId: string) => Promise<WorkspaceSettings | null>;
+  saveWorkspaceSettings?: (workspaceId: string, settings: WorkspaceSettings) => Promise<boolean>;
   exportProjectPackage?: (input: { workspaceId: string; projectId: string }) => Promise<{ path: string; sha256: string } | null>;
   loadDesignerState?: (workspaceId: string) => Promise<DesignerLibraryState | null>;
   saveDesignerState?: (workspaceId: string, state: DesignerLibraryState) => Promise<boolean>;

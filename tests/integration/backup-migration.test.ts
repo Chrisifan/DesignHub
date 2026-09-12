@@ -20,6 +20,7 @@ import {
   workspaceProjectIndexName,
 } from '../../src/desktop/storage/project-store';
 import { createWorkspace, openWorkspace, workspaceManifestName } from '../../src/desktop/storage/workspace-store';
+import { saveWorkspaceSettings } from '../../src/desktop/storage/settings-store';
 import type { BackupManifest } from '../../src/features/workspace/backup';
 
 const temporaryDirectories: string[] = [];
@@ -58,6 +59,15 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
   await writeFile(join(existingDirectory, 'keep.txt'), 'keep');
 
   const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Workspace' });
+  await saveWorkspaceSettings(workspace, workspace.workspace.workspaceId, {
+    formatVersion: 1,
+    backup: {
+      destinationParentDirectory: destinationParent,
+      schedule: 'weekly',
+      lastRunAt: null,
+      lastArtifactPath: null,
+    },
+  });
   const projects = createProjectStore(workspace);
   const active = await projects.createProjectContainer({
     workspaceId: workspace.workspace.workspaceId,
@@ -97,6 +107,7 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
     expect(paths).toEqual(expect.arrayContaining([
       workspaceManifestName,
       `.designhub/${workspaceProjectIndexName}`,
+      '.designhub/settings.json',
       `projects/${active.projectId}/${projectDatabaseName}`,
       `trash/${trashed.projectId}/${projectDatabaseName}`,
       'shared-assets/nested/asset.txt',

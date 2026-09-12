@@ -34,6 +34,7 @@ import type { TaskRecord } from '../../features/tasks/state';
 import type { TrashedProject } from '../../features/workspace/project-store';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
+import type { WorkspaceSettings } from '../../features/workspace/settings';
 import './library.css';
 
 type LibraryPagesProps = PageProps & {
@@ -93,6 +94,16 @@ const readBackupPreferences = (workspaceId: string): BackupPreferences => {
 };
 const writeBackupPreferences = (workspaceId: string, preferences: BackupPreferences): void => {
   try { localStorage.setItem(backupPreferencesKey(workspaceId), JSON.stringify(preferences)); } catch { /* in-memory fallback */ }
+};
+
+const toWorkspaceSettings = (preferences: BackupPreferences): WorkspaceSettings => ({
+  formatVersion: 1,
+  backup: { ...preferences },
+});
+
+const persistBackupPreferences = (workspaceId: string, preferences: BackupPreferences): void => {
+  writeBackupPreferences(workspaceId, preferences);
+  void (getDesktopApi().saveWorkspaceSettings?.(workspaceId, toWorkspaceSettings(preferences)) ?? Promise.resolve()).catch(() => undefined);
 };
 
 const availableConnections: readonly ProviderConnection[] = [
@@ -1129,10 +1140,21 @@ const StoragePage = ({
       return;
     }
     const preferences = readBackupPreferences(workspaceId);
-    setBackupPath(preferences.lastArtifactPath);
-    setBackupDestination(preferences.destinationParentDirectory);
-    setBackupSchedule(preferences.schedule);
-    setBackupLastRunAt(preferences.lastRunAt);
+    const applyPreferences = (next: BackupPreferences): void => {
+      setBackupPath(next.lastArtifactPath);
+      setBackupDestination(next.destinationParentDirectory);
+      setBackupSchedule(next.schedule);
+      setBackupLastRunAt(next.lastRunAt);
+    };
+    applyPreferences(preferences);
+    let cancelled = false;
+    void (getDesktopApi().loadWorkspaceSettings?.(workspaceId) ?? Promise.resolve(null)).then((stored) => {
+      if (cancelled || !stored) return;
+      const next = stored.backup;
+      applyPreferences(next);
+      writeBackupPreferences(workspaceId, next);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
   }, [workspaceId]);
   const restore = async (projectId: string): Promise<void> => {
     if (!workspaceId || readOnly) return;
@@ -1169,7 +1191,7 @@ const StoragePage = ({
         const lastRunAt = artifact.createdAt;
         setBackupPath(artifact.directory);
         setBackupLastRunAt(lastRunAt);
-        writeBackupPreferences(workspaceId, { destinationParentDirectory, schedule: backupSchedule, lastRunAt, lastArtifactPath: artifact.directory });
+        persistBackupPreferences(workspaceId, { destinationParentDirectory, schedule: backupSchedule, lastRunAt, lastArtifactPath: artifact.directory });
         notify?.(t(locale, '备份已创建', 'Backup created'));
       }
     } catch {
@@ -1182,14 +1204,14 @@ const StoragePage = ({
     if (!destination) return;
     setBackupDestination(destination);
     const preferences = readBackupPreferences(workspaceId);
-    writeBackupPreferences(workspaceId, { ...preferences, destinationParentDirectory: destination, schedule: backupSchedule });
+    persistBackupPreferences(workspaceId, { ...preferences, destinationParentDirectory: destination, schedule: backupSchedule });
     await performBackup(destination);
   };
   const updateBackupSchedule = (schedule: BackupSchedule): void => {
     if (!workspaceId) return;
     setBackupSchedule(schedule);
     const preferences = readBackupPreferences(workspaceId);
-    writeBackupPreferences(workspaceId, { ...preferences, schedule });
+    persistBackupPreferences(workspaceId, { ...preferences, schedule });
   };
   useEffect(() => {
     if (!workspaceId || readOnly || !backupDestination) return undefined;

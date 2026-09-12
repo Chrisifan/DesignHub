@@ -376,6 +376,26 @@ it('persists backup destination and schedule per workspace', async () => {
   await waitFor(() => expect(createWorkspaceBackup).toHaveBeenCalledWith('workspace-1', '/Volumes/Backups'));
 });
 
+it('hydrates backup preferences from workspace storage and writes updates through the bridge', async () => {
+  const loadWorkspaceSettings = vi.fn(async () => ({
+    formatVersion: 1 as const,
+    backup: {
+      destinationParentDirectory: '/WorkspaceBackups',
+      schedule: 'weekly' as const,
+      lastRunAt: '2026-09-12T00:00:00.000Z',
+      lastArtifactPath: '/WorkspaceBackups/latest',
+    },
+  }));
+  const saveWorkspaceSettings = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadWorkspaceSettings, saveWorkspaceSettings };
+  render(<Harness initialView="storage" workspaceId="workspace-1" />);
+  fireEvent.click(screen.getByRole('button', { name: '备份' }));
+  expect(await screen.findByText('/WorkspaceBackups')).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: '备份周期' })).toHaveValue('weekly');
+  fireEvent.change(screen.getByRole('combobox', { name: '备份周期' }), { target: { value: 'daily' } });
+  await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledWith('workspace-1', expect.objectContaining({ formatVersion: 1, backup: expect.objectContaining({ schedule: 'daily' }) })));
+});
+
 it('exports a redacted diagnostics preview through the desktop bridge', async () => {
   const exportDiagnostics = vi.fn(async () => '/tmp/designhub-diagnostics.json');
   window.designhub = { chooseWorkspaceDirectory: async () => null, exportDiagnostics };

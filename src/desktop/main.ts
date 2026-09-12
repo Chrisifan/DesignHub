@@ -52,6 +52,8 @@ import { exportSceneToFile } from './export-scene';
 import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel, createBackupHandler, restoreBackupHandler } from './ipc/backup';
 import { createWorkspaceBackupStore } from './storage/backup-store';
+import { loadWorkspaceSettings, saveWorkspaceSettings } from './storage/settings-store';
+import { loadSettingsHandler, saveSettingsHandler, settingsLoadChannel, settingsSaveChannel } from './ipc/settings';
 import { exportProjectPackageHandler, importProjectPackageHandler, projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 import { createProjectPackage, encodeProjectPackage } from '../features/delivery/project-package';
 import { classifyPackageEntry, type PackageEntryKind } from '../features/delivery/package-policy';
@@ -436,6 +438,14 @@ app.whenReady().then(() => {
     if (!activeWindow || !activeTrustedUrl) return null;
     if (!activeWorkspaceHandle) return null;
     return restoreBackupHandler(activeWindow, activeTrustedUrl, (restoreInput) => createWorkspaceBackupStore(activeWorkspaceHandle!).restoreBackup(restoreInput))(event, input);
+  });
+  ipcMain.handle(settingsLoadChannel, async (event, workspaceId) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return loadSettingsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadWorkspaceSettings)(event, workspaceId);
+  });
+  ipcMain.handle(settingsSaveChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return saveSettingsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, saveWorkspaceSettings)(event, input);
   });
 });
 

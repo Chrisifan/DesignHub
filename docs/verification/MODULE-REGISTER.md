@@ -48,6 +48,8 @@
 
 2026-09-09：用户确认 Q1–Q66 冻结为 DesignHub V1 实施基线。依赖版本和工程实验继续按 G01–G11 与模块门槛选择，不视为重新打开产品范围；新增或修改产品能力必须先登记基线变更、受影响模块、测试与回归范围。
 
+2026-09-13：M08 工作区备份设置持久化新增 `src/features/workspace/settings.ts`、settings storage/IPC channels and Storage UI hydration. The change uses existing Node atomic file primitives and no new dependency. Direct consumers M01 (preload/bridge/build), M02 (workspace internal allowlist/backup closure), M07 (backup/export boundary) and M08 were revalidated with focused tests; full regression follows the module commit. Windows, concurrent external writers and signed release remain open.
+
 2026-09-09：M02 Task 1 引入 `better-sqlite3`、Forge native-unpack 插件并收窄 unit 测试扫描范围，影响 M01 构建、打包配置和测试入口。M01 unit/integration/lint/typecheck/build 全部回归通过，macOS Playwright Electron smoke 1/1 通过；Forge package 仍在 GitHub Electron artifact 获取阶段因 `ENOTFOUND` 失败，Windows、安装与发布状态不恢复为已验证。证据见 [M01](M01.md) 与 [M02](M02.md)。
 
 2026-09-10：M02 Task 2 增加 main-only 项目存储、Electron storage smoke、Vite native external 和 Forge 精确保留规则，影响 M01 main/build/package。unit 13/13、integration 29/29、lint/typecheck/build 通过；本地镜像下 macOS arm64 package 与 source/packaged storage smoke 2/2 曾通过，并确认 `.node` 位于 `app.asar.unpacked`。随后只增加项目完整性校验与回归测试，最终树重打包和 native 套件请求被审批策略拒绝，因此 Windows、最终 artifact、签名安装和 UI 仍保持开放，未伪记为已验证。
