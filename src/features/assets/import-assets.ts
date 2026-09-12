@@ -76,6 +76,8 @@ const formatFor = (item: AssetImportItem): SupportedAssetFormat | undefined => {
   const byMime = mime ? mimeFormats[mime] : undefined;
   const extension = item.name.toLowerCase().split('.').pop() ?? '';
   const byExtension = extensionFormats[extension];
+  if (mime && !byMime) return undefined;
+  if (extension && !byExtension) return undefined;
   if (byMime && byExtension && byMime !== byExtension) return undefined;
   return byMime ?? byExtension;
 };
@@ -92,13 +94,9 @@ const toBytes = async (data: AssetImportItem['data']): Promise<Uint8Array> => {
 };
 
 const sha256 = async (bytes: Uint8Array): Promise<string> => {
-  if (globalThis.crypto?.subtle) {
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes as BufferSource);
-    return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
-  }
-  let hash = 2166136261;
-  for (const byte of bytes) hash = Math.imul(hash ^ byte, 16777619);
-  return (hash >>> 0).toString(16).padStart(8, '0').repeat(8);
+  if (!globalThis.crypto?.subtle) throw new Error('HASH_UNAVAILABLE');
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes as BufferSource);
+  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
 };
 
 const hasUnsafeMetadata = (value: unknown): boolean => {
@@ -155,7 +153,7 @@ export const importAssets = async (items: AssetImportItem[], options: ImportAsse
   return results;
 };
 
-export const convertExternalReference = async (asset: ManagedAsset, data: Uint8Array | ArrayBuffer | Blob | string, options: Omit<ImportAssetsOptions, 'existingAssets'> = {}): Promise<ManagedAsset> => {
+export const convertExternalReference = async (asset: ManagedAsset, data: Uint8Array | ArrayBuffer | Blob | string, options: ImportAssetsOptions = {}): Promise<ManagedAsset> => {
   const [result] = await importAssets([{ name: asset.name, mimeType: asset.mimeType, data, metadata: asset.metadata }], options);
   if (result.status === 'error') throw new Error(result.error);
   return result.asset;
