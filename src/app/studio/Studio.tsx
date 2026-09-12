@@ -88,6 +88,8 @@ export const Studio = ({
         if (cancelled || !entries) return;
         setProjects(entries.map((entry) => ({
           id: entry.projectId,
+          workspaceId: workspace.workspaceId,
+          documentId: entry.documents?.[0]?.id,
           name: entry.name,
           enName: entry.name,
           description: entry.brief ?? t(locale, '本地项目', 'Local project'),
@@ -138,6 +140,7 @@ export const Studio = ({
   const createProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.name.trim()) return;
+    const documentId = crypto.randomUUID();
     if (workspace?.openMode === 'writable') {
       const created = await getDesktopApi().createProjectContainer?.({
         workspaceId: workspace.workspaceId,
@@ -145,7 +148,7 @@ export const Studio = ({
         name: draft.name.trim(),
         brief: draft.goal || draft.brief || undefined,
         activeDesignerVersionId: draft.personaId,
-        documents: [{ id: crypto.randomUUID(), name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
+        documents: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
       });
       if (!created) {
         notify(t(locale, '无法保存项目，请检查工作区。', 'Could not save the project. Check the workspace.'));
@@ -153,6 +156,8 @@ export const Studio = ({
       }
       const project: Project = {
         id: created.projectId,
+        workspaceId: workspace.workspaceId,
+        documentId,
         name: draft.name.trim(),
         enName: draft.name.trim(),
         description: draft.goal || draft.brief || t(locale, '本地项目', 'Local project'),
@@ -721,6 +726,8 @@ export const Studio = ({
               <Workbench
                 locale={locale}
                 project={project}
+                workspaceId={project.workspaceId}
+                documentId={project.documentId}
                 onBack={() => setDocumentOpen(false)}
                 onExport={() => openDelivery(project)}
                 onConnections={() => navigate('connections')}

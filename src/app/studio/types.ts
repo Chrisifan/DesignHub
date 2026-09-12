@@ -23,6 +23,8 @@ export type NewDesignDraft = {
 };
 export type Project = {
   id: string;
+  workspaceId?: string;
+  documentId?: string;
   name: string;
   enName: string;
   description: string;

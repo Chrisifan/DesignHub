@@ -2,6 +2,8 @@ import { useId, useState, type CSSProperties, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
 import type { Project } from './types';
+import { CanvasWorkspace } from '../../features/canvas/CanvasWorkspace';
+import { createScene, type DesignScene } from '../../features/canvas/scene';
 import {
   ArtworkPreview,
   Badge,
@@ -20,10 +22,28 @@ type LayerState = Record<LayerId, boolean>;
 export type WorkbenchProps = {
   locale: Locale;
   project: Project;
+  workspaceId?: string;
+  documentId?: string;
+  scene?: DesignScene;
   onBack: () => void;
   onExport: () => void;
   onConnections: () => void;
   notify: (message: string) => void;
+};
+
+const createInitialScene = (project: Project): DesignScene => {
+  const titleLayer = {
+    id: 'title', type: 'text' as const, text: project.name, fontFamily: 'Inter', fontSize: 96,
+    fontWeight: 'bold', align: 'center' as const, color: '#24262B', x: 120, y: 520,
+    width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false,
+  };
+  const layers = project.artwork === 'blank'
+    ? [titleLayer]
+    : [
+        { id: 'background', type: 'image' as const, assetId: 'placeholder', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false },
+        titleLayer,
+      ];
+  return createScene({ id: `${project.id}-scene`, width: 1080, height: 1440, layers });
 };
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
@@ -32,6 +52,9 @@ const clamp = (value: number, minimum: number, maximum: number): number =>
 export const Workbench = ({
   locale,
   project,
+  workspaceId,
+  documentId,
+  scene: providedScene,
   onBack,
   onExport,
   onConnections,
@@ -61,6 +84,7 @@ export const Workbench = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
   const [prompt, setPrompt] = useState('');
+  const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project));
 
   const layerCopy: Record<
     LayerId,
@@ -352,6 +376,17 @@ export const Workbench = ({
           style={canvasStyle}
         >
           <div className="workbench-canvas__stage">
+            {workspaceId && documentId ? (
+              <CanvasWorkspace
+                locale={locale}
+                scene={scene}
+                onSceneChange={setScene}
+                workspaceId={workspaceId}
+                projectId={project.id}
+                documentId={documentId}
+              />
+            ) : (
+              <>
             <div
               className={`workbench-preview ${!visibility.text ? 'workbench-preview--text-hidden' : ''} ${!visibility.shape ? 'workbench-preview--shape-hidden' : ''} ${!visibility.image ? 'workbench-preview--image-hidden' : ''}`}
             >
@@ -383,6 +418,8 @@ export const Workbench = ({
                 </span>
               )}
             </div>
+              </>
+            )}
           </div>
           <div className="workbench-canvas__meta" aria-hidden="true">
             <span>1080 × 1440 px</span>

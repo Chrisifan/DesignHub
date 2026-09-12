@@ -1,8 +1,15 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { expect, it, vi } from 'vitest';
 
 import { Workbench, type WorkbenchProps } from './Workbench';
 import type { Project } from './types';
+import { createScene } from '../../features/canvas/scene';
+
+vi.mock('react-konva', () => {
+  const component = ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => <div {...props}>{children}</div>;
+  return { Ellipse: component, Layer: component, Line: component, Rect: component, Stage: component, Text: component };
+});
 
 const project: Project = {
   id: 'spring-market',
@@ -188,4 +195,13 @@ it('provides the exact English canvas and back labels', () => {
     screen.getByRole('button', { name: 'Back to project' }),
   ).toBeInTheDocument();
   expect(screen.getByText('Unsaved preview')).toBeInTheDocument();
+});
+
+it('renders the persisted canvas workspace for a real project document', () => {
+  const scene = createScene({ id: 'scene-1', width: 1080, height: 1440, layers: [] });
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+
+  expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
+  expect(screen.getByRole('complementary', { name: '图层' })).toBeInTheDocument();
+  expect(screen.getByRole('complementary', { name: '检查器' })).toBeInTheDocument();
 });
