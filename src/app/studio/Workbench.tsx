@@ -214,7 +214,7 @@ export const Workbench = ({
         projectId: project.id,
         documentId,
         baseRevisionId: entry.candidate.baseRevisionId,
-        operationId: `candidate-${entry.task.requestId}`,
+        operationId: `candidate-${entry.candidate.id}`,
         sceneAssetId: entry.candidate.sceneAssetId ?? entry.candidate.assetIds[0]!,
         assetIds: [...entry.candidate.assetIds],
         contributions: contribution,
