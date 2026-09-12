@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useMemo,
   useEffect,
   useState,
@@ -32,6 +33,7 @@ import type { ProviderConnection } from '../../features/providers/connection';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { TrashedProject } from '../../features/workspace/project-store';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
+import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
 import './library.css';
 
 type LibraryPagesProps = PageProps & {
@@ -74,6 +76,24 @@ type BrandKit = {
 };
 type DeliveryFormat = 'png' | 'jpeg' | 'webp' | 'pdf';
 type StorageTab = 'trash' | 'backup';
+type BackupPreferences = { destinationParentDirectory: string | null; schedule: BackupSchedule; lastRunAt: string | null; lastArtifactPath: string | null };
+
+const backupPreferencesKey = (workspaceId: string): string => `designhub.backup.${workspaceId}`;
+const readBackupPreferences = (workspaceId: string): BackupPreferences => {
+  const fallback: BackupPreferences = { destinationParentDirectory: null, schedule: 'manual', lastRunAt: null, lastArtifactPath: null };
+  try {
+    const value = JSON.parse(localStorage.getItem(backupPreferencesKey(workspaceId)) ?? '') as Partial<BackupPreferences>;
+    return {
+      destinationParentDirectory: typeof value.destinationParentDirectory === 'string' ? value.destinationParentDirectory : null,
+      schedule: value.schedule === 'daily' || value.schedule === 'weekly' ? value.schedule : 'manual',
+      lastRunAt: typeof value.lastRunAt === 'string' ? value.lastRunAt : null,
+      lastArtifactPath: typeof value.lastArtifactPath === 'string' ? value.lastArtifactPath : null,
+    };
+  } catch { return fallback; }
+};
+const writeBackupPreferences = (workspaceId: string, preferences: BackupPreferences): void => {
+  try { localStorage.setItem(backupPreferencesKey(workspaceId), JSON.stringify(preferences)); } catch { /* in-memory fallback */ }
+};
 
 const availableConnections: readonly ProviderConnection[] = [
   { id: 'openai-compatible', label: 'OpenAI compatible', status: 'not-configured', capabilities: ['conversation', 'vision-analysis', 'image-generation', 'image-editing'] },
@@ -1080,6 +1100,9 @@ const StoragePage = ({
   const [trash, setTrash] = useState<TrashedProject[]>([]);
   const [loadingTrash, setLoadingTrash] = useState(false);
   const [backupPath, setBackupPath] = useState<string | null>(null);
+  const [backupDestination, setBackupDestination] = useState<string | null>(null);
+  const [backupSchedule, setBackupSchedule] = useState<BackupSchedule>('manual');
+  const [backupLastRunAt, setBackupLastRunAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -1097,6 +1120,20 @@ const StoragePage = ({
     });
     return () => { cancelled = true; };
   }, [locale, notify, readOnly, workspaceId]);
+  useEffect(() => {
+    if (!workspaceId) {
+      setBackupPath(null);
+      setBackupDestination(null);
+      setBackupSchedule('manual');
+      setBackupLastRunAt(null);
+      return;
+    }
+    const preferences = readBackupPreferences(workspaceId);
+    setBackupPath(preferences.lastArtifactPath);
+    setBackupDestination(preferences.destinationParentDirectory);
+    setBackupSchedule(preferences.schedule);
+    setBackupLastRunAt(preferences.lastRunAt);
+  }, [workspaceId]);
   const restore = async (projectId: string): Promise<void> => {
     if (!workspaceId || readOnly) return;
     setBusy(true);
@@ -1123,21 +1160,47 @@ const StoragePage = ({
       notify?.(t(locale, '删除失败，项目可能仍被引用', 'Delete failed; the project may still be referenced'));
     } finally { setBusy(false); }
   };
-  const createBackup = async (): Promise<void> => {
-    if (!workspaceId || readOnly) return;
+  const performBackup = useCallback(async (destinationParentDirectory: string): Promise<void> => {
+    if (!workspaceId || readOnly || busy) return;
     setBusy(true);
     try {
-      const destination = await getDesktopApi().chooseWorkspaceDirectory();
-      if (!destination) return;
-      const artifact = await getDesktopApi().createWorkspaceBackup?.(workspaceId, destination);
+      const artifact = await getDesktopApi().createWorkspaceBackup?.(workspaceId, destinationParentDirectory);
       if (artifact) {
+        const lastRunAt = artifact.createdAt;
         setBackupPath(artifact.directory);
+        setBackupLastRunAt(lastRunAt);
+        writeBackupPreferences(workspaceId, { destinationParentDirectory, schedule: backupSchedule, lastRunAt, lastArtifactPath: artifact.directory });
         notify?.(t(locale, '备份已创建', 'Backup created'));
       }
     } catch {
       notify?.(t(locale, '备份失败，请重试', 'Backup failed; try again'));
     } finally { setBusy(false); }
+  }, [backupSchedule, busy, locale, notify, readOnly, workspaceId]);
+  const createBackup = async (): Promise<void> => {
+    if (!workspaceId || readOnly) return;
+    const destination = backupDestination ?? await getDesktopApi().chooseWorkspaceDirectory();
+    if (!destination) return;
+    setBackupDestination(destination);
+    const preferences = readBackupPreferences(workspaceId);
+    writeBackupPreferences(workspaceId, { ...preferences, destinationParentDirectory: destination, schedule: backupSchedule });
+    await performBackup(destination);
   };
+  const updateBackupSchedule = (schedule: BackupSchedule): void => {
+    if (!workspaceId) return;
+    setBackupSchedule(schedule);
+    const preferences = readBackupPreferences(workspaceId);
+    writeBackupPreferences(workspaceId, { ...preferences, schedule });
+  };
+  useEffect(() => {
+    if (!workspaceId || readOnly || !backupDestination) return undefined;
+    const interval = backupIntervalMs(backupSchedule);
+    if (interval === null) return undefined;
+    const timer = window.setInterval(() => {
+      const preferences = readBackupPreferences(workspaceId);
+      if (shouldRunScheduledBackup({ schedule: backupSchedule, lastRunAt: preferences.lastRunAt ?? backupLastRunAt, now: Date.now() })) void performBackup(backupDestination);
+    }, Math.min(interval, 60 * 1000));
+    return () => window.clearInterval(timer);
+  }, [backupDestination, backupLastRunAt, backupSchedule, performBackup, readOnly, workspaceId]);
   const restoreBackup = async (): Promise<void> => {
     if (readOnly) return;
     setBusy(true);
@@ -1222,7 +1285,7 @@ const StoragePage = ({
               {t(locale, '本地备份', 'Local backup')}
             </p>
             <h2>
-              {backupPath ? t(locale, '备份已就绪', 'Backup ready') : t(locale, '尚未配置备份位置', 'No backup destination configured')}
+              {backupDestination ? t(locale, '备份已就绪', 'Backup ready') : t(locale, '尚未配置备份位置', 'No backup destination configured')}
             </h2>
             <p>
               {t(
@@ -1232,19 +1295,28 @@ const StoragePage = ({
               )}
             </p>
           </div>
-          <Badge>{backupPath ? t(locale, '已验证', 'Verified') : t(locale, '未配置', 'Not configured')}</Badge>
+          <Badge>{backupLastRunAt ? t(locale, '已验证', 'Verified') : backupDestination ? t(locale, '已配置', 'Configured') : t(locale, '未配置', 'Not configured')}</Badge>
         </div>
         <dl className="details-list backup-facts">
           <DetailRow label={t(locale, '上次成功', 'Last success')}>
-            {backupPath ? t(locale, '刚刚', 'Just now') : t(locale, '无记录', 'No record')}
+            {backupLastRunAt ? new Date(backupLastRunAt).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US') : t(locale, '无记录', 'No record')}
           </DetailRow>
           <DetailRow label={t(locale, '目标位置', 'Destination')}>
-            {backupPath ?? t(locale, '未选择', 'Not selected')}
+            {backupDestination ?? t(locale, '未选择', 'Not selected')}
           </DetailRow>
           <DetailRow label={t(locale, '备份周期', 'Schedule')}>
-            {backupPath ? t(locale, '手动', 'Manual') : t(locale, '未启用', 'Not enabled')}
+            {backupSchedule === 'daily' ? t(locale, '每天', 'Daily') : backupSchedule === 'weekly' ? t(locale, '每周', 'Weekly') : t(locale, '手动', 'Manual')}
           </DetailRow>
         </dl>
+        <div className="backup-settings">
+          <Field label={t(locale, '备份周期', 'Backup schedule')}>
+            <select aria-label={t(locale, '备份周期', 'Backup schedule')} value={backupSchedule} disabled={!hasWorkspace || readOnly || busy} onChange={(event) => updateBackupSchedule(event.target.value as BackupSchedule)}>
+              <option value="manual">{t(locale, '手动', 'Manual')}</option>
+              <option value="daily">{t(locale, '每天', 'Daily')}</option>
+              <option value="weekly">{t(locale, '每周', 'Weekly')}</option>
+            </select>
+          </Field>
+        </div>
         <div className="storage-actions">
           <Button icon="download" disabled={!hasWorkspace || readOnly || busy} onClick={() => { void createBackup(); }}>{t(locale, '创建备份', 'Create backup')}</Button>
           <Button icon="upload" disabled={readOnly || busy} onClick={() => { void restoreBackup(); }}>{t(locale, '恢复备份', 'Restore backup')}</Button>

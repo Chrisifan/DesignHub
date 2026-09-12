@@ -341,6 +341,20 @@ it('loads workspace trash entries and restores them through the desktop bridge',
   expect(await screen.findByText('废纸篓为空')).toBeInTheDocument();
 });
 
+it('persists backup destination and schedule per workspace', async () => {
+  const createWorkspaceBackup = vi.fn(async () => ({ directory: '/Volumes/Backups/workspace-1-2026.designhub-backup', workspaceId: 'workspace-1', createdAt: '2026-09-13T12:00:00.000Z' }));
+  localStorage.setItem('designhub.backup.workspace-1', JSON.stringify({ destinationParentDirectory: '/Volumes/Backups', schedule: 'daily', lastRunAt: null, lastArtifactPath: null }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, createWorkspaceBackup };
+  render(<Harness initialView="storage" workspaceId="workspace-1" />);
+  fireEvent.click(screen.getByRole('button', { name: '备份' }));
+  expect(screen.getByRole('combobox', { name: '备份周期' })).toHaveValue('daily');
+  expect(screen.getByText('/Volumes/Backups')).toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox', { name: '备份周期' }), { target: { value: 'weekly' } });
+  expect(JSON.parse(localStorage.getItem('designhub.backup.workspace-1') ?? '{}')).toMatchObject({ schedule: 'weekly' });
+  fireEvent.click(screen.getByRole('button', { name: '创建备份' }));
+  await waitFor(() => expect(createWorkspaceBackup).toHaveBeenCalledWith('workspace-1', '/Volumes/Backups'));
+});
+
 it('exports a redacted diagnostics preview through the desktop bridge', async () => {
   const exportDiagnostics = vi.fn(async () => '/tmp/designhub-diagnostics.json');
   window.designhub = { chooseWorkspaceDirectory: async () => null, exportDiagnostics };
