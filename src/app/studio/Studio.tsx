@@ -15,6 +15,7 @@ import {
   Badge,
   Button,
   EmptyState,
+  Field,
   Icon,
   IconButton,
   Modal,
@@ -78,6 +79,8 @@ export const Studio = ({
   });
   const [creationDraftId, setCreationDraftId] = useState<string | null>(null);
   const [conversationResult, setConversationResult] = useState<{ taskId: string; text: string } | null>(null);
+  const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
+  const [projectNameDraft, setProjectNameDraft] = useState('');
   useEffect(() => {
     let cancelled = false;
     if (!workspace) {
@@ -131,6 +134,46 @@ export const Studio = ({
     setSelected(null);
   };
   const notify = (message: string) => setNotice(message);
+  const updateProject = async (patch: { name?: string; archived?: boolean }): Promise<void> => {
+    if (!workspace || !selected || workspace.openMode !== 'writable') return;
+    try {
+      const metadata = await getDesktopApi().updateProjectMetadata?.({ workspaceId: workspace.workspaceId, projectId: selected.id, patch });
+      if (!metadata) return;
+      setProjects((current) => current.map((project) => project.id === selected.id ? {
+        ...project,
+        name: metadata.name,
+        enName: metadata.name,
+        description: metadata.brief ?? project.description,
+        enDescription: metadata.brief ?? project.enDescription,
+        documents: metadata.documents.length || project.documents,
+        archived: metadata.archived,
+      } : project));
+      setSelected((current) => current ? {
+        ...current,
+        name: metadata.name,
+        enName: metadata.name,
+        description: metadata.brief ?? current.description,
+        enDescription: metadata.brief ?? current.enDescription,
+        documents: metadata.documents.length || current.documents,
+        archived: metadata.archived,
+      } : current);
+      notify(t(locale, patch.name ? '项目已重命名' : '项目已归档', patch.name ? 'Project renamed' : 'Project archived'));
+    } catch {
+      notify(t(locale, '项目更新失败，请重试', 'Project update failed; try again'));
+    }
+  };
+  const duplicateSelected = async (): Promise<void> => {
+    if (!workspace || !selected || workspace.openMode !== 'writable') return;
+    try {
+      const result = await getDesktopApi().duplicateProject?.({ workspaceId: workspace.workspaceId, sourceProjectId: selected.id, operationId: crypto.randomUUID() });
+      if (!result) return;
+      const duplicate: Project = { ...selected, id: result.projectId, name: `${selected.name} copy`, enName: `${selected.enName} copy`, archived: false };
+      setProjects((current) => [duplicate, ...current]);
+      notify(t(locale, '项目已复制', 'Project duplicated'));
+    } catch {
+      notify(t(locale, '复制失败，请重试', 'Duplicate failed; try again'));
+    }
+  };
   useEffect(() => {
     if (!notice) return;
     const timeout = window.setTimeout(() => setNotice(''), 6000);
@@ -689,7 +732,13 @@ export const Studio = ({
                   '设计项目 / 示例',
                   'DESIGN PROJECT / EXAMPLE',
                 )}
-              />
+              >
+                {workspace?.openMode === 'writable' && selected.workspaceId && <>
+                  <Button icon="settings" onClick={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}>{t(locale, '重命名', 'Rename')}</Button>
+                  <Button icon="copy" onClick={() => { void duplicateSelected(); }}>{t(locale, '复制', 'Duplicate')}</Button>
+                  {!selected.archived && <Button icon="folder" onClick={() => { void updateProject({ archived: true }); }}>{t(locale, '归档', 'Archive')}</Button>}
+                </>}
+              </PageHeader>
               <DesignerHero
                 personaId={projectPersonaId(selected)}
                 locale={locale}
@@ -909,6 +958,17 @@ export const Studio = ({
             <Button onClick={() => setDialog(null)} variant="primary">
               {t(locale, '继续浏览', 'Continue browsing')}
             </Button>
+          </div>
+        </Modal>
+      )}
+      {projectDialog === 'rename' && selected && (
+        <Modal title={t(locale, '重命名项目', 'Rename project')} locale={locale} onClose={() => setProjectDialog(null)}>
+          <Field label={t(locale, '项目名称', 'Project name')}>
+            <input autoFocus value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} />
+          </Field>
+          <div className="dialog-actions">
+            <Button onClick={() => setProjectDialog(null)}>{t(locale, '取消', 'Cancel')}</Button>
+            <Button variant="primary" icon="check" disabled={!projectNameDraft.trim()} onClick={() => { setProjectDialog(null); void updateProject({ name: projectNameDraft }); }}>{t(locale, '保存', 'Save')}</Button>
           </div>
         </Modal>
       )}

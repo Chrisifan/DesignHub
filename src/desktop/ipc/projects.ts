@@ -1,10 +1,11 @@
-import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../../features/workspace/project-store';
+import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, DuplicateProjectInput, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../../features/workspace/project-store';
 import type { ProjectMetadata } from '../../features/projects/metadata';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const projectListChannel = 'project:list-active';
 export const projectCreateChannel = 'project:create';
+export const projectDuplicateChannel = 'project:duplicate';
 export const projectMetadataGetChannel = 'project:get-metadata';
 export const projectMetadataUpdateChannel = 'project:update-metadata';
 export const projectListTrashChannel = 'project:list-trash';
@@ -41,6 +42,16 @@ const isCreateInput = (value: unknown): value is CreateProjectContainerInput => 
     && input.name.trim().length > 0;
 };
 
+const isDuplicateInput = (value: unknown): value is DuplicateProjectInput => {
+  if (typeof value !== 'object' || value === null) return false;
+  const input = value as Record<string, unknown>;
+  return isWorkspaceId(input.workspaceId)
+    && isWorkspaceId(input.sourceProjectId)
+    && typeof input.operationId === 'string'
+    && input.operationId.trim().length > 0
+    && (input.name === undefined || (typeof input.name === 'string' && input.name.trim().length > 0));
+};
+
 const isMetadataInput = (value: unknown): value is UpdateProjectMetadataInput => {
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
@@ -70,6 +81,18 @@ export const createProjectContainerHandler = (
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
   return createProject(workspace, input);
+};
+
+export const duplicateProjectHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  duplicateProject: (workspace: WorkspaceHandle, input: DuplicateProjectInput) => Promise<CreateProjectContainerResult>,
+) => async (event: ProjectRequest, input: unknown): Promise<CreateProjectContainerResult | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDuplicateInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return duplicateProject(workspace, input);
 };
 
 export const getProjectMetadataHandler = (

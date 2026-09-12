@@ -18,6 +18,7 @@ const api: DesktopApi = {
   openWorkspace: (directory) => ipcRenderer.invoke('workspace:open', directory),
   listActiveProjects: (workspaceId) => ipcRenderer.invoke('project:list-active', workspaceId),
   createProjectContainer: (input) => ipcRenderer.invoke('project:create', input),
+  duplicateProject: (input) => ipcRenderer.invoke('project:duplicate', input),
   getProjectMetadata: (workspaceId, projectId) => ipcRenderer.invoke('project:get-metadata', { workspaceId, projectId }),
   updateProjectMetadata: (input) => ipcRenderer.invoke('project:update-metadata', input),
   listTrashedProjects: (workspaceId) => ipcRenderer.invoke(projectListTrashChannel, workspaceId),

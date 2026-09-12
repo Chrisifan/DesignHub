@@ -65,6 +65,29 @@ it('publishes a versioned project database and content manifest exactly once per
   }
 });
 
+it('duplicates a project with a new identity while retaining documents and managed assets', async () => {
+  const { workspace, store } = await createWritableStore();
+  const project = await store.createProjectContainer({
+    workspaceId: workspace.workspace.workspaceId,
+    operationId: 'duplicate-source',
+    name: 'Source project',
+    documents: [{ id: 'doc-1', name: 'Poster', width: 800, height: 600 }],
+  });
+  try {
+    const duplicate = await store.duplicateProject({
+      workspaceId: workspace.workspace.workspaceId,
+      sourceProjectId: project.projectId,
+      operationId: 'duplicate-copy',
+      name: 'Copied project',
+    });
+    expect(duplicate.projectId).not.toBe(project.projectId);
+    await expect(store.getProjectMetadata(duplicate.projectId)).resolves.toMatchObject({ name: 'Copied project', documents: [{ id: 'doc-1', width: 800, height: 600 }] });
+    await expect(store.listActiveProjects()).resolves.toHaveLength(2);
+  } finally {
+    workspace.close();
+  }
+});
+
 it('cleans only its temporary content when database initialization or publish fails, then retries without a duplicate', async () => {
   const { workspace } = await createWritableStore();
   let activeWorkspace = workspace;

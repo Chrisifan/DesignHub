@@ -86,6 +86,8 @@
 
 2026-09-12：M02 workspace management UI/bridge（变更 ID M02-20260912-02）。新增项目废纸篓与工作区备份的受信 IPC/preload 合约；Storage 页面接入真实废纸篓列表、恢复/永久删除确认、备份创建和备份恢复后重新打开工作区。先执行 IPC/UI Red，再 Green；focused IPC 4/4、Storage UI 1/1、lint/typecheck 通过。计划中的定时备份、Windows/打包恢复与原生文件对话框门禁仍开放。
 
+2026-09-12：M04 project operations UI/duplication（变更 ID M04-20260912-03）。新增项目复制存储与受信 `project:duplicate` bridge；项目详情页接入重命名、归档、复制，保留只读工作区禁写约束。先执行存储/Studio Red，再 Green；focused project storage/IPC/Studio 31 tests、lint、typecheck、build 通过。跨工作区项目包、流式归档与完整历史闭包仍按 M07 开放。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：

@@ -1,5 +1,5 @@
 import type { WorkspaceDescriptor } from '../features/workspace/open-workspace';
-import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../features/workspace/project-store';
+import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, DuplicateProjectInput, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../features/workspace/project-store';
 import type { BackupArtifact, RestoreBackupResult } from '../features/workspace/backup';
 import type { ProjectMetadata } from '../features/projects/metadata';
 import type { DesignerLibraryState } from '../features/designers/persistence';
@@ -40,6 +40,7 @@ export type DesktopApi = {
   openWorkspace?: (directory: string) => Promise<WorkspaceDescriptor | null>;
   listActiveProjects?: (workspaceId: string) => Promise<ActiveProject[] | null>;
   createProjectContainer?: (input: CreateProjectContainerInput) => Promise<CreateProjectContainerResult | null>;
+  duplicateProject?: (input: DuplicateProjectInput) => Promise<CreateProjectContainerResult | null>;
   getProjectMetadata?: (workspaceId: string, projectId: string) => Promise<ProjectMetadata | null>;
   updateProjectMetadata?: (input: UpdateProjectMetadataInput) => Promise<ProjectMetadata | null>;
   listTrashedProjects?: (workspaceId: string) => Promise<TrashedProject[] | null>;

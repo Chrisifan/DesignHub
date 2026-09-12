@@ -2,9 +2,11 @@ import { expect, it, vi } from 'vitest';
 
 import {
   listTrashedProjectsHandler,
+  duplicateProjectHandler,
   moveProjectToTrashHandler,
   purgeProjectFromTrashHandler,
   projectListTrashChannel,
+  projectDuplicateChannel,
   projectPurgeTrashChannel,
   projectRestoreTrashChannel,
   projectTrashChannel,
@@ -38,6 +40,20 @@ it('exposes trusted trash list, move, restore and purge channels', async () => {
   expect(move).toHaveBeenCalledOnce();
   expect(restore).toHaveBeenCalledOnce();
   expect(purge).toHaveBeenCalledOnce();
+});
+
+it('gates project duplication on the active trusted workspace', async () => {
+  expect(projectDuplicateChannel).toBe('project:duplicate');
+  const { window, event, trustedUrl } = createFixture();
+  const workspace = { workspace: { workspaceId: 'workspace-1' } } as never;
+  const duplicate = vi.fn(async () => ({ projectId: 'project-copy' }));
+  await expect(duplicateProjectHandler(window as never, trustedUrl, () => workspace, duplicate)(event as never, {
+    workspaceId: 'workspace-1', sourceProjectId: 'project-1', operationId: 'copy-1', name: 'Copy',
+  })).resolves.toEqual({ projectId: 'project-copy' });
+  await expect(duplicateProjectHandler(window as never, trustedUrl, () => workspace, duplicate)(event as never, {
+    workspaceId: 'workspace-1', sourceProjectId: 'project-1', operationId: '',
+  })).resolves.toBeNull();
+  expect(duplicate).toHaveBeenCalledOnce();
 });
 
 it('rejects malformed or untrusted trash requests before storage', async () => {

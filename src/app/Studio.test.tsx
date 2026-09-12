@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, expect, it } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { Studio } from './studio/Studio';
 
@@ -142,6 +142,27 @@ it('hydrates persisted workspace projects and creates through the desktop API', 
   fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
   await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', name: 'Created project' })));
   expect(await screen.findByRole('heading', { name: 'Created project' })).toBeInTheDocument();
+});
+
+it('renames, archives and duplicates a persisted project from its detail view', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
+  const updateProjectMetadata = vi.fn(async ({ patch }: { patch: { name?: string; archived?: boolean } }) => ({ projectId: 'project-1', workspaceId: 'workspace-1', name: patch.name ?? 'Persisted project', archived: patch.archived ?? false, documents: [], createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:01.000Z' }));
+  const duplicateProject = vi.fn(async () => ({ projectId: 'project-2' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, updateProjectMetadata, duplicateProject };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
+  fireEvent.click(screen.getByRole('button', { name: '重命名' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: 'Renamed project' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存' }));
+  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-1', patch: { name: 'Renamed project' } })));
+  fireEvent.click(screen.getByRole('button', { name: '复制' }));
+  await waitFor(() => expect(duplicateProject).toHaveBeenCalledWith(expect.objectContaining({ sourceProjectId: 'project-1' })));
+  fireEvent.click(screen.getByRole('button', { name: '项目库' }));
+  expect(await screen.findByRole('button', { name: /Renamed project copy/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Renamed project' }));
+  fireEvent.click(screen.getByRole('button', { name: '归档' }));
+  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({ patch: { archived: true } })));
 });
 
 it('submits project conversation through the desktop task bridge', async () => {

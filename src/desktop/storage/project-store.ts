@@ -8,6 +8,7 @@ import type { WorkspaceDescriptor, WorkspaceHandle } from '../../features/worksp
 import type {
   CreateProjectContainerInput,
   CreateProjectContainerResult,
+  DuplicateProjectInput,
   ActiveProject,
   ProjectStore,
   RestoreProjectResult,
@@ -719,6 +720,37 @@ const updateProjectMetadataForHandle = (handle: WorkspaceHandle, input: UpdatePr
   }
 };
 
+const duplicateProject = async (handle: WorkspaceHandle, input: DuplicateProjectInput): Promise<CreateProjectContainerResult> => {
+  const workspace = getWritableWorkspaceLease(handle);
+  if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
+  if (workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const sourceMetadata = getProjectMetadata(handle, input.sourceProjectId);
+  const sourceDirectory = resolveProjectDirectory(handle, input.sourceProjectId);
+  if (!sourceMetadata || !sourceDirectory) throw new Error('PROJECT_NOT_FOUND');
+  const created = await createProject(handle, {}, {
+    workspaceId: input.workspaceId,
+    operationId: input.operationId,
+    name: input.name?.trim() || `${sourceMetadata.name} copy`,
+    brief: sourceMetadata.brief,
+    activeDesignerVersionId: sourceMetadata.activeDesignerVersionId,
+    designerSnapshot: sourceMetadata.designerSnapshot,
+    brandSnapshot: sourceMetadata.brandSnapshot,
+    documents: sourceMetadata.documents.map(({ id, name, width, height, finalizedRevisionId }) => ({ id, name, width, height, finalizedRevisionId })),
+  });
+  const destinationDirectory = resolveProjectDirectory(handle, created.projectId);
+  if (!destinationDirectory) throw new Error('PROJECT_NOT_FOUND');
+  ['assets', 'documents'].forEach((directoryName) => {
+    const sourcePath = join(sourceDirectory, directoryName);
+    if (existsSync(sourcePath)) cpSync(sourcePath, join(destinationDirectory, directoryName), { recursive: true, force: true });
+  });
+  const sourceContentPath = join(sourceDirectory, projectContentManifestName);
+  if (existsSync(sourceContentPath)) {
+    const content = JSON.parse(readFileSync(sourceContentPath, 'utf8')) as Record<string, unknown>;
+    writeFileSync(join(destinationDirectory, projectContentManifestName), `${JSON.stringify({ ...content, projectId: created.projectId }, null, 2)}\n`, { encoding: 'utf8' });
+  }
+  return created;
+};
+
 const listTrashedProjects = (handle: WorkspaceHandle): TrashedProject[] => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
@@ -854,6 +886,7 @@ const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOpt
 
 export const createProjectStore = (handle: WorkspaceHandle, options: ProjectStoreOptions = {}): ProjectStore => ({
   createProjectContainer: async (input): Promise<CreateProjectContainerResult> => createProject(handle, options, input),
+  duplicateProject: async (input): Promise<CreateProjectContainerResult> => duplicateProject(handle, input),
   listActiveProjects: async (): Promise<ActiveProject[]> => listActiveProjects(handle),
   getProjectMetadata: async (projectId): Promise<ProjectMetadata | null> => getProjectMetadata(handle, projectId),
   updateProjectMetadata: async (input): Promise<ProjectMetadata> => updateProjectMetadataForHandle(handle, input),
