@@ -217,8 +217,8 @@ export const Workbench = ({
             </strong>
             <span>{t(locale, '主海报', 'Main poster')}</span>
           </div>
-          <Badge tone="warning">
-            {t(locale, '预览未保存', 'Unsaved preview')}
+          <Badge tone={workspaceId ? 'success' : 'warning'}>
+            {workspaceId ? t(locale, '已保存', 'Saved') : t(locale, '预览未保存', 'Unsaved preview')}
           </Badge>
         </div>
 
@@ -645,8 +645,8 @@ export const Workbench = ({
                 <p className="workbench-section-copy">
                   {t(
                     locale,
-                    '示例会话只包含初始基线。预览编辑尚未保存为版本。',
-                    'This example session contains only its baseline. Preview edits are not saved as a version.',
+                    workspaceId ? '当前文档的场景会保存到工作区。修订时间线将在版本提交后显示。' : '示例会话只包含初始基线。预览编辑尚未保存为版本。',
+                    workspaceId ? 'The current document scene is saved to the workspace. Revision events appear after a version is committed.' : 'This example session contains only its baseline. Preview edits are not saved as a version.',
                   )}
                 </p>
                 <ol className="workbench-history-list">

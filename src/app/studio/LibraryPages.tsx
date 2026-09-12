@@ -258,8 +258,8 @@ const AssetsPage = ({
         eyebrow={t(locale, '受管素材', 'Managed assets')}
         description={t(
           locale,
-          '浏览示例素材的来源、格式、用途与受管状态。',
-          'Browse source, format, usage and managed state for example assets.',
+          usingManagedAssets ? '浏览当前项目素材的来源、格式、用途与受管状态。' : '浏览示例素材的来源、格式、用途与受管状态。',
+          usingManagedAssets ? 'Browse source, format, usage and managed state for this project.' : 'Browse source, format, usage and managed state for example assets.',
         )}
       >
         {usingManagedAssets && <>

@@ -91,6 +91,7 @@
 2026-09-12：M07 project package ZIP/export（变更 ID M07-20260912-05）。采用 `fflate` 0.8.2；新增包清单编解码、受信 `project:package-export` bridge、项目目录闭包导出和交付页入口。先执行 codec/IPC/UI Red，再 Green；focused 22 tests、lint、typecheck、build 通过。导入解包、流式大文件、跨设备闭包与 Windows 原生对话框仍开放。
 
 2026-09-12：M07 offline resize tool（变更 ID M07-20260912-06）。新增 `resizeScene` 比例缩放契约并接入 Workbench 工具面板，离线调整画布尺寸后通过现有 scene bridge 持久化。先执行 transform/Workbench 测试，再 Green；focused 15 tests、lint、typecheck 通过。模型图像编辑、原生 worker、人工质量与大图性能仍开放。
+2026-09-12：真实工作区状态文案（变更 ID UI-20260912-04）。目标文件为 `src/app/studio/Studio.tsx`、`src/app/studio/Workbench.tsx`、`src/app/studio/LibraryPages.tsx`；影响 M04 项目/素材状态、M05 工作台历史、M07 交付相邻页面。持久项目显示 `Local`/`Saved`，示例预览保留 `Example`/`Unsaved preview`，并同步真实项目历史与素材说明。unit 77 files/245 tests、integration 22 files/97 tests、lint、typecheck、build、diff check 全部通过；无数据契约变化，直接消费者已完成回归。
 
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 

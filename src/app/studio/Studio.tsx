@@ -653,7 +653,7 @@ export const Studio = ({
                             </strong>
                           </span>
                           <span className="project-meta-end">
-                            {t(locale, '示例', 'Example')}
+                            {project.workspaceId ? t(locale, '本地', 'Local') : t(locale, '示例', 'Example')}
                           </span>
                         </div>
                       </div>
@@ -729,8 +729,8 @@ export const Studio = ({
                 )}
                 eyebrow={t(
                   locale,
-                  '设计项目 / 示例',
-                  'DESIGN PROJECT / EXAMPLE',
+                  selected.workspaceId ? '设计项目 / 本地' : '设计项目 / 示例',
+                  selected.workspaceId ? 'DESIGN PROJECT / LOCAL' : 'DESIGN PROJECT / EXAMPLE',
                 )}
               >
                 {workspace?.openMode === 'writable' && selected.workspaceId && <>
@@ -751,7 +751,7 @@ export const Studio = ({
                 </div>
                 <div>
                   <small>{t(locale, '项目状态', 'PROJECT STATUS')}</small>
-                  <strong>{t(locale, '预览草稿', 'Preview draft')}</strong>
+                    <strong>{selected.workspaceId ? t(locale, '进行中', 'Active') : t(locale, '预览草稿', 'Preview draft')}</strong>
                 </div>
                 <div>
                   <small>{t(locale, '品牌上下文', 'BRAND CONTEXT')}</small>
@@ -762,7 +762,7 @@ export const Studio = ({
                 <div>
                   <small>{t(locale, '内容保留', 'RETENTION')}</small>
                   <strong>
-                    {t(locale, '仅本次预览', 'This preview only')}
+                    {selected.workspaceId ? t(locale, '本地保存', 'Saved locally') : t(locale, '仅本次预览', 'This preview only')}
                   </strong>
                 </div>
               </div>
@@ -817,7 +817,7 @@ export const Studio = ({
                           : index === 1
                             ? '1080 × 1080'
                             : '1920 × 1080'}{' '}
-                        px <Badge>{t(locale, '示例', 'Example')}</Badge>
+                        px <Badge>{selected.workspaceId ? t(locale, '本地', 'Local') : t(locale, '示例', 'Example')}</Badge>
                       </span>
                     </div>
                   </button>
