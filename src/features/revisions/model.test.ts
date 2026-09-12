@@ -104,6 +104,14 @@ it('does not add designer attribution when a direct tool supplies no contributio
   expect(store.getRevision(result.revisionId)?.contributions).toEqual([]);
 });
 
+it('stores an immutable scene snapshot for continuing from an older revision', async () => {
+  const store = createRevisionStore();
+  const scene = { version: 1 as const, id: 'scene-1', width: 100, height: 100, layers: [] };
+  const result = await store.commitRevision({ projectId: 'p1', documentId: 'd1', baseRevisionId: null, operationId: 'op-scene', sceneAssetId: 'scene-1', assetIds: [], contributions: [], scene });
+  scene.width = 200;
+  expect(store.getRevision(result.revisionId)?.scene).toEqual({ version: 1, id: 'scene-1', width: 100, height: 100, layers: [] });
+});
+
 it('gives repeated finalization events unique ids even in the same millisecond', async () => {
   const store = createRevisionStore();
   const revision = await store.commitRevision({

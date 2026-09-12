@@ -266,5 +266,21 @@ it('records the active designer snapshot as a revision contribution', async () =
   fireEvent.click(screen.getByRole('button', { name: '保存版本' }));
   await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({
     contributions: [{ designerVersionId: 'designer-v2', role: 'lead', designerName: '林夏' }],
+    scene,
   })));
+});
+
+it('can continue from a revision scene snapshot and branches the next save from it', async () => {
+  const olderScene = createScene({ id: 'scene-old', width: 1080, height: 1440, layers: [] });
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-old', projectId: 'spring-market', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-old', sceneAssetId: 'scene-old', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z', scene: olderScene }], timeline: [], finalRevisionId: null }));
+  const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-new' }));
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, commitDocumentRevision, saveDocumentScene };
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene: createScene({ id: 'scene-current', width: 1080, height: 1440, layers: [] }) })} />);
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '继续' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+  expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: olderScene }));
+  fireEvent.click(screen.getByRole('button', { name: '保存版本' }));
+  await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({ baseRevisionId: 'revision-old' })));
 });

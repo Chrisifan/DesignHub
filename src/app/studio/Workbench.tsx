@@ -7,6 +7,7 @@ import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from
 import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
 import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
+import { CompareRevisions } from '../../features/revisions/CompareRevisions';
 import {
   ArtworkPreview,
   Badge,
@@ -95,6 +96,8 @@ export const Workbench = ({
   const [resizeHeight, setResizeHeight] = useState(() => (providedScene ?? createInitialScene(project)).height);
   const [revisionState, setRevisionState] = useState<RevisionState>({ revisions: [], timeline: [], finalRevisionId: null });
   const [revisionBusy, setRevisionBusy] = useState(false);
+  const [revisionBaseId, setRevisionBaseId] = useState<string | null>(null);
+  const [compareRevisionId, setCompareRevisionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!workspaceId || !documentId) return undefined;
@@ -131,7 +134,7 @@ export const Workbench = ({
         workspaceId,
         projectId: project.id,
         documentId,
-        baseRevisionId: revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? null,
+        baseRevisionId: revisionBaseId ?? revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? null,
         operationId: `workbench-${crypto.randomUUID()}`,
         sceneAssetId: scene.id,
         assetIds: scene.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image').map((layer) => layer.assetId),
@@ -143,10 +146,12 @@ export const Workbench = ({
             return snapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en'];
           })(),
         }] : [],
+        scene,
       });
       if (result) {
         const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
         if (loaded) setRevisionState(loaded);
+        setRevisionBaseId(null);
         notify(t(locale, '版本已保存', 'Version saved'));
       }
     } catch {
@@ -702,13 +707,18 @@ export const Workbench = ({
                 </p>
                 {workspaceId && <Button variant="secondary" icon="save" disabled={revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>}
                 <ol className="workbench-history-list">
-                  {revisionState.revisions.length > 0 ? revisionState.revisions.map((revision) => <li key={revision.revisionId}>
+                {revisionState.revisions.length > 0 ? revisionState.revisions.map((revision) => <li key={revision.revisionId}>
                     <span className="workbench-history-marker" aria-hidden="true" />
                     <div>
                       <Badge tone={revisionState.finalRevisionId === revision.revisionId ? 'success' : ''}>{revisionState.finalRevisionId === revision.revisionId ? t(locale, '定稿', 'Final') : t(locale, '版本', 'Version')}</Badge>
                       <strong>{revision.revisionId.slice(0, 8)}</strong>
                       <p>{new Date(revision.createdAt).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US')}</p>
-                      {revisionState.finalRevisionId !== revision.revisionId && <Button variant="ghost" disabled={revisionBusy} onClick={() => { void finalizeRevision(revision.revisionId); }}>{t(locale, '定稿', 'Finalize')}</Button>}
+                      <div className="workbench-history-actions">
+                        {revisionState.finalRevisionId !== revision.revisionId && <Button variant="ghost" disabled={revisionBusy} onClick={() => { void finalizeRevision(revision.revisionId); }}>{t(locale, '定稿', 'Finalize')}</Button>}
+                        {revision.scene && <Button variant="ghost" disabled={revisionBusy} onClick={() => { persistScene(revision.scene!); syncTextState(revision.scene!); setRevisionBaseId(revision.revisionId); notify(t(locale, '已载入旧版', 'Older version loaded')); }}>{t(locale, '继续', 'Continue')}</Button>}
+                        {revisionState.revisions.length > 1 && <Button variant="ghost" onClick={() => setCompareRevisionId((current) => current === revision.revisionId ? null : revision.revisionId)}>{t(locale, '比较', 'Compare')}</Button>}
+                      </div>
+                      {compareRevisionId === revision.revisionId && <CompareRevisions left={revision} right={revisionState.revisions[revisionState.revisions.length - 1]} />}
                     </div>
                   </li>) : <li>
                     <span

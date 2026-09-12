@@ -4,6 +4,7 @@ import { constants, lstatSync, realpathSync, readFileSync, mkdirSync } from 'nod
 import { basename, dirname, join } from 'node:path';
 
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
+import type { DesignScene } from '../../features/canvas/scene';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
 import { resolveProjectDirectory } from './project-store';
@@ -21,6 +22,8 @@ const revisionFileName = (documentId: string): string => {
 };
 const clone = <T>(value: T): T => structuredClone(value);
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isScene = (value: unknown): value is DesignScene => isRecord(value)
+  && typeof value.id === 'string' && Number.isFinite(value.width) && Number.isFinite(value.height) && Array.isArray(value.layers);
 const isRevision = (value: unknown): value is RevisionRecord => isRecord(value)
   && typeof value.revisionId === 'string' && value.revisionId.length > 0
   && typeof value.projectId === 'string' && value.projectId.length > 0
@@ -30,6 +33,7 @@ const isRevision = (value: unknown): value is RevisionRecord => isRecord(value)
   && typeof value.sceneAssetId === 'string' && value.sceneAssetId.length > 0
   && Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')
   && Array.isArray(value.contributions)
+  && (value.scene === undefined || isScene(value.scene))
   && typeof value.createdAt === 'string' && !Number.isNaN(Date.parse(value.createdAt))
   && (value.operatorName === undefined || typeof value.operatorName === 'string');
 const isTimelineEvent = (value: unknown): value is RevisionTimelineEvent => isRecord(value)
@@ -95,7 +99,7 @@ const writeState = async (file: string, state: PersistedRevisionState): Promise<
   }
 };
 
-const fingerprint = (input: CommitRevisionInput): string => JSON.stringify({ projectId: input.projectId, documentId: input.documentId, baseRevisionId: input.baseRevisionId, operationId: input.operationId, sceneAssetId: input.sceneAssetId, assetIds: input.assetIds, contributions: input.contributions, operatorName: input.operatorName });
+const fingerprint = (input: CommitRevisionInput): string => JSON.stringify({ projectId: input.projectId, documentId: input.documentId, baseRevisionId: input.baseRevisionId, operationId: input.operationId, sceneAssetId: input.sceneAssetId, assetIds: input.assetIds, contributions: input.contributions, operatorName: input.operatorName, scene: input.scene });
 
 export const loadDocumentRevisions = async (handle: WorkspaceHandle, workspaceId: string, projectId: string, documentId: string): Promise<PersistedRevisionState> => {
   const target = validateTarget(handle, workspaceId, projectId, documentId, false);
@@ -111,7 +115,7 @@ export const commitDocumentRevision = async (handle: WorkspaceHandle, input: Com
     return { revisionId: existing.revisionId };
   }
   if (input.baseRevisionId && !state.revisions.some((revision) => revision.revisionId === input.baseRevisionId)) throw new Error('REVISION_NOT_FOUND');
-  const revision: RevisionRecord = { revisionId: randomUUID(), projectId: input.projectId, documentId: input.documentId, parentRevisionId: input.baseRevisionId, operationId: input.operationId, sceneAssetId: input.sceneAssetId, assetIds: [...input.assetIds], contributions: clone(input.contributions), ...(input.operatorName === undefined ? {} : { operatorName: input.operatorName }), createdAt: new Date().toISOString() };
+  const revision: RevisionRecord = { revisionId: randomUUID(), projectId: input.projectId, documentId: input.documentId, parentRevisionId: input.baseRevisionId, operationId: input.operationId, sceneAssetId: input.sceneAssetId, assetIds: [...input.assetIds], contributions: clone(input.contributions), ...(input.operatorName === undefined ? {} : { operatorName: input.operatorName }), ...(input.scene === undefined ? {} : { scene: clone(input.scene) }), createdAt: new Date().toISOString() };
   const event: RevisionTimelineEvent = { id: `event-${revision.revisionId}`, kind: 'revision', label: `Revision ${revision.revisionId}`, documentId: input.documentId, revisionId: revision.revisionId, timestamp: revision.createdAt };
   await mkdir(target.directory, { recursive: true });
   await writeState(target.file, { revisions: [...state.revisions, revision], timeline: [...state.timeline, event], finalRevisionId: state.finalRevisionId });

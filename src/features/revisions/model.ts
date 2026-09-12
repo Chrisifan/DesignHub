@@ -1,3 +1,5 @@
+import type { DesignScene } from '../canvas/scene';
+
 export type CommitRevisionInput = {
   projectId: string;
   documentId: string;
@@ -7,6 +9,7 @@ export type CommitRevisionInput = {
   assetIds: string[];
   contributions: { designerVersionId: string; role: 'lead' | 'direction' | 'revision'; designerName?: string }[];
   operatorName?: string;
+  scene?: DesignScene;
 };
 
 export type DesignerContributionInput = CommitRevisionInput['contributions'][number];
@@ -22,6 +25,7 @@ export type RevisionRecord = {
   contributions: DesignerContributionInput[];
   operatorName?: string;
   createdAt: string;
+  scene?: DesignScene;
 };
 
 export type RevisionTimelineEvent = {
@@ -60,6 +64,7 @@ const operationFingerprint = (input: CommitRevisionInput): string => JSON.string
   assetIds: input.assetIds,
   contributions: input.contributions,
   operatorName: input.operatorName,
+  scene: input.scene,
 });
 
 export const branchRevision = (base: { id: string; documentId: string }, id: string) => ({
@@ -105,6 +110,7 @@ export const createRevisionStore = (): RevisionStore => {
       assetIds: [...input.assetIds],
       contributions: clone(input.contributions),
       ...(input.operatorName === undefined ? {} : { operatorName: input.operatorName }),
+      ...(input.scene === undefined ? {} : { scene: clone(input.scene) }),
       createdAt: new Date().toISOString(),
     };
     revisions.set(revisionId, record);
