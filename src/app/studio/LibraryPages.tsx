@@ -851,7 +851,11 @@ const DeliveryPage = ({
               <Badge>{t(locale, '原稿', 'Source')}</Badge>
               <h2>{projectName}</h2>
               <p>
-                {t(locale, '1080 × 1440 像素 · sRGB', '1080 × 1440 px · sRGB')}
+                {(() => {
+                  const document = project.documentEntries?.find((entry) => entry.id === project.documentId) ?? project.documentEntries?.[0];
+                  const dimensions = `${document?.width ?? 1080} × ${document?.height ?? 1440}`;
+                  return t(locale, `${dimensions} 像素 · sRGB`, `${dimensions} px · sRGB`);
+                })()}
               </p>
               <small className="source-note">
                   {t(locale, '导出将读取当前文档场景。', 'Export reads the current document scene.')}

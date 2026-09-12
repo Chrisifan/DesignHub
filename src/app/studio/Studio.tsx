@@ -65,6 +65,7 @@ export const Studio = ({
   const [display, setDisplay] = useState<'grid' | 'list'>('grid');
   const [selected, setSelected] = useState<Project | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
+  const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [deliveryProject, setDeliveryProject] = useState<Project | null>(null);
   const [dialog, setDialog] = useState<'workspace' | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -109,12 +110,14 @@ export const Studio = ({
           brandSnapshot: entry.brandSnapshot,
           artwork: 'blank' as const,
           documents: entry.documents?.length ?? 1,
+          documentEntries: entry.documents?.map(({ id, name, width, height }) => ({ id, name, width, height })),
           archived: entry.archived,
         })));
       }).catch(() => undefined);
     }
     setSelected(null);
     setDocumentOpen(false);
+    setActiveDocumentId(null);
     setView('projects');
     setSurface('projects');
     return () => { cancelled = true; };
@@ -261,6 +264,7 @@ export const Studio = ({
     setSelected(project);
     setSurface('projects');
     setDocumentOpen(false);
+    setActiveDocumentId(null);
     setView('projects');
   };
   const createProject = async (event: FormEvent<HTMLFormElement>) => {
@@ -320,6 +324,7 @@ export const Studio = ({
         designerSnapshot: getPersona(draft.personaId),
         artwork: 'blank',
         documents: 1,
+        documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
       };
       setProjects((previous) => [project, ...previous]);
       setSurface('projects');
@@ -348,6 +353,7 @@ export const Studio = ({
       designers: [getPersona(draft.personaId)?.name.zh ?? '纸感排版'],
       artwork: 'blank',
       documents: 1,
+      documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
     };
     setProjects((previous) => [project, ...previous]);
     setSurface('projects');
@@ -406,6 +412,13 @@ export const Studio = ({
   const openDelivery = (project: Project) => {
     setDeliveryProject(project);
     navigate('delivery');
+  };
+  const openDocument = (project: Project, documentId?: string): void => {
+    setSelected(project);
+    setActiveDocumentId(documentId ?? project.documentEntries?.[0]?.id ?? project.documentId ?? null);
+    setDocumentOpen(true);
+    setSurface('projects');
+    setView('projects');
   };
   const submitProjectConversation = async (project: Project, message: string): Promise<void> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
@@ -860,7 +873,8 @@ export const Studio = ({
                     className="document-card"
                     key={index}
                     onClick={() => {
-                      if (index === 0) setDocumentOpen(true);
+                      if (index === 0) openDocument(selected, selected.documentEntries?.[0]?.id);
+                      else if (selected.documentEntries?.[index]) openDocument(selected, selected.documentEntries[index].id);
                       else
                         notify(
                           t(
@@ -933,9 +947,9 @@ export const Studio = ({
                 locale={locale}
                 project={project}
                 workspaceId={project.workspaceId}
-                documentId={project.documentId}
+                documentId={project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId}
                 onBack={() => setDocumentOpen(false)}
-                onExport={() => openDelivery(project)}
+                onExport={() => openDelivery({ ...project, documentId: project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId })}
                 onConnections={() => navigate('connections')}
                 onSubmitConversation={(message) => submitProjectConversation(project, message)}
                 notify={notify}

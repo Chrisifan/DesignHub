@@ -37,16 +37,19 @@ export type WorkbenchProps = {
   notify: (message: string) => void;
 };
 
-const createInitialScene = (project: Project): DesignScene => {
+const createInitialScene = (project: Project, documentId?: string): DesignScene => {
+  const document = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
+  const width = document?.width ?? 1080;
+  const height = document?.height ?? 1440;
   const titleLayer = {
     id: 'title', type: 'text' as const, text: project.name, fontFamily: 'Inter', fontSize: 96,
     fontWeight: 'bold', align: 'center' as const, color: '#24262B', x: 120, y: 520,
-    width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false,
+    width: Math.max(1, width - 240), height: 140, rotation: 0, opacity: 1, visible: true, locked: false,
   };
   const layers = project.artwork === 'blank'
     ? [titleLayer]
     : [
-        { id: 'background', type: 'image' as const, assetId: 'placeholder', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false },
+        { id: 'background', type: 'image' as const, assetId: 'placeholder', x: 0, y: 0, width, height, rotation: 0, opacity: 1, visible: true, locked: false },
         titleLayer,
       ];
   return createScene({ id: `${project.id}-scene`, width: 1080, height: 1440, layers });
@@ -91,9 +94,10 @@ export const Workbench = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
   const [prompt, setPrompt] = useState('');
-  const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project));
-  const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project)).width);
-  const [resizeHeight, setResizeHeight] = useState(() => (providedScene ?? createInitialScene(project)).height);
+  const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
+  const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
+  const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
+  const [resizeHeight, setResizeHeight] = useState(() => (providedScene ?? createInitialScene(project, documentId)).height);
   const [revisionState, setRevisionState] = useState<RevisionState>({ revisions: [], timeline: [], finalRevisionId: null });
   const [revisionBusy, setRevisionBusy] = useState(false);
   const [revisionBaseId, setRevisionBaseId] = useState<string | null>(null);
@@ -271,7 +275,7 @@ export const Workbench = ({
             <strong>
               {locale === 'zh-CN' ? project.name : project.enName}
             </strong>
-            <span>{t(locale, '主海报', 'Main poster')}</span>
+            <span>{documentMeta?.name ?? t(locale, '主海报', 'Main poster')}</span>
           </div>
           <Badge tone={workspaceId ? 'success' : 'warning'}>
             {workspaceId ? t(locale, '已保存', 'Saved') : t(locale, '预览未保存', 'Unsaved preview')}
@@ -509,7 +513,7 @@ export const Workbench = ({
             )}
           </div>
           <div className="workbench-canvas__meta" aria-hidden="true">
-            <span>1080 × 1440 px</span>
+            <span>{documentMeta?.width ?? scene.width} × {documentMeta?.height ?? scene.height} px</span>
             <span>sRGB</span>
           </div>
         </section>

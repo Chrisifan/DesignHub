@@ -109,6 +109,8 @@
 
 2026-09-12：M07 workbench background tools（变更 ID M07-20260912-08）。工作台工具面板新增“去除背景”和“替换背景”入口，均明确显示模型依赖并转到连接设置，不伪造离线结果；Workbench focused 17 tests、lint/typecheck 通过。真实 provider 执行、输出修订提交与图像质量仍开放。
 
+2026-09-12：M04 multi-document project flow（变更 ID M04-20260912-08）。项目元数据中的文档 ID/名称/尺寸贯穿项目详情、工作台和交付，第二及后续文档可打开独立场景并显示自己的画布尺寸；新增 Studio/Workbench/LibraryPages 回归，53 tests、lint/typecheck 通过。关联尺寸布局转换和独立定稿仍待 M07 全链路验证。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：

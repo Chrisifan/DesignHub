@@ -213,6 +213,20 @@ it('uses the persisted designer version and lets a writable project switch desig
   await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ activeDesignerVersionId: 'clear-commerce' }) })));
 });
 
+it('opens each persisted document with its own size and scene target', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: '多尺寸项目', documents: [{ id: 'doc-main', name: '主海报', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }, { id: 'doc-square', name: '方图', width: 1080, height: 1080, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
+  const loadDocumentScene = vi.fn(async () => null);
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDocumentScene, saveDocumentScene };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: '多尺寸项目' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '多尺寸项目' }));
+  fireEvent.click(screen.getByRole('button', { name: '查看尺寸稿 1' }));
+  await waitFor(() => expect(loadDocumentScene).toHaveBeenCalledWith('workspace-1', 'project-1', 'doc-square'));
+  expect(screen.getByText('方图')).toBeInTheDocument();
+  expect(screen.getByText('1080 × 1080 px')).toBeInTheDocument();
+});
+
 it('submits conversation creation as a draft task before any project exists', async () => {
   const listActiveProjects = vi.fn(async () => []);
   const createProjectContainer = vi.fn(async () => ({ projectId: 'should-not-create' }));
