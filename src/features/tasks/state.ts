@@ -22,6 +22,7 @@ export type TaskRecord = {
   attempt: number;
   source?: TaskSource;
   documentId?: string;
+  sourceAssetId?: string;
   baseRevisionId?: string | null;
   designerVersionId?: string;
   providerId?: string;

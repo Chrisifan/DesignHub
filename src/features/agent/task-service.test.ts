@@ -239,6 +239,54 @@ it('does not retry image editing without a recoverable source image', async () =
   expect(runtime.get(first.id)?.state).toBe('failed');
 });
 
+it('retries image editing when its managed source asset can be reloaded', async () => {
+  const runtime = createTaskRuntime();
+  let calls = 0;
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async (request) => {
+        calls += 1;
+        expect(request.image).toBeInstanceOf(Blob);
+        if (calls === 1) throw Object.assign(new Error('offline'), { kind: 'http' });
+        return { images: [{ base64: 'retried' }], cost: null };
+      },
+    }),
+    loadSourceImage: async () => new Blob(['managed image'], { type: 'image/png' }),
+    persistGeneratedImages: async () => ['asset-retried'],
+  });
+  const first = await service.submitImageEdit({ projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'retry edit', image: new Blob(['image']), sourceAssetId: 'asset-source' });
+  await service.flush();
+  expect(runtime.get(first.id)?.state).toBe('failed');
+  const retried = await service.retry(first.id);
+  await service.flush();
+  expect(retried).toMatchObject({ capability: 'image-editing', state: 'running', attempt: 2 });
+  expect(runtime.get(retried!.id)).toMatchObject({ state: 'completed', result: { assetIds: ['asset-retried'] } });
+  expect(calls).toBe(2);
+});
+
+it('does not retry regional image editing without a persisted mask', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async () => { throw Object.assign(new Error('offline'), { kind: 'http' }); },
+    }),
+    loadSourceImage: async () => new Blob(['managed image'], { type: 'image/png' }),
+  });
+  const first = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'regional edit',
+    image: new Blob(['image']), sourceAssetId: 'asset-source', mask: new Blob(['mask']),
+    region: { x: 1, y: 2, width: 10, height: 12 }, tool: 'remove-object',
+  });
+  await service.flush();
+  expect(runtime.get(first.id)?.state).toBe('failed');
+  await expect(service.retry(first.id)).resolves.toBeUndefined();
+  expect(runtime.list()).toHaveLength(1);
+});
+
 it('fails image tasks that return no generated images', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({

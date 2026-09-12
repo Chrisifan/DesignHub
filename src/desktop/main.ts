@@ -193,6 +193,10 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         if (failures.length > 0) throw new Error(failures[0].error);
         return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
       },
+      loadSourceImage: async ({ projectId, assetId }) => {
+        const bytes = await createAssetStore(workspace).readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
+        return bytes ? new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }) : null;
+      },
       resolveAdapter: async (connectionId) => {
         if (connectionId !== 'openai-compatible') throw new Error('PROVIDER_NOT_CONFIGURED');
         const baseUrl = process.env.DESIGNHUB_PROVIDER_BASE_URL ?? '';

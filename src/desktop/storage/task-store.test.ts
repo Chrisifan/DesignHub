@@ -54,6 +54,26 @@ it('persists task state across workspace reopen without secret fields', async ()
   }
 });
 
+it('persists the managed source asset binding used for image retries', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const imageTask: TaskRecord = {
+    ...task,
+    capability: 'image-editing',
+    sourceAssetId: 'asset-source',
+    requestText: 'remove object',
+    tool: 'remove-object',
+  };
+  await saveTaskState(workspace, workspace.workspace.workspaceId, [imageTask]);
+  workspace.close();
+
+  const reopened = await openWorkspace(join(temporaryDirectories[0]!, 'workspace'));
+  try {
+    await expect(loadTaskState(reopened, reopened.workspace.workspaceId)).resolves.toEqual([imageTask]);
+  } finally {
+    reopened.close();
+  }
+});
+
 it('rejects malformed task state without treating it as an empty list', async () => {
   const workspace = await createTemporaryWorkspace();
   const path = join(workspace.workspace.directory, '.designhub', tasksFileName);

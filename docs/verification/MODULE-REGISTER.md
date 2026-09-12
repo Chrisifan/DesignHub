@@ -249,6 +249,7 @@
 2026-09-13：M02 备份目标包含边界（变更 ID M02-20260913-17）。备份目标若位于源工作区内部会在暂存前返回 `INVALID_BACKUP_DESTINATION`，防止备份递归纳入自身；先观察真实临时目录 Red，再 Green；backup-migration 14/14 通过。可移动磁盘、进程终止、Windows 与最终检查竞态仍开放。
 
 2026-09-13：M05 取消请求令牌失效（变更 ID M05-20260913-10）。取消画布编辑批次会清除 AI 请求令牌，迟到结果即使回到原始基线也不会写入草稿；先观察 canvas-recovery Red，再 Green；canvas/CanvasWorkspace/scene focused 19/19，lint、typecheck、diff check 通过。进程终止、提供方取消和打包恢复仍开放。
+2026-09-13：M06 受管源素材图像重试（变更 ID M06-20260913-18）。图像编辑任务持久化 `sourceAssetId`，失败重试从主进程受管素材存储重新加载原图并复用原能力；带区域遮罩的编辑因遮罩字节未持久化而明确不可重试。先补 task-service/task-store 边界回归，再 Green；focused 2 files/23 tests、integration 23 files/105 tests、lint、typecheck、diff check 通过。提供方幂等、远端取消、遮罩持久化、Windows 与打包恢复仍开放。
 
 ## 发布前检查
 

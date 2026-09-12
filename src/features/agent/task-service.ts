@@ -35,6 +35,7 @@ export type ImageEditInput = {
   connectionId: string;
   prompt: string;
   image: Blob;
+  sourceAssetId?: string;
   mask?: Blob;
   model?: string;
   size?: string;
@@ -61,6 +62,7 @@ export type AgentTaskServiceOptions = {
   runtime: TaskRuntime;
   resolveAdapter: (connectionId: string) => Promise<ConversationAdapter>;
   persistGeneratedImages?: (input: { projectId: string; images: GeneratedImage[] }) => Promise<string[]>;
+  loadSourceImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
 };
 
 const taskId = (): string => `conversation-${crypto.randomUUID()}`;
@@ -111,6 +113,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}),
       ...('tool' in input && input.tool ? { tool: input.tool } : {}),
       ...('region' in input && input.region ? { region: { ...input.region } } : {}),
+      ...('sourceAssetId' in input && input.sourceAssetId ? { sourceAssetId: input.sourceAssetId } : {}),
       providerId: input.connectionId.trim(),
       capability,
       createdAt: new Date().toISOString(),
@@ -179,7 +182,29 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   const retry = async (taskId: string): Promise<TaskRecord | undefined> => {
     const previous = options.runtime.get(taskId);
     if (!previous?.requestText || !previous.providerId || !previous.source?.id) return undefined;
-    if (previous.capability === 'image-editing') return undefined;
+    if (previous.capability === 'image-editing') {
+      if (previous.source.kind !== 'project' || !previous.documentId || !previous.sourceAssetId || previous.region || !options.loadSourceImage) return undefined;
+      const image = await options.loadSourceImage({ projectId: previous.source.id, assetId: previous.sourceAssetId });
+      if (!image) return undefined;
+      const retried = options.runtime.retry(taskId);
+      if (!retried) return undefined;
+      const running = options.runtime.run(retried.id);
+      if (!running) return undefined;
+      await executeImageTask(running, {
+        projectId: previous.source.id,
+        documentId: previous.documentId,
+        baseRevisionId: previous.baseRevisionId ?? null,
+        ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
+        connectionId: previous.providerId,
+        prompt: previous.requestText,
+        image,
+        sourceAssetId: previous.sourceAssetId,
+        ...(previous.model ? { model: previous.model } : {}),
+        ...(previous.size ? { size: previous.size } : {}),
+        ...(previous.tool ? { tool: previous.tool } : {}),
+      }, 'edit');
+      return running;
+    }
     if (previous.capability === 'image-generation') {
       if (previous.source.kind !== 'project' || !previous.documentId) return undefined;
       const retried = options.runtime.retry(taskId);

@@ -44,6 +44,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && Number.isInteger(value.attempt) && Number(value.attempt) > 0
   && (value.source === undefined || isTaskSource(value.source))
   && (value.documentId === undefined || typeof value.documentId === 'string')
+  && (value.sourceAssetId === undefined || typeof value.sourceAssetId === 'string')
   && (value.baseRevisionId === undefined || value.baseRevisionId === null || typeof value.baseRevisionId === 'string')
   && (value.designerVersionId === undefined || typeof value.designerVersionId === 'string')
   && (value.providerId === undefined || typeof value.providerId === 'string')

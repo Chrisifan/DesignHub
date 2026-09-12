@@ -599,7 +599,7 @@ export const Studio = ({
         notify(t(locale, '无法读取目标图像。', 'Could not read the target image.'));
         return;
       }
-      const task = await api.submitImageEdit?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), tool: input.tool, ...(input.region ? { region: input.region } : {}) });
+      const task = await api.submitImageEdit?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), sourceAssetId: imageLayer.assetId, tool: input.tool, ...(input.region ? { region: input.region } : {}) });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;
