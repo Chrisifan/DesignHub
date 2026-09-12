@@ -52,6 +52,7 @@ export const exportDocument = async (input: ExportDocumentInput): Promise<Export
     if (input.archiveCopy) await input.archiveCopy({ revisionId: input.revisionId, path: input.targetPath, sha256 });
   } catch (error) {
     if (input.target.remove) await input.target.remove(temporaryPath).catch(() => undefined);
+    if (!input.target.rename && input.target.remove) await input.target.remove(input.targetPath).catch(() => undefined);
     throw error;
   }
   return { revisionId: input.revisionId, path: input.targetPath, sha256, archived: Boolean(input.archiveCopy) };
