@@ -18,6 +18,9 @@ export const PersonaArtwork = ({ personaId, crop, profile }: PersonaArtworkProps
   if (failed) {
     return <span className={`persona-artwork persona-artwork--${crop} persona-artwork--unavailable`}>形象待生成</span>;
   }
+  if (!persona.artworkUrl.trim()) {
+    return <span className={`persona-artwork persona-artwork--${crop} persona-artwork--unavailable`}>形象待生成</span>;
+  }
   return (
     <span className={`persona-artwork persona-artwork--${crop}`}>
       <img src={persona.artworkUrl} alt={`${persona.artworkAlt.zh}的人物形象`} onError={onError} />

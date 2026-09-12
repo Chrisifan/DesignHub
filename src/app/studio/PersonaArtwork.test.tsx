@@ -26,3 +26,9 @@ it('renders artwork from a persisted custom profile instead of the built-in look
 
   expect(screen.getByRole('img', { name: '自定义形象的人物形象' })).toHaveAttribute('src', profile.artworkUrl);
 });
+
+it('falls back when a custom persona has no artwork URL', () => {
+  const profile = { id: 'custom-2', name: { zh: '无图', en: 'No art' }, artworkUrl: '', artworkAlt: { zh: '无图', en: 'No art' } } as PersonaProfile;
+  render(<PersonaArtwork personaId={profile.id} profile={profile} crop="avatar" />);
+  expect(screen.getByText('形象待生成')).toBeInTheDocument();
+});

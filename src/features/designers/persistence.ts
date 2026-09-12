@@ -40,6 +40,7 @@ const isPersonaProfile = (value: unknown): value is PersonaProfile => {
     && typeof value.personaCode === 'string'
     && typeof value.version === 'string'
     && (status === 'built-in' || status === 'published' || status === 'draft' || status === 'archived')
+    && (value.artworkAssetId === undefined || (typeof value.artworkAssetId === 'string' && value.artworkAssetId.trim().length > 0))
     && typeof value.artworkUrl === 'string'
     && isLocalizedText(value.artworkAlt)
     && Array.isArray(value.tags)

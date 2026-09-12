@@ -13,6 +13,7 @@ export type PersonaProfile = {
   personaCode: string;
   version: string;
   status: 'built-in' | 'published' | 'draft' | 'archived';
+  artworkAssetId?: string;
   artworkUrl: string;
   artworkAlt: LocalizedText;
   tags: LocalizedText[];

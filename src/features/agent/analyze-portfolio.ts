@@ -1,14 +1,73 @@
+import type { VisionRequest } from '../providers/adapter';
+import type { LocalizedText, PersonaProfile } from '../../app/studio/personas';
+
+export type PortfolioImageSource = { id: string; description: string; image: VisionRequest['image'] };
+export type VisionAnalysisAdapter = { analyzeVision: (request: VisionRequest, signal?: AbortSignal) => Promise<{ text: string; cost: number | null }> };
 export type AnalyzePortfolioInput = {
-  sourceIds: string[];
+  sourceIds?: string[];
+  sources?: PortfolioImageSource[];
   designerDraftId: string;
   connectionId: string;
+  adapter?: VisionAnalysisAdapter;
+  signal?: AbortSignal;
 };
+export type AnalyzePortfolioResult = { taskId: string; designerDraftId: string; sourceIds: string[]; candidates: PersonaProfile[] };
 
 const createTaskId = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`;
-
-export const analyzePortfolio = async (input: AnalyzePortfolioInput): Promise<{ taskId: string; designerDraftId: string }> => {
-  if (!input.designerDraftId.trim() || !input.connectionId.trim()) throw new Error('ANALYSIS_BINDING_REQUIRED');
-  const sourceIds = [...new Set(input.sourceIds.map((id) => id.trim()).filter(Boolean))];
-  if (sourceIds.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
-  return { taskId: createTaskId('portfolio-analysis'), designerDraftId: input.designerDraftId };
+const localized = (value: unknown, fallback = ''): LocalizedText => {
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (typeof record.zh === 'string' || typeof record.en === 'string') {
+      const text = typeof record.zh === 'string' ? record.zh : record.en as string;
+      return { zh: typeof record.zh === 'string' ? record.zh : text, en: typeof record.en === 'string' ? record.en : text };
+    }
+  }
+  return { zh: fallback, en: fallback };
 };
+const parsePayload = (text: string): unknown => {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? trimmed;
+  try { return JSON.parse(fenced); } catch { throw new Error('VISION_ANALYSIS_INVALID_RESPONSE'); }
+};
+const profileFromCandidate = (value: unknown, index: number): PersonaProfile => {
+  if (!value || typeof value !== 'object') throw new Error('VISION_ANALYSIS_INVALID_RESPONSE');
+  const item = value as Record<string, unknown>;
+  const name = localized(item.name, `Portfolio candidate ${index + 1}`);
+  const styleDna = item.styleDna && typeof item.styleDna === 'object' ? item.styleDna as Record<string, unknown> : {};
+  const artworkUrl = typeof item.artworkUrl === 'string' ? item.artworkUrl.trim() : '';
+  const artworkAssetId = typeof item.artworkAssetId === 'string' && item.artworkAssetId.trim() ? item.artworkAssetId.trim() : undefined;
+  const tags = Array.isArray(item.tags) ? item.tags.map((tag) => localized(tag)).filter((tag) => tag.zh || tag.en) : [];
+  const palette = Array.isArray(styleDna.palette) ? styleDna.palette.filter((color): color is string => typeof color === 'string') : [];
+  return {
+    id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `portfolio-candidate-${index + 1}-${crypto.randomUUID()}`,
+    name, signature: localized(item.signature, 'Portfolio analysis draft'), summary: localized(item.summary ?? item.styleSummary), principle: localized(item.principle),
+    personaCode: typeof item.personaCode === 'string' && item.personaCode.trim() ? item.personaCode.trim() : `PORTFOLIO-${index + 1}`,
+    version: typeof item.version === 'string' && item.version.trim() ? item.version.trim() : 'v0.1', status: 'draft',
+    ...(artworkAssetId ? { artworkAssetId } : {}), artworkUrl, artworkAlt: localized(item.artworkAlt, name.zh), tags, referenceCount: 0,
+    styleDna: { palette, typography: localized(styleDna.typography), composition: localized(styleDna.composition), texture: localized(styleDna.texture) },
+    negativeRules: Array.isArray(item.negativeRules) ? item.negativeRules.map((rule) => localized(rule)).filter((rule) => rule.zh || rule.en) : [], portfolioSheets: [],
+  };
+};
+const candidatesFromResponse = (text: string, offset: number): PersonaProfile[] => {
+  const payload = parsePayload(text);
+  const values: unknown[] = Array.isArray(payload) ? payload : payload && typeof payload === 'object' && Array.isArray((payload as Record<string, unknown>).candidates) ? (payload as Record<string, unknown>).candidates as unknown[] : [];
+  if (values.length === 0) throw new Error('VISION_ANALYSIS_INVALID_RESPONSE');
+  return values.map((value, index) => profileFromCandidate(value, offset + index));
+};
+
+export const analyzePortfolio = async (input: AnalyzePortfolioInput): Promise<AnalyzePortfolioResult> => {
+  if (!input.designerDraftId.trim() || !input.connectionId.trim()) throw new Error('ANALYSIS_BINDING_REQUIRED');
+  const sourceIds = input.sources ? input.sources.map((source) => source.id.trim()).filter(Boolean) : [...new Set((input.sourceIds ?? []).map((id) => id.trim()).filter(Boolean))];
+  if (sourceIds.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
+  if (!input.adapter || !input.sources?.length) throw new Error('VISION_ANALYSIS_UNAVAILABLE');
+  if (input.sources.some((source) => !source.id.trim() || !source.description.trim())) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
+  const candidates: PersonaProfile[] = [];
+  for (const source of input.sources) {
+    const request = { prompt: `Analyse portfolio source ${source.id}. Source description: ${source.description}. Return JSON with a candidates array of reviewable designer profile drafts. Do not invent provenance or claim identity.`, image: source.image };
+    const response = input.signal ? await input.adapter.analyzeVision(request, input.signal) : await input.adapter.analyzeVision(request);
+    candidates.push(...candidatesFromResponse(response.text, candidates.length));
+  }
+  return { taskId: createTaskId('portfolio-analysis'), designerDraftId: input.designerDraftId, sourceIds, candidates: candidates.slice(0, 4) };
+};
+
+export const parsePortfolioCandidates = (text: string): PersonaProfile[] => candidatesFromResponse(text, 0);

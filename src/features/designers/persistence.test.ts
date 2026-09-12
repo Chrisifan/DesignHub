@@ -32,3 +32,10 @@ it('rejects malformed portfolio sheet records before they reach the UI', () => {
     defaultId: 'custom',
   })).toBe(false);
 });
+
+it('persists an optional custom artwork asset reference alongside its URL', () => {
+  const profile = {
+    id: 'custom-art', name: { zh: '自定义', en: 'Custom' }, signature: { zh: '', en: '' }, summary: { zh: '', en: '' }, principle: { zh: '', en: '' }, personaCode: 'CUSTOM', version: 'v1', status: 'draft', artworkAssetId: 'asset-portrait', artworkUrl: 'asset://asset-portrait', artworkAlt: { zh: '形象', en: 'Portrait' }, tags: [], referenceCount: 0, styleDna: { palette: [], typography: { zh: '', en: '' }, composition: { zh: '', en: '' }, texture: { zh: '', en: '' } }, negativeRules: [], portfolioSheets: [],
+  };
+  expect(isDesignerLibraryState({ profiles: [profile], defaultId: 'custom-art' })).toBe(true);
+});
