@@ -596,6 +596,14 @@ const TasksPage = ({
   }, [workspaceId]);
   const queued = tasks.filter((task) => task.state === 'queued').length;
   const running = tasks.filter((task) => task.state === 'running').length;
+  const stopTask = async (taskId: string): Promise<void> => {
+    if (!workspaceId) return;
+    const stopped = await getDesktopApi().cancelTask?.(workspaceId, taskId);
+    if (!stopped) return;
+    setTasks((current) => current.map((task) => task.id === taskId
+      ? { ...task, state: 'cancelled', cancelRequested: true, updatedAt: new Date().toISOString() }
+      : task));
+  };
   return <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型任务', 'Model tasks')}
@@ -633,6 +641,7 @@ const TasksPage = ({
         <Badge tone={task.state === 'failed' ? 'warning' : task.state === 'completed' ? 'success' : ''}>
           {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : t(locale, '失败', 'Failed')}
         </Badge>
+        {(task.state === 'queued' || task.state === 'running') && <Button variant="secondary" icon="x" onClick={() => { void stopTask(task.id); }}>{t(locale, '停止', 'Stop')}</Button>}
       </article>)}
     </div> : <EmptyState
       icon="clock"

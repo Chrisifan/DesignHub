@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { expect, it, vi } from 'vitest';
 
@@ -227,4 +227,18 @@ it('hydrates persisted model tasks in the task view', async () => {
   expect(await screen.findByText('处理中')).toBeInTheDocument();
   expect(screen.getAllByText('1')).toHaveLength(2);
   expect(listTasks).toHaveBeenCalledWith('workspace-1');
+});
+
+it('lets a running task be stopped through the desktop bridge', async () => {
+  const listTasks = vi.fn(async () => [{
+    id: 'task-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1,
+    source: { kind: 'project' as const, id: 'project-1' },
+  }]);
+  const cancelTask = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, cancelTask };
+  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  await screen.findByText('处理中');
+  fireEvent.click(screen.getByRole('button', { name: '停止' }));
+  await waitFor(() => expect(cancelTask).toHaveBeenCalledWith('workspace-1', 'task-1'));
+  expect(await screen.findByText('已取消')).toBeInTheDocument();
 });
