@@ -39,6 +39,10 @@ const navigation: { view: View; icon: string; zh: string; en: string }[] = [
   { view: 'settings', icon: 'settings', zh: '设置', en: 'Settings' },
 ];
 
+const readOperatorName = (): string => {
+  try { return localStorage.getItem('designhub.operator.name') ?? ''; } catch { return ''; }
+};
+
 type StudioProps = {
   locale: Locale;
   theme: Theme;
@@ -85,6 +89,12 @@ export const Studio = ({
   const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(personaProfiles);
+  const [operatorName, setOperatorName] = useState(readOperatorName);
+  const updateOperatorName = (value: string): void => {
+    const next = value.slice(0, 80);
+    setOperatorName(next);
+    try { localStorage.setItem('designhub.operator.name', next); } catch { /* in-memory fallback */ }
+  };
   useEffect(() => {
     let cancelled = false;
     if (!workspace) {
@@ -633,9 +643,9 @@ export const Studio = ({
             onClick={() => navigate('settings')}
             title={t(locale, '本机操作者设置', 'Local operator settings')}
           >
-            <span className="operator-avatar">S</span>
+            <span className="operator-avatar">{(operatorName.trim() || 'S').slice(0, 1).toUpperCase()}</span>
             <span className="sidebar-label">
-              {t(locale, '本机操作者', 'Local operator')}
+              {operatorName.trim() || t(locale, '本机操作者', 'Local operator')}
               <small>
                 {t(locale, '仅用于创作署名', 'For creative attribution')}
               </small>
@@ -1035,6 +1045,8 @@ export const Studio = ({
                   onThemeChange={onThemeChange}
                   onLocaleChange={onLocaleChange}
                   onWorkspaceChange={onWorkspaceChange}
+                  operatorName={operatorName}
+                  onOperatorNameChange={updateOperatorName}
                 />
               </div>
             ))}

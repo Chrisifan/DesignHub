@@ -43,6 +43,8 @@ type LibraryPagesProps = PageProps & {
   readOnly?: boolean;
   projectId?: string;
   onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
+  operatorName?: string;
+  onOperatorNameChange?: (name: string) => void;
 };
 
 type Localized = { zh: string; en: string };
@@ -1233,10 +1235,12 @@ const SettingsPage = ({
   onThemeChange,
   onLocaleChange,
   notify,
+  operatorName = '',
+  onOperatorNameChange,
 }: Pick<
   LibraryPagesProps,
   'locale' | 'theme' | 'navigate' | 'onThemeChange' | 'onLocaleChange'
-> & { notify?: (message: string) => void }) => {
+> & { notify?: (message: string) => void; operatorName?: string; onOperatorNameChange?: (name: string) => void }) => {
   const exportDiagnostics = async (): Promise<void> => {
     const path = await getDesktopApi().exportDiagnostics?.({ runtime: 'Electron', errorCode: null });
     if (path) notify?.(t(locale, `诊断包已导出到 ${path}`, `Diagnostics exported to ${path}`));
@@ -1291,6 +1295,20 @@ const SettingsPage = ({
             icon="sun"
             onChange={onThemeChange}
           />
+        </div>
+      </section>
+      <section className="settings-section">
+        <div className="settings-section-heading">
+          <span className="settings-icon"><Icon name="user" size={19} /></span>
+          <div>
+            <h2>{t(locale, '本机操作者', 'Local operator')}</h2>
+            <p>{t(locale, '仅用于版本与时间线署名，不创建账号。', 'Used only for revision attribution; no account is created.')}</p>
+          </div>
+        </div>
+        <div className="settings-control">
+          <Field label={t(locale, '本机操作者', 'Local operator')}>
+            <input aria-label={t(locale, '本机操作者', 'Local operator')} value={operatorName} onChange={(event) => onOperatorNameChange?.(event.target.value)} />
+          </Field>
         </div>
       </section>
       <section className="settings-section">
@@ -1400,6 +1418,8 @@ export const LibraryPages = ({
   readOnly = false,
   projectId,
   onWorkspaceChange,
+  operatorName,
+  onOperatorNameChange,
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
@@ -1471,6 +1491,8 @@ export const LibraryPages = ({
         onThemeChange={onThemeChange}
         onLocaleChange={onLocaleChange}
         notify={notify}
+        operatorName={operatorName}
+        onOperatorNameChange={onOperatorNameChange}
       />
     ),
   };

@@ -270,6 +270,14 @@ it('exports a redacted diagnostics preview through the desktop bridge', async ()
   await waitFor(() => expect(exportDiagnostics).toHaveBeenCalledWith({ runtime: 'Electron', errorCode: null }));
 });
 
+it('edits the local operator display name without creating an account', () => {
+  const onOperatorNameChange = vi.fn();
+  render(<LibraryPages view="settings" locale="zh-CN" theme="system" navigate={() => undefined} onThemeChange={() => undefined} onLocaleChange={() => undefined} notify={() => undefined} operatorName="Sifan" onOperatorNameChange={onOperatorNameChange} />);
+  const input = screen.getByRole('textbox', { name: '本机操作者' });
+  fireEvent.change(input, { target: { value: 'Sifan Chen' } });
+  expect(onOperatorNameChange).toHaveBeenCalledWith('Sifan Chen');
+});
+
 it('hydrates persisted model tasks in the task view', async () => {
   const listTasks = vi.fn(async () => [{
     id: 'task-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1,
