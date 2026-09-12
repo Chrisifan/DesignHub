@@ -207,6 +207,16 @@ it('applies an offline canvas resize through the tools panel', () => {
   expect(notify).toHaveBeenCalledWith('尺寸已更新');
 });
 
+it('exposes background editing tools with an explicit connection handoff', () => {
+  const onConnections = vi.fn();
+  render(<Workbench {...makeProps({ onConnections })} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  expect(screen.getByText('去除背景')).toBeInTheDocument();
+  expect(screen.getByText('替换背景')).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button', { name: '连接' })[0]!);
+  expect(onConnections).toHaveBeenCalled();
+});
+
 it('provides the exact English canvas and back labels', () => {
   render(<Workbench {...makeProps({ locale: 'en' })} />);
 

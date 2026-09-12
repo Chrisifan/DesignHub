@@ -804,6 +804,22 @@ export const Workbench = ({
                     {t(locale, '连接', 'Connect')}
                   </Button>
                 </div>
+                <div className="workbench-tool-entry">
+                  <span className="workbench-tool-entry__icon"><Icon name="eraser" /></span>
+                  <div>
+                    <strong>{t(locale, '去除背景', 'Remove background')}</strong>
+                    <p>{t(locale, '保留主体，生成透明背景副本。', 'Keep the subject and create a transparent-background copy.')}</p>
+                  </div>
+                  <Button variant="secondary" icon="plug" onClick={onConnections}>{t(locale, '连接', 'Connect')}</Button>
+                </div>
+                <div className="workbench-tool-entry">
+                  <span className="workbench-tool-entry__icon"><Icon name="image-plus" /></span>
+                  <div>
+                    <strong>{t(locale, '替换背景', 'Replace background')}</strong>
+                    <p>{t(locale, '使用描述生成新的背景方向。', 'Generate a new background direction from a description.')}</p>
+                  </div>
+                  <Button variant="secondary" icon="plug" onClick={onConnections}>{t(locale, '连接', 'Connect')}</Button>
+                </div>
               </div>
             )}
           </aside>
