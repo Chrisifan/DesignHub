@@ -158,3 +158,47 @@ it('retains the selected image tool and region in the task record', async () => 
   });
   expect(task).toMatchObject({ tool: 'remove-object', region: { x: 0, y: 0, width: 10, height: 20 } });
 });
+
+it('retries a failed image generation with the image adapter and preserves its capability', async () => {
+  const runtime = createTaskRuntime();
+  let generationCalls = 0;
+  let chatCalls = 0;
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => { chatCalls += 1; throw Object.assign(new Error('wrong adapter'), { kind: 'http' }); },
+      generateImage: async () => {
+        generationCalls += 1;
+        if (generationCalls === 1) throw Object.assign(new Error('offline'), { kind: 'http' });
+        return { images: [{ base64: 'generated' }], cost: null };
+      },
+    }),
+    persistGeneratedImages: async () => ['asset-retried'],
+  });
+  const first = await service.submitImageGeneration({ projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'retry image' });
+  await service.flush();
+  expect(runtime.get(first.id)?.state).toBe('failed');
+  const retried = await service.retry(first.id);
+  await service.flush();
+  expect(retried).toMatchObject({ capability: 'image-generation', state: 'running', attempt: 2 });
+  expect(runtime.get(retried!.id)).toMatchObject({ state: 'completed', capability: 'image-generation', result: { assetIds: ['asset-retried'] } });
+  expect(generationCalls).toBe(2);
+  expect(chatCalls).toBe(0);
+});
+
+it('does not retry image editing without a recoverable source image', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => { throw Object.assign(new Error('wrong adapter'), { kind: 'http' }); },
+      editImage: async () => { throw Object.assign(new Error('offline'), { kind: 'http' }); },
+    }),
+  });
+  const first = await service.submitImageEdit({ projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'retry edit', image: new Blob(['image']) });
+  await service.flush();
+  expect(runtime.get(first.id)?.state).toBe('failed');
+  await expect(service.retry(first.id)).resolves.toBeUndefined();
+  expect(runtime.list()).toHaveLength(1);
+  expect(runtime.get(first.id)?.state).toBe('failed');
+});

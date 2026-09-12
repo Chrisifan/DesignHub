@@ -174,6 +174,24 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   const retry = async (taskId: string): Promise<TaskRecord | undefined> => {
     const previous = options.runtime.get(taskId);
     if (!previous?.requestText || !previous.providerId || !previous.source?.id) return undefined;
+    if (previous.capability === 'image-editing') return undefined;
+    if (previous.capability === 'image-generation') {
+      if (previous.source.kind !== 'project' || !previous.documentId) return undefined;
+      const retried = options.runtime.retry(taskId);
+      if (!retried) return undefined;
+      const running = options.runtime.run(retried.id);
+      if (!running) return undefined;
+      await executeImageTask(running, {
+        projectId: previous.source.id,
+        documentId: previous.documentId,
+        baseRevisionId: previous.baseRevisionId ?? null,
+        ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
+        connectionId: previous.providerId,
+        prompt: previous.requestText,
+      }, 'generate');
+      return running;
+    }
+    if (previous.capability !== 'conversation') return undefined;
     const retried = options.runtime.retry(taskId);
     if (!retried) return undefined;
     const running = options.runtime.run(retried.id);
