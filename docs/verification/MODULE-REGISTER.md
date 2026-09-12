@@ -236,6 +236,7 @@
 2026-09-13：M06 图片重试参数保留（变更 ID M06-20260913-16）。任务记录持久化图片生成的 model/size/count，能力感知重试复用原请求参数；先执行参数丢失 Red，再 Green；task-service/task-store focused 18/18、lint、typecheck 通过。提供方幂等与计费仍开放。
 2026-09-13：M02/M04 项目文件符号链接边界（变更 ID M02-20260913-16）。项目 manifest、内容清单、SQLite 与废纸篓元数据读取前验证为项目目录内普通文件；外部同身份 manifest 以 `PROJECT_NOT_FOUND` fail-closed。先执行真实 symlink Red，再 Green；project-store integration 16/16、lint、typecheck 通过。Windows reparse point 与最终检查后的竞态仍开放。
 2026-09-13：M01/M02 工作区 manifest 符号链接边界（变更 ID M01-20260913-05）。工作区打开在普通格式与未来格式只读路径均拒绝 symlink manifest，避免外部身份被接受；先执行真实 symlink Red，再 Green；workspace-open integration 11/11、lint、typecheck 通过。Windows reparse point 与最终检查后的竞态仍开放。
+2026-09-13：M01 工作区 manifest 异步竞态回归（变更 ID M01-20260913-06）。symlink 校验保留异步 `readFile` 路径，恢复目录替换故障注入；workspace-open/open-identity 12/12、lint、typecheck 通过。
 
 ## 发布前检查
 
