@@ -217,6 +217,8 @@
 
 2026-09-13：M06 能力感知任务重试（变更 ID M06-20260913-12）。失败图片生成任务按原能力重新调用 image adapter；缺少可恢复原图的图片编辑任务明确不重试，避免错误路由到 chat 或伪造输入。先新增 task-service Red，再 Green；focused task-service 13/13、lint、typecheck、diff check 通过。影响 M06 task runtime/IPC/UI 的重试语义，图片编辑可恢复源资产绑定、真实 provider 与远端幂等仍开放。
 
+2026-09-13：M04 受管素材符号链接边界（变更 ID M04-20260913-18）。`readAsset` 读取前校验资产文件为项目内普通文件，拒绝外部符号链接并保持外部目标不变。先执行真实 symlink Red，再 Green；asset-store 6/6、assets/scene integration 100/100、lint、typecheck、diff check 通过。影响 M04 素材存储、M05 画布预览和 M07 导出前读取，Windows reparse point 与大图解码仍开放。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

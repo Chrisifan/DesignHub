@@ -1,5 +1,5 @@
-import { access, readdir } from 'node:fs/promises';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -134,6 +134,32 @@ it('rejects project path traversal before touching the workspace', async () => {
       await expect(store.listAssets({ workspaceId: workspace.workspace.workspaceId, projectId: '../outside' })).rejects.toThrow('INVALID_PROJECT_ID');
     } finally {
       workspace.close();
+    }
+  });
+});
+
+it('does not follow managed asset symlinks outside the project', async () => {
+  await withProject(async (workspaceDirectory, projectId) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    const externalRoot = await mkdtemp(join(tmpdir(), 'designhub-asset-external-'));
+    try {
+      const store = createAssetStore(workspace);
+      const [result] = await store.importAssets({
+        workspaceId: workspace.workspace.workspaceId,
+        projectId,
+        items: [{ name: 'managed.png', mimeType: 'image/png', data: bytes('managed') }],
+      });
+      if (result.status !== 'success') throw new Error('expected success');
+      const assetPath = join(workspaceDirectory, 'projects', projectId, 'assets', result.asset.contentHash);
+      const externalPath = join(externalRoot, 'external.png');
+      await writeFile(externalPath, 'external');
+      await rm(assetPath);
+      await symlink(externalPath, assetPath);
+      await expect(store.readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId: result.asset.id })).resolves.toBeNull();
+      await expect(readFile(externalPath, 'utf8')).resolves.toBe('external');
+    } finally {
+      workspace.close();
+      await rm(externalRoot, { recursive: true, force: true });
     }
   });
 });

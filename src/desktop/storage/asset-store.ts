@@ -178,6 +178,8 @@ const readAssetForProject = async (handle: WorkspaceHandle, input: AssetReadInpu
   if (!asset || !asset.managed || !asset.storagePath || asset.storagePath !== `assets/${asset.contentHash}`) return null;
   const filePath = join(directory, assetsDirectoryName, asset.contentHash);
   try {
+    const status = lstatSync(filePath);
+    if (!status.isFile() || status.isSymbolicLink() || realpathSync(filePath) !== filePath) return null;
     return new Uint8Array(await readFile(filePath));
   } catch (error) {
     if (errorCode(error) === 'ENOENT') return null;
