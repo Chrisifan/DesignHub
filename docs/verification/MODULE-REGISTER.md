@@ -63,6 +63,8 @@
 
 2026-09-12：M04 project metadata follow-up（变更 ID M04-20260912-02）。项目 manifest 增加 brief、设计师/品牌快照、文档尺寸、归档和时间戳；新增 get/update metadata IPC；重开、重命名和归档测试通过。资产字节、修订内容、备份/包闭包和 Windows/打包验证仍开放。
 
+2026-09-12：M04/M05/M06 storage bridge follow-ups（变更 ID M04-20260912-03、M05-20260912-02、M06-20260912-01）。资产 manifest/内容寻址、工作区文档场景、真实项目工作台和 provider 凭据设置 UI 接入；受影响的资产、场景、工作台、连接与全量静态/单元/集成回归已重跑通过。真实 codec、Konva 导出、系统钥匙串、模型网络、Windows 与签名发布仍开放。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：
