@@ -121,6 +121,15 @@ const isInvalidProjectDatabaseError = (error: unknown): boolean => {
   return code === 'ENOENT' || code === 'SQLITE_CORRUPT' || code === 'SQLITE_NOTADB' || code === 'SQLITE_ERROR';
 };
 
+const isRegularLocalFile = (path: string): boolean => {
+  try {
+    const status = lstatSync(path);
+    return status.isFile() && !status.isSymbolicLink() && realpathSync(path) === path;
+  } catch {
+    return false;
+  }
+};
+
 const readJson = (path: string, errorMessage: string): unknown => {
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as unknown;
@@ -159,9 +168,11 @@ const isProjectContentManifest = (value: unknown, projectId: string): value is P
   && Array.isArray(value.assets);
 
 const hasValidProjectDatabase = (projectDirectory: string, manifest: ProjectManifest): boolean => {
+  const databasePath = join(projectDirectory, projectDatabaseName);
+  if (!isRegularLocalFile(databasePath)) return false;
   let database: Database.Database | null = null;
   try {
-    database = new Database(join(projectDirectory, projectDatabaseName), { readonly: true, fileMustExist: true, timeout: 0 });
+    database = new Database(databasePath, { readonly: true, fileMustExist: true, timeout: 0 });
     if (database.pragma('user_version', { simple: true }) !== projectFormatVersion) return false;
     const metadata = database.prepare('SELECT project_id as projectId, display_name as displayName, format_version as formatVersion FROM project_metadata WHERE project_id = ?').get(manifest.projectId);
     return isRecord(metadata)
@@ -252,6 +263,9 @@ const configureIndex = (database: Database.Database): void => {
 };
 
 const readValidPublishedProject = (projectDirectory: string): ProjectManifest | null => {
+  if (!isRegularLocalFile(join(projectDirectory, projectManifestName))
+    || !isRegularLocalFile(join(projectDirectory, projectContentManifestName))
+    || !isRegularLocalFile(join(projectDirectory, projectDatabaseName))) return null;
   let manifest: unknown;
   let contentManifest: unknown;
   try {
@@ -319,6 +333,7 @@ const isTrashMetadata = (value: unknown): value is TrashMetadata => isRecord(val
   && (value.restoreRelativePath === undefined || isOriginalRelativePath(value.restoreRelativePath, value.projectId));
 
 const readTrashMetadata = (projectDirectory: string): TrashMetadata | null => {
+  if (!isRegularLocalFile(join(projectDirectory, trashMetadataName))) return null;
   let metadata: unknown;
   try {
     metadata = JSON.parse(readFileSync(join(projectDirectory, trashMetadataName), 'utf8')) as unknown;

@@ -349,6 +349,24 @@ it('does not reuse a published project when its manifest belongs to another oper
   }
 });
 
+it('fails closed when a project manifest is replaced by an external symlink', async () => {
+  const { directory, workspace, store } = await createWritableStore();
+  try {
+    const created = await store.createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'manifest-symlink', name: 'Protected project' });
+    const manifestPath = join(workspace.workspace.directory, 'projects', created.projectId, projectManifestName);
+    const externalPath = join(directory, 'external-project.json');
+    const manifest = await readFile(manifestPath, 'utf8');
+    const externalManifest = JSON.parse(manifest) as Record<string, unknown>;
+    externalManifest.metadata = { ...(externalManifest.metadata as Record<string, unknown> | undefined), brief: 'external' };
+    await writeFile(externalPath, `${JSON.stringify(externalManifest)}\n`);
+    await unlink(manifestPath);
+    await symlink(externalPath, manifestPath);
+    await expect(store.getProjectMetadata(created.projectId)).rejects.toThrow('PROJECT_NOT_FOUND');
+  } finally {
+    workspace.close();
+  }
+});
+
 it('rejects published retries with an invalid project database or content manifest', async () => {
   const { workspace, store } = await createWritableStore();
   const databaseInput = { workspaceId: workspace.workspace.workspaceId, operationId: 'invalid-published-database', name: 'Invalid database' };
