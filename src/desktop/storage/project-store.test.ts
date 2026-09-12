@@ -229,3 +229,27 @@ it('rewrites imported revision project identities while preserving revision cont
     }
   });
 });
+
+it('rejects malformed imported revision files before publishing a project container', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    try {
+      const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43631';
+      const now = new Date().toISOString();
+      const pack = await createProjectPackage({
+        packageId: 'pkg-malformed-revision',
+        projectId: sourceProjectId,
+        entries: [
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Malformed revision', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Malformed revision', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
+          { path: 'documents/doc-1.revisions.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, timeline: [] })) },
+        ],
+      });
+      const archive = await encodeProjectPackage(pack);
+      await expect(importProjectPackageToWorkspace(workspace, { workspaceId: workspace.workspace.workspaceId, operationId: 'import-malformed-revision', archive })).rejects.toThrow('INVALID_PACKAGE');
+      await expect(createProjectStore(workspace).listActiveProjects()).resolves.toEqual([]);
+    } finally {
+      workspace.close();
+    }
+  });
+});

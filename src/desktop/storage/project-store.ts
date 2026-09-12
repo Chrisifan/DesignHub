@@ -834,6 +834,12 @@ export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, i
   if (!isProjectManifest(sourceManifest) || sourceManifest.projectId !== pack.manifest.projectId || !isProjectContentManifest(sourceContent, sourceManifest.projectId)) throw new Error('INVALID_PACKAGE');
   if (!pack.manifest.entries.includes(projectManifestName) || !pack.manifest.entries.includes(projectContentManifestName)) throw new Error('INVALID_PACKAGE');
   validateImportedContentClosure(sourceContent, pack);
+  pack.manifest.entries.forEach((path) => {
+    if (!isSafePackagePath(path) || path === projectManifestName || path === projectContentManifestName || path === projectDatabaseName) return;
+    const bytes = pack.files[path];
+    if (!bytes) throw new Error('INVALID_PACKAGE');
+    if (importedRevisionPathPattern.test(path)) rewriteImportedRevisionState(bytes, sourceManifest.projectId);
+  });
   if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === pack.manifest.packageId)) throw new Error('PACKAGE_ALREADY_IMPORTED');
   const sourceMetadata = sourceManifest.metadata;
   const documents = sourceMetadata?.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
