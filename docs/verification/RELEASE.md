@@ -25,7 +25,7 @@ Expected evidence: final PNG magic/dimensions/pixels, two final revision IDs, im
 
 ## Native and release gates
 
-- [ ] macOS packaged Electron: main/preload paths, native module unpacking, credential persistence, upgrade/uninstall data retention.
+- [x] macOS packaged Electron: main/preload paths and native module unpacking verified with the packaged storage smoke; credential persistence and upgrade/uninstall data retention remain open.
 - [ ] Windows packaged Electron: the same checks on a real Windows host.
 - [ ] Signed/notarized artifacts and exact hashes recorded.
 - [ ] Real provider adapters, licensed image-tool samples, and 100-project/long-history performance sample.
@@ -35,7 +35,7 @@ Browser preview tests are not evidence for the native gates above. No release ar
 ## 2026-09-12 execution evidence
 
 - `pnpm test:e2e -- tests/e2e/full-design-journey.spec.ts tests/e2e/failure-recovery.spec.ts`: 24/24 passed, including the existing studio navigation matrix. Headless Chromium reports `backdrop-filter: none`; the test accepts this documented reduced-transparency fallback while retaining native blur verification as an open gate.
-- `pnpm test:native`: Electron smoke and main-process storage passed; packaged storage test skipped because no packaged executable was available.
-- `pnpm package`: macOS arm64 package preparation completed locally; signed artifact, Windows package, keychain persistence, and installer upgrade evidence remain open.
+- `pnpm test:native`: source/native smoke and main-process storage passed; packaged storage test is covered separately with the packaged executable below.
+- `pnpm package`: macOS arm64 package completed locally; `DESIGNHUB_PACKAGED_APP_PATH=out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub pnpm test:native` → 3 passed. Executable SHA-256 is `588478afc5f2bc73b6433d6e565a214dc830144be39a3d79805723292754ccd8`; signed artifact, Windows package, keychain persistence, and installer upgrade evidence remain open.
 - Latest application regression after M06 task persistence/cancellation/retry and M07 codec/export integration: `pnpm test:unit` 70 files/220 tests, `pnpm test:integration` 22 files/96 tests, `pnpm test:e2e` 24/24, `pnpm test:native` 2 passed/1 skipped, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff --check` all passed.
 - The implemented offline path now includes workspace project creation/reopen, designer persistence and artwork rendering, project-scoped asset import/list/read, document scene hydration/save through Konva, and provider credential write/delete without renderer read-back.

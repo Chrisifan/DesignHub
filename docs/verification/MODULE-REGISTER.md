@@ -70,6 +70,7 @@
 2026-09-12：M06 draft review metadata（变更 ID M06-20260912-04）。持久任务增加脱敏的用户可见 `requestText`，任务列表显示简报/请求摘要，支持重启后的草稿审阅；没有保存凭据或隐藏提示。focused task/storage/UI、lint、typecheck、diff check 通过。
 2026-09-12：M06 bridge contract regression（变更 ID M06-20260912-05）。任务 API 新增后更新 Electron native smoke bridge 白名单；`pnpm test:native` 2 passed/1 skipped，未改变 renderer 能力边界。打包 storage、系统钥匙链和 Windows 仍开放。
 2026-09-12：M06 explicit retry state（变更 ID M06-20260912-06）。`TaskRuntime.retry` 为失败/取消任务生成新的 queued attempt，保留原记录并复用 request ID，不自动调用 provider；新增 runtime 回归，unit、lint、typecheck、diff check 通过。真实 provider 幂等查询与 UI 重试入口仍开放。
+2026-09-12：macOS packaged gate（变更 ID M08-20260912-01）。`pnpm package` 生成 Electron 44.3.0 macOS arm64 包，使用实际 packaged executable 的 native smoke/storage 3/3 通过；SHA-256 `588478afc5f2bc73b6433d6e565a214dc830144be39a3d79805723292754ccd8`。M01/M02/M08 的 macOS 包内路径与 native SQLite 门禁恢复为已验证；Windows、签名/公证、钥匙串和升级卸载仍需真实环境。
 
 2026-09-12：最终回归（变更 ID REL-20260912-01）。最终树执行 unit 63 文件/181 测试、integration 22 文件/96 测试、browser E2E 24/24、native 2 passed/1 skipped、lint/typecheck/build/diff check 全部通过；仅 packaged storage、真实模型/codec、系统钥匙串、Windows 与签名发布保留为外部门禁。
 
