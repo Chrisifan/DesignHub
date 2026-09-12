@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -77,5 +77,33 @@ it('recreates a corrupt writable index before rebuilding', async () => {
   } finally {
     fixture.workspace.close();
     await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+it('does not follow an index symlink outside the workspace', async () => {
+  const fixture = await openStore();
+  const externalRoot = await mkdtemp(join(tmpdir(), 'designhub-search-external-'));
+  try {
+    await fixture.store.replace([record(fixture.workspaceId, 'project-external', 'External', ['designer-a'])]);
+    fixture.store.close();
+    const indexPath = join(fixture.directory, '.designhub', 'search-index.sqlite');
+    const externalPath = join(externalRoot, 'external.sqlite');
+    await copyFile(indexPath, externalPath);
+    const externalBefore = await readFile(externalPath);
+    await rm(indexPath);
+    await symlink(externalPath, indexPath);
+    const recovered = createSearchIndexStore(fixture.workspace);
+    try {
+      await expect(recovered.search({ workspaceId: fixture.workspaceId, query: 'external' })).resolves.toEqual([]);
+      await recovered.replace([record(fixture.workspaceId, 'project-local', 'Local', ['designer-a'])]);
+      await expect(recovered.search({ workspaceId: fixture.workspaceId, query: 'local' })).resolves.toHaveLength(1);
+    } finally {
+      recovered.close();
+    }
+    await expect(readFile(externalPath)).resolves.toEqual(externalBefore);
+  } finally {
+    fixture.workspace.close();
+    await rm(fixture.root, { recursive: true, force: true });
+    await rm(externalRoot, { recursive: true, force: true });
   }
 });

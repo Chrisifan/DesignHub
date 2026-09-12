@@ -69,6 +69,15 @@ const isHealthy = (database: Database.Database): boolean => {
 };
 
 const openDatabase = (databasePath: string, writable: boolean): Database.Database | null => {
+  try {
+    const status = lstatSync(databasePath);
+    if (status.isSymbolicLink() || status.isDirectory()) {
+      if (!writable) return null;
+      removeIndexArtifacts(databasePath);
+    }
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code !== 'ENOENT') throw error;
+  }
   if (!writable && !existsSync(databasePath)) return null;
   try {
     const database = new Database(databasePath, writable ? {} : { readonly: true, fileMustExist: true });

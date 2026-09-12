@@ -213,6 +213,8 @@
 
 2026-09-13：M08 工作区设置符号链接边界（变更 ID M08-20260913-16）。`settings.json` 读取和写入拒绝符号链接/非普通文件，避免跨工作区读取或替换外部目标；外部文件保持不变。先执行真实 symlink Red，再 Green；settings/IPC 346/346、backup integration 100/100、lint、typecheck、diff check 通过。影响 M01 bridge、M02 备份设置闭包和 M08 Storage，Windows reparse point 与最终检查后的竞态仍开放。
 
+2026-09-13：M08 检索索引符号链接边界（变更 ID M08-20260913-17）。`search-index.sqlite` 被替换为外部符号链接时，可写模式只移除链接并在工作区内重建，只读模式 fail-closed，外部 SQLite 目标保持不变。先执行真实 symlink Red，再 Green；storage 4/4、integration search-index 100/100、lint、typecheck、diff check 通过。影响 M01 bridge、M02 备份清单和 M08 检索，Windows reparse point 与最终检查后的竞态仍开放。
+
 2026-09-13：M06 能力感知任务重试（变更 ID M06-20260913-12）。失败图片生成任务按原能力重新调用 image adapter；缺少可恢复原图的图片编辑任务明确不重试，避免错误路由到 chat 或伪造输入。先新增 task-service Red，再 Green；focused task-service 13/13、lint、typecheck、diff check 通过。影响 M06 task runtime/IPC/UI 的重试语义，图片编辑可恢复源资产绑定、真实 provider 与远端幂等仍开放。
 
 ## 发布前检查
