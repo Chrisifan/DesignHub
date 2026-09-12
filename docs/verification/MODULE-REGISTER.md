@@ -6,8 +6,8 @@
 | --- | --- | --- | --- |
 | M01 | 部分验证；基础外壳、bridge、规则、构建与 macOS 原生 smoke 已完成，双平台/发布门禁开放 | [M01 记录](M01.md) | M02–M08 |
 | M02 | 实施中；Tasks 1–5 工作区格式、单写者锁、项目/废纸篓/备份存储与 Electron 工作区入口已完成；项目持久化 UI、Windows 与发布验证开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
-| M03 | 实施中；Task 1 发布档案、Task 2 默认/归档纯策略与 Task 3 权利确认作品集来源选择已完成，持久化、历史集成与真实分析依赖 M06 仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
-| M04 | 部分验证；Task 1 简报确认与离线手动项目容器持久化已完成；完整项目元数据、素材/修订与 M06 对话依赖仍开放 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
+| M03 | 部分验证；设计师发布/默认/归档、作品集权利确认、工作区持久化与只读/内置/不可变回归已完成，历史集成与真实分析仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
+| M04 | 部分验证；简报确认、项目容器、项目元数据快照与重开/归档回归已完成，素材、修订与 M06 对话依赖仍开放 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
 | M05 | 部分验证；画布 schema、Konva 编辑、中文文本、遮罩、撤销/恢复已实现；大图、IME、跨平台原生与视觉性能开放 | `docs/verification/M05.md` | M06、M07、M08 |
 | M06 | 部分验证；连接边界、上下文隔离、任务状态/幂等、设计师交接与草稿任务已实现；真实提供方、系统钥匙串、持久化任务与完整对话闭环开放 | `docs/verification/M06.md` | M03、M04、M07、M08 |
 | M07 | 部分验证；工具目标、版本绑定导出、项目/只读包策略已实现；真实编码器、归档闭包、原生 worker 与人工图像质量开放 | `docs/verification/M07.md` | M02、M04、M08 |
@@ -58,6 +58,10 @@
 2026-09-12：M02 Task 5 工作区入口与 Electron bridge（变更 ID M02-20260912-01）。目标文件为 `src/platform/contracts.ts`、`src/platform/desktop.ts`、`src/desktop/preload.ts`、`src/desktop/ipc/workspace.ts`、`src/desktop/main.ts`、`src/app/App.tsx`、`src/app/studio/Studio.tsx`、`vite.preload.config.ts` 及相关测试。新增受信 sender/origin 下的创建/打开 handler、typed preload API、main-only `WorkspaceHandle` 替换与关闭、欢迎页真实创建/打开流程；真实工作区不再注入示例项目。先执行 focused Red（4 failures），再 Green；unit 60/60、integration 68/68、lint、typecheck、build、diff check 通过；macOS native 2 passed/1 skipped。构建回归发现 preload 清空共享输出目录会删除 `main.cjs`，新增配置契约并修复为保留主进程产物。E03 目前为代码审查证据，双工作区原生切换 harness、Windows、打包 artifact 与项目持久化 UI 仍开放。
 
 2026-09-12：M04 manual project persistence follow-up（变更 ID M04-20260912-01）。新增 active-project list/create contracts over the existing M02 project index, trusted `project:list-active`/`project:create` IPC, and Studio hydration/manual creation for writable workspaces. Focused storage/IPC/Studio suites 3 files/15 tests passed; unit 55/149, integration 22/96, lint, typecheck, build, and diff check passed. Read-only listing uses validated manifests without mutating the index. Packaged/native persistence, Windows, and richer document/brief/designer metadata remain open.
+
+2026-09-12：M03 workspace persistence follow-up（变更 ID M03-20260912-01）。设计师档案、默认值与编辑草稿改由 `.designhub/designers.json` 和受信 IPC 管理；后续修复内置档案兜底、只读 UI、发布版本不可变及引用档案归档。聚焦存储/IPC/UI 通过；真实原子故障注入、M06 分析和跨平台门禁仍开放。
+
+2026-09-12：M04 project metadata follow-up（变更 ID M04-20260912-02）。项目 manifest 增加 brief、设计师/品牌快照、文档尺寸、归档和时间戳；新增 get/update metadata IPC；重开、重命名和归档测试通过。资产字节、修订内容、备份/包闭包和 Windows/打包验证仍开放。
 
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
