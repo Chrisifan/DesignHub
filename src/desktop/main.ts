@@ -20,7 +20,7 @@ import {
 } from './ipc/credentials';
 import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore } from './storage/project-store';
-import { createProjectContainerHandler, getProjectMetadataHandler, listActiveProjectsHandler, listTrashedProjectsHandler, moveProjectToTrashHandler, projectCreateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, updateProjectMetadataHandler } from './ipc/projects';
+import { createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listTrashedProjectsHandler, moveProjectToTrashHandler, projectCreateChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, updateProjectMetadataHandler } from './ipc/projects';
 import { designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, saveDesignerStateHandler } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel, importAssetsHandler, listAssetsHandler, readAssetHandler } from './ipc/assets';
 import { createAssetStore } from './storage/asset-store';
@@ -151,6 +151,10 @@ app.whenReady().then(() => {
   ipcMain.handle(projectCreateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createProjectContainerHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).createProjectContainer(projectInput))(event, input);
+  });
+  ipcMain.handle(projectDuplicateChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return duplicateProjectHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).duplicateProject(projectInput))(event, input);
   });
   ipcMain.handle(projectMetadataGetChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
