@@ -832,6 +832,7 @@ const DeliveryPage = ({
 }) => {
   const [exporting, setExporting] = useState(false);
   const [source, setSource] = useState<'current' | 'final'>('current');
+  const [documentId, setDocumentId] = useState(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
   const formatDescription =
     format === 'jpeg'
       ? t(
@@ -852,29 +853,34 @@ const DeliveryPage = ({
           );
   const projectName = project ? t(locale, project.name, project.enName) : '';
   const persistedProject = Boolean(project?.workspaceId);
-  const currentDocument = project?.documentEntries?.find((entry) => entry.id === project.documentId) ?? project?.documentEntries?.[0];
+  useEffect(() => {
+    setDocumentId(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
+    setSource('current');
+  }, [project?.documentId, project?.id]);
+  const activeDocumentId = documentId || project?.documentId || project?.documentEntries?.[0]?.id || '';
+  const currentDocument = project?.documentEntries?.find((entry) => entry.id === activeDocumentId) ?? project?.documentEntries?.[0];
   const finalizedRevisionId = currentDocument?.finalizedRevisionId ?? null;
   const hasFinalizedRevision = Boolean(project?.workspaceId && project?.documentId && finalizedRevisionId);
   useEffect(() => {
     if (!hasFinalizedRevision && source === 'final') setSource('current');
   }, [hasFinalizedRevision, source]);
   const exportCurrent = async (): Promise<void> => {
-    if (!project?.workspaceId || !project.documentId) return;
+    if (!project?.workspaceId || !activeDocumentId) return;
     setExporting(true);
     try {
       const api = getDesktopApi();
       let scene;
       if (source === 'final' && finalizedRevisionId) {
-        const revisions = await api.loadDocumentRevisions?.(project.workspaceId, project.id, project.documentId);
+        const revisions = await api.loadDocumentRevisions?.(project.workspaceId, project.id, activeDocumentId);
         const finalRevision = revisions?.revisions.find((revision) => revision.revisionId === finalizedRevisionId)
           ?? (revisions?.finalRevisionId ? revisions.revisions.find((revision) => revision.revisionId === revisions.finalRevisionId) : undefined);
         if (!finalRevision?.scene) throw new Error('FINAL_SCENE_UNAVAILABLE');
         scene = finalRevision.scene;
       } else {
-        scene = await api.loadDocumentScene?.(project.workspaceId, project.id, project.documentId)
-          ?? createScene({ id: project.documentId, width: currentDocument?.width ?? 1080, height: currentDocument?.height ?? 1440, layers: [] });
+        scene = await api.loadDocumentScene?.(project.workspaceId, project.id, activeDocumentId)
+          ?? createScene({ id: activeDocumentId, width: currentDocument?.width ?? 1080, height: currentDocument?.height ?? 1440, layers: [] });
       }
-      const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: project.documentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}) });
+      const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}) });
       if (result) notify?.(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
     } catch {
       notify?.(t(locale, source === 'final' ? '定稿读取失败，请重试。' : '导出失败，请重试。', source === 'final' ? 'Could not read the finalized revision. Try again.' : 'Export failed. Try again.'));
@@ -981,6 +987,11 @@ const DeliveryPage = ({
             </p>
           </div>
           <div className="config-grid">
+            {project?.documentEntries && project.documentEntries.length > 1 && <Field label={t(locale, '文档', 'Document')}>
+              <select value={activeDocumentId} onChange={(event) => setDocumentId(event.target.value)}>
+                {project.documentEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+              </select>
+            </Field>}
             <Field label={t(locale, '来源', 'Source')}>
               <select value={source} onChange={(event) => setSource(event.target.value as 'current' | 'final')}>
                 <option value="current">
@@ -1029,7 +1040,7 @@ const DeliveryPage = ({
                 )}
               </span>
             </div>
-            <Button variant="primary" icon="download" disabled={!project?.workspaceId || !project.documentId || exporting} onClick={() => { void exportCurrent(); }}>
+            <Button variant="primary" icon="download" disabled={!project?.workspaceId || !activeDocumentId || exporting} onClick={() => { void exportCurrent(); }}>
               {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
             </Button>
           </div>

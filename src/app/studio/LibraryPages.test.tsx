@@ -254,6 +254,18 @@ it('lets delivery explicitly export the finalized document revision', async () =
   expect(loadDocumentScene).not.toHaveBeenCalled();
 });
 
+it('lets delivery select another document in a multi-document project', async () => {
+  const loadDocumentScene = vi.fn(async (_workspaceId: string, _projectId: string, documentId: string) => ({ id: `scene-${documentId}`, version: 1 as const, width: 100, height: 100, layers: [] }));
+  const exportDocument = vi.fn(async () => ({ path: '/tmp/second.png', sha256: 'b'.repeat(64) }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, exportDocument };
+  const project: Project = { id: 'multi-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '多文档项目', enName: 'Multi document', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 2, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }, { id: 'doc-2', name: '方图', width: 100, height: 100 }] };
+  render(<Harness initialView="delivery" deliveryProject={project} />);
+  fireEvent.change(screen.getByRole('combobox', { name: '文档' }), { target: { value: 'doc-2' } });
+  fireEvent.click(screen.getByRole('button', { name: '导出' }));
+  await waitFor(() => expect(exportDocument).toHaveBeenCalledWith(expect.objectContaining({ documentId: 'doc-2', scene: expect.objectContaining({ id: 'scene-doc-2' }) })));
+  expect(loadDocumentScene).toHaveBeenCalledWith('workspace-1', 'multi-project', 'doc-2');
+});
+
 it('offers project package export for persisted projects', async () => {
   const exportProjectPackage = vi.fn(async () => ({ path: '/tmp/project.zip', sha256: 'a'.repeat(64) }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, exportProjectPackage };
