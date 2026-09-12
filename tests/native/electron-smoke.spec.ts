@@ -28,6 +28,9 @@ test('launches the workspace shell with only the DesignHub bridge', async () => 
       'saveDocumentScene',
       'storeCredential',
       'deleteCredential',
+      'listTasks',
+      'submitConversation',
+      'cancelTask',
     ]);
   } finally {
     await electronApp.close();
