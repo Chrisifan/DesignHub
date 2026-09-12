@@ -349,6 +349,18 @@ it('records additional project contributors with distinct revision roles', async
   })));
 });
 
+it('shows revision contributors and operator attribution in history', async () => {
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-attribution', projectId: 'spring-market', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-attribution', sceneAssetId: 'scene-attribution', assetIds: [], contributions: [{ designerVersionId: 'designer-lead', role: 'lead' as const, designerName: '主设计师' }, { designerVersionId: 'designer-direction', role: 'direction' as const, designerName: '方向设计师' }], operatorName: 'Sifan', createdAt: '2026-09-12T00:00:00.000Z' }], timeline: [], finalRevisionId: null }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions };
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1' })} />);
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  await waitFor(() => expect(loadDocumentRevisions).toHaveBeenCalledWith('workspace-1', 'spring-market', 'doc-1'));
+  await waitFor(() => expect(screen.getByText(/主设计师/)).toBeInTheDocument());
+  expect(screen.getByText(/方向设计师/)).toBeInTheDocument();
+  expect(screen.getByText('Sifan')).toBeInTheDocument();
+  expect(screen.getByText(/主设计师.*主导/)).toBeInTheDocument();
+});
+
 it('can continue from a revision scene snapshot and branches the next save from it', async () => {
   const olderScene = createScene({ id: 'scene-old', width: 1080, height: 1440, layers: [] });
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-old', projectId: 'spring-market', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-old', sceneAssetId: 'scene-old', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z', scene: olderScene }], timeline: [], finalRevisionId: null }));

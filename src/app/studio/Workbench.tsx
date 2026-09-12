@@ -66,6 +66,12 @@ const createInitialScene = (project: Project, documentId?: string): DesignScene 
 const clamp = (value: number, minimum: number, maximum: number): number =>
   Math.min(maximum, Math.max(minimum, value));
 
+const contributionRoleLabel = (locale: Locale, role: 'lead' | 'direction' | 'revision'): string => {
+  if (role === 'lead') return t(locale, '主导', 'Lead');
+  if (role === 'direction') return t(locale, '方向', 'Direction');
+  return t(locale, '修订', 'Revision');
+};
+
 export const Workbench = ({
   locale,
   project,
@@ -831,6 +837,8 @@ export const Workbench = ({
                       <Badge tone={revisionState.finalRevisionId === revision.revisionId ? 'success' : ''}>{revisionState.finalRevisionId === revision.revisionId ? t(locale, '定稿', 'Final') : t(locale, '版本', 'Version')}</Badge>
                       <strong>{revision.revisionId.slice(0, 8)}</strong>
                       <p>{new Date(revision.createdAt).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US')}</p>
+                      {revision.contributions.length > 0 && <p className="workbench-history-contributors"><span>{t(locale, '贡献', 'Contributors')}:</span> {revision.contributions.map((contribution) => `${contribution.designerName ?? contribution.designerVersionId} · ${contributionRoleLabel(locale, contribution.role)}`).join('，')}</p>}
+                      {revision.operatorName && <p className="workbench-history-operator"><span>{t(locale, '操作者', 'Operator')}:</span> {revision.operatorName}</p>}
                       <div className="workbench-history-actions">
                         {revisionState.finalRevisionId !== revision.revisionId && <Button variant="ghost" disabled={revisionBusy} onClick={() => { void finalizeRevision(revision.revisionId); }}>{t(locale, '定稿', 'Finalize')}</Button>}
                         {revision.scene && <Button variant="ghost" disabled={revisionBusy} onClick={() => { persistScene(revision.scene!); syncTextState(revision.scene!); setRevisionBaseId(revision.revisionId); notify(t(locale, '已载入旧版', 'Older version loaded')); }}>{t(locale, '继续', 'Continue')}</Button>}
