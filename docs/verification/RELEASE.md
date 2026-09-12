@@ -49,3 +49,4 @@ Browser preview tests are not evidence for the native gates above. No release ar
 - Remaining release gates are external: real provider quality/cost/cancellation, authorized portfolio transport, native generated persona assets, Windows host behavior, signed/notarized artifacts, keychain persistence, cross-device package closure, advanced codec fidelity, large-image performance, and human visual QA.
 
 - M03 description creation closure: `DesignerLibrary` focused suite 16/16 passed after adding workspace `designer-draft` submission and completed-result review. This verifies task binding and honest failure behavior only; model quality and generated artwork remain external release gates.
+- Post-change full regression: unit 83 files/295 tests, integration 23 files/100 tests, browser E2E 24/24, lint, typecheck, build and diff check passed. Native source smoke passed 2/2 with one packaged-path skip; the existing macOS arm64 packaged executable passed all 3/3 native tests.
