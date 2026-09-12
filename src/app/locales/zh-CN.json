@@ -42,4 +42,12 @@
   ,"canvasLocked": "锁定"
   ,"canvasFit": "适应"
   ,"canvasReset": "100%"
+  ,"textEditorLabel": "文本编辑器"
+  ,"textContent": "文本内容"
+  ,"textFamily": "字体"
+  ,"textSize": "字号"
+  ,"textColor": "颜色"
+  ,"textAlign": "对齐"
+  ,"textApply": "应用"
+  ,"textFontMissing": "预览替代"
 }

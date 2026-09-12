@@ -42,4 +42,12 @@
   ,"canvasLocked": "Locked"
   ,"canvasFit": "Fit"
   ,"canvasReset": "100%"
+  ,"textEditorLabel": "Text editor"
+  ,"textContent": "Text content"
+  ,"textFamily": "Font"
+  ,"textSize": "Size"
+  ,"textColor": "Color"
+  ,"textAlign": "Align"
+  ,"textApply": "Apply"
+  ,"textFontMissing": "Preview substitution"
 }
