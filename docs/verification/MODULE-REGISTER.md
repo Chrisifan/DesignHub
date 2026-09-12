@@ -69,6 +69,7 @@
 2026-09-12：M06 task cancellation UI（变更 ID M06-20260912-03）。任务列表为排队/运行任务增加停止操作，成功调用 host bridge 后将条目标记为 cancelled；新增 LibraryPages 回归，focused unit、lint、typecheck、diff check 通过。远端取消语义仍按 provider 能力保持未验证。
 2026-09-12：M06 draft review metadata（变更 ID M06-20260912-04）。持久任务增加脱敏的用户可见 `requestText`，任务列表显示简报/请求摘要，支持重启后的草稿审阅；没有保存凭据或隐藏提示。focused task/storage/UI、lint、typecheck、diff check 通过。
 2026-09-12：M06 bridge contract regression（变更 ID M06-20260912-05）。任务 API 新增后更新 Electron native smoke bridge 白名单；`pnpm test:native` 2 passed/1 skipped，未改变 renderer 能力边界。打包 storage、系统钥匙链和 Windows 仍开放。
+2026-09-12：M06 explicit retry state（变更 ID M06-20260912-06）。`TaskRuntime.retry` 为失败/取消任务生成新的 queued attempt，保留原记录并复用 request ID，不自动调用 provider；新增 runtime 回归，unit、lint、typecheck、diff check 通过。真实 provider 幂等查询与 UI 重试入口仍开放。
 
 2026-09-12：最终回归（变更 ID REL-20260912-01）。最终树执行 unit 63 文件/181 测试、integration 22 文件/96 测试、browser E2E 24/24、native 2 passed/1 skipped、lint/typecheck/build/diff check 全部通过；仅 packaged storage、真实模型/codec、系统钥匙串、Windows 与签名发布保留为外部门禁。
 

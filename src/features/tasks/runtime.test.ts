@@ -54,3 +54,17 @@ it('marks provider failures and keeps a retryable task record', async () => {
   expect(failed.state).toBe('failed');
   expect(failed.errorCode).toBe('PROVIDER_UNAVAILABLE');
 });
+
+it('creates a new queued attempt when a failed task is explicitly retried', async () => {
+  const runtime = createTaskRuntime();
+  runtime.start(baseTask);
+  await runtime.fail('task-1', 'PROVIDER_UNAVAILABLE');
+  const retried = runtime.retry('task-1');
+  expect(retried).toBeDefined();
+  if (!retried) throw new Error('expected retry task');
+  expect(retried.id).not.toBe('task-1');
+  expect(retried.state).toBe('queued');
+  expect(retried.attempt).toBe(2);
+  expect(runtime.get('task-1')?.state).toBe('failed');
+  expect(runtime.get(retried.id)?.requestId).toBe('request-1');
+});

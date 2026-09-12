@@ -1,5 +1,5 @@
 import type { RevisionStore } from '../revisions/commit-revision';
-import { completeTask, createTaskState, transitionTask, type TaskRecord } from './state';
+import { completeTask, createTaskState, retryTask, transitionTask, type TaskRecord } from './state';
 
 export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string };
 
@@ -10,6 +10,7 @@ export type TaskRuntime = {
   cancel: (taskId: string) => TaskRecord | undefined;
   complete: (taskId: string, result?: TaskResult) => Promise<TaskRecord>;
   fail: (taskId: string, errorCode: string) => Promise<TaskRecord>;
+  retry: (taskId: string) => TaskRecord | undefined;
   finish: (taskId: string, result: TaskResult, revisionStore: RevisionStore) => Promise<TaskRecord>;
   flush: () => Promise<void>;
 };
@@ -72,6 +73,14 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     await persistence;
     return structuredClone(failed);
   };
+  const retry = (taskId: string): TaskRecord | undefined => {
+    const task = tasks.get(taskId);
+    if (!task) return undefined;
+    const retried = retryTask(task, `${task.id}-retry-${crypto.randomUUID()}`);
+    tasks.set(retried.id, retried);
+    schedulePersistence();
+    return structuredClone(retried);
+  };
   const finish = async (taskId: string, result: TaskResult, revisionStore: RevisionStore): Promise<TaskRecord> => {
     const task = tasks.get(taskId);
     if (!task) throw new Error('TASK_NOT_FOUND');
@@ -102,5 +111,5 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     return structuredClone(completed);
   };
   const flush = async (): Promise<void> => persistence;
-  return { get, list, start, cancel, complete, fail, finish, flush };
+  return { get, list, start, cancel, complete, fail, retry, finish, flush };
 };
