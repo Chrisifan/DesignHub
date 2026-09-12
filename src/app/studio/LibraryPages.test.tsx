@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import type { Locale } from '../i18n';
 import { LibraryPages } from './LibraryPages';
@@ -9,9 +9,13 @@ import type { Project, Theme, View } from './types';
 const Harness = ({
   initialView = 'designers',
   deliveryProject,
+  workspaceId,
+  projectId,
 }: {
   initialView?: Exclude<View, 'projects'>;
   deliveryProject?: Project | null;
+  workspaceId?: string;
+  projectId?: string;
 }) => {
   const [view, setView] = useState<View>(initialView);
   const [theme, setTheme] = useState<Theme>('system');
@@ -35,6 +39,8 @@ const Harness = ({
           onThemeChange={setTheme}
           onLocaleChange={setLocale}
           deliveryProject={deliveryProject}
+          workspaceId={workspaceId}
+          projectId={projectId}
         />
       )}
     </>
@@ -121,6 +127,18 @@ it('filters assets and opens the selected asset details', () => {
   expect(
     within(screen.getByLabelText('素材详情')).getByText('SVG · 640 × 240'),
   ).toBeInTheDocument();
+});
+
+it('hydrates managed assets for the active workspace project', async () => {
+  const listAssets = vi.fn(async () => [{
+    id: 'asset-1234567890abcdef', name: '品牌原图', format: 'PNG' as const,
+    mimeType: 'image/png', contentHash: '1234567890abcdef'.padEnd(64, '0'), managed: true,
+  }]);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets };
+  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+
+  expect(await screen.findByRole('button', { name: /品牌原图/ })).toBeInTheDocument();
+  expect(listAssets).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1' });
 });
 
 it('shows honest unavailable states for connections and delivery', () => {

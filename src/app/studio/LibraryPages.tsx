@@ -1,5 +1,6 @@
 import {
   useMemo,
+  useEffect,
   useState,
   type ReactNode,
 } from 'react';
@@ -18,6 +19,8 @@ import {
   PageHeader,
   t,
 } from './ui';
+import { getDesktopApi } from '../../platform/runtime';
+import type { ManagedAsset } from '../../features/assets/import-assets';
 import './library.css';
 
 type LibraryPagesProps = PageProps & {
@@ -29,6 +32,7 @@ type LibraryPagesProps = PageProps & {
   onUseForNew?: (personaId: string) => void;
   workspaceId?: string;
   readOnly?: boolean;
+  projectId?: string;
 };
 
 type Localized = { zh: string; en: string };
@@ -98,6 +102,20 @@ const assets: AssetItem[] = [
   },
 ];
 
+const managedAssetToItem = (asset: ManagedAsset): AssetItem => {
+  const dimensions = asset.decode?.width && asset.decode?.height ? ` · ${asset.decode.width} × ${asset.decode.height}` : '';
+  return {
+    id: asset.id,
+    name: { zh: asset.name, en: asset.name },
+    type: 'image',
+    typeName: { zh: asset.externalReference ? '外部引用' : '图像', en: asset.externalReference ? 'External' : 'Image' },
+    meta: { zh: `${asset.format}${dimensions}`, en: `${asset.format}${dimensions}` },
+    source: asset.externalReference ? { zh: '外部链接 · 未受管', en: 'External URL · unmanaged' } : { zh: '本机导入 · 受管副本', en: 'Local import · managed copy' },
+    usage: { zh: '当前项目', en: 'Current project' },
+    artwork: 'blank',
+  };
+};
+
 const brands: BrandKit[] = [
   {
     id: 'spring',
@@ -161,6 +179,10 @@ const AssetsPage = ({
   onTypeChange,
   onLayoutChange,
   onSelect,
+  workspaceId,
+  projectId,
+  readOnly,
+  notify,
 }: {
   locale: Locale;
   query: string;
@@ -171,19 +193,51 @@ const AssetsPage = ({
   onTypeChange: (value: AssetType) => void;
   onLayoutChange: (value: 'grid' | 'list') => void;
   onSelect: (value: string) => void;
+  workspaceId?: string;
+  projectId?: string;
+  readOnly?: boolean;
+  notify?: (message: string) => void;
 }) => {
+  const [managedAssets, setManagedAssets] = useState<ManagedAsset[]>([]);
+  const [importing, setImporting] = useState(false);
+  const inputId = 'asset-import-input';
+  useEffect(() => {
+    if (!workspaceId || !projectId) return undefined;
+    let cancelled = false;
+    const request = getDesktopApi().listAssets?.({ workspaceId, projectId });
+    void request?.then((result) => { if (!cancelled && result) setManagedAssets(result); }).catch(() => notify?.(t(locale, '素材读取失败', 'Could not load assets')));
+    return () => { cancelled = true; };
+  }, [locale, notify, projectId, workspaceId]);
+  const importFiles = async (files: FileList | null): Promise<void> => {
+    if (!files || !workspaceId || !projectId || readOnly) return;
+    setImporting(true);
+    try {
+      const items = await Promise.all(Array.from(files).map(async (file) => ({ name: file.name, mimeType: file.type || undefined, data: await file.arrayBuffer() })));
+      const results = await getDesktopApi().importAssets?.({ workspaceId, projectId, items });
+      if (results) {
+        const imported = results.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset);
+        if (imported.length) setManagedAssets((current) => [...current, ...imported.filter((asset) => !current.some((entry) => entry.id === asset.id))]);
+        const failed = results.filter((result) => result.status === 'error').length;
+        notify?.(failed ? t(locale, `${imported.length} 项已导入，${failed} 项失败`, `${imported.length} imported, ${failed} failed`) : t(locale, `${imported.length} 项已导入`, `${imported.length} imported`));
+      }
+    } catch {
+      notify?.(t(locale, '素材导入失败', 'Could not import assets'));
+    } finally { setImporting(false); }
+  };
+  const usingManagedAssets = Boolean(workspaceId && projectId);
+  const displayAssets = usingManagedAssets ? managedAssets.map(managedAssetToItem) : assets;
   const filteredAssets = useMemo(
     () =>
-      assets.filter(
+      displayAssets.filter(
         (item) =>
           (type === 'all' || item.type === type) &&
           localize(locale, item.name)
             .toLocaleLowerCase()
             .includes(query.toLocaleLowerCase()),
       ),
-    [locale, query, type],
+    [displayAssets, locale, query, type],
   );
-  const selected = assets.find((item) => item.id === selectedId) ?? assets[0];
+  const selected = displayAssets.find((item) => item.id === selectedId) ?? displayAssets[0];
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -194,7 +248,12 @@ const AssetsPage = ({
           '浏览示例素材的来源、格式、用途与受管状态。',
           'Browse source, format, usage and managed state for example assets.',
         )}
-      />
+      >
+        {usingManagedAssets && <>
+          <input id={inputId} type="file" multiple hidden onChange={(event) => { void importFiles(event.target.files); event.currentTarget.value = ''; }} />
+          <Button icon="upload" disabled={readOnly || importing} onClick={() => document.getElementById(inputId)?.click()}>{importing ? t(locale, '导入中', 'Importing') : t(locale, '导入', 'Import')}</Button>
+        </>}
+      </PageHeader>
       <div className="asset-toolbar">
         <label className="search-control">
           <Icon name="search" size={16} />
@@ -273,7 +332,7 @@ const AssetsPage = ({
             />
           )}
         </div>
-        <aside
+        {selected ? <aside
           className="details-panel asset-details"
           aria-label={t(locale, '素材详情', 'Asset details')}
         >
@@ -308,7 +367,7 @@ const AssetsPage = ({
               'This page only browses example metadata and does not read or write local files.',
             )}
           </p>
-        </aside>
+        </aside> : <div className="details-panel asset-details"><EmptyState icon="image" title={t(locale, '暂无素材', 'No assets yet')} description={t(locale, '导入素材后会显示在这里。', 'Import assets to see them here.')} /></div>}
       </div>
     </section>
   );
@@ -1029,6 +1088,7 @@ export const LibraryPages = ({
   onUseForNew,
   workspaceId,
   readOnly = false,
+  projectId,
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
@@ -1053,6 +1113,10 @@ export const LibraryPages = ({
         onTypeChange={setAssetType}
         onLayoutChange={setAssetLayout}
         onSelect={setSelectedAsset}
+        workspaceId={workspaceId}
+        projectId={projectId}
+        readOnly={readOnly}
+        notify={notify}
       />
     ),
     brands: (

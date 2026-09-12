@@ -748,6 +748,7 @@ export const Studio = ({
                   view={item.view as Exclude<View, 'projects'>}
                   deliveryProject={deliveryProject}
                   workspaceId={workspace?.workspaceId}
+                  projectId={selected?.id ?? projects[0]?.id}
                   readOnly={workspace?.openMode === 'read-only'}
                   notify={notify}
                   navigate={navigate}
