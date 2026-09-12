@@ -1,0 +1,291 @@
+export const providerCapabilityMatrix = {
+  conversation: true,
+  'vision-analysis': true,
+  'image-generation': true,
+  'image-editing': true,
+} as const;
+export const providerCapabilities = ['conversation', 'vision-analysis', 'image-generation', 'image-editing'] as const;
+
+export type ProviderCapabilityMatrix = typeof providerCapabilityMatrix;
+export type ChatRole = 'system' | 'user' | 'assistant';
+export type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } };
+export type ChatMessage = { role: ChatRole; content: string | ChatContentPart[] };
+export type ChatRequest = { messages: ChatMessage[]; model?: string; temperature?: number; maxTokens?: number };
+export type ChatUsage = { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+export type ChatResponse = { text: string; usage?: ChatUsage; cost: number | null };
+export type ChatStreamEvent = { text: string; finishReason?: string | null };
+export type VisionRequest = { prompt: string; image: { url: string } | { base64: string; mimeType?: string } };
+export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number };
+export type ImageEditRequest = { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string };
+export type GeneratedImage = { url?: string; base64?: string };
+export type ImageResponse = { images: GeneratedImage[]; cost: number | null };
+
+export type ProviderAdapterErrorKind = 'http' | 'rate_limited' | 'invalid_response' | 'cancelled';
+export type ProviderAdapterError = Error & {
+  kind: ProviderAdapterErrorKind;
+  status?: number;
+  retryAfterSeconds?: number;
+  providerCode?: string;
+};
+
+export type MainOnlyAdapterOptions = {
+  baseUrl: string;
+  apiKey: string;
+  fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+};
+
+export type OpenAICompatibleAdapter = {
+  chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
+  streamChat: (request: ChatRequest, signal?: AbortSignal) => AsyncIterable<ChatStreamEvent>;
+  analyzeVision: (request: VisionRequest, signal?: AbortSignal) => Promise<ChatResponse>;
+  generateImage: (request: ImageRequest, signal?: AbortSignal) => Promise<ImageResponse>;
+  editImage: (request: ImageEditRequest, signal?: AbortSignal) => Promise<ImageResponse>;
+};
+
+export type LocalCancellation = {
+  signal: AbortSignal;
+  cancel: () => void;
+  remoteCancellation: false;
+};
+
+const toUsage = (usage: unknown): ChatUsage | undefined => {
+  if (!usage || typeof usage !== 'object') return undefined;
+  const record = usage as Record<string, unknown>;
+  const promptTokens = typeof record.prompt_tokens === 'number' ? record.prompt_tokens : undefined;
+  const completionTokens = typeof record.completion_tokens === 'number' ? record.completion_tokens : undefined;
+  const totalTokens = typeof record.total_tokens === 'number' ? record.total_tokens : undefined;
+  if (promptTokens === undefined && completionTokens === undefined && totalTokens === undefined) return undefined;
+  return { promptTokens, completionTokens, totalTokens };
+};
+
+const toError = (message: string, kind: ProviderAdapterErrorKind, details: Partial<ProviderAdapterError> = {}): ProviderAdapterError => {
+  const error = Object.assign(new Error(message), { kind, ...details }) as ProviderAdapterError;
+  return error;
+};
+
+const readJson = async (response: Response): Promise<Record<string, unknown>> => {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+  } catch {
+    throw toError('Provider returned invalid JSON.', 'invalid_response', { status: response.status });
+  }
+};
+
+const retryAfter = (response: Response): number | undefined => {
+  const value = response.headers.get('retry-after');
+  if (!value) return undefined;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
+};
+
+const createHttpError = async (response: Response, redact: (value: string) => string): Promise<ProviderAdapterError> => {
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = await readJson(response);
+  } catch {
+    payload = {};
+  }
+  const providerError = payload.error && typeof payload.error === 'object' ? payload.error as Record<string, unknown> : {};
+  const providerMessage = typeof providerError.message === 'string' ? redact(providerError.message) : `Provider request failed (${response.status}).`;
+  const providerCode = typeof providerError.code === 'string' ? redact(providerError.code) : undefined;
+  const limited = response.status === 429;
+  return toError(providerMessage, limited ? 'rate_limited' : 'http', {
+    status: response.status,
+    retryAfterSeconds: retryAfter(response),
+    providerCode,
+  });
+};
+
+const contentText = (value: unknown): string => {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value.flatMap((part) => {
+    if (part && typeof part === 'object' && (part as Record<string, unknown>).type === 'text') {
+      const text = (part as Record<string, unknown>).text;
+      return typeof text === 'string' ? [text] : [];
+    }
+    return [];
+  }).join('');
+};
+
+const sseIterable = (response: Response, signal: AbortSignal | undefined, redact: (value: string) => string): AsyncIterable<ChatStreamEvent> => {
+  const reader = response.body?.getReader();
+  if (!reader) throw toError('Provider returned no stream body.', 'invalid_response', { status: response.status });
+  let buffer = '';
+  let ended = false;
+  let done = false;
+  const decode = new TextDecoder();
+
+  const parseFrames = (): ChatStreamEvent[] => {
+    const frames = buffer.split(/\r?\n\r?\n/);
+    buffer = frames.pop() ?? '';
+    const events: ChatStreamEvent[] = [];
+    for (const frame of frames) {
+      const data = frame.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
+      if (!data) continue;
+      if (data === '[DONE]') {
+        ended = true;
+        continue;
+      }
+      try {
+        const payload: unknown = JSON.parse(data);
+        const choices = payload && typeof payload === 'object' ? (payload as Record<string, unknown>).choices : undefined;
+        const first = Array.isArray(choices) ? choices[0] : undefined;
+        const choice = first && typeof first === 'object' ? first as Record<string, unknown> : {};
+        const delta = choice.delta && typeof choice.delta === 'object' ? choice.delta as Record<string, unknown> : {};
+        const text = redact(contentText(delta.content));
+        if (text || choice.finish_reason !== undefined) events.push({ text, finishReason: typeof choice.finish_reason === 'string' ? choice.finish_reason : null });
+      } catch {
+        throw toError('Provider returned malformed SSE data.', 'invalid_response', { status: response.status });
+      }
+    }
+    return events;
+  };
+
+  let pending: ChatStreamEvent[] = [];
+  const next = async (): Promise<IteratorResult<ChatStreamEvent>> => {
+    if (pending.length > 0) return { done: false, value: pending.shift() as ChatStreamEvent };
+    if (done || ended) {
+      done = true;
+      return { done: true, value: undefined } as IteratorResult<ChatStreamEvent>;
+    }
+    try {
+      while (pending.length === 0 && !done && !ended) {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          buffer += decode.decode();
+          if (buffer.trim()) buffer += '\n\n';
+          pending = parseFrames();
+          done = true;
+          break;
+        }
+        buffer += decode.decode(chunk.value, { stream: true });
+        pending = parseFrames();
+      }
+    } catch (cause) {
+      if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
+      throw cause;
+    }
+    if (pending.length > 0) return { done: false, value: pending.shift() as ChatStreamEvent };
+    return { done: true, value: undefined } as IteratorResult<ChatStreamEvent>;
+  };
+
+  return { [Symbol.asyncIterator]: (): AsyncIterator<ChatStreamEvent> => ({ next }) };
+};
+
+export const createLocalCancellation = (): LocalCancellation => {
+  const controller = new AbortController();
+  return { signal: controller.signal, cancel: () => controller.abort(), remoteCancellation: false };
+};
+
+export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): OpenAICompatibleAdapter => {
+  if (!options.baseUrl.trim()) throw new Error('PROVIDER_BASE_URL_REQUIRED');
+  if (!options.apiKey.trim()) throw new Error('PROVIDER_API_KEY_REQUIRED');
+  const baseUrl = options.baseUrl.replace(/\/+$/, '');
+  const apiKey = options.apiKey;
+  const fetcher = options.fetch ?? ((input: string, init?: RequestInit): Promise<Response> => globalThis.fetch(input, init));
+  const redact = (value: string): string => apiKey ? value.replaceAll(apiKey, '[redacted]') : value;
+  const postJson = async (path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> => {
+    let response: Response;
+    try {
+      response = await fetcher(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (cause) {
+      if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
+      throw cause;
+    }
+    if (!response.ok) throw await createHttpError(response, redact);
+    return readJson(response);
+  };
+  const chat = async (request: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> => {
+    const payload = await postJson('/chat/completions', {
+      messages: request.messages,
+      ...(request.model ? { model: request.model } : {}),
+      ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+      ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
+    }, signal);
+    const choices = Array.isArray(payload.choices) ? payload.choices : [];
+    const first = choices[0] && typeof choices[0] === 'object' ? choices[0] as Record<string, unknown> : {};
+    const message = first.message && typeof first.message === 'object' ? first.message as Record<string, unknown> : {};
+    return { text: redact(contentText(message.content)), usage: toUsage(payload.usage), cost: null };
+  };
+  const streamChat = (request: ChatRequest, signal?: AbortSignal): AsyncIterable<ChatStreamEvent> => {
+    let responsePromise: Promise<Response> | undefined;
+    const getResponse = async (): Promise<Response> => {
+      if (!responsePromise) {
+        responsePromise = (async () => {
+          try {
+            const response = await fetcher(`${baseUrl}/chat/completions`, {
+              method: 'POST',
+              headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+              body: JSON.stringify({
+                messages: request.messages,
+                ...(request.model ? { model: request.model } : {}),
+                ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+                ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
+                stream: true,
+              }),
+              signal,
+            });
+            if (!response.ok) throw await createHttpError(response, redact);
+            return response;
+          } catch (cause) {
+            if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
+            throw cause;
+          }
+        })();
+      }
+      return responsePromise;
+    };
+    let iterable: AsyncIterable<ChatStreamEvent> | undefined;
+    let iterator: AsyncIterator<ChatStreamEvent> | undefined;
+    const next = async (): Promise<IteratorResult<ChatStreamEvent>> => {
+      if (!iterable) iterable = sseIterable(await getResponse(), signal, redact);
+      if (!iterator) iterator = iterable[Symbol.asyncIterator]();
+      return iterator.next();
+    };
+    return { [Symbol.asyncIterator]: (): AsyncIterator<ChatStreamEvent> => ({ next }) };
+  };
+  const analyzeVision = async (request: VisionRequest, signal?: AbortSignal): Promise<ChatResponse> => {
+    const imageUrl = 'url' in request.image ? request.image.url : `data:${request.image.mimeType ?? 'image/png'};base64,${request.image.base64}`;
+    return chat({ messages: [{ role: 'user', content: [{ type: 'text', text: request.prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }] }, signal);
+  };
+  const generateImage = async (request: ImageRequest, signal?: AbortSignal): Promise<ImageResponse> => {
+    const payload = await postJson('/images/generations', { prompt: request.prompt, ...(request.model ? { model: request.model } : {}), ...(request.size ? { size: request.size } : {}), ...(request.count === undefined ? {} : { n: request.count }) }, signal);
+    return { images: Array.isArray(payload.data) ? payload.data.map((entry) => {
+      const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+      return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { base64: redact(item.b64_json) } : {}) };
+    }) : [], cost: null };
+  };
+  const editImage = async (request: ImageEditRequest, signal?: AbortSignal): Promise<ImageResponse> => {
+    const form = new FormData();
+    form.append('prompt', request.prompt);
+    form.append('image', request.image);
+    if (request.mask) form.append('mask', request.mask);
+    if (request.model) form.append('model', request.model);
+    if (request.size) form.append('size', request.size);
+    let response: Response;
+    try {
+      response = await fetcher(`${baseUrl}/images/edits`, { method: 'POST', headers: { authorization: `Bearer ${apiKey}` }, body: form, signal });
+    } catch (cause) {
+      if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
+      throw cause;
+    }
+    if (!response.ok) throw await createHttpError(response, redact);
+    const payload = await readJson(response);
+    return { images: Array.isArray(payload.data) ? payload.data.map((entry) => {
+      const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+      return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { base64: redact(item.b64_json) } : {}) };
+    }) : [], cost: null };
+  };
+  return { chat, streamChat, analyzeVision, generateImage, editImage };
+};
