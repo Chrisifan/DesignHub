@@ -21,4 +21,12 @@
   ,"brandFixedCopy": "固定文案"
   ,"brandSizes": "尺寸"
   ,"brandSave": "保存"
+  ,"assetLibraryLabel": "素材库"
+  ,"assetLibraryTitle": "素材"
+  ,"assetImportStatus": "导入状态"
+  ,"assetImportErrors": "导入错误"
+  ,"assetImported": "已导入"
+  ,"assetFailed": "失败"
+  ,"assetEmpty": "暂无受管素材。"
+  ,"assetExternal": "外部引用"
 }

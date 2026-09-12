@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest';
 import { AssetLibrary } from './AssetLibrary';
 
 it('renders managed asset metadata and external reference state', () => {
-  render(<AssetLibrary assets={[{
+  render(<AssetLibrary locale="en" assets={[{
     id: 'asset-1',
     name: 'poster.png',
     format: 'PNG',
@@ -39,6 +39,7 @@ it('reports import errors and forwards asset selection', () => {
     managed: true,
   };
   render(<AssetLibrary
+    locale="en"
     assets={[asset]}
     results={[{ status: 'error', error: 'UNSUPPORTED_FORMAT', item: { name: 'bad.bmp' } }]}
     onSelect={onSelect}
@@ -47,4 +48,11 @@ it('reports import errors and forwards asset selection', () => {
   expect(screen.getByRole('list', { name: 'Import errors' })).toHaveTextContent('bad.bmp: UNSUPPORTED_FORMAT');
   screen.getByRole('button', { name: 'poster.png' }).click();
   expect(onSelect).toHaveBeenCalledWith(asset);
+});
+
+it('uses Chinese labels when the locale changes', () => {
+  render(<AssetLibrary locale="zh-CN" />);
+
+  expect(screen.getByRole('region', { name: '素材库' })).toBeInTheDocument();
+  expect(screen.getByText('暂无受管素材。')).toBeInTheDocument();
 });

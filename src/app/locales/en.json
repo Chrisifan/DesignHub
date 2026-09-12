@@ -21,4 +21,12 @@
   ,"brandFixedCopy": "Fixed copy"
   ,"brandSizes": "Sizes"
   ,"brandSave": "Save"
+  ,"assetLibraryLabel": "Asset library"
+  ,"assetLibraryTitle": "Assets"
+  ,"assetImportStatus": "Import status"
+  ,"assetImportErrors": "Import errors"
+  ,"assetImported": "Imported"
+  ,"assetFailed": "Failed"
+  ,"assetEmpty": "No managed assets."
+  ,"assetExternal": "External reference"
 }
