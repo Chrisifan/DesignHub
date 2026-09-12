@@ -358,7 +358,20 @@ export const Studio = ({
     };
   });
   const indexedProjects = buildSearchIndex(searchRecords);
-  const visibleProjectIds = new Set(searchIndex(indexedProjects, { workspaceId: workspace?.workspaceId ?? 'preview', query }).map((item) => item.projectId));
+  const [persistedSearchIds, setPersistedSearchIds] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!workspace?.workspaceId || projects.length === 0) {
+      setPersistedSearchIds(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void (getDesktopApi().rebuildSearchIndex?.(workspace.workspaceId, searchRecords) ?? Promise.resolve(false)).catch(() => false);
+    void (getDesktopApi().searchProjects?.({ workspaceId: workspace.workspaceId, query }) ?? Promise.resolve(null)).then((results) => {
+      if (!cancelled && results) setPersistedSearchIds(results.map((item) => item.projectId));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [projects, query, workspace?.workspaceId]);
+  const visibleProjectIds = new Set((persistedSearchIds ?? searchIndex(indexedProjects, { workspaceId: workspace?.workspaceId ?? 'preview', query }).map((item) => item.projectId)));
   const visibleProjects = projects.filter((project) =>
     (filter === 'all' || Boolean(project.archived) === (filter === 'archived')) && visibleProjectIds.has(project.id),
   );

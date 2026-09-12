@@ -21,6 +21,7 @@ import {
 } from '../../src/desktop/storage/project-store';
 import { createWorkspace, openWorkspace, workspaceManifestName } from '../../src/desktop/storage/workspace-store';
 import { saveWorkspaceSettings } from '../../src/desktop/storage/settings-store';
+import { createSearchIndexStore } from '../../src/desktop/storage/search-index-store';
 import type { BackupManifest } from '../../src/features/workspace/backup';
 
 const temporaryDirectories: string[] = [];
@@ -68,6 +69,15 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
       lastArtifactPath: null,
     },
   });
+  const searchStore = createSearchIndexStore(workspace);
+  await searchStore.replace([{
+    workspaceId: workspace.workspace.workspaceId,
+    projectId: 'project-indexed',
+    documentId: 'doc-indexed',
+    title: 'Indexed project',
+    contributorIds: ['designer-a'],
+  }]);
+  searchStore.close();
   const projects = createProjectStore(workspace);
   const active = await projects.createProjectContainer({
     workspaceId: workspace.workspace.workspaceId,
@@ -108,6 +118,7 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
       workspaceManifestName,
       `.designhub/${workspaceProjectIndexName}`,
       '.designhub/settings.json',
+      '.designhub/search-index.sqlite',
       `projects/${active.projectId}/${projectDatabaseName}`,
       `trash/${trashed.projectId}/${projectDatabaseName}`,
       'shared-assets/nested/asset.txt',

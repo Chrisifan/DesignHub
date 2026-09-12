@@ -50,6 +50,8 @@
 
 2026-09-13：M08 工作区备份设置持久化新增 `src/features/workspace/settings.ts`、settings storage/IPC channels and Storage UI hydration. The change uses existing Node atomic file primitives and no new dependency. Direct consumers M01 (preload/bridge/build), M02 (workspace internal allowlist/backup closure), M07 (backup/export boundary) and M08 were revalidated with focused tests; full regression follows the module commit. Windows, concurrent external writers and signed release remain open.
 
+2026-09-13：M08 持久化本地检索索引新增 SQLite `search-index.sqlite` 存储、受信 rebuild/query channels and Studio consumer. It reuses `better-sqlite3` and existing substring/filter contracts; no new dependency or cloud index is introduced. Direct consumers M01 (bridge/build), M02 (workspace backup allowlist), M04 (project metadata), M08 (library UI) require focused and full regression; large-workspace, Windows and crash-rebuild evidence remain open.
+
 2026-09-09：M02 Task 1 引入 `better-sqlite3`、Forge native-unpack 插件并收窄 unit 测试扫描范围，影响 M01 构建、打包配置和测试入口。M01 unit/integration/lint/typecheck/build 全部回归通过，macOS Playwright Electron smoke 1/1 通过；Forge package 仍在 GitHub Electron artifact 获取阶段因 `ENOTFOUND` 失败，Windows、安装与发布状态不恢复为已验证。证据见 [M01](M01.md) 与 [M02](M02.md)。
 
 2026-09-10：M02 Task 2 增加 main-only 项目存储、Electron storage smoke、Vite native external 和 Forge 精确保留规则，影响 M01 main/build/package。unit 13/13、integration 29/29、lint/typecheck/build 通过；本地镜像下 macOS arm64 package 与 source/packaged storage smoke 2/2 曾通过，并确认 `.node` 位于 `app.asar.unpacked`。随后只增加项目完整性校验与回归测试，最终树重打包和 native 套件请求被审批策略拒绝，因此 Windows、最终 artifact、签名安装和 UI 仍保持开放，未伪记为已验证。
@@ -198,6 +200,8 @@
 2026-09-13：M05/M07 工作台会话状态文案（变更 ID UI-20260913-08）。工作台底部状态根据是否绑定工作区显示“本地会话”或“示例会话”，修正真实项目仍显示预览状态的问题。先新增 Workbench Red，再 Green；Workbench focused 回归通过，lint、typecheck、diff check 通过。进程恢复、打包存储、Windows 与人工视觉门禁仍开放。
 2026-09-13：M06/M07 图像工具任务溯源（变更 ID M06-20260913-10）。图片编辑任务贯穿保存所选工具与有限区域，Studio、可信 IPC 与任务存储共同校验，避免局部操作参数在桥接处丢失。先新增 task-service Red，再 Green；task-service/IPC/task-store focused 17/17、lint、typecheck、diff check 通过。provider 遮罩栅格化、真实模型、Windows 与人工质量仍开放。
 2026-09-13：M06 provider 图像编辑元数据（变更 ID M06-20260913-11）。OpenAI-compatible image-edit adapter 在 multipart 请求中携带工具与区域元数据，和任务记录保持一致；原图、遮罩与凭据边界不变。先新增 adapter Red，再 Green；adapter/task-service focused 16/16、lint、typecheck、diff check 通过。真实 provider 对自定义字段的支持、遮罩栅格化与跨平台验证仍开放。
+
+2026-09-13：M08 工作区设置与持久化检索索引（变更 ID M08-20260913-12）。新增 `.designhub/settings.json` 和 `search-index.sqlite`，并通过受信 IPC 接入 Storage/Projects 页面；M02 备份 allowlist 与集成用例同步更新。focused storage/IPC/Studio/backup 17+25+35 tests、lint、typecheck、diff check 通过；真实 Windows、并发写者、崩溃恢复和大工作区基准仍开放。
 
 ## 发布前检查
 

@@ -12,6 +12,7 @@ import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from 
 import type { BrandLibraryState } from '../features/brands/constraints';
 import type { ImageEditInput, ImageGenerationInput } from '../features/agent/task-service';
 import type { WorkspaceSettings } from '../features/workspace/settings';
+import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 
 export type ConversationTaskInput = {
   workspaceId: string;
@@ -57,6 +58,8 @@ export type DesktopApi = {
   restoreWorkspaceBackup?: (input: { backupDirectory: string; destinationParentDirectory: string }) => Promise<RestoreBackupResult | null>;
   loadWorkspaceSettings?: (workspaceId: string) => Promise<WorkspaceSettings | null>;
   saveWorkspaceSettings?: (workspaceId: string, settings: WorkspaceSettings) => Promise<boolean>;
+  rebuildSearchIndex?: (workspaceId: string, records: readonly SearchRecord[]) => Promise<boolean>;
+  searchProjects?: (options: SearchQuery) => Promise<SearchIndexItem[] | null>;
   exportProjectPackage?: (input: { workspaceId: string; projectId: string }) => Promise<{ path: string; sha256: string } | null>;
   loadDesignerState?: (workspaceId: string) => Promise<DesignerLibraryState | null>;
   saveDesignerState?: (workspaceId: string, state: DesignerLibraryState) => Promise<boolean>;

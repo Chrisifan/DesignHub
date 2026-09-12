@@ -74,6 +74,7 @@ const internalDirectoryName = '.designhub';
 const managedDirectoryNames = [internalDirectoryName, 'projects', 'shared-assets', 'trash'] as const;
 const projectIndexPath = `${internalDirectoryName}/project-index.sqlite`;
 const workspaceSettingsPath = `${internalDirectoryName}/settings.json`;
+const searchIndexPath = `${internalDirectoryName}/search-index.sqlite`;
 const writerLockPrefix = `${internalDirectoryName}/writer-lock.sqlite`;
 const sqliteSidecarPattern = /-(?:journal|shm|wal)$/u;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -229,7 +230,7 @@ const validateWritableSource = (handle: WorkspaceHandle): { directory: string; m
   return { directory, manifest };
 };
 
-const isManagedSqlitePath = (relativePath: string): boolean => relativePath === projectIndexPath
+const isManagedSqlitePath = (relativePath: string): boolean => (relativePath === projectIndexPath || relativePath === searchIndexPath)
   || /^(?:projects|trash)\/[^/]+\/project\.sqlite$/u.test(relativePath);
 
 const isSqliteSidecarOf = (relativePath: string, databasePath: string): boolean => sqliteSidecarPattern.test(relativePath)
@@ -241,15 +242,16 @@ const getManagedInternalEntryPolicy = (
 ): ManagedInternalEntryPolicy => {
   if (kind === 'directory' && relativePath === internalDirectoryName) return 'domain';
   if (kind !== 'file') return 'unmanaged';
-  if (relativePath === projectIndexPath || relativePath === workspaceSettingsPath) return 'domain';
+  if (relativePath === projectIndexPath || relativePath === workspaceSettingsPath || relativePath === searchIndexPath) return 'domain';
   if (relativePath === writerLockPrefix
     || isSqliteSidecarOf(relativePath, projectIndexPath)
+    || isSqliteSidecarOf(relativePath, searchIndexPath)
     || isSqliteSidecarOf(relativePath, writerLockPrefix)) return 'transient';
   return 'unmanaged';
 };
 
 const shouldSkipSourceFile = (relativePath: string): boolean => getManagedInternalEntryPolicy(relativePath, 'file') === 'transient'
-  || (sqliteSidecarPattern.test(relativePath) && isManagedSqlitePath(relativePath.replace(sqliteSidecarPattern, '')));
+  || (sqliteSidecarPattern.test(relativePath) && (isManagedSqlitePath(relativePath.replace(sqliteSidecarPattern, '')) || isSqliteSidecarOf(relativePath, projectIndexPath) || isSqliteSidecarOf(relativePath, searchIndexPath)));
 
 const collectManagedContent = (workspaceDirectory: string): { directories: string[]; files: string[] } => {
   const directories: string[] = [];

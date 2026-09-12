@@ -54,6 +54,8 @@ import { backupCreateChannel, backupRestoreChannel, createBackupHandler, restore
 import { createWorkspaceBackupStore } from './storage/backup-store';
 import { loadWorkspaceSettings, saveWorkspaceSettings } from './storage/settings-store';
 import { loadSettingsHandler, saveSettingsHandler, settingsLoadChannel, settingsSaveChannel } from './ipc/settings';
+import { rebuildSearchHandler, searchQueryHandler, searchQueryChannel, searchRebuildChannel } from './ipc/search';
+import { createSearchIndexStore } from './storage/search-index-store';
 import { exportProjectPackageHandler, importProjectPackageHandler, projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 import { createProjectPackage, encodeProjectPackage } from '../features/delivery/project-package';
 import { classifyPackageEntry, type PackageEntryKind } from '../features/delivery/package-policy';
@@ -446,6 +448,20 @@ app.whenReady().then(() => {
   ipcMain.handle(settingsSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return saveSettingsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, saveWorkspaceSettings)(event, input);
+  });
+  ipcMain.handle(searchRebuildChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return rebuildSearchHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, records) => {
+      const store = createSearchIndexStore(workspace);
+      try { await store.replace(records); } finally { store.close(); }
+    })(event, input);
+  });
+  ipcMain.handle(searchQueryChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return searchQueryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, options) => {
+      const store = createSearchIndexStore(workspace);
+      try { return await store.search(options); } finally { store.close(); }
+    })(event, input);
   });
 });
 
