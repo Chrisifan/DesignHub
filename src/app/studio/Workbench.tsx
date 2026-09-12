@@ -36,6 +36,7 @@ export type WorkbenchProps = {
   onConnections: () => void;
   onSubmitConversation?: (message: string) => void | Promise<void>;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string }) => void | Promise<void>;
+  onSubmitImageGeneration?: (prompt: string) => void | Promise<void>;
   notify: (message: string) => void;
 };
 
@@ -71,6 +72,7 @@ export const Workbench = ({
   onConnections,
   onSubmitConversation,
   onSubmitImageTask,
+  onSubmitImageGeneration,
   notify,
 }: WorkbenchProps) => {
   const layersTitleId = useId();
@@ -256,6 +258,17 @@ export const Workbench = ({
       return;
     }
     onConnections();
+  };
+  const submitGeneration = (): void => {
+    if (!prompt.trim()) {
+      notify(t(locale, '请输入生成说明', 'Enter a generation prompt'));
+      return;
+    }
+    if (!onSubmitImageGeneration) {
+      onConnections();
+      return;
+    }
+    void Promise.resolve(onSubmitImageGeneration(prompt.trim())).then(() => setPrompt('')).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
   const runImageTask = (tool: ImageTool, taskPrompt: string): void => {
     if (!onSubmitImageTask) {
@@ -704,6 +717,9 @@ export const Workbench = ({
                     </Button>
                     <Button variant="ai" icon="arrow-up-right" type="submit">
                       {t(locale, '发送', 'Send')}
+                    </Button>
+                    <Button variant="ai" icon="sparkles" type="button" onClick={submitGeneration}>
+                      {t(locale, '生成', 'Generate')}
                     </Button>
                   </div>
                 </form>

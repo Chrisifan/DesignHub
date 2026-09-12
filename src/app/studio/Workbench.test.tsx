@@ -185,6 +185,16 @@ it('submits a conversation through the active project service when provided', ()
   expect(prompt).toHaveValue('');
 });
 
+it('submits a generation request through the active project service', async () => {
+  const onSubmitImageGeneration = vi.fn(async () => undefined);
+  render(<Workbench {...makeProps({ onSubmitImageGeneration })} />);
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  const panel = screen.getByRole('complementary', { name: '对话' });
+  fireEvent.change(within(panel).getByRole('textbox', { name: '修改说明' }), { target: { value: '生成春季市集主视觉' } });
+  fireEvent.click(within(panel).getByRole('button', { name: '生成' }));
+  await waitFor(() => expect(onSubmitImageGeneration).toHaveBeenCalledWith('生成春季市集主视觉'));
+});
+
 it('updates preview zoom and grid without changing the document', () => {
   render(<Workbench {...makeProps()} />);
   const canvas = screen.getByRole('region', { name: '设计画布' });

@@ -476,6 +476,27 @@ export const Studio = ({
       notify(t(locale, '图像任务提交失败，请检查连接。', 'Image task submission failed. Check the connection.'));
     }
   };
+  const submitProjectImageGeneration = async (project: Project, prompt: string): Promise<void> => {
+    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+      notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return;
+    }
+    const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
+    if (!documentId) {
+      notify(t(locale, '请先打开文档。', 'Open a document first.'));
+      return;
+    }
+    try {
+      const task = await getDesktopApi().submitImageGeneration?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: null, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt, size: `${project.documentEntries?.find((entry) => entry.id === documentId)?.width ?? 1080}x${project.documentEntries?.find((entry) => entry.id === documentId)?.height ?? 1440}`, count: 2 });
+      if (!task) {
+        notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
+        return;
+      }
+      notify(t(locale, '生成任务已排队。', 'Generation task queued.'));
+    } catch {
+      notify(t(locale, '生成任务提交失败，请检查连接。', 'Generation task submission failed. Check the connection.'));
+    }
+  };
   const openNewDesign = (mode: NewDesignDraft['mode'], personaId?: string) => {
     newDesignReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDraft((previous) => ({
@@ -987,6 +1008,7 @@ export const Studio = ({
                 onConnections={() => navigate('connections')}
                 onSubmitConversation={(message) => submitProjectConversation(project, message)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
+                onSubmitImageGeneration={(prompt) => submitProjectImageGeneration(project, prompt)}
                 notify={notify}
               />
             </div>
