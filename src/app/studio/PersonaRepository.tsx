@@ -26,6 +26,8 @@ const statusLabel = (locale: Locale, status: PersonaProfile['status']): string =
     ? t(locale, '已发布', 'Published')
     : status === 'built-in'
       ? t(locale, '内置', 'Built-in')
+      : status === 'archived'
+        ? t(locale, '已归档', 'Archived')
       : t(locale, '草稿', 'Draft');
 
 export const PersonaRepository = ({
@@ -93,7 +95,7 @@ export const PersonaRepository = ({
           />
         </label>
         <div className="tab-strip persona-status-tabs" role="group" aria-label={t(locale, '档案状态', 'Profile status')}>
-          {(['all', 'published', 'built-in', 'draft'] as const).map((value) => (
+          {(['all', 'published', 'built-in', 'draft', 'archived'] as const).map((value) => (
             <button
               type="button"
               key={value}

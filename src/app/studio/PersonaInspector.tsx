@@ -8,6 +8,7 @@ type PersonaInspectorProps = {
   profile?: PersonaProfile;
   isDefault?: boolean;
   isSessionDefault?: boolean;
+  readOnly?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
@@ -29,6 +30,7 @@ export const PersonaInspector = ({
   profile,
   isDefault = false,
   isSessionDefault,
+  readOnly = false,
   onEdit,
   onDelete,
   onDuplicate,
@@ -45,7 +47,7 @@ export const PersonaInspector = ({
     );
   }
   const sessionDefault = isSessionDefault ?? isDefault;
-  const status = profile.status === 'published' ? t(locale, '已发布', 'Published') : profile.status === 'built-in' ? t(locale, '内置', 'Built-in') : t(locale, '草稿', 'Draft');
+  const status = profile.status === 'published' ? t(locale, '已发布', 'Published') : profile.status === 'built-in' ? t(locale, '内置', 'Built-in') : profile.status === 'archived' ? t(locale, '已归档', 'Archived') : t(locale, '草稿', 'Draft');
   return (
     <aside className="details-panel persona-inspector" aria-label={t(locale, '设计师检查器', 'Designer inspector')}>
       <header className="persona-inspector__head">
@@ -66,11 +68,11 @@ export const PersonaInspector = ({
         </div>
       </div>
       <div className="persona-inspector__actions">
-        {onEdit && <Button variant="primary" icon="settings" onClick={onEdit}>{t(locale, '编辑', 'Edit')}</Button>}
+        {onEdit && <Button variant="primary" icon="settings" onClick={onEdit} disabled={readOnly}>{t(locale, '编辑', 'Edit')}</Button>}
         <Button icon="plus" onClick={() => (onUseForNewDesign ? onUseForNewDesign(profile.id) : onUseForNew?.())}>{t(locale, '用于新建', 'Use for new')}</Button>
-        <Button icon="copy" onClick={() => (onDeriveDraft ? onDeriveDraft(profile.id) : onDuplicate?.())}>{t(locale, '派生', 'Derive')}</Button>
-        <Button icon="star" onClick={() => onSetDefault?.(profile.id)} disabled={sessionDefault}>{sessionDefault ? t(locale, '当前默认', 'Current default') : t(locale, '设默认', 'Set default')}</Button>
-        {profile.status !== 'built-in' && onDelete && <Button icon="trash-2" onClick={onDelete}>{t(locale, '删除', 'Delete')}</Button>}
+        <Button icon="copy" onClick={() => (onDeriveDraft ? onDeriveDraft(profile.id) : onDuplicate?.())} disabled={readOnly}>{t(locale, '派生', 'Derive')}</Button>
+        <Button icon="star" onClick={() => onSetDefault?.(profile.id)} disabled={readOnly || sessionDefault}>{sessionDefault ? t(locale, '当前默认', 'Current default') : t(locale, '设默认', 'Set default')}</Button>
+        {profile.status !== 'built-in' && onDelete && <Button icon="trash-2" onClick={onDelete} disabled={readOnly}>{t(locale, '删除', 'Delete')}</Button>}
       </div>
       <div className="persona-inspector__principle">
         <Icon name="sparkles" size={16} />
@@ -102,7 +104,7 @@ export const PersonaInspector = ({
         <div className="section-title"><h3>{t(locale, '精选作品', 'Curated Portfolio Sheets')}</h3><span className="mono">{profile.portfolioSheets.length.toString().padStart(2, '0')}</span></div>
         <div className="portfolio-strip">{profile.portfolioSheets.map((sheet) => <div className="portfolio-item" key={sheet.id}><ArtworkPreview kind={sheet.artwork} /><strong>{localize(locale, sheet.title)}</strong><small>{localize(locale, sheet.note)}</small></div>)}</div>
       </section>
-      <p className="panel-note"><Icon name="hard-drive" size={15} />{t(locale, '档案修改仅保留在本次示例会话。', 'Profile changes remain in this example session only.')}</p>
+      <p className="panel-note"><Icon name="hard-drive" size={15} />{readOnly ? t(locale, '当前工作区只读。', 'Current workspace is read-only.') : t(locale, '档案保存到当前工作区。', 'Profiles are saved to the current workspace.')}</p>
     </aside>
   );
 };

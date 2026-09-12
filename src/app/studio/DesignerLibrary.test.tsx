@@ -69,3 +69,18 @@ it('hydrates and persists designer state through the desktop workspace bridge', 
   fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: '已保存草稿' } });
   await waitFor(() => expect(saveDesignerState).toHaveBeenCalledWith('workspace-1', expect.objectContaining({ drafts: expect.objectContaining({ newDraft: expect.objectContaining({ name: '已保存草稿' }) }) })));
 });
+
+it('keeps builtin profiles available when persisted state has no profiles', async () => {
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDesignerState: vi.fn(async () => ({ profiles: [], defaultId: 'missing' })), saveDesignerState: vi.fn(async () => true) };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-empty" />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /纸感排版/ })).toBeInTheDocument());
+  expect(screen.getByRole('button', { name: '当前默认' })).toBeInTheDocument();
+});
+
+it('disables mutation actions in a read-only workspace', async () => {
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDesignerState: vi.fn(async () => null), saveDesignerState: vi.fn(async () => true) };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-readonly" readOnly />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /纸感排版/ })).toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: '创建' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '编辑' })).toBeDisabled();
+});

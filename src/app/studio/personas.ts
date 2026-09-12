@@ -12,7 +12,7 @@ export type PersonaProfile = {
   principle: LocalizedText;
   personaCode: string;
   version: string;
-  status: 'built-in' | 'published' | 'draft';
+  status: 'built-in' | 'published' | 'draft' | 'archived';
   artworkUrl: string;
   artworkAlt: LocalizedText;
   tags: LocalizedText[];
