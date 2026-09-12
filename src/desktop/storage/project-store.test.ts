@@ -7,7 +7,8 @@ import { createProjectPackage, encodeProjectPackage } from '../../features/deliv
 
 import { expect, it } from 'vitest';
 
-import { createProjectStore, importProjectPackageToWorkspace } from './project-store';
+import { createProjectStore, importProjectPackageToWorkspace, projectManifestName } from './project-store';
+import { loadDocumentRevisions } from './revision-store';
 import { createWorkspace, openWorkspace } from './workspace-store';
 
 const withWorkspace = async (run: (parentDirectory: string, workspaceDirectory: string) => Promise<void>): Promise<void> => {
@@ -196,6 +197,33 @@ it('preserves related document lineage when duplicating a project', async () => 
           { id: 'doc-square', sourceDocumentId: 'doc-main', sourceRevisionId: 'rev-main', finalizedRevisionId: null },
         ],
       });
+    } finally {
+      workspace.close();
+    }
+  });
+});
+
+it('rewrites imported revision project identities while preserving revision content', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    try {
+      const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43631';
+      const revisionId = 'revision-source-1';
+      const now = new Date().toISOString();
+      const pack = await createProjectPackage({
+        packageId: 'pkg-revision-identity',
+        projectId: sourceProjectId,
+        entries: [
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Revision import', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Revision import', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 100, finalizedRevisionId: revisionId }], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
+          { path: 'documents/doc-1.revisions.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, revisions: [{ revisionId, projectId: sourceProjectId, documentId: 'doc-1', parentRevisionId: null, operationId: 'revision-op', sceneAssetId: 'scene-1', assetIds: [], contributions: [], createdAt: now }], timeline: [{ id: `event-${revisionId}`, kind: 'revision', label: 'Revision', documentId: 'doc-1', revisionId, timestamp: now }], finalRevisionId: revisionId })) },
+        ],
+      });
+      const archive = await encodeProjectPackage(pack);
+      const result = await importProjectPackageToWorkspace(workspace, { workspaceId: workspace.workspace.workspaceId, operationId: 'import-revision-identity', archive });
+      const state = await loadDocumentRevisions(workspace, workspace.workspace.workspaceId, result.projectId, 'doc-1');
+      expect(state.revisions[0]?.projectId).toBe(result.projectId);
+      expect(state.revisions[0]?.revisionId).toBe(revisionId);
     } finally {
       workspace.close();
     }

@@ -227,6 +227,7 @@
 2026-09-13：M07 项目包路径唯一性边界（变更 ID M07-20260913-18）。项目包创建和 ZIP 解码拒绝重复 manifest 路径，避免同一路径 payload 的歧义覆盖；先执行 duplicate-path Red，再 Green；project-package focused 5/5、lint、typecheck 通过。影响 M04 导入和 M08 发布流程，大包流式与跨设备闭包仍开放。
 2026-09-13：M04/M07 项目包素材闭包校验（变更 ID M04-20260913-21）。导入前验证受管素材路径、唯一哈希、压缩包存在性和字节哈希，缺失素材在创建项目之前以 `INVALID_PACKAGE` 拒绝；先执行缺失素材 Red，再 Green；project-store focused 7/7、typecheck 通过。影响 M04 导入、M05 素材读取与 M07 项目包，流式大包、跨设备和 Windows 仍开放。
 2026-09-13：M05 画布草稿项目隔离（变更 ID M05-20260913-08）。`EditSession` 默认草稿键同时包含项目与文档 ID，避免同名文档跨项目恢复；先执行跨项目恢复 Red，再 Green；canvas recovery integration 5/5、canvas unit 18/18、typecheck 通过。影响 M06/M07 项目上下文消费者，崩溃耐久、IME 与跨平台存储仍开放。
+2026-09-13：M04/M07 导入历史身份闭包（变更 ID M04-20260913-22）。项目包导入改写复制的修订 `projectId` 为新项目身份，保留修订 ID、场景和贡献；先执行历史身份 Red，再 Green；project-store focused 8/8、lint、typecheck 通过。影响 M05 历史读取和 M07 交付，历史迁移与跨设备验证仍开放。
 2026-09-13：M07 导出目标迟到冲突保护（变更 ID M07-20260913-19）。导出在渲染/编码后再次检查目标路径，目标在初次检查后出现时返回 `TARGET_EXISTS`，不写入或重命名临时文件；先执行迟到目标 Red，再 Green；export-document focused 6/6、lint、typecheck 通过。目标盘故障、原子 no-replace 和 Windows 仍开放。
 2026-09-13：M06 图片任务空结果保护（变更 ID M06-20260913-14）。图片生成/编辑适配器返回空列表时任务失败并记录 `IMAGE_RESULT_EMPTY`，不产生伪候选。先执行空结果 Red，再 Green；task-service focused 12/12、lint、typecheck 通过。真实提供方部分成功语义、远端取消与跨平台仍开放。
 2026-09-13：M06 对话成本持久化（变更 ID M06-20260913-15）。对话任务完成时保存适配器报告的 `cost`（未知保留 `null`），避免任务列表丢失费用上下文；先执行成本丢失 Red，再 Green；task-service focused 13/13、lint、typecheck 通过。真实提供方账单和 usage 对账仍开放。

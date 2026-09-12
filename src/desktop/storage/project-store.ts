@@ -809,6 +809,18 @@ const validateImportedContentClosure = (content: ProjectContentManifest, pack: A
   });
 };
 
+const importedRevisionPathPattern = /^documents\/[^/]+\.revisions\.json$/u;
+
+const rewriteImportedRevisionState = (bytes: Uint8Array, projectId: string): Uint8Array => {
+  const value = decodePackageJson<Record<string, unknown>>(bytes);
+  if (value.formatVersion !== 1 || !Array.isArray(value.revisions) || !Array.isArray(value.timeline)) throw new Error('INVALID_PACKAGE');
+  const revisions = value.revisions.map((revision) => {
+    if (!isRecord(revision) || typeof revision.projectId !== 'string') throw new Error('INVALID_PACKAGE');
+    return { ...revision, projectId };
+  });
+  return new TextEncoder().encode(`${JSON.stringify({ ...value, revisions }, null, 2)}\n`);
+};
+
 export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, input: ImportProjectPackageInput): Promise<ImportProjectPackageResult> => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
@@ -855,7 +867,8 @@ export const importProjectPackageToWorkspace = async (handle: WorkspaceHandle, i
     const bytes = pack.files[path];
     if (!bytes) throw new Error('INVALID_PACKAGE');
     mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, bytes, { flag: 'wx' });
+    const importedBytes = importedRevisionPathPattern.test(path) ? rewriteImportedRevisionState(bytes, created.projectId) : bytes;
+    writeFileSync(target, importedBytes, { flag: 'wx' });
   });
   const destinationManifestPath = join(destinationRoot, projectManifestName);
   const destinationManifest = readJson(destinationManifestPath, 'INVALID_PROJECT_MANIFEST') as ProjectManifest;
