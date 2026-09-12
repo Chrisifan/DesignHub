@@ -191,6 +191,7 @@
 2026-09-13：M04 项目包刷新映射（变更 ID M04-20260913-18）。Studio 初次打开与项目包导入后的刷新统一消费完整 `ActiveProject` 元数据，保留贡献者、设计师/品牌快照、文档尺寸及关联来源，避免导入后回退到示例占位。先新增 Studio Red，再 Green；Studio 导入回归 1/1、静态检查通过。
 
 2026-09-13：M07 非主文档定稿选择修复（变更 ID M07-20260913-14）。交付页定稿资格改为依据当前选中文档的 `finalizedRevisionId`，不再错误依赖项目顶层 `documentId`；多文档项目可正确导出第二及后续文档的定稿修订。先新增 `LibraryPages` Red，再 Green；focused 交付/导出 48/48、lint、typecheck、diff check 通过。归档流、颜色管理、Windows 与人工图像质量仍开放。
+2026-09-13：M07 项目包条目分类（变更 ID M07-20260913-15）。主进程项目包遍历复用路径分类策略，区分输出、预览、对话、凭据、字体与普通项目文件，确保只读交付白名单不会因默认标记而携带私有内容。先新增 package-policy Red，再 Green；package/IPC/export focused 10/10、lint、typecheck、diff check 通过。归档流、跨设备闭包、Windows 与人工扫描仍开放。
 
 ## 发布前检查
 

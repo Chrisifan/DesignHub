@@ -54,6 +54,7 @@ import { backupCreateChannel, backupRestoreChannel, createBackupHandler, restore
 import { createWorkspaceBackupStore } from './storage/backup-store';
 import { exportProjectPackageHandler, importProjectPackageHandler, projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 import { createProjectPackage, encodeProjectPackage } from '../features/delivery/project-package';
+import { classifyPackageEntry, type PackageEntryKind } from '../features/delivery/package-policy';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -100,14 +101,15 @@ const createElectronCredentialStore = (directory: string): SystemCredentialStore
 export const createMainProjectStore = (workspace: WorkspaceHandle) => createProjectStore(workspace);
 
 const collectProjectPackageEntries = (projectDirectory: string) => {
-  const entries: Array<{ path: string; bytes: Uint8Array; kind: 'manifest' }> = [];
+  const entries: Array<{ path: string; bytes: Uint8Array; kind: PackageEntryKind }> = [];
   const visit = (directory: string): void => {
     readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name)).forEach((entry) => {
       const path = join(directory, entry.name);
       if (entry.isSymbolicLink()) throw new Error('INVALID_PROJECT_PACKAGE_SOURCE');
       if (entry.isDirectory()) { visit(path); return; }
       if (!entry.isFile()) throw new Error('INVALID_PROJECT_PACKAGE_SOURCE');
-      entries.push({ path: relative(projectDirectory, path).split(sep).join('/'), bytes: new Uint8Array(readFileSync(path)), kind: 'manifest' });
+      const relativePath = relative(projectDirectory, path).split(sep).join('/');
+      entries.push({ path: relativePath, bytes: new Uint8Array(readFileSync(path)), kind: classifyPackageEntry(relativePath) });
     });
   };
   visit(projectDirectory);
