@@ -224,6 +224,10 @@ export const Workbench = ({
     setRevisionBusy(true);
     try {
       const contribution = revisionContributions('revision');
+      const imageLayer = scene.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image');
+      const candidateScene = imageLayer
+        ? replaceSceneLayer(scene, { ...imageLayer, assetId: entry.candidate.sceneAssetId ?? entry.candidate.assetIds[0]! })
+        : undefined;
       const committed = await getDesktopApi().commitDocumentRevision?.({
         workspaceId,
         projectId: project.id,
@@ -234,9 +238,11 @@ export const Workbench = ({
         assetIds: [...entry.candidate.assetIds],
         contributions: contribution,
         ...(operatorName.trim() ? { operatorName: operatorName.trim() } : {}),
+        ...(candidateScene ? { scene: candidateScene } : {}),
       });
       if (!committed) return;
       await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId: committed.revisionId });
+      if (candidateScene) persistScene(candidateScene);
       const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
       if (loaded) setRevisionState(loaded);
       notify(t(locale, '候选已定稿', 'Candidate finalized'));

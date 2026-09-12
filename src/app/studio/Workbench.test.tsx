@@ -416,3 +416,25 @@ it('binds image submissions to the latest document revision and exposes candidat
   fireEvent.click(screen.getByRole('button', { name: '继续' }));
   fireEvent.click(screen.getAllByRole('button', { name: '定稿' }).at(-1)!);
 });
+
+it('applies a finalized image candidate to the active canvas scene', async () => {
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null }));
+  const listTasks = vi.fn(async () => [{
+    id: 'task-image', requestId: 'request-image', state: 'completed' as const, cancelRequested: false, attempt: 1,
+    capability: 'image-generation', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' },
+    result: { candidate: { id: 'candidate-task-image', baseRevisionId: null, assetIds: ['asset-candidate'], sceneAssetId: 'asset-candidate', createdAt: '2026-09-13T00:00:00.000Z' } },
+  }]);
+  const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-final' }));
+  const setFinalDocumentRevision = vi.fn(async () => true);
+  const saveDocumentScene = vi.fn(async () => true);
+  const scene = createScene({ id: 'scene-current', width: 1080, height: 1440, layers: [{ id: 'image', type: 'image', assetId: 'asset-old', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false }] });
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, listTasks, commitDocumentRevision, setFinalDocumentRevision, saveDocumentScene };
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '定稿' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '定稿' }));
+  await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({
+    scene: expect.objectContaining({ layers: [expect.objectContaining({ assetId: 'asset-candidate' })] }),
+  })));
+  expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ layers: [expect.objectContaining({ assetId: 'asset-candidate' })] }) }));
+});

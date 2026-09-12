@@ -203,6 +203,8 @@
 
 2026-09-13：M08 工作区设置与持久化检索索引（变更 ID M08-20260913-12）。新增 `.designhub/settings.json` 和 `search-index.sqlite`，并通过受信 IPC 接入 Storage/Projects 页面；M02 备份 allowlist 与集成用例同步更新。focused storage/IPC/Studio/backup 17+25+35 tests、lint、typecheck、diff check 通过；真实 Windows、并发写者、崩溃恢复和大工作区基准仍开放。
 
+2026-09-13：M05/M06/M07 候选定稿场景同步（变更 ID M07-20260913-17）。工作台定稿图像候选时同时更新当前场景、持久化文档并将同一场景快照写入不可变修订，修复“历史已定稿但画布仍显示旧图”偏差。先新增 Workbench Red，再 Green；focused Workbench、lint、typecheck、diff check 通过。真实 Provider 输出、栅格质量和跨平台视觉证据仍开放。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。
