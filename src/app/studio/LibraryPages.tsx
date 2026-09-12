@@ -48,6 +48,7 @@ type AssetItem = {
   source: Localized;
   usage: Localized;
   artwork: 'market' | 'objects' | 'type' | 'blank';
+  managed?: boolean;
 };
 type BrandKit = {
   id: string;
@@ -119,6 +120,7 @@ const managedAssetToItem = (asset: ManagedAsset): AssetItem => {
     source: asset.externalReference ? { zh: '外部链接 · 未受管', en: 'External URL · unmanaged' } : { zh: '本机导入 · 受管副本', en: 'Local import · managed copy' },
     usage: { zh: '当前项目', en: 'Current project' },
     artwork: 'blank',
+    managed: !asset.externalReference,
   };
 };
 
@@ -360,8 +362,8 @@ const AssetsPage = ({
               {localize(locale, selected.usage)}
             </DetailRow>
             <DetailRow label={t(locale, '状态', 'Status')}>
-              <Badge tone="success">
-                {t(locale, '受管副本', 'Managed copy')}
+              <Badge tone={selected.managed === false ? 'warning' : 'success'}>
+                {selected.managed === false ? t(locale, '外部引用', 'External reference') : t(locale, '受管副本', 'Managed copy')}
               </Badge>
             </DetailRow>
           </dl>
