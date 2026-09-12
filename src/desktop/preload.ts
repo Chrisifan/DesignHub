@@ -6,7 +6,7 @@ import { designerLoadChannel, designerSaveChannel } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/assets';
 import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
 import { taskListChannel } from './ipc/tasks';
-import { conversationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
+import { conversationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, portfolioAnalysisSubmitChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { exportDocumentChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
@@ -56,6 +56,7 @@ const api: DesktopApi = {
   hasCredential: (connectionId) => ipcRenderer.invoke(credentialStatusChannel, connectionId),
   listTasks: (workspaceId) => ipcRenderer.invoke(taskListChannel, workspaceId),
   submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
+  submitPortfolioAnalysis: (input) => ipcRenderer.invoke(portfolioAnalysisSubmitChannel, input),
   submitImageGeneration: (input) => ipcRenderer.invoke(imageGenerationSubmitChannel, input),
   submitImageEdit: (input) => ipcRenderer.invoke(imageEditSubmitChannel, input),
   cancelTask: (workspaceId, taskId) => ipcRenderer.invoke(taskCancelChannel, { workspaceId, taskId }),

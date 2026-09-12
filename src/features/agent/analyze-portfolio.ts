@@ -11,7 +11,7 @@ export type AnalyzePortfolioInput = {
   adapter?: VisionAnalysisAdapter;
   signal?: AbortSignal;
 };
-export type AnalyzePortfolioResult = { taskId: string; designerDraftId: string; sourceIds: string[]; candidates: PersonaProfile[] };
+export type AnalyzePortfolioResult = { taskId: string; designerDraftId: string; sourceIds: string[]; candidates: PersonaProfile[]; cost: number | null };
 
 const createTaskId = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`;
 const maxPortfolioSources = 8;
@@ -98,12 +98,16 @@ export const analyzePortfolio = async (input: AnalyzePortfolioInput): Promise<An
   if (sourceIds.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
   if (!input.adapter || !input.sources?.length) throw new Error('VISION_ANALYSIS_UNAVAILABLE');
   const candidates: PersonaProfile[] = [];
+  let cost = 0;
+  let costKnown = true;
   for (const source of input.sources) {
     const request = { prompt: `Analyse portfolio source ${source.id}. Source description: ${source.description}. Return JSON with a candidates array of reviewable designer profile drafts. Do not invent provenance or claim identity.`, image: source.image };
     const response = input.signal ? await input.adapter.analyzeVision(request, input.signal) : await input.adapter.analyzeVision(request);
+    if (response.cost === null || response.cost === undefined) costKnown = false;
+    else cost += response.cost;
     candidates.push(...candidatesFromResponse(response.text, candidates.length));
   }
-  return { taskId: createTaskId('portfolio-analysis'), designerDraftId: input.designerDraftId, sourceIds, candidates: candidates.slice(0, 4) };
+  return { taskId: createTaskId('portfolio-analysis'), designerDraftId: input.designerDraftId, sourceIds, candidates: candidates.slice(0, 4), cost: costKnown ? cost : null };
 };
 
 export const parsePortfolioCandidates = (text: string): PersonaProfile[] => candidatesFromResponse(text, 0);

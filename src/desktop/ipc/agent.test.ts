@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { createConversationHandler, cancelTaskHandler, createImageEditHandler, createImageGenerationHandler, retryTaskHandler } from './agent';
+import { createConversationHandler, cancelTaskHandler, createImageEditHandler, createImageGenerationHandler, retryTaskHandler, createPortfolioAnalysisHandler } from './agent';
 import type { TaskRecord } from '../../features/tasks/state';
 
 const makeFixture = (url: string) => {
@@ -65,4 +65,22 @@ it('accepts image generation and edit only with validated project bindings', asy
     return task;
   });
   await expect(edited(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'remove', image: new Blob(['image']) })).resolves.toEqual(task);
+});
+
+it('accepts only explicit designer-draft portfolio vision sources from the trusted workspace', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1' } };
+  const submit = createPortfolioAnalysisHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
+    expect(input.source).toEqual({ kind: 'designer-draft', id: 'draft-1' });
+    expect(input.sources[0]?.image).toEqual({ url: 'https://img.test/a.png' });
+    return task;
+  });
+  await expect(submit(fixture.event, {
+    workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1',
+    sources: [{ id: 'source-a', description: 'poster', image: { url: 'https://img.test/a.png' } }],
+  })).resolves.toEqual(task);
+  await expect(submit(fixture.event, {
+    workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1',
+    sources: [{ id: 'source-a', description: 'poster', image: { url: 'file:///tmp/a.png' } }],
+  })).resolves.toBeNull();
 });

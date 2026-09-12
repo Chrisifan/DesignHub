@@ -4,6 +4,7 @@ import type { TaskSource } from '../tasks/state';
 import type { TaskRuntime } from '../tasks/runtime';
 import type { Region } from '../canvas/selection';
 import type { ImageTool } from '../image-tools/target';
+import { analyzePortfolio, type PortfolioImageSource } from './analyze-portfolio';
 
 export type ConversationInput = {
   projectId?: string;
@@ -43,14 +44,22 @@ export type ImageEditInput = {
   region?: Region;
 };
 
+export type PortfolioAnalysisInput = {
+  source: { kind: 'designer-draft'; id: string };
+  connectionId: string;
+  sources: PortfolioImageSource[];
+};
+
 type ConversationAdapter = {
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
+  analyzeVision?: (request: { prompt: string; image: { url: string } | { base64: string; mimeType?: string } }, signal?: AbortSignal) => Promise<ChatResponse>;
   generateImage?: (request: { prompt: string; model?: string; size?: string; count?: number }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
   editImage?: (request: { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: ImageTool; region?: Region }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
 };
 
 export type AgentTaskService = {
   submitConversation: (input: ConversationInput) => Promise<TaskRecord>;
+  submitPortfolioAnalysis: (input: PortfolioAnalysisInput) => Promise<TaskRecord>;
   submitImageGeneration: (input: ImageGenerationInput) => Promise<TaskRecord>;
   submitImageEdit: (input: ImageEditInput) => Promise<TaskRecord>;
   retry: (taskId: string) => Promise<TaskRecord | undefined>;
@@ -91,6 +100,33 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         } else {
           await options.runtime.fail(task.id, errorCode(error));
         }
+      } finally {
+        controllers.delete(task.id);
+      }
+    })();
+    pending.add(execution);
+    void execution.finally(() => pending.delete(execution));
+  };
+  const executePortfolioTask = async (task: TaskRecord, input: PortfolioAnalysisInput): Promise<void> => {
+    const controller = new AbortController();
+    controllers.set(task.id, controller);
+    const execution = (async (): Promise<void> => {
+      try {
+        const adapter = await options.resolveAdapter(input.connectionId);
+        const analysis = await analyzePortfolio({
+          designerDraftId: input.source.id,
+          connectionId: input.connectionId,
+          sources: input.sources,
+          adapter: adapter.analyzeVision ? { analyzeVision: adapter.analyzeVision } : undefined,
+          signal: controller.signal,
+        });
+        await options.runtime.complete(task.id, {
+          text: JSON.stringify({ candidates: analysis.candidates }),
+          cost: analysis.cost,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) await options.runtime.complete(task.id);
+        else await options.runtime.fail(task.id, errorCode(error));
       } finally {
         controllers.delete(task.id);
       }
@@ -167,6 +203,20 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       createdAt: new Date().toISOString(),
     });
     await executeTask(task, input);
+    return task;
+  };
+  const submitPortfolioAnalysis = async (input: PortfolioAnalysisInput): Promise<TaskRecord> => {
+    if (input.source.kind !== 'designer-draft' || !input.source.id.trim() || !input.connectionId.trim() || input.sources.length === 0) throw new Error('PORTFOLIO_TASK_BINDING_REQUIRED');
+    const task = options.runtime.start({
+      id: taskId(),
+      requestId: requestId(),
+      requestText: `Portfolio analysis: ${input.sources.map((source) => source.id).join(', ')}`,
+      source: { kind: 'designer-draft', id: input.source.id.trim() },
+      providerId: input.connectionId.trim(),
+      capability: 'vision-analysis',
+      createdAt: new Date().toISOString(),
+    });
+    await executePortfolioTask(task, input);
     return task;
   };
   const submitImageGeneration = async (input: ImageGenerationInput): Promise<TaskRecord> => {
@@ -247,5 +297,5 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await Promise.all([...pending]);
     await options.runtime.flush();
   };
-  return { submitConversation, submitImageGeneration, submitImageEdit, retry, cancel, flush };
+  return { submitConversation, submitPortfolioAnalysis, submitImageGeneration, submitImageEdit, retry, cancel, flush };
 };

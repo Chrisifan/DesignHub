@@ -22,7 +22,10 @@ import {
 import { Button, Field, Icon, Modal, PageHeader, t } from "./ui";
 import { getDesktopApi } from "../../platform/runtime";
 import type { DesignerDraftState } from "../../features/designers/persistence";
-import { parsePortfolioCandidates } from "../../features/agent/analyze-portfolio";
+import {
+  parsePortfolioCandidates,
+  type PortfolioImageSource,
+} from "../../features/agent/analyze-portfolio";
 import type { TaskRecord } from "../../features/tasks/state";
 
 type DesignerDraft = {
@@ -77,6 +80,50 @@ const profileToDraft = (
 
 const localized = (value: string): LocalizedText => ({ zh: value, en: value });
 
+const fileToBase64 = async (file: File): Promise<string> => {
+  if (typeof file.arrayBuffer === "function") {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(
+        ...bytes.subarray(offset, offset + chunkSize),
+      );
+    }
+    return window.btoa(binary);
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const [, base64 = ""] = result.split(",", 2);
+      if (base64) resolve(base64);
+      else reject(new Error("FILE_READ_FAILED"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FILE_READ_FAILED"));
+    reader.readAsDataURL(file);
+  });
+};
+
+const portfolioUrlSources = (value: string): PortfolioImageSource[] => value
+  .split(/\r?\n/u)
+  .map((line) => line.trim())
+  .filter(Boolean)
+  .map((url, index) => ({
+    id: `url-${index + 1}`,
+    description: url,
+    image: { url },
+  }));
+
+const portfolioFileSource = async (file: File, index: number): Promise<PortfolioImageSource> => ({
+  id: `file-${index + 1}-${file.name.replace(/[^a-z0-9._-]/giu, "-")}`,
+  description: file.name,
+  image: {
+    base64: await fileToBase64(file),
+    mimeType: file.type || "image/png",
+  },
+});
+
 type DesignerLibraryProps = {
   locale: Locale;
   notify: (message: string) => void;
@@ -130,6 +177,7 @@ export const DesignerLibrary = ({
   );
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [portfolioSources, setPortfolioSources] = useState("");
+  const [portfolioImageFiles, setPortfolioImageFiles] = useState<File[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string>();
   const [candidateProfiles, setCandidateProfiles] = useState<PersonaProfile[]>(
     [],
@@ -236,6 +284,7 @@ export const DesignerLibrary = ({
     setCandidatePhase("form");
     setRightsConfirmed(false);
     setPortfolioSources("");
+    setPortfolioImageFiles([]);
     setSelectedCandidateId(undefined);
     setCandidateProfiles([]);
     setAnalysisTaskId(undefined);
@@ -344,7 +393,7 @@ export const DesignerLibrary = ({
     }
     setEditor(null);
   };
-  const requestCandidates = () => {
+  const requestCandidates = async () => {
     if (creationSource === "portfolio" && !rightsConfirmed) {
       setCreationError(
         t(
@@ -355,7 +404,11 @@ export const DesignerLibrary = ({
       );
       return;
     }
-    if (creationSource === "portfolio" && !portfolioSources.trim()) {
+    if (
+      creationSource === "portfolio" &&
+      !portfolioSources.trim() &&
+      portfolioImageFiles.length === 0
+    ) {
       setCreationError(
         t(
           locale,
@@ -383,16 +436,65 @@ export const DesignerLibrary = ({
     if (workspaceId) {
       const draftId = `designer-${crypto.randomUUID()}`;
       const api = getDesktopApi();
-      const message =
-        creationSource === "portfolio"
-          ? `Analyse this portfolio for a designer persona:\n${portfolioSources.trim()}`
-          : `Create a designer persona from this style description.\nStyle summary: ${activeDraft.summary.trim()}\nCreative principle: ${activeDraft.principle.trim()}`;
-      const request = api.submitConversation?.({
-        workspaceId,
-        source: { kind: "designer-draft", id: draftId },
-        connectionId: "openai-compatible",
-        message,
-      });
+      let request: Promise<TaskRecord | null> | undefined;
+      try {
+        if (creationSource === "portfolio") {
+          const urls = portfolioUrlSources(portfolioSources);
+          const invalidUrl = urls.find((source) => {
+            if (!("url" in source.image)) return true;
+            try {
+              const parsed = new URL(source.image.url);
+              return (
+                (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+                Boolean(parsed.username || parsed.password)
+              );
+            } catch {
+              return true;
+            }
+          });
+          if (invalidUrl || urls.length + portfolioImageFiles.length > 8) {
+            setCandidatePhase("form");
+            setCreationError(
+              t(
+                locale,
+                "请使用有效图片链接，且来源不超过 8 个。",
+                "Use valid image URLs and no more than 8 sources.",
+              ),
+            );
+            return;
+          }
+          request = api.submitPortfolioAnalysis?.({
+            workspaceId,
+            source: { kind: "designer-draft", id: draftId },
+            connectionId: "openai-compatible",
+            sources: [
+              ...urls,
+              ...(await Promise.all(
+                portfolioImageFiles.map((file, index) =>
+                  portfolioFileSource(file, index),
+                ),
+              )),
+            ],
+          });
+        } else {
+          request = api.submitConversation?.({
+            workspaceId,
+            source: { kind: "designer-draft", id: draftId },
+            connectionId: "openai-compatible",
+            message: `Create a designer persona from this style description.\nStyle summary: ${activeDraft.summary.trim()}\nCreative principle: ${activeDraft.principle.trim()}`,
+          });
+        }
+      } catch {
+        setCandidatePhase("form");
+        setCreationError(
+          t(
+            locale,
+            "读取作品集图片失败，请重试。",
+            "Portfolio image files could not be read; try again.",
+          ),
+        );
+        return;
+      }
       if (!request) {
         setCandidatePhase("form");
         setCreationError(
@@ -706,12 +808,14 @@ export const DesignerLibrary = ({
           allowExampleCandidates={Boolean(!workspaceId)}
           rightsConfirmed={rightsConfirmed}
           portfolioSources={portfolioSources}
+          portfolioImageFiles={portfolioImageFiles}
           selectedCandidateId={selectedCandidateId}
           publishedInSession={publishedInSession}
           error={creationError}
           onSourceChange={setCreationSource}
           onRightsConfirmed={setRightsConfirmed}
           onPortfolioSourcesChange={setPortfolioSources}
+          onPortfolioImageFilesChange={setPortfolioImageFiles}
           onCandidatePhaseChange={setCandidatePhase}
           onCandidateSelect={setSelectedCandidateId}
           onRequestCandidates={requestCandidates}
@@ -735,12 +839,14 @@ const DesignerEditorModal = ({
   allowExampleCandidates,
   rightsConfirmed,
   portfolioSources,
+  portfolioImageFiles,
   selectedCandidateId,
   publishedInSession,
   error,
   onSourceChange,
   onRightsConfirmed,
   onPortfolioSourcesChange,
+  onPortfolioImageFilesChange,
   onCandidatePhaseChange,
   onCandidateSelect,
   onRequestCandidates,
@@ -758,12 +864,14 @@ const DesignerEditorModal = ({
   allowExampleCandidates: boolean;
   rightsConfirmed: boolean;
   portfolioSources: string;
+  portfolioImageFiles: File[];
   selectedCandidateId?: string;
   publishedInSession: boolean;
   error: string;
   onSourceChange: (source: "description" | "portfolio") => void;
   onRightsConfirmed: (value: boolean) => void;
   onPortfolioSourcesChange: (value: string) => void;
+  onPortfolioImageFilesChange: (files: File[]) => void;
   onCandidatePhaseChange: (phase: "form" | "review") => void;
   onCandidateSelect: (id: string) => void;
   onRequestCandidates: () => void;
@@ -872,6 +980,30 @@ const DesignerEditorModal = ({
                       onPortfolioSourcesChange(event.target.value)
                     }
                   />
+                </Field>
+                <Field
+                  label={t(locale, "作品集图片", "Portfolio image files")}
+                >
+                  <input
+                    aria-label={t(locale, "作品集图片", "Portfolio image files")}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(event) =>
+                      onPortfolioImageFilesChange(
+                        Array.from(event.target.files ?? []),
+                      )
+                    }
+                  />
+                  {portfolioImageFiles.length > 0 && (
+                    <small>
+                      {t(
+                        locale,
+                        `已选择 ${portfolioImageFiles.length} 个文件`,
+                        `${portfolioImageFiles.length} file(s) selected`,
+                      )}
+                    </small>
+                  )}
                 </Field>
                 <label className="check-row">
                   <input

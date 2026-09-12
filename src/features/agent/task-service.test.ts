@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import { createTaskRuntime } from '../tasks/runtime';
 import { createAgentTaskService } from './task-service';
@@ -299,4 +299,35 @@ it('fails image tasks that return no generated images', async () => {
   const task = await service.submitImageGeneration({ projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'empty result' });
   await service.flush();
   expect(runtime.get(task.id)).toMatchObject({ state: 'failed', errorCode: 'IMAGE_RESULT_EMPTY' });
+});
+
+it('runs a dedicated portfolio vision task for each explicit source', async () => {
+  const runtime = createTaskRuntime();
+  const analyzeVision = vi.fn(async (request: { prompt: string; image: { url: string } | { base64: string; mimeType?: string } }) => ({
+    text: JSON.stringify({ candidates: [{ name: { zh: "url" in request.image ? request.image.url : request.image.base64, en: "url" in request.image ? request.image.url : request.image.base64 } }] }),
+    cost: null,
+  }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      analyzeVision,
+    }),
+  });
+  const task = await service.submitPortfolioAnalysis({
+    source: { kind: 'designer-draft', id: 'designer-draft-vision' },
+    connectionId: 'provider-1',
+    sources: [
+      { id: 'source-a', description: 'first', image: { url: 'https://img.test/a.png' } },
+      { id: 'source-b', description: 'second', image: { url: 'https://img.test/b.png' } },
+    ],
+  });
+  await service.flush();
+  expect(analyzeVision).toHaveBeenCalledTimes(2);
+  expect(runtime.get(task.id)).toMatchObject({
+    state: 'completed',
+    capability: 'vision-analysis',
+    source: { kind: 'designer-draft', id: 'designer-draft-vision' },
+    result: { text: expect.stringContaining('https://img.test/a.png') },
+  });
 });

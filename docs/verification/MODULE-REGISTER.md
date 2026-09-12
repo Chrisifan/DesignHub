@@ -241,6 +241,7 @@
 2026-09-13：M05 只读画布写入边界（变更 ID M05-20260913-09）。只读工作区禁用 Workbench/CanvasWorkspace 场景、图层、修订和 provider 任务写入；先观察 Workbench Red，再 Green；Workbench focused 29/29、lint、typecheck 通过。原生只读窗口、Windows 与打包恢复仍开放。
 2026-09-13：M06 终态任务重启幂等（变更 ID M06-20260913-17）。任务运行时加载已完成/失败/取消记录后直接保持终态，不因内存去重表丢失而重复提交修订；先观察 runtime Red，再 Green；runtime focused 6/6、lint、typecheck 通过。真实跨进程回调、远端幂等与打包恢复仍开放。
 2026-09-13：M04 项目包元数据预检（变更 ID M04-20260913-26）。导入前通过共享项目 schema 校验 metadata，畸形文档列表统一返回 `INVALID_PACKAGE` 且不创建项目；先观察 project-store Red，再 Green；project-store focused 11/11、lint、typecheck、diff check 通过。历史迁移、磁盘满和跨设备仍开放。
+2026-09-13：M03/M06 作品集视觉来源桥接（变更 ID M03-20260913-06）。设计师作品集创建新增 HTTP(S) 链接与本地图片文件来源，文件在 renderer 侧转为 base64 后通过专用 `vision-analysis` 任务提交；可信 IPC 拒绝 `file:` URL、非法 base64、越界批次与非 `designer-draft` 来源，任务记录不保存原始字节。先观察 task-service/IPC/DesignerLibrary Red，再 Green；3 files/41 tests、lint、typecheck、diff check 通过。授权抓取、真实 provider 质量/取消、人物位图持久化、Windows 与人工图像质量仍开放。
 
 2026-09-13：M07 归档副本失败可恢复（变更 ID M07-20260913-20）。外部导出完成后，项目 `exports/` 归档副本冲突或目标盘失败不再撤销外部产物；导出结果返回 `archived: false` 与错误码，交付页保留外部路径并提示重试。先观察 export-document Red，再 Green；export/IPC/LibraryPages focused 39/39，lint、typecheck、diff check 通过。导出历史记录、归档索引/流式写入、Windows 与可移动磁盘仍开放。
 2026-09-13：M07 导出历史记录（变更 ID M07-20260913-21）。每次桌面导出在工作区 `.designhub/export-history.json` 原子记录项目/文档/修订、格式、目标、哈希、归档结果和成功状态；交付页显示最近记录，历史写入失败不会撤销已发布文件。先补 model/storage/IPC/UI Red，再 Green；focused 4 files/36 tests、lint、typecheck、diff check 通过。外部路径存活检查、归档索引/流式写入、Windows 与人工扫描仍开放。

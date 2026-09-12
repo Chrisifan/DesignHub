@@ -73,7 +73,7 @@ it("requires portfolio rights confirmation before entering candidate review", ()
 });
 
 it("submits a rights-confirmed portfolio analysis task for a workspace designer draft", async () => {
-  const submitConversation = vi.fn(async () => ({
+  const submitPortfolioAnalysis = vi.fn(async () => ({
     id: "task-portfolio",
     requestId: "request-portfolio",
     state: "running" as const,
@@ -82,7 +82,7 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
   }));
   window.designhub = {
     chooseWorkspaceDirectory: async () => null,
-    submitConversation,
+    submitPortfolioAnalysis,
   };
   render(
     <DesignerLibrary
@@ -99,14 +99,41 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
   fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "生成" }));
   await waitFor(() =>
-    expect(submitConversation).toHaveBeenCalledWith(
+    expect(submitPortfolioAnalysis).toHaveBeenCalledWith(
       expect.objectContaining({
         workspaceId: "workspace-1",
         source: expect.objectContaining({ kind: "designer-draft" }),
-        message: expect.stringContaining("https://example.com/portfolio.png"),
+        sources: expect.arrayContaining([
+          expect.objectContaining({ id: expect.any(String), image: { url: "https://example.com/portfolio.png" } }),
+        ]),
       }),
     ),
   );
+});
+
+it("imports selected portfolio image files as explicit base64 vision sources", async () => {
+  const submitPortfolioAnalysis = vi.fn(async () => ({
+    id: "task-file-portfolio",
+    requestId: "request-file-portfolio",
+    state: "running" as const,
+    cancelRequested: false,
+    attempt: 1,
+  }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, submitPortfolioAnalysis };
+  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-files" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Create" }));
+  fireEvent.click(screen.getByRole("button", { name: "Portfolio" }));
+  const file = new File(["image-bytes"], "reference.png", { type: "image/png" });
+  fireEvent.change(screen.getByLabelText("Portfolio image files"), { target: { files: [file] } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Portfolio sources" }), { target: { value: "https://example.com/second.png" } });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() => expect(submitPortfolioAnalysis).toHaveBeenCalledWith(expect.objectContaining({
+    sources: expect.arrayContaining([
+      expect.objectContaining({ description: "reference.png", image: expect.objectContaining({ mimeType: "image/png", base64: expect.any(String) }) }),
+      expect.objectContaining({ image: { url: "https://example.com/second.png" } }),
+    ]),
+  })));
 });
 
 it("reviews a completed portfolio candidate and persists the published profile", async () => {
@@ -136,7 +163,7 @@ it("reviews a completed portfolio candidate and persists the published profile",
   };
   window.designhub = {
     chooseWorkspaceDirectory: async () => null,
-    submitConversation: vi.fn(async () => ({
+    submitPortfolioAnalysis: vi.fn(async () => ({
       id: "task-complete",
       requestId: "request-1",
       state: "running" as const,
@@ -194,7 +221,7 @@ it("reviews a completed portfolio candidate and persists the published profile",
 it("does not show fabricated candidates when the completed portfolio task failed", async () => {
   window.designhub = {
     chooseWorkspaceDirectory: async () => null,
-    submitConversation: vi.fn(async () => ({
+    submitPortfolioAnalysis: vi.fn(async () => ({
       id: "task-failed",
       requestId: "request-1",
       state: "running" as const,
@@ -291,7 +318,7 @@ it("polls a running portfolio task until completed candidates are available", as
       ]);
     window.designhub = {
       chooseWorkspaceDirectory: async () => null,
-      submitConversation: vi.fn(async () => ({
+      submitPortfolioAnalysis: vi.fn(async () => ({
         id: "task-poll",
         requestId: "request-poll",
         state: "running" as const,

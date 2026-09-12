@@ -1,7 +1,8 @@
 import type { TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import type { AgentTaskService, ImageEditInput, ImageGenerationInput } from '../../features/agent/task-service';
+import type { AgentTaskService, ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } from '../../features/agent/task-service';
+import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
 
@@ -10,6 +11,7 @@ export const taskCancelChannel = 'agent:task-cancel';
 export const taskRetryChannel = 'agent:task-retry';
 export const imageGenerationSubmitChannel = 'agent:image-generation-submit';
 export const imageEditSubmitChannel = 'agent:image-edit-submit';
+export const portfolioAnalysisSubmitChannel = 'agent:portfolio-analysis-submit';
 
 type AgentSender = { mainFrame: { url: string }; getURL: () => string };
 type AgentRequest = { sender: AgentSender; senderFrame: { url: string } | null };
@@ -27,6 +29,7 @@ export type ConversationInput = {
 export type ConversationBridgeInput = ConversationInput & { workspaceId: string };
 export type ImageGenerationBridgeInput = ImageGenerationInput & { workspaceId: string };
 export type ImageEditBridgeInput = ImageEditInput & { workspaceId: string };
+export type PortfolioAnalysisBridgeInput = PortfolioAnalysisInput & { workspaceId: string };
 
 const isNonEmpty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 const isTaskSource = (value: unknown): value is TaskSource => value !== null
@@ -45,6 +48,32 @@ const isConversationInput = (value: unknown): value is ConversationBridgeInput =
     && (input.documentId === undefined || isNonEmpty(input.documentId))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId));
+};
+const isPortfolioImage = (value: unknown): value is PortfolioImageSource['image'] => {
+  if (!value || typeof value !== 'object') return false;
+  const image = value as Record<string, unknown>;
+  if (typeof image.url === 'string') {
+    if (image.url.length > 4096) return false;
+    try {
+      const parsed = new URL(image.url);
+      return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.username && !parsed.password;
+    } catch { return false; }
+  }
+  return typeof image.base64 === 'string' && image.base64.length > 0 && image.base64.length <= 20_000_000
+    && (image.mimeType === undefined || (typeof image.mimeType === 'string' && /^image\/[a-z0-9.+-]+$/iu.test(image.mimeType)));
+};
+const isPortfolioAnalysisInput = (value: unknown): value is PortfolioAnalysisBridgeInput => {
+  if (!value || typeof value !== 'object') return false;
+  const input = value as Record<string, unknown>;
+  const source = input.source;
+  if (!source || typeof source !== 'object' || (source as Record<string, unknown>).kind !== 'designer-draft' || !isNonEmpty((source as Record<string, unknown>).id)) return false;
+  if (!isNonEmpty(input.workspaceId) || !isNonEmpty(input.connectionId) || !Array.isArray(input.sources) || input.sources.length === 0 || input.sources.length > 8) return false;
+  return input.sources.every((item) => {
+    if (!item || typeof item !== 'object') return false;
+    const sourceItem = item as Record<string, unknown>;
+    return isNonEmpty(sourceItem.id) && sourceItem.id.length <= 128 && !/[\u0000-\u001F/\\]/u.test(sourceItem.id)
+      && isNonEmpty(sourceItem.description) && sourceItem.description.length <= 4000 && isPortfolioImage(sourceItem.image);
+  });
 };
 const isCancelInput = (value: unknown): value is { workspaceId: string; taskId: string } => value !== null
   && typeof value === 'object'
@@ -86,6 +115,18 @@ export const createConversationHandler = (
   submit: (workspace: WorkspaceHandle, input: ConversationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isConversationInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return submit(workspace, input);
+};
+
+export const createPortfolioAnalysisHandler = (
+  window: AgentWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  submit: (workspace: WorkspaceHandle, input: PortfolioAnalysisBridgeInput) => Promise<TaskRecord>,
+) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isPortfolioAnalysisInput(input)) return null;
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
   return submit(workspace, input);

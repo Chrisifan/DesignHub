@@ -46,7 +46,7 @@ import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import { createOpenAICompatibleAdapter } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createImageEditHandler, createImageGenerationHandler, imageEditSubmitChannel, imageGenerationSubmitChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createImageEditHandler, createImageGenerationHandler, createPortfolioAnalysisHandler, imageEditSubmitChannel, imageGenerationSubmitChannel, portfolioAnalysisSubmitChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
 import { exportSceneToFile } from './export-scene';
 import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
@@ -367,6 +367,13 @@ app.whenReady().then(() => {
     return createConversationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, conversation) => {
       const service = await getAgentTaskService();
       return service.submitConversation(conversation);
+    })(event, input);
+  });
+  ipcMain.handle(portfolioAnalysisSubmitChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createPortfolioAnalysisHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, portfolioInput) => {
+      const service = await getAgentTaskService();
+      return service.submitPortfolioAnalysis(portfolioInput);
     })(event, input);
   });
   ipcMain.handle(imageGenerationSubmitChannel, async (event, input) => {
