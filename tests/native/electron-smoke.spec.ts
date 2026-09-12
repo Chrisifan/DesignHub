@@ -31,6 +31,7 @@ test('launches the workspace shell with only the DesignHub bridge', async () => 
       'listTasks',
       'submitConversation',
       'cancelTask',
+      'retryTask',
     ]);
   } finally {
     await electronApp.close();

@@ -75,6 +75,7 @@
 2026-09-12：最终回归（变更 ID REL-20260912-01）。最终树执行 unit 63 文件/181 测试、integration 22 文件/96 测试、browser E2E 24/24、native 2 passed/1 skipped、lint/typecheck/build/diff check 全部通过；仅 packaged storage、真实模型/codec、系统钥匙串、Windows 与签名发布保留为外部门禁。
 
 2026-09-12：M05 工作台属性持久化（变更 ID M05-20260912-07）。`Workbench` 的标题、位置和不透明度编辑现在更新活动 `TextLayer` 并通过 `saveDocumentScene` 写回工作区文档；画布拖拽/加载继续同步检查器状态。先新增真实项目标题编辑失败测试再实现；全量 unit 70 files/221 tests、lint、typecheck 通过。影响 M05 P04 及 M06/M07 工作台消费者，已完成直接回归；原生进程恢复、打包存储和 Windows 仍开放。
+2026-09-12：M06 重试执行（变更 ID M06-20260912-07）。新增 `TaskRuntime.run`、`AgentTaskService.retry`、受信 retry IPC/preload bridge 和任务列表重试按钮；失败/取消任务复用已持久化 requestText 与 provider/source，创建新 attempt 并真实再次执行适配器，原终态记录保持不变。先写服务/IPC/UI Red，再 Green；focused 4 files/28 tests、lint、typecheck 通过。真实 provider 幂等、远端取消、系统钥匙串和 Windows 仍开放。
 
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 

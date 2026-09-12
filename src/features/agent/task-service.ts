@@ -19,6 +19,7 @@ type ConversationAdapter = {
 
 export type AgentTaskService = {
   submitConversation: (input: ConversationInput) => Promise<TaskRecord>;
+  retry: (taskId: string) => Promise<TaskRecord | undefined>;
   cancel: (taskId: string) => TaskRecord | undefined;
   flush: () => Promise<void>;
 };
@@ -39,21 +40,7 @@ const errorCode = (error: unknown): string => {
 export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentTaskService => {
   const controllers = new Map<string, AbortController>();
   const pending = new Set<Promise<unknown>>();
-  const submitConversation = async (input: ConversationInput): Promise<TaskRecord> => {
-    const source = input.source ?? (input.projectId?.trim() ? { kind: 'project' as const, id: input.projectId.trim() } : undefined);
-    if (!source?.id.trim() || !input.connectionId.trim() || !input.message.trim()) throw new Error('CONVERSATION_BINDING_REQUIRED');
-    const task = options.runtime.start({
-      id: taskId(),
-      requestId: requestId(),
-      requestText: input.message.trim(),
-      source,
-      ...(input.documentId ? { documentId: input.documentId } : {}),
-      ...(input.baseRevisionId === undefined ? {} : { baseRevisionId: input.baseRevisionId }),
-      ...(input.designerVersionId ? { designerVersionId: input.designerVersionId } : {}),
-      providerId: input.connectionId,
-      capability: 'conversation',
-      createdAt: new Date().toISOString(),
-    });
+  const executeTask = async (task: TaskRecord, input: ConversationInput): Promise<void> => {
     const controller = new AbortController();
     controllers.set(task.id, controller);
     const execution = (async (): Promise<void> => {
@@ -73,7 +60,41 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     })();
     pending.add(execution);
     void execution.finally(() => pending.delete(execution));
+  };
+  const submitConversation = async (input: ConversationInput): Promise<TaskRecord> => {
+    const source = input.source ?? (input.projectId?.trim() ? { kind: 'project' as const, id: input.projectId.trim() } : undefined);
+    if (!source?.id.trim() || !input.connectionId.trim() || !input.message.trim()) throw new Error('CONVERSATION_BINDING_REQUIRED');
+    const task = options.runtime.start({
+      id: taskId(),
+      requestId: requestId(),
+      requestText: input.message.trim(),
+      source,
+      ...(input.documentId ? { documentId: input.documentId } : {}),
+      ...(input.baseRevisionId === undefined ? {} : { baseRevisionId: input.baseRevisionId }),
+      ...(input.designerVersionId ? { designerVersionId: input.designerVersionId } : {}),
+      providerId: input.connectionId,
+      capability: 'conversation',
+      createdAt: new Date().toISOString(),
+    });
+    await executeTask(task, input);
     return task;
+  };
+  const retry = async (taskId: string): Promise<TaskRecord | undefined> => {
+    const previous = options.runtime.get(taskId);
+    if (!previous?.requestText || !previous.providerId || !previous.source?.id) return undefined;
+    const retried = options.runtime.retry(taskId);
+    if (!retried) return undefined;
+    const running = options.runtime.run(retried.id);
+    if (!running) return undefined;
+    await executeTask(running, {
+      source: previous.source,
+      ...(previous.documentId ? { documentId: previous.documentId } : {}),
+      ...(previous.baseRevisionId === undefined ? {} : { baseRevisionId: previous.baseRevisionId }),
+      ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
+      connectionId: previous.providerId,
+      message: previous.requestText,
+    });
+    return running;
   };
   const cancel = (taskIdValue: string): TaskRecord | undefined => {
     controllers.get(taskIdValue)?.abort();
@@ -83,5 +104,5 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await Promise.all([...pending]);
     await options.runtime.flush();
   };
-  return { submitConversation, cancel, flush };
+  return { submitConversation, retry, cancel, flush };
 };

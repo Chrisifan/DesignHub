@@ -37,7 +37,7 @@ import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import { createOpenAICompatibleAdapter } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, taskCancelChannel, conversationSubmitChannel } from './ipc/agent';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -206,6 +206,13 @@ app.whenReady().then(() => {
     return cancelTaskHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, taskId) => {
       const service = await getAgentTaskService();
       return Boolean(service.cancel(taskId));
+    })(event, input);
+  });
+  ipcMain.handle(taskRetryChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return retryTaskHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, taskId) => {
+      const service = await getAgentTaskService();
+      return service.retry(taskId);
     })(event, input);
   });
 });

@@ -68,3 +68,25 @@ it('binds a conversation to a creation draft without creating a project', async 
   });
   expect(task.source).toEqual({ kind: 'creation-draft', id: 'creation-1' });
 });
+
+it('retries a failed conversation as a new attempt and executes it', async () => {
+  const runtime = createTaskRuntime();
+  let calls = 0;
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error('offline'), { kind: 'http' });
+      return { text: 'recovered', cost: null };
+    } }),
+  });
+  const first = await service.submitConversation({ projectId: 'project-1', connectionId: 'provider-1', message: 'retry me' });
+  await service.flush();
+  expect(runtime.get(first.id)?.state).toBe('failed');
+  const retried = await service.retry(first.id);
+  expect(retried).toMatchObject({ state: 'running', attempt: 2, requestId: first.requestId });
+  await service.flush();
+  expect(calls).toBe(2);
+  expect(retried && runtime.get(retried.id)).toMatchObject({ state: 'completed', result: { text: 'recovered' } });
+  expect(runtime.get(first.id)?.state).toBe('failed');
+});

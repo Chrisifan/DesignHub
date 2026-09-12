@@ -44,6 +44,7 @@ export type DesktopApi = {
   listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
   cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;
+  retryTask?: (workspaceId: string, taskId: string) => Promise<TaskRecord | null>;
 };
 
 declare global {

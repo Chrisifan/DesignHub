@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { createConversationHandler, cancelTaskHandler } from './agent';
+import { createConversationHandler, cancelTaskHandler, retryTaskHandler } from './agent';
 import type { TaskRecord } from '../../features/tasks/state';
 
 const makeFixture = (url: string) => {
@@ -41,4 +41,12 @@ it('accepts an explicit creation-draft source', async () => {
     return task;
   });
   await expect(submit(fixture.event, { workspaceId: 'workspace-1', source: { kind: 'creation-draft', id: 'creation-1' }, connectionId: 'provider-1', message: 'brief' })).resolves.toEqual(task);
+});
+
+it('retries only through the active trusted workspace', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1' } };
+  const retry = retryTaskHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, taskId) => ({ ...task, id: `${taskId}-retry`, state: 'running' }));
+  await expect(retry(fixture.event, { workspaceId: 'workspace-1', taskId: 'task-1' })).resolves.toMatchObject({ id: 'task-1-retry' });
+  await expect(retry(fixture.event, { workspaceId: 'workspace-2', taskId: 'task-1' })).resolves.toBeNull();
 });

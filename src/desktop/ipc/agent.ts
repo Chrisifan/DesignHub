@@ -6,6 +6,7 @@ import { isTrustedWorkspaceRequest } from './workspace';
 
 export const conversationSubmitChannel = 'agent:conversation-submit';
 export const taskCancelChannel = 'agent:task-cancel';
+export const taskRetryChannel = 'agent:task-retry';
 
 type AgentSender = { mainFrame: { url: string }; getURL: () => string };
 type AgentRequest = { sender: AgentSender; senderFrame: { url: string } | null };
@@ -67,6 +68,18 @@ export const cancelTaskHandler = (
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return false;
   return cancel(workspace, input.taskId);
+};
+
+export const retryTaskHandler = (
+  window: AgentWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  retry: (workspace: WorkspaceHandle, taskId: string) => Promise<TaskRecord | undefined>,
+) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCancelInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return (await retry(workspace, input.taskId)) ?? null;
 };
 
 export const bindAgentTaskService = (service: AgentTaskService): AgentTaskService => service;

@@ -224,7 +224,7 @@ it('hydrates persisted model tasks in the task view', async () => {
   }]);
   window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks };
   render(<Harness initialView="tasks" workspaceId="workspace-1" />);
-  expect(await screen.findByText('处理中')).toBeInTheDocument();
+  expect((await screen.findAllByText('处理中')).length).toBeGreaterThan(0);
   expect(screen.getAllByText('1')).toHaveLength(2);
   expect(listTasks).toHaveBeenCalledWith('workspace-1');
 });
@@ -241,4 +241,22 @@ it('lets a running task be stopped through the desktop bridge', async () => {
   fireEvent.click(screen.getByRole('button', { name: '停止' }));
   await waitFor(() => expect(cancelTask).toHaveBeenCalledWith('workspace-1', 'task-1'));
   expect(await screen.findByText('已取消')).toBeInTheDocument();
+});
+
+it('lets a failed task create a new retry attempt through the desktop bridge', async () => {
+  const listTasks = vi.fn(async () => [{
+    id: 'task-1', requestId: 'request-1', state: 'failed' as const, cancelRequested: false, attempt: 1,
+    source: { kind: 'project' as const, id: 'project-1' }, requestText: '调整标题', errorCode: 'PROVIDER_UNAVAILABLE',
+  }]);
+  const retryTask = vi.fn(async () => ({
+    id: 'task-1-retry', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 2,
+    source: { kind: 'project' as const, id: 'project-1' }, requestText: '调整标题',
+  }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask };
+  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  await screen.findByText('失败');
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
+  await waitFor(() => expect(retryTask).toHaveBeenCalledWith('workspace-1', 'task-1'));
+  expect((await screen.findAllByText('处理中')).length).toBeGreaterThan(0);
+  expect(screen.getByText('2')).toBeInTheDocument();
 });

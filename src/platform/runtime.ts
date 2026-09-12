@@ -20,6 +20,7 @@ const unavailableDesktopApi: DesktopApi = {
   listTasks: async () => null,
   submitConversation: async () => null,
   cancelTask: async () => false,
+  retryTask: async () => null,
 };
 
 export const getDesktopApi = (): DesktopApi => {

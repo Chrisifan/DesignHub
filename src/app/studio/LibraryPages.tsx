@@ -604,6 +604,12 @@ const TasksPage = ({
       ? { ...task, state: 'cancelled', cancelRequested: true, updatedAt: new Date().toISOString() }
       : task));
   };
+  const retryTask = async (taskId: string): Promise<void> => {
+    if (!workspaceId) return;
+    const retried = await getDesktopApi().retryTask?.(workspaceId, taskId);
+    if (!retried) return;
+    setTasks((current) => [...current, retried]);
+  };
   return <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型任务', 'Model tasks')}
@@ -643,6 +649,7 @@ const TasksPage = ({
           {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : t(locale, '失败', 'Failed')}
         </Badge>
         {(task.state === 'queued' || task.state === 'running') && <Button variant="secondary" icon="x" onClick={() => { void stopTask(task.id); }}>{t(locale, '停止', 'Stop')}</Button>}
+        {(task.state === 'failed' || task.state === 'cancelled') && <Button variant="secondary" icon="rotate-ccw" onClick={() => { void retryTask(task.id); }}>{t(locale, '重试', 'Retry')}</Button>}
       </article>)}
     </div> : <EmptyState
       icon="clock"

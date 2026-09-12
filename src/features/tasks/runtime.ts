@@ -7,6 +7,7 @@ export type TaskRuntime = {
   get: (taskId: string) => TaskRecord | undefined;
   list: () => TaskRecord[];
   start: (task: Omit<TaskRecord, 'state' | 'cancelRequested' | 'attempt'>) => TaskRecord;
+  run: (taskId: string) => TaskRecord | undefined;
   cancel: (taskId: string) => TaskRecord | undefined;
   complete: (taskId: string, result?: TaskResult) => Promise<TaskRecord>;
   fail: (taskId: string, errorCode: string) => Promise<TaskRecord>;
@@ -43,6 +44,14 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     tasks.set(task.id, task);
     schedulePersistence();
     return structuredClone(task);
+  };
+  const run = (taskId: string): TaskRecord | undefined => {
+    const task = tasks.get(taskId);
+    if (!task) return undefined;
+    const running = transitionTask({ ...task, updatedAt: new Date().toISOString() }, 'running');
+    tasks.set(taskId, running);
+    schedulePersistence();
+    return structuredClone(running);
   };
   const cancel = (taskId: string): TaskRecord | undefined => {
     const task = tasks.get(taskId);
@@ -111,5 +120,5 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     return structuredClone(completed);
   };
   const flush = async (): Promise<void> => persistence;
-  return { get, list, start, cancel, complete, fail, retry, finish, flush };
+  return { get, list, start, run, cancel, complete, fail, retry, finish, flush };
 };
