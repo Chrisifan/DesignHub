@@ -8,6 +8,7 @@ import type { AssetImportResult, ManagedAsset } from '../features/assets/import-
 import type { DesignScene } from '../features/canvas/scene';
 import type { TaskRecord } from '../features/tasks/state';
 import type { TaskSource } from '../features/tasks/state';
+import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
 
 export type ConversationTaskInput = {
   workspaceId: string;
@@ -58,6 +59,9 @@ export type DesktopApi = {
   readAsset?: (input: AssetReadInput) => Promise<Uint8Array | null>;
   loadDocumentScene?: (workspaceId: string, projectId: string, documentId: string) => Promise<DesignScene | null>;
   saveDocumentScene?: (input: { workspaceId: string; projectId: string; documentId: string; scene: DesignScene }) => Promise<boolean>;
+  loadDocumentRevisions?: (workspaceId: string, projectId: string, documentId: string) => Promise<{ revisions: RevisionRecord[]; timeline: RevisionTimelineEvent[]; finalRevisionId: string | null } | null>;
+  commitDocumentRevision?: (input: CommitRevisionInput & { workspaceId: string }) => Promise<{ revisionId: string } | null>;
+  setFinalDocumentRevision?: (input: { workspaceId: string; projectId: string; documentId: string; revisionId: string }) => Promise<boolean | null>;
   storeCredential?: (connectionId: string, secret: string) => Promise<boolean>;
   deleteCredential?: (connectionId: string) => Promise<boolean>;
   listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;

@@ -1,4 +1,4 @@
-import { useId, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useId, useState, type CSSProperties, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
 import type { Project } from './types';
@@ -6,6 +6,7 @@ import { CanvasWorkspace } from '../../features/canvas/CanvasWorkspace';
 import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
+import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
 import {
   ArtworkPreview,
   Badge,
@@ -20,6 +21,7 @@ import './workbench.css';
 type LayerId = 'text' | 'shape' | 'image';
 type ContextPanel = 'properties' | 'conversation' | 'history' | 'tools';
 type LayerState = Record<LayerId, boolean>;
+type RevisionState = { revisions: RevisionRecord[]; timeline: RevisionTimelineEvent[]; finalRevisionId: string | null };
 
 export type WorkbenchProps = {
   locale: Locale;
@@ -91,6 +93,16 @@ export const Workbench = ({
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project));
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project)).width);
   const [resizeHeight, setResizeHeight] = useState(() => (providedScene ?? createInitialScene(project)).height);
+  const [revisionState, setRevisionState] = useState<RevisionState>({ revisions: [], timeline: [], finalRevisionId: null });
+  const [revisionBusy, setRevisionBusy] = useState(false);
+
+  useEffect(() => {
+    if (!workspaceId || !documentId) return undefined;
+    let cancelled = false;
+    const request = getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
+    void request?.then((loaded) => { if (!cancelled && loaded) setRevisionState(loaded); }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [documentId, project.id, workspaceId]);
 
   const persistScene = (nextScene: DesignScene): void => {
     setScene(nextScene);
@@ -110,6 +122,38 @@ export const Workbench = ({
     const textLayer = scene.layers.find((layer): layer is TextLayer => layer.type === 'text');
     if (!textLayer || textLayer.locked) return;
     persistScene(replaceSceneLayer(scene, { ...textLayer, ...patch }));
+  };
+  const saveRevision = async (): Promise<void> => {
+    if (!workspaceId || !documentId || revisionBusy) return;
+    setRevisionBusy(true);
+    try {
+      const result = await getDesktopApi().commitDocumentRevision?.({
+        workspaceId,
+        projectId: project.id,
+        documentId,
+        baseRevisionId: revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? null,
+        operationId: `workbench-${crypto.randomUUID()}`,
+        sceneAssetId: scene.id,
+        assetIds: scene.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image').map((layer) => layer.assetId),
+        contributions: [],
+      });
+      if (result) {
+        const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
+        if (loaded) setRevisionState(loaded);
+        notify(t(locale, '版本已保存', 'Version saved'));
+      }
+    } catch {
+      notify(t(locale, '版本保存失败', 'Could not save version'));
+    } finally { setRevisionBusy(false); }
+  };
+  const finalizeRevision = async (revisionId: string): Promise<void> => {
+    if (!workspaceId || !documentId || revisionBusy) return;
+    setRevisionBusy(true);
+    try {
+      const result = await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId });
+      if (result) setRevisionState((current) => ({ ...current, finalRevisionId: revisionId, timeline: current.timeline }));
+    } catch { notify(t(locale, '定稿失败', 'Could not finalize version')); }
+    finally { setRevisionBusy(false); }
   };
 
   const layerCopy: Record<
@@ -649,8 +693,17 @@ export const Workbench = ({
                     workspaceId ? 'The current document scene is saved to the workspace. Revision events appear after a version is committed.' : 'This example session contains only its baseline. Preview edits are not saved as a version.',
                   )}
                 </p>
+                {workspaceId && <Button variant="secondary" icon="save" disabled={revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>}
                 <ol className="workbench-history-list">
-                  <li>
+                  {revisionState.revisions.length > 0 ? revisionState.revisions.map((revision) => <li key={revision.revisionId}>
+                    <span className="workbench-history-marker" aria-hidden="true" />
+                    <div>
+                      <Badge tone={revisionState.finalRevisionId === revision.revisionId ? 'success' : ''}>{revisionState.finalRevisionId === revision.revisionId ? t(locale, '定稿', 'Final') : t(locale, '版本', 'Version')}</Badge>
+                      <strong>{revision.revisionId.slice(0, 8)}</strong>
+                      <p>{new Date(revision.createdAt).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US')}</p>
+                      {revisionState.finalRevisionId !== revision.revisionId && <Button variant="ghost" disabled={revisionBusy} onClick={() => { void finalizeRevision(revision.revisionId); }}>{t(locale, '定稿', 'Finalize')}</Button>}
+                    </div>
+                  </li>) : <li>
                     <span
                       className="workbench-history-marker"
                       aria-hidden="true"
@@ -662,7 +715,7 @@ export const Workbench = ({
                       </strong>
                       <p>{t(locale, '打开主海报', 'Main poster opened')}</p>
                     </div>
-                  </li>
+                  </li>}
                 </ol>
               </div>
             )}

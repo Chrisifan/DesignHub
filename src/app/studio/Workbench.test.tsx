@@ -242,3 +242,15 @@ it('persists property edits into the active document scene', async () => {
     scene: expect.objectContaining({ layers: [expect.objectContaining({ text: '新的标题' })] }),
   })));
 });
+
+it('loads persisted revisions and saves a new version from the history panel', async () => {
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null }));
+  const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-1' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, commitDocumentRevision };
+  const scene = createScene({ id: 'scene-1', width: 1080, height: 1440, layers: [] });
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  await waitFor(() => expect(loadDocumentRevisions).toHaveBeenCalledWith('workspace-1', 'spring-market', 'doc-1'));
+  fireEvent.click(screen.getByRole('button', { name: '保存版本' }));
+  await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', projectId: 'spring-market', documentId: 'doc-1', baseRevisionId: null, sceneAssetId: 'scene-1' })));
+});

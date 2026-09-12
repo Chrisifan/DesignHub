@@ -12,6 +12,7 @@ import { diagnosticsExportChannel } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
 import { projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
 import { projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
+import { revisionCommitChannel, revisionFinalizeChannel, revisionLoadChannel } from './ipc/revisions';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -37,6 +38,9 @@ const api: DesktopApi = {
   readAsset: (input) => ipcRenderer.invoke(assetReadChannel, input),
   loadDocumentScene: (workspaceId, projectId, documentId) => ipcRenderer.invoke(sceneLoadChannel, { workspaceId, projectId, documentId }),
   saveDocumentScene: (input) => ipcRenderer.invoke(sceneSaveChannel, input),
+  loadDocumentRevisions: (workspaceId, projectId, documentId) => ipcRenderer.invoke(revisionLoadChannel, { workspaceId, projectId, documentId }),
+  commitDocumentRevision: (input) => ipcRenderer.invoke(revisionCommitChannel, input),
+  setFinalDocumentRevision: (input) => ipcRenderer.invoke(revisionFinalizeChannel, input),
   storeCredential: (connectionId, secret) => ipcRenderer.invoke(credentialStoreChannel, connectionId, secret),
   deleteCredential: (connectionId) => ipcRenderer.invoke(credentialDeleteChannel, connectionId),
   listTasks: (workspaceId) => ipcRenderer.invoke(taskListChannel, workspaceId),

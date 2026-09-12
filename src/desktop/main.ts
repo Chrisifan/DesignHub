@@ -28,7 +28,9 @@ import { assetImportChannel, assetListChannel, assetReadChannel, importAssetsHan
 import { createAssetStore } from './storage/asset-store';
 import { loadDesignerState, saveDesignerState } from './storage/designer-store';
 import { loadDocumentScene, saveDocumentScene } from './storage/scene-store';
+import { commitDocumentRevision, loadDocumentRevisions, setFinalDocumentRevision } from './storage/revision-store';
 import { loadDocumentSceneHandler, saveDocumentSceneHandler, sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
+import { commitRevisionHandler, finalizeRevisionHandler, loadRevisionsHandler, revisionCommitChannel, revisionFinalizeChannel, revisionLoadChannel } from './ipc/revisions';
 import { runStorageSmoke } from './storage/storage-smoke';
 import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
@@ -249,6 +251,18 @@ app.whenReady().then(() => {
   ipcMain.handle(sceneSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return saveDocumentSceneHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectId, documentId, scene) => saveDocumentScene(workspace, workspace.workspace.workspaceId, projectId, documentId, scene))(event, input);
+  });
+  ipcMain.handle(revisionLoadChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return loadRevisionsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, target) => loadDocumentRevisions(workspace, target.workspaceId, target.projectId, target.documentId))(event, input);
+  });
+  ipcMain.handle(revisionCommitChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return commitRevisionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, revisionInput) => commitDocumentRevision(workspace, revisionInput))(event, input);
+  });
+  ipcMain.handle(revisionFinalizeChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return finalizeRevisionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, revisionInput) => setFinalDocumentRevision(workspace, revisionInput))(event, input);
   });
   ipcMain.handle(credentialStoreChannel, async (event, connectionId, secret) => {
     if (!activeWindow || !activeTrustedUrl) return false;
