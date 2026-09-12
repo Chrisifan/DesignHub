@@ -376,8 +376,8 @@ const AssetsPage = ({
             <Icon name="lock" size={15} />
             {t(
               locale,
-              '此页只浏览示例元数据，不读取或写入本机文件。',
-              'This page only browses example metadata and does not read or write local files.',
+              usingManagedAssets ? '受管原图保留在当前工作区，外部引用不会自动下载。' : '此页只浏览示例元数据，不读取或写入本机文件。',
+              usingManagedAssets ? 'Managed originals stay in this workspace; external references are not downloaded automatically.' : 'This page only browses example metadata and does not read or write local files.',
             )}
           </p>
         </aside> : <div className="details-panel asset-details"><EmptyState icon="image" title={t(locale, '暂无素材', 'No assets yet')} description={t(locale, '导入素材后会显示在这里。', 'Import assets to see them here.')} /></div>}
@@ -390,10 +390,12 @@ const BrandsPage = ({
   locale,
   selectedId,
   onSelect,
+  workspaceId,
 }: {
   locale: Locale;
   selectedId: string;
   onSelect: (id: string) => void;
+  workspaceId?: string;
 }) => {
   const selected = brands.find((brand) => brand.id === selectedId) ?? brands[0];
   return (
@@ -488,8 +490,8 @@ const BrandsPage = ({
             <Icon name="history" size={15} />
             {t(
               locale,
-              '示例项目不会自动升级到当前品牌版本。',
-              'Example projects are not automatically upgraded to the current brand version.',
+              workspaceId ? '项目继续使用创建时保存的品牌快照。' : '示例项目不会自动升级到当前品牌版本。',
+              workspaceId ? 'Projects continue using their creation-time brand snapshot.' : 'Example projects are not automatically upgraded to the current brand version.',
             )}
           </p>
         </aside>
@@ -714,6 +716,7 @@ const DeliveryPage = ({
             'PNG uses sRGB and keeps the current canvas pixel dimensions.',
           );
   const projectName = project ? t(locale, project.name, project.enName) : '';
+  const persistedProject = Boolean(project?.workspaceId);
   const exportCurrent = async (): Promise<void> => {
     if (!project?.workspaceId || !project.documentId) return;
     setExporting(true);
@@ -740,13 +743,13 @@ const DeliveryPage = ({
     <section className="page-content library-page">
       <PageHeader
         title={t(locale, '导出交付', 'Delivery')}
-        eyebrow={t(locale, '示例原稿', 'Example source artwork')}
+        eyebrow={t(locale, persistedProject ? '当前原稿' : '示例原稿', persistedProject ? 'Current source artwork' : 'Example source artwork')}
         description={
           project
             ? t(
                 locale,
-                `为${project.name}配置输出格式。左侧显示项目示例原稿。`,
-                `Configure output for ${project.enName}. The project’s example source artwork appears on the left.`,
+                persistedProject ? `为${project.name}配置输出格式。左侧显示当前文档原稿。` : `为${project.name}配置输出格式。左侧显示项目示例原稿。`,
+                persistedProject ? `Configure output for ${project.enName}. The current document source appears on the left.` : `Configure output for ${project.enName}. The project’s example source artwork appears on the left.`,
               )
             : t(
                 locale,
@@ -828,7 +831,7 @@ const DeliveryPage = ({
             <Field label={t(locale, '来源', 'Source')}>
               <select value="example" disabled>
                 <option value="example">
-                  {t(locale, '示例原稿', 'Example source artwork')}
+                  {t(locale, persistedProject ? '当前文档' : '示例原稿', persistedProject ? 'Current document' : 'Example source artwork')}
                 </option>
               </select>
             </Field>
@@ -853,8 +856,8 @@ const DeliveryPage = ({
               <small>
                 {t(
                   locale,
-                  '仅配置选项；示例不会写入 exports 目录。',
-                  'Configuration only; the example does not write to the exports directory.',
+                  persistedProject ? '导出会读取当前文档，并可选择归档副本。' : '仅配置选项；示例不会写入 exports 目录。',
+                  persistedProject ? 'Export reads the current document and can archive a copy.' : 'Configuration only; the example does not write to the exports directory.',
                 )}
               </small>
             </span>
@@ -867,8 +870,8 @@ const DeliveryPage = ({
               <span>
                 {t(
                   locale,
-                  '桌面导出能力接入后才可执行。',
-                  'Available after desktop export support is connected.',
+                  persistedProject ? '使用桌面保存对话框写出并校验文件。' : '桌面导出能力接入后才可执行。',
+                  persistedProject ? 'Use the desktop save dialog to write and validate the file.' : 'Available after desktop export support is connected.',
                 )}
               </span>
             </div>
@@ -1326,6 +1329,7 @@ export const LibraryPages = ({
         locale={locale}
         selectedId={selectedBrand}
         onSelect={setSelectedBrand}
+        workspaceId={workspaceId}
       />
     ),
     connections: <ConnectionsPage locale={locale} navigate={navigate} />,
