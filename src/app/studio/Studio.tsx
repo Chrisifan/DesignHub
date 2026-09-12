@@ -23,6 +23,7 @@ import {
   t,
 } from './ui';
 import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
+import type { ProjectDocumentMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool } from '../../features/image-tools/target';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
@@ -87,6 +88,10 @@ export const Studio = ({
   const [creationDraftId, setCreationDraftId] = useState<string | null>(null);
   const [conversationResult, setConversationResult] = useState<{ taskId: string; text: string } | null>(null);
   const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
+  const [relatedDialog, setRelatedDialog] = useState(false);
+  const [relatedName, setRelatedName] = useState('');
+  const [relatedWidth, setRelatedWidth] = useState('1080');
+  const [relatedHeight, setRelatedHeight] = useState('1080');
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(personaProfiles);
   const [modelConnected, setModelConnected] = useState(false);
@@ -122,7 +127,7 @@ export const Studio = ({
           brandSnapshot: entry.brandSnapshot,
           artwork: 'blank' as const,
           documents: entry.documents?.length ?? 1,
-          documentEntries: entry.documents?.map(({ id, name, width, height }) => ({ id, name, width, height })),
+          documentEntries: entry.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
           archived: entry.archived,
         })));
       }).catch(() => undefined);
@@ -172,7 +177,7 @@ export const Studio = ({
     setSelected(null);
   };
   const notify = (message: string) => setNotice(message);
-  const updateProject = async (patch: { name?: string; archived?: boolean; activeDesignerVersionId?: string; designerSnapshot?: unknown }): Promise<void> => {
+  const updateProject = async (patch: ProjectMetadataPatch): Promise<void> => {
     if (!workspace || !selected || workspace.openMode !== 'writable') return;
     try {
       const metadata = await getDesktopApi().updateProjectMetadata?.({ workspaceId: workspace.workspaceId, projectId: selected.id, patch });
@@ -184,6 +189,7 @@ export const Studio = ({
         description: metadata.brief ?? project.description,
         enDescription: metadata.brief ?? project.enDescription,
         documents: metadata.documents.length || project.documents,
+        documentEntries: metadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
         archived: metadata.archived,
         activeDesignerVersionId: metadata.activeDesignerVersionId,
         designerSnapshot: metadata.designerSnapshot,
@@ -195,6 +201,7 @@ export const Studio = ({
         description: metadata.brief ?? current.description,
         enDescription: metadata.brief ?? current.enDescription,
         documents: metadata.documents.length || current.documents,
+        documentEntries: metadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
         archived: metadata.archived,
         activeDesignerVersionId: metadata.activeDesignerVersionId,
         designerSnapshot: metadata.designerSnapshot,
@@ -203,6 +210,43 @@ export const Studio = ({
     } catch {
       notify(t(locale, '项目更新失败，请重试', 'Project update failed; try again'));
     }
+  };
+  const openRelatedDialog = (): void => {
+    if (!workspace || workspace.openMode !== 'writable' || !selected) return;
+    const source = selected.documentEntries?.find((entry) => entry.id === (activeDocumentId ?? selected.documentId)) ?? selected.documentEntries?.[0];
+    if (!source?.finalizedRevisionId) {
+      notify(t(locale, '请先定稿源文档', 'Finalize the source document first'));
+      return;
+    }
+    setRelatedName('');
+    setRelatedWidth('1080');
+    setRelatedHeight('1080');
+    setRelatedDialog(true);
+  };
+  const createRelatedSize = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    if (!workspace || workspace.openMode !== 'writable' || !selected) return;
+    const source = selected.documentEntries?.find((entry) => entry.id === (activeDocumentId ?? selected.documentId)) ?? selected.documentEntries?.[0];
+    const width = Number(relatedWidth);
+    const height = Number(relatedHeight);
+    if (!source?.finalizedRevisionId || !relatedName.trim() || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      notify(t(locale, '尺寸信息无效', 'Enter a valid document name and size'));
+      return;
+    }
+    const documents: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>> = (selected.documentEntries ?? []).map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      width: entry.width,
+      height: entry.height,
+      ...(entry.sourceDocumentId ? { sourceDocumentId: entry.sourceDocumentId } : {}),
+      ...(entry.sourceRevisionId ? { sourceRevisionId: entry.sourceRevisionId } : {}),
+      ...(entry.finalizedRevisionId ? { finalizedRevisionId: entry.finalizedRevisionId } : {}),
+    }));
+    documents.push({ id: `doc-${crypto.randomUUID()}`, name: relatedName.trim(), width, height, sourceDocumentId: source.id, sourceRevisionId: source.finalizedRevisionId, finalizedRevisionId: null });
+    await updateProject({ documents });
+    setRelatedDialog(false);
+    setActiveDocumentId(documents[documents.length - 1]!.id);
+    notify(t(locale, '关联尺寸已创建', 'Related size created'));
   };
   const switchProjectDesigner = async (designerId: string): Promise<void> => {
     if (!selected || !workspace || workspace.openMode !== 'writable') return;
@@ -936,9 +980,16 @@ export const Studio = ({
               </div>
               <div className="section-title">
                 <h2>{t(locale, '设计文档', 'Design documents')}</h2>
-                <span>
-                  {selected.documents} {t(locale, '份物料', 'deliverables')}
-                </span>
+                <div className="section-title__actions">
+                  <span>
+                    {selected.documents} {t(locale, '份物料', 'deliverables')}
+                  </span>
+                  {workspace?.openMode === 'writable' && selected.workspaceId && (
+                    <Button icon="plus" onClick={openRelatedDialog}>
+                      {t(locale, '新建尺寸', 'New size')}
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="document-collection">
                 {Array.from({ length: selected.documents }, (_, index) => (
@@ -1145,6 +1196,28 @@ export const Studio = ({
             <Button onClick={() => setProjectDialog(null)}>{t(locale, '取消', 'Cancel')}</Button>
             <Button variant="primary" icon="check" disabled={!projectNameDraft.trim()} onClick={() => { setProjectDialog(null); void updateProject({ name: projectNameDraft }); }}>{t(locale, '保存', 'Save')}</Button>
           </div>
+        </Modal>
+      )}
+      {relatedDialog && selected && (
+        <Modal title={t(locale, '创建关联尺寸', 'Create related size')} locale={locale} onClose={() => setRelatedDialog(false)}>
+          <form onSubmit={(event) => { void createRelatedSize(event); }}>
+            <Field label={t(locale, '文档名称', 'Document name')}>
+              <input autoFocus value={relatedName} onChange={(event) => setRelatedName(event.target.value)} />
+            </Field>
+            <div className="form-grid form-grid--two">
+              <Field label={t(locale, '宽度', 'Width')}>
+                <input type="number" min="1" step="1" value={relatedWidth} onChange={(event) => setRelatedWidth(event.target.value)} />
+              </Field>
+              <Field label={t(locale, '高度', 'Height')}>
+                <input type="number" min="1" step="1" value={relatedHeight} onChange={(event) => setRelatedHeight(event.target.value)} />
+              </Field>
+            </div>
+            <p className="inline-notice"><Icon name="git-branch" size={16} />{t(locale, '新文档会记录源文档与定稿版本，但拥有独立画布。', 'The new document records its source and final revision while keeping an independent canvas.')}</p>
+            <div className="dialog-actions">
+              <Button type="button" onClick={() => setRelatedDialog(false)}>{t(locale, '取消', 'Cancel')}</Button>
+              <Button type="submit" variant="primary" icon="check" disabled={!relatedName.trim()}>{t(locale, '创建尺寸', 'Create size')}</Button>
+            </div>
+          </form>
         </Modal>
       )}
     </>

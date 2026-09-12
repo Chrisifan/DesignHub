@@ -35,7 +35,7 @@ export type Project = {
   brandSnapshot?: unknown;
   artwork: Artwork;
   documents: number;
-  documentEntries?: Array<{ id: string; name: string; width: number; height: number }>;
+  documentEntries?: Array<{ id: string; name: string; width: number; height: number; sourceDocumentId?: string; sourceRevisionId?: string | null; finalizedRevisionId?: string | null }>;
   archived?: boolean;
 };
 export type PageProps = {

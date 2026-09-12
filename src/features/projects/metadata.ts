@@ -3,6 +3,8 @@ export type ProjectDocumentMetadata = {
   name: string;
   width: number;
   height: number;
+  sourceDocumentId?: string;
+  sourceRevisionId?: string | null;
   finalizedRevisionId?: string | null;
   updatedAt: string;
 };
@@ -35,7 +37,9 @@ export type ProjectMetadataInput = {
   updatedAt?: string;
 };
 
-export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'activeDesignerVersionId' | 'designerSnapshot' | 'brandSnapshot' | 'documents' | 'archived'>>;
+export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'activeDesignerVersionId' | 'designerSnapshot' | 'brandSnapshot' | 'archived'>> & {
+  documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
+};
 
 const clone = <T>(value: T): T => structuredClone(value);
 

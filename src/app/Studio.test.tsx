@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { Studio } from './studio/Studio';
+import type { ProjectMetadata } from '../features/projects/metadata';
+import type { UpdateProjectMetadataInput } from '../features/workspace/project-store';
 
 beforeEach(() => {
   localStorage.clear();
@@ -225,6 +227,51 @@ it('opens each persisted document with its own size and scene target', async () 
   await waitFor(() => expect(loadDocumentScene).toHaveBeenCalledWith('workspace-1', 'project-1', 'doc-square'));
   expect(screen.getByText('方图')).toBeInTheDocument();
   expect(screen.getByText('1080 × 1080 px')).toBeInTheDocument();
+});
+
+it('creates a related-size document from a finalized source revision', async () => {
+  const listActiveProjects = vi.fn(async () => [{
+    projectId: 'project-related',
+    name: '关联尺寸项目',
+    documents: [{
+      id: 'doc-main',
+      name: '主海报',
+      width: 1080,
+      height: 1440,
+      finalizedRevisionId: 'revision-final',
+      updatedAt: '2026-09-12T00:00:00.000Z',
+    }],
+  }]);
+  const updateProjectMetadata = vi.fn(async ({ patch }: UpdateProjectMetadataInput): Promise<ProjectMetadata> => ({
+    projectId: 'project-related',
+    workspaceId: 'workspace-1',
+    name: '关联尺寸项目',
+    documents: (patch.documents ?? []).map((document) => ({
+      ...document,
+      updatedAt: '2026-09-13T00:00:00.000Z',
+    })) ?? [],
+    archived: false,
+    createdAt: '2026-09-12T00:00:00.000Z',
+    updatedAt: '2026-09-13T00:00:00.000Z',
+  }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, updateProjectMetadata };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('button', { name: '关联尺寸项目' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '关联尺寸项目' }));
+  fireEvent.click(screen.getByRole('button', { name: '新建尺寸' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '文档名称' }), { target: { value: '社媒方图' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '1080' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: '高度' }), { target: { value: '1080' } });
+  fireEvent.click(screen.getByRole('button', { name: '创建尺寸' }));
+  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({
+    projectId: 'project-related',
+    patch: expect.objectContaining({
+      documents: expect.arrayContaining([
+        expect.objectContaining({ id: expect.stringMatching(/^doc-/), name: '社媒方图', width: 1080, height: 1080, sourceDocumentId: 'doc-main', sourceRevisionId: 'revision-final' }),
+      ]),
+    }),
+  })));
+  expect((await screen.findAllByText('社媒方图')).length).toBeGreaterThan(0);
 });
 
 it('submits conversation creation as a draft task before any project exists', async () => {

@@ -130,6 +130,8 @@
 
 2026-09-13：最终整体验证（变更 ID REL-20260913-01）。在最新主分支串行完成 `pnpm test:unit`（83 files/294 tests）、`pnpm test:integration`（23 files/100 tests）、`pnpm test:e2e`（24/24）、`pnpm test:native`（2 passed/1 skipped，未设置 `DESIGNHUB_PACKAGED_APP_PATH`）、`pnpm lint`、`pnpm typecheck`、`pnpm build` 与 `git diff --check`，全部退出 0。native 必须在 build 完成后单独执行；并行 build/native 的一次尝试出现启动时序失败，单独重跑确认无代码回归。`.idea/` 为用户已有未跟踪目录，未纳入提交。
 
+2026-09-13：M04 关联尺寸创建（变更 ID M04-20260913-01）。Studio 在已定稿文档上提供 `新建尺寸` 入口，创建独立文档并记录源文档/定稿修订来源；无定稿源时拒绝创建，原有文档元数据在更新时保留。先新增 Studio Red 回归，再 Green；focused Studio/metadata 2 files/22 tests、lint、typecheck、diff check 通过。关联布局转换、跨文档比较、独立定稿的 M07/M05 全链路质量验证仍开放。
+
 2026-09-13：macOS packaged native 回归（变更 ID REL-20260913-02）。使用现有 `out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub` 设置 `DESIGNHUB_PACKAGED_APP_PATH` 执行 `pnpm test:native`，source smoke、main storage 与 packaged storage 共 3/3 通过；Windows、签名/公证、升级卸载与钥匙串持久化仍开放。
 
 2026-09-13：M03 描述建师任务闭环（变更 ID M03-20260913-02）。工作区内按描述创建设计师时提交 `designer-draft` 任务，消息包含风格说明与创作原则；完成任务解析为候选，运行中复用 500ms/12 次有界轮询，失败或不可用不展示伪造候选；无工作区示例仍保持离线预览。先新增描述路径 Red 回归，再 Green；`DesignerLibrary` focused 16/16、lint、typecheck、diff check 通过。真实 provider、授权来源传输、人物位图和跨平台图像质量仍开放。
