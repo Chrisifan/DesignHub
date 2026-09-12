@@ -18,6 +18,14 @@ it('stores and deletes credentials without exposing a read-back operation', asyn
   expect(store.hasCredential('provider-a')).toBe(false);
 });
 
+it('keeps provider secret retrieval internal to the host', async () => {
+  const store = createInMemoryCredentialStore();
+  const boundary = createCredentialBoundary(store);
+  expect(await boundary.storeCredential('provider-a', 'secret-value')).toBe(true);
+  expect(await store.getCredential('provider-a')).toBe('secret-value');
+  expect('getCredential' in boundary).toBe(false);
+});
+
 it('rejects invalid input and never falls back to plaintext storage', async () => {
   const writes: string[] = [];
   const store = {

@@ -113,6 +113,8 @@
 
 2026-09-12：native bridge regression（变更 ID M01-20260912-03）。品牌 load/save API 加入 preload 白名单后更新 Electron smoke 期望并重跑；`pnpm test:native` 2 passed、1 skipped（未配置 packaged executable）。
 
+2026-09-12：M06 secure provider credentials（变更 ID M06-20260912-09）。主进程使用 Electron `safeStorage` 保存/读取连接密钥并供 Agent adapter 使用，renderer 仍无读回 API；integration credential、agent IPC、lint/typecheck/build/native smoke 均通过。系统钥匙串可用性、真实 provider 和 Windows 仍开放。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：

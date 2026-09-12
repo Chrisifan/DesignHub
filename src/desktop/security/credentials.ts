@@ -1,6 +1,7 @@
 export type SystemCredentialStore = {
   setCredential: (connectionId: string, secret: string) => Promise<void>;
   deleteCredential: (connectionId: string) => Promise<void>;
+  getCredential?: (connectionId: string) => Promise<string | null>;
 };
 
 export type CredentialBoundary = {
@@ -34,6 +35,7 @@ export const createCredentialBoundary = (store: SystemCredentialStore): Credenti
 
 export const createInMemoryCredentialStore = (): SystemCredentialStore & {
   hasCredential: (connectionId: string) => boolean;
+  getCredential: (connectionId: string) => Promise<string | null>;
 } => {
   const values = new Map<string, string>();
   return {
@@ -43,6 +45,7 @@ export const createInMemoryCredentialStore = (): SystemCredentialStore & {
     deleteCredential: async (connectionId) => {
       values.delete(connectionId);
     },
+    getCredential: async (connectionId) => values.get(connectionId) ?? null,
     hasCredential: (connectionId) => values.has(connectionId),
   };
 };

@@ -1,9 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 
 import {
   createWorkspaceFromParentHandler,
@@ -37,7 +37,7 @@ import { runStorageSmoke } from './storage/storage-smoke';
 import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
 import { createWindowOptions } from './window-options';
-import { createCredentialBoundary, createUnavailableCredentialStore } from './security/credentials';
+import { createCredentialBoundary, createUnavailableCredentialStore, type SystemCredentialStore, type CredentialBoundary } from './security/credentials';
 import { listTasksHandler, taskListChannel } from './ipc/tasks';
 import { loadTaskState } from './storage/task-store';
 import { saveTaskState } from './storage/task-store';
@@ -57,7 +57,43 @@ let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
 let activeWorkspaceHandle: WorkspaceHandle | null = null;
 let taskServicePromise: Promise<AgentTaskService> | null = null;
-const credentialBoundary = createCredentialBoundary(createUnavailableCredentialStore());
+let credentialStore: SystemCredentialStore = createUnavailableCredentialStore();
+let credentialBoundary: CredentialBoundary = createCredentialBoundary(credentialStore);
+
+const createElectronCredentialStore = (directory: string): SystemCredentialStore => {
+  const file = join(directory, 'credentials.bin');
+  let cache: Record<string, string> | null = null;
+  const load = async (): Promise<Record<string, string>> => {
+    if (cache) return cache;
+    try {
+      const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
+      cache = parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {};
+    } catch { cache = {}; }
+    return cache;
+  };
+  const persist = async (next: Record<string, string>): Promise<void> => {
+    await mkdir(directory, { recursive: true });
+    const temporary = `${file}.tmp-${randomUUID()}`;
+    try { await writeFile(temporary, JSON.stringify(next), { encoding: 'utf8', flag: 'wx' }); await rename(temporary, file); }
+    catch (error) { await rm(temporary, { force: true }); throw error; }
+  };
+  return {
+    setCredential: async (connectionId, secret) => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error('SYSTEM_CREDENTIAL_STORE_UNAVAILABLE');
+      const current = await load();
+      current[connectionId] = safeStorage.encryptString(secret).toString('base64');
+      await persist(current);
+    },
+    deleteCredential: async (connectionId) => { const current = await load(); delete current[connectionId]; await persist(current); },
+    getCredential: async (connectionId) => {
+      if (!safeStorage.isEncryptionAvailable()) return null;
+      const current = await load();
+      const encoded = current[connectionId];
+      if (!encoded) return null;
+      try { return safeStorage.decryptString(Buffer.from(encoded, 'base64')); } catch { return null; }
+    },
+  };
+};
 
 export const createMainProjectStore = (workspace: WorkspaceHandle) => createProjectStore(workspace);
 
@@ -132,7 +168,7 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
       resolveAdapter: async (connectionId) => {
         if (connectionId !== 'openai-compatible') throw new Error('PROVIDER_NOT_CONFIGURED');
         const baseUrl = process.env.DESIGNHUB_PROVIDER_BASE_URL ?? '';
-        const apiKey = process.env.DESIGNHUB_PROVIDER_API_KEY ?? '';
+        const apiKey = await credentialStore.getCredential?.(connectionId) ?? process.env.DESIGNHUB_PROVIDER_API_KEY ?? '';
         return createOpenAICompatibleAdapter({ baseUrl, apiKey });
       },
     });
@@ -142,6 +178,8 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
 };
 
 app.whenReady().then(() => {
+  credentialStore = createElectronCredentialStore(join(app.getPath('userData'), 'secure'));
+  credentialBoundary = createCredentialBoundary(credentialStore);
   if (storageSmokeResultPath) {
     void runStorageSmoke(storageSmokeResultPath).finally(() => app.quit());
     return;
