@@ -30,6 +30,8 @@ test('launches the workspace shell with only the DesignHub bridge', async () => 
       'exportProjectPackage',
       'loadDesignerState',
       'saveDesignerState',
+      'loadBrandState',
+      'saveBrandState',
       'listAssets',
       'importAssets',
       'readAsset',
