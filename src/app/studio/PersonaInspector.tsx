@@ -18,6 +18,7 @@ type PersonaInspectorProps = {
   onUseForNewDesign?: (personaId: string) => void;
   onRestore?: () => void;
   canSetDefault?: boolean;
+  canUseForNew?: boolean;
 };
 
 const DetailRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -42,6 +43,7 @@ export const PersonaInspector = ({
   onUseForNewDesign,
   onRestore,
   canSetDefault = true,
+  canUseForNew = true,
 }: PersonaInspectorProps) => {
   if (!profile) {
     return (
@@ -73,7 +75,7 @@ export const PersonaInspector = ({
       </div>
       <div className="persona-inspector__actions">
         {onEdit && <Button variant="primary" icon="settings" onClick={onEdit} disabled={readOnly}>{t(locale, '编辑', 'Edit')}</Button>}
-        <Button icon="plus" onClick={() => (onUseForNewDesign ? onUseForNewDesign(profile.id) : onUseForNew?.())}>{t(locale, '用于新建', 'Use for new')}</Button>
+        <Button icon="plus" onClick={() => (onUseForNewDesign ? onUseForNewDesign(profile.id) : onUseForNew?.())} disabled={!canUseForNew}>{t(locale, '用于新建', 'Use for new')}</Button>
         <Button icon="copy" onClick={() => (onDeriveDraft ? onDeriveDraft(profile.id) : onDuplicate?.())} disabled={readOnly}>{t(locale, '派生', 'Derive')}</Button>
         <Button icon="star" onClick={() => onSetDefault?.(profile.id)} disabled={readOnly || sessionDefault || !canSetDefault}>{sessionDefault ? t(locale, '当前默认', 'Current default') : t(locale, '设默认', 'Set default')}</Button>
         {profile.status === 'archived' && onRestore ? <Button icon="rotate-ccw" onClick={onRestore} disabled={readOnly}>{t(locale, '恢复', 'Restore')}</Button> : profile.status !== 'built-in' && onDelete && <Button icon="trash-2" onClick={onDelete} disabled={readOnly}>{t(locale, '删除', 'Delete')}</Button>}

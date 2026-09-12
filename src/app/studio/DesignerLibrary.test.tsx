@@ -3,6 +3,12 @@ import { expect, it, vi } from 'vitest';
 
 import { DesignerLibrary } from './DesignerLibrary';
 
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => { resolve = nextResolve; });
+  return { promise, resolve };
+};
+
 it('filters personas and exposes structured style guidance in the inspector', () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
   expect(screen.getByText('Style DNA')).toBeInTheDocument();
@@ -100,4 +106,33 @@ it('restores a referenced archived profile without changing its built-in or publ
   expect(screen.getByRole('button', { name: '恢复' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '恢复' }));
   expect(screen.getByRole('button', { name: '删除' })).toBeInTheDocument();
+});
+
+it('does not invoke a later save until the previous save settles', async () => {
+  const firstSave = createDeferred<boolean>();
+  const loadDesignerState = vi.fn(async () => ({ profiles: [], defaultId: 'builtin-v1' }));
+  const saveDesignerState = vi.fn(async () => {
+    if (saveDesignerState.mock.calls.length === 1) return firstSave.promise;
+    return true;
+  });
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDesignerState, saveDesignerState };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-queue" />);
+  await waitFor(() => expect(saveDesignerState).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: '队列测试' } });
+  fireEvent.click(screen.getByRole('button', { name: '保留' }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(saveDesignerState).toHaveBeenCalledTimes(1);
+  firstSave.resolve(true);
+  await waitFor(() => expect(saveDesignerState.mock.calls.length).toBeGreaterThan(1));
+});
+
+it('disables using a designer for new work while loading has failed', async () => {
+  const loadDesignerState = vi.fn(async () => { throw new Error('READ_FAILED'); });
+  const onUseForNew = vi.fn();
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDesignerState, saveDesignerState: vi.fn(async () => true) };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-failed" onUseForNew={onUseForNew} />);
+  await waitFor(() => expect(screen.getByText('设计师档案读取失败。')).toBeInTheDocument());
+  expect(screen.getByRole('button', { name: '用于新建' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
 });
