@@ -252,6 +252,18 @@ it('submits provider-backed background tools through the active project callback
   await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'remove-background' })));
 });
 
+it('exposes the complete provider-backed image tool set from the tools panel', async () => {
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  render(<Workbench {...makeProps({ onSubmitImageTask })} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  for (const label of ['移除对象', '局部重绘', '扩展画布', '放大图像']) expect(screen.getByText(label)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '移除对象' }));
+  fireEvent.click(screen.getByRole('button', { name: '局部重绘' }));
+  fireEvent.click(screen.getByRole('button', { name: '扩展画布' }));
+  fireEvent.click(screen.getByRole('button', { name: '放大图像' }));
+  await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'upscale' })));
+});
+
 it('provides the exact English canvas and back labels', () => {
   render(<Workbench {...makeProps({ locale: 'en' })} />);
 

@@ -174,6 +174,8 @@
 
 2026-09-13：M03 即时完成任务回归（变更 ID M03-20260913-03）。提交接口直接返回 `completed` 时现在立即解析候选，不依赖二次任务列表查询；新增回归后 `DesignerLibrary` 17/17 通过，最新全量 unit 83 files/296 tests、integration 23 files/100 tests、E2E 24/24、lint/typecheck/build/diff check 及 native smoke 均通过。现有 packaged executable 冒烟 3/3 通过；该包未因本次 renderer 修复重新打包，Windows、签名/公证、真实 provider 与人工质量仍开放。
 
+2026-09-13：M07 工作台完整图像工具入口（变更 ID M07-20260913-13）。工具面板新增“移除对象”“局部重绘”“扩展画布”“放大图像”，统一复用现有 `ImageTool` 任务提交与连接回退语义；先观察 Workbench Red，再 Green，Workbench 24/24、lint、typecheck、diff check 通过。真实 provider、选区/遮罩交互、原生 worker、输出落版和人工图像质量仍开放。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

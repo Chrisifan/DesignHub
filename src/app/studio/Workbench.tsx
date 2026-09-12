@@ -938,6 +938,38 @@ export const Workbench = ({
                   </div>
                   <Button aria-label={t(locale, '替换背景', 'Replace background')} variant="secondary" icon="image-plus" onClick={() => runImageTask('replace-background', 'Replace the background while preserving the original subject')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
+                <div className="workbench-tool-entry">
+                  <span className="workbench-tool-entry__icon"><Icon name="eraser" /></span>
+                  <div>
+                    <strong>{t(locale, '移除对象', 'Remove object')}</strong>
+                    <p>{t(locale, '移除选区中的对象并保留周围细节。', 'Remove an object from a selected region while preserving nearby detail.')}</p>
+                  </div>
+                  <Button aria-label={t(locale, '移除对象', 'Remove object')} variant="secondary" icon="eraser" onClick={() => runImageTask('remove-object', 'Remove the selected object and reconstruct the surrounding detail')}>{t(locale, '执行', 'Run')}</Button>
+                </div>
+                <div className="workbench-tool-entry">
+                  <span className="workbench-tool-entry__icon"><Icon name="paintbrush" /></span>
+                  <div>
+                    <strong>{t(locale, '局部重绘', 'Inpaint')}</strong>
+                    <p>{t(locale, '根据描述重绘选区内容。', 'Redraw a selected region from a description.')}</p>
+                  </div>
+                  <Button aria-label={t(locale, '局部重绘', 'Inpaint')} variant="secondary" icon="paintbrush" onClick={() => runImageTask('inpaint', 'Inpaint the selected region according to the requested direction')}>{t(locale, '执行', 'Run')}</Button>
+                </div>
+                <div className="workbench-tool-entry">
+                  <span className="workbench-tool-entry__icon"><Icon name="expand" /></span>
+                  <div>
+                    <strong>{t(locale, '扩展画布', 'Expand canvas')}</strong>
+                    <p>{t(locale, '延展画布边缘并保持主体构图。', 'Extend the canvas while preserving the primary composition.')}</p>
+                  </div>
+                  <Button aria-label={t(locale, '扩展画布', 'Expand canvas')} variant="secondary" icon="expand" onClick={() => runImageTask('expand', 'Expand the canvas edges while preserving the primary composition')}>{t(locale, '执行', 'Run')}</Button>
+                </div>
+                <div className="workbench-tool-entry">
+                  <span className="workbench-tool-entry__icon"><Icon name="scan-line" /></span>
+                  <div>
+                    <strong>{t(locale, '放大图像', 'Upscale image')}</strong>
+                    <p>{t(locale, '提升图像尺寸并尽量保留细节。', 'Increase image resolution while preserving detail.')}</p>
+                  </div>
+                  <Button aria-label={t(locale, '放大图像', 'Upscale image')} variant="secondary" icon="scan-line" onClick={() => runImageTask('upscale', 'Upscale the image while preserving important details')}>{t(locale, '执行', 'Run')}</Button>
+                </div>
               </div>
             )}
           </aside>
