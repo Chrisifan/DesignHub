@@ -29,6 +29,22 @@ it('does not overwrite an existing target', async () => {
   })).rejects.toThrow('TARGET_EXISTS');
 });
 
+it('rechecks the destination after rendering so a late target cannot be overwritten', async () => {
+  let checks = 0;
+  const writes: string[] = [];
+  await expect(exportDocument({
+    revisionId: 'revision-1', format: 'png', targetPath: '/exports/poster.png',
+    target: {
+      exists: async () => { checks += 1; return checks > 1; },
+      write: async (path: string) => { writes.push(path); },
+      rename: async () => { throw new Error('RENAME_SHOULD_NOT_RUN'); },
+      remove: async () => undefined,
+    },
+    render: async () => new Uint8Array([137, 80, 78, 71]),
+  })).rejects.toThrow('TARGET_EXISTS');
+  expect(writes).toEqual([]);
+});
+
 it('publishes atomically and removes the temporary artifact when publishing fails', async () => {
   const writes: string[] = [];
   const removed: string[] = [];

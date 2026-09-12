@@ -54,6 +54,7 @@ export const exportDocument = async (input: ExportDocumentInput): Promise<Export
     if (input.expectedSize && (metadata.width !== input.expectedSize.width || metadata.height !== input.expectedSize.height)) throw new Error('INVALID_SIZE');
   }
   const sha256 = await hash(bytes);
+  if (await input.target.exists(input.targetPath)) throw new Error('TARGET_EXISTS');
   const temporaryPath = `${input.targetPath}.tmp`;
   try {
     await input.target.write(temporaryPath, bytes);
