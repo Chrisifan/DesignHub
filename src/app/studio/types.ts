@@ -18,7 +18,7 @@ export type NewDesignDraft = {
   goal: string;
   brief: string;
   personaId: string;
-  size: '1080 × 1440';
+  size: '1080 × 1440' | '1080 × 1080' | '1920 × 1080';
   mode: CreationMode;
 };
 export type Project = {

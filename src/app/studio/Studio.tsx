@@ -29,6 +29,7 @@ import type { ProjectDocumentMetadata, ProjectMetadataPatch } from '../../featur
 import type { ImageTool } from '../../features/image-tools/target';
 import { resizeScene } from '../../features/image-tools/local-transform';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
+import { parseDocumentSize } from '../../features/projects/size';
 import '../styles/studio.css';
 
 const navigation: { view: View; icon: string; zh: string; en: string }[] = [
@@ -412,6 +413,13 @@ export const Studio = ({
       return;
     }
     const documentId = crypto.randomUUID();
+    let documentSize;
+    try {
+      documentSize = parseDocumentSize(draft.size);
+    } catch {
+      notify(t(locale, '尺寸无效，请重新选择。', 'Invalid document size. Choose another preset.'));
+      return;
+    }
     if (workspace?.openMode === 'writable') {
       const created = await getDesktopApi().createProjectContainer?.({
         workspaceId: workspace.workspaceId,
@@ -420,7 +428,7 @@ export const Studio = ({
         brief: draft.goal || draft.brief || undefined,
         activeDesignerVersionId: draft.personaId,
         designerSnapshot: getPersona(draft.personaId),
-        documents: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
+        documents: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
       });
       if (!created) {
         notify(t(locale, '无法保存项目，请检查工作区。', 'Could not save the project. Check the workspace.'));
@@ -439,7 +447,7 @@ export const Studio = ({
         designerSnapshot: getPersona(draft.personaId),
         artwork: 'blank',
         documents: 1,
-        documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
+        documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
       };
       setProjects((previous) => [project, ...previous]);
       setSurface('projects');
@@ -468,7 +476,7 @@ export const Studio = ({
       designers: [getPersona(draft.personaId)?.name.zh ?? '纸感排版'],
       artwork: 'blank',
       documents: 1,
-      documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
+      documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
     };
     setProjects((previous) => [project, ...previous]);
     setSurface('projects');

@@ -155,6 +155,19 @@ it('hydrates persisted workspace projects and creates through the desktop API', 
   expect(await screen.findByRole('heading', { name: 'Created project' })).toBeInTheDocument();
 });
 
+it('uses the selected document size when creating a project', async () => {
+  const listActiveProjects = vi.fn(async () => []);
+  const createProjectContainer = vi.fn(async () => ({ projectId: 'project-square' }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, createProjectContainer };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(screen.getByRole('heading', { name: '项目库' })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '方图项目' } });
+  fireEvent.change(screen.getByRole('combobox', { name: '文档尺寸' }), { target: { value: '1080 × 1080' } });
+  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
+  await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ documents: [expect.objectContaining({ width: 1080, height: 1080 })] })));
+});
+
 it('waits for the persisted search index rebuild before querying it', async () => {
   const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project' }]);
   let releaseRebuild!: () => void;
