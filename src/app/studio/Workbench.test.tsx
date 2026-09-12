@@ -197,6 +197,16 @@ it('updates preview zoom and grid without changing the document', () => {
   expect(screen.getByText('68%')).toBeInTheDocument();
 });
 
+it('applies an offline canvas resize through the tools panel', () => {
+  const notify = vi.fn();
+  render(<Workbench locale="zh-CN" project={project} onBack={() => undefined} onExport={() => undefined} onConnections={() => undefined} notify={notify} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '540' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: '高度' }), { target: { value: '720' } });
+  fireEvent.click(screen.getByRole('button', { name: '应用' }));
+  expect(notify).toHaveBeenCalledWith('尺寸已更新');
+});
+
 it('provides the exact English canvas and back labels', () => {
   render(<Workbench {...makeProps({ locale: 'en' })} />);
 

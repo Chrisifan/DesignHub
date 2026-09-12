@@ -5,6 +5,7 @@ import type { Project } from './types';
 import { CanvasWorkspace } from '../../features/canvas/CanvasWorkspace';
 import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
+import { resizeScene } from '../../features/image-tools/local-transform';
 import {
   ArtworkPreview,
   Badge,
@@ -88,6 +89,8 @@ export const Workbench = ({
   const [rotation, setRotation] = useState(0);
   const [prompt, setPrompt] = useState('');
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project));
+  const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project)).width);
+  const [resizeHeight, setResizeHeight] = useState(() => (providedScene ?? createInitialScene(project)).height);
 
   const persistScene = (nextScene: DesignScene): void => {
     setScene(nextScene);
@@ -666,6 +669,23 @@ export const Workbench = ({
 
             {panel === 'tools' && (
               <div className="workbench-context__content workbench-tools">
+                <div className="workbench-tool-entry">
+                  <span className="workbench-tool-entry__icon"><Icon name="maximize-2" /></span>
+                  <div>
+                    <strong>{t(locale, '调整尺寸', 'Resize canvas')}</strong>
+                    <p>{t(locale, '本地处理，可撤销或继续编辑。', 'Local transform; continue editing after apply.')}</p>
+                    <div className="workbench-coordinate-grid">
+                      <Field label={t(locale, '宽度', 'Width')}><input type="number" min="1" value={resizeWidth} onChange={(event) => setResizeWidth(Number(event.target.value))} /></Field>
+                      <Field label={t(locale, '高度', 'Height')}><input type="number" min="1" value={resizeHeight} onChange={(event) => setResizeHeight(Number(event.target.value))} /></Field>
+                    </div>
+                  </div>
+                  <Button variant="secondary" onClick={() => {
+                    try {
+                      persistScene(resizeScene(scene, { width: resizeWidth, height: resizeHeight }));
+                      notify(t(locale, '尺寸已更新', 'Canvas resized'));
+                    } catch { notify(t(locale, '尺寸无效', 'Invalid size')); }
+                  }}>{t(locale, '应用', 'Apply')}</Button>
+                </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon">
                     <Icon name="rotate-ccw" />

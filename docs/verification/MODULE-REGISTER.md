@@ -90,6 +90,8 @@
 
 2026-09-12：M07 project package ZIP/export（变更 ID M07-20260912-05）。采用 `fflate` 0.8.2；新增包清单编解码、受信 `project:package-export` bridge、项目目录闭包导出和交付页入口。先执行 codec/IPC/UI Red，再 Green；focused 22 tests、lint、typecheck、build 通过。导入解包、流式大文件、跨设备闭包与 Windows 原生对话框仍开放。
 
+2026-09-12：M07 offline resize tool（变更 ID M07-20260912-06）。新增 `resizeScene` 比例缩放契约并接入 Workbench 工具面板，离线调整画布尺寸后通过现有 scene bridge 持久化。先执行 transform/Workbench 测试，再 Green；focused 15 tests、lint、typecheck 通过。模型图像编辑、原生 worker、人工质量与大图性能仍开放。
+
 2026-09-12：M05–M08 implementation pass。M05 canvas recovery follow-up、M06 agent/provider contracts and secure-origin hardening、M07 tools/delivery boundaries、M08 local search/settings/release gates were implemented as independent commits and full unit/integration/lint/typecheck/build/e2e/native smoke gates were rerun. Current aggregate evidence: unit 53 files/143 tests, integration 22 files/96 tests, browser E2E 24/24, native Electron 2 passed/1 skipped. Remaining open gates are explicitly listed in each module record and RELEASE.md: real provider/model capability, native system keychain, Windows host, signed/notarized installer, packaged storage test, large-image/manual quality and cross-device closure.
 
 选择回归范围的规则：
