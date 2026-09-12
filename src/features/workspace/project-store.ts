@@ -1,7 +1,14 @@
+import type { ProjectDocumentMetadata, ProjectMetadata, ProjectMetadataPatch } from '../projects/metadata';
+
 export type CreateProjectContainerInput = {
   workspaceId: string;
   operationId: string;
   name: string;
+  brief?: string;
+  activeDesignerVersionId?: string;
+  designerSnapshot?: unknown;
+  brandSnapshot?: unknown;
+  documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
 };
 
 export type CreateProjectContainerResult = {
@@ -11,6 +18,20 @@ export type CreateProjectContainerResult = {
 export type ActiveProject = {
   projectId: string;
   name: string;
+  brief?: string;
+  activeDesignerVersionId?: string;
+  designerSnapshot?: unknown;
+  brandSnapshot?: unknown;
+  documents?: ProjectDocumentMetadata[];
+  archived?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type UpdateProjectMetadataInput = {
+  workspaceId: string;
+  projectId: string;
+  patch: ProjectMetadataPatch;
 };
 
 export type TrashProjectInput = {
@@ -32,6 +53,8 @@ export type RestoreProjectResult = {
 export type ProjectStore = {
   createProjectContainer: (input: CreateProjectContainerInput) => Promise<CreateProjectContainerResult>;
   listActiveProjects: () => Promise<ActiveProject[]>;
+  getProjectMetadata: (projectId: string) => Promise<ProjectMetadata | null>;
+  updateProjectMetadata: (input: UpdateProjectMetadataInput) => Promise<ProjectMetadata>;
   moveProjectToTrash: (input: TrashProjectInput) => Promise<TrashedProject>;
   listTrashedProjects: () => Promise<TrashedProject[]>;
   restoreProjectFromTrash: (input: TrashProjectInput) => Promise<RestoreProjectResult>;
@@ -43,6 +66,8 @@ export const createProjectStore = (
 ): ProjectStore => ({
   createProjectContainer: (input) => implementation.createProjectContainer(input),
   listActiveProjects: () => implementation.listActiveProjects(),
+  getProjectMetadata: (projectId) => implementation.getProjectMetadata(projectId),
+  updateProjectMetadata: (input) => implementation.updateProjectMetadata(input),
   moveProjectToTrash: (input) => implementation.moveProjectToTrash(input),
   listTrashedProjects: () => implementation.listTrashedProjects(),
   restoreProjectFromTrash: (input) => implementation.restoreProjectFromTrash(input),

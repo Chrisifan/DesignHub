@@ -28,6 +28,7 @@ type LibraryPagesProps = PageProps & {
   deliveryProject?: Project | null;
   onUseForNew?: (personaId: string) => void;
   workspaceId?: string;
+  readOnly?: boolean;
 };
 
 type Localized = { zh: string; en: string };
@@ -1027,6 +1028,7 @@ export const LibraryPages = ({
   deliveryProject,
   onUseForNew,
   workspaceId,
+  readOnly = false,
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
@@ -1038,7 +1040,7 @@ export const LibraryPages = ({
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
   const pages: Record<Exclude<View, 'projects'>, ReactNode> = {
     designers: (
-      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} workspaceId={workspaceId} />
+      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} workspaceId={workspaceId} readOnly={readOnly} />
     ),
     assets: (
       <AssetsPage

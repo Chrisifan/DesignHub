@@ -1,0 +1,43 @@
+import { expect, it } from 'vitest';
+
+import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata } from './metadata';
+
+it('creates a project metadata snapshot with an independent document list', () => {
+  const documents = [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }];
+  const metadata = createProjectMetadata({
+    projectId: 'project-1',
+    name: '春间市集',
+    workspaceId: 'workspace-1',
+    brief: '春日活动视觉',
+    documents,
+  });
+  documents[0].name = '被修改';
+  expect(metadata).toMatchObject({ projectId: 'project-1', name: '春间市集', workspaceId: 'workspace-1', brief: '春日活动视觉' });
+  expect(metadata.documents[0].name).toBe('主海报');
+});
+
+it('updates metadata without changing the previous snapshot', () => {
+  const initial = createProjectMetadata({ projectId: 'project-1', name: '旧名称', workspaceId: 'workspace-1' });
+  const updated = updateProjectMetadata(initial, { name: '新名称', archived: true, activeDesignerVersionId: 'designer-v2' });
+  expect(initial).toMatchObject({ name: '旧名称', archived: false });
+  expect(updated).toMatchObject({ name: '新名称', archived: true, activeDesignerVersionId: 'designer-v2' });
+  expect(updated.updatedAt).not.toBe(initial.updatedAt);
+});
+
+it('rejects an empty project name and invalid document dimensions', () => {
+  expect(() => createProjectMetadata({ projectId: 'project-1', name: ' ', workspaceId: 'workspace-1' })).toThrow('INVALID_PROJECT_METADATA');
+  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documents: [{ id: 'doc-1', name: 'Poster', width: 0, height: 100 }] })).toThrow('INVALID_DOCUMENT');
+});
+
+it('keeps designer and brand snapshots immutable when updated', () => {
+  const designer = { versionId: 'v1', name: '纸感排版', rules: ['保留留白'] };
+  const brand = { version: 'v2', colors: ['#fff'] };
+  const metadata = createProjectMetadata({ projectId: 'project-1', name: '项目', workspaceId: 'workspace-1', designerSnapshot: designer, brandSnapshot: brand });
+  designer.rules.push('暖色');
+  brand.colors[0] = '#000';
+  expect(metadata.designerSnapshot).toEqual({ versionId: 'v1', name: '纸感排版', rules: ['保留留白'] });
+  expect(metadata.brandSnapshot).toEqual({ version: 'v2', colors: ['#fff'] });
+});
+
+const _typeCheck = (value: ProjectMetadata): ProjectMetadata => value;
+void _typeCheck;

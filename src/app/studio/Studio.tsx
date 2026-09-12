@@ -90,11 +90,12 @@ export const Studio = ({
           id: entry.projectId,
           name: entry.name,
           enName: entry.name,
-          description: t(locale, '本地项目', 'Local project'),
-          enDescription: 'Local project',
+          description: entry.brief ?? t(locale, '本地项目', 'Local project'),
+          enDescription: entry.brief ?? 'Local project',
           designers: ['纸感排版'],
           artwork: 'blank' as const,
-          documents: 1,
+          documents: entry.documents?.length ?? 1,
+          archived: entry.archived,
         })));
       }).catch(() => undefined);
     }
@@ -142,6 +143,9 @@ export const Studio = ({
         workspaceId: workspace.workspaceId,
         operationId: crypto.randomUUID(),
         name: draft.name.trim(),
+        brief: draft.goal || draft.brief || undefined,
+        activeDesignerVersionId: draft.personaId,
+        documents: [{ id: crypto.randomUUID(), name: t(locale, '主海报', 'Main poster'), width: 1080, height: 1440 }],
       });
       if (!created) {
         notify(t(locale, '无法保存项目，请检查工作区。', 'Could not save the project. Check the workspace.'));
@@ -737,6 +741,7 @@ export const Studio = ({
                   view={item.view as Exclude<View, 'projects'>}
                   deliveryProject={deliveryProject}
                   workspaceId={workspace?.workspaceId}
+                  readOnly={workspace?.openMode === 'read-only'}
                   notify={notify}
                   navigate={navigate}
                   onUseForNew={(personaId) => openNewDesign('manual', personaId)}

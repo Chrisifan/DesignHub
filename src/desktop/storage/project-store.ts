@@ -13,7 +13,9 @@ import type {
   RestoreProjectResult,
   TrashedProject,
   TrashProjectInput,
+  UpdateProjectMetadataInput,
 } from '../../features/workspace/project-store';
+import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata } from '../../features/projects/metadata';
 import { canPurge } from '../../features/workspace/trash-policy';
 import { getWritableWorkspaceLease } from './workspace-store';
 
@@ -44,6 +46,7 @@ type ProjectManifest = {
   name: string;
   formatVersion: number;
   createdAt: string;
+  metadata?: ProjectMetadata;
 };
 
 type ProjectContentManifest = {
@@ -140,7 +143,8 @@ const isProjectManifest = (value: unknown): value is ProjectManifest => isRecord
   && Number.isInteger(value.formatVersion)
   && value.formatVersion === projectFormatVersion
   && typeof value.createdAt === 'string'
-  && !Number.isNaN(Date.parse(value.createdAt));
+  && !Number.isNaN(Date.parse(value.createdAt))
+  && (value.metadata === undefined || isRecord(value.metadata));
 
 const isProjectContentManifest = (value: unknown, projectId: string): value is ProjectContentManifest => isRecord(value)
   && value.formatVersion === projectFormatVersion
@@ -487,6 +491,19 @@ const initializeProject = (
   name: string,
   failAt: ProjectStoreFault | undefined,
 ): void => {
+  const createdAt = new Date().toISOString();
+  const metadata = createProjectMetadata({
+    projectId: operation.projectId,
+    workspaceId: input.workspaceId,
+    name,
+    brief: input.brief,
+    activeDesignerVersionId: input.activeDesignerVersionId,
+    designerSnapshot: input.designerSnapshot,
+    brandSnapshot: input.brandSnapshot,
+    documents: input.documents,
+    createdAt,
+    updatedAt: createdAt,
+  });
   const databasePath = join(temporaryDirectory, projectDatabaseName);
   const projectDatabase = new Database(databasePath);
   try {
@@ -507,7 +524,8 @@ const initializeProject = (
     operationId: input.operationId,
     name,
     formatVersion: projectFormatVersion,
-    createdAt: new Date().toISOString(),
+    createdAt,
+    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.designerSnapshot !== undefined || input.brandSnapshot !== undefined || input.documents !== undefined ? { metadata } : {}),
   };
   writeFileSync(join(temporaryDirectory, projectManifestName), `${JSON.stringify(projectManifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
   writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ formatVersion: projectFormatVersion, projectId: operation.projectId, assets: [] }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
@@ -600,12 +618,97 @@ const listActiveProjects = (handle: WorkspaceHandle): ActiveProject[] => {
   const paths = validateWorkspace(workspace, workspace.workspaceId, false);
   if (workspace.openMode !== 'writable') {
     return scanPublishedProjects(paths.projectsDirectory)
-      .map(({ manifest }) => ({ projectId: manifest.projectId, name: manifest.name }))
+      .map(({ manifest }) => toActiveProject(manifest))
       .sort((left, right) => left.name.localeCompare(right.name) || left.projectId.localeCompare(right.projectId));
   }
   const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
   try {
-    return index.prepare('SELECT project_id as projectId, display_name as name FROM projects ORDER BY display_name, project_id').all() as ActiveProject[];
+    return (index.prepare('SELECT project_id as projectId, directory_name as directoryName FROM projects ORDER BY display_name, project_id').all() as Array<{ projectId: string; directoryName: string }>)
+      .map(({ projectId, directoryName }) => {
+        const manifest = readValidPublishedProject(getManagedProjectDirectory(paths.projectsDirectory, directoryName));
+        if (!manifest || manifest.projectId !== projectId) throw new Error('PROJECT_NOT_FOUND');
+        return toActiveProject(manifest);
+      });
+  } finally {
+    index.close();
+  }
+};
+
+const toActiveProject = (manifest: ProjectManifest): ActiveProject => {
+  if (!manifest.metadata) return { projectId: manifest.projectId, name: manifest.name };
+  const metadata = manifest.metadata;
+  return {
+    projectId: manifest.projectId,
+    name: metadata.name,
+    ...(metadata.brief === undefined ? {} : { brief: metadata.brief }),
+    ...(metadata.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: metadata.activeDesignerVersionId }),
+    ...(metadata.designerSnapshot === undefined ? {} : { designerSnapshot: structuredClone(metadata.designerSnapshot) }),
+    ...(metadata.brandSnapshot === undefined ? {} : { brandSnapshot: structuredClone(metadata.brandSnapshot) }),
+    documents: structuredClone(metadata.documents),
+    archived: metadata.archived,
+    createdAt: metadata.createdAt,
+    updatedAt: metadata.updatedAt,
+  };
+};
+
+const readProjectMetadata = (manifest: ProjectManifest, workspaceId: string): ProjectMetadata => manifest.metadata
+  ? structuredClone(manifest.metadata)
+  : createProjectMetadata({ projectId: manifest.projectId, workspaceId, name: manifest.name, createdAt: manifest.createdAt, updatedAt: manifest.createdAt });
+
+const getProjectManifestForId = (handle: WorkspaceHandle, projectId: string): { manifest: ProjectManifest; directory: string } | null => {
+  validateProjectId(projectId);
+  const workspace = handle.workspace;
+  const paths = validateWorkspace(workspace, workspace.workspaceId, false);
+  if (workspace.openMode !== 'writable') {
+    const found = scanPublishedProjects(paths.projectsDirectory).find(({ manifest }) => manifest.projectId === projectId);
+    return found ? { manifest: found.manifest, directory: getManagedProjectDirectory(paths.projectsDirectory, found.directoryName) } : null;
+  }
+  const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
+  try {
+    const project = getActiveProject(index, paths.projectsDirectory, projectId);
+    const directory = getManagedProjectDirectory(paths.projectsDirectory, project.directoryName);
+    const manifest = readValidPublishedProject(directory);
+    return manifest ? { manifest, directory } : null;
+  } finally {
+    index.close();
+  }
+};
+
+const getProjectMetadata = (handle: WorkspaceHandle, projectId: string): ProjectMetadata | null => {
+  const found = getProjectManifestForId(handle, projectId);
+  return found ? readProjectMetadata(found.manifest, handle.workspace.workspaceId) : null;
+};
+
+const updateProjectMetadataForHandle = (handle: WorkspaceHandle, input: UpdateProjectMetadataInput): ProjectMetadata => {
+  const workspace = getWritableWorkspaceLease(handle);
+  if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
+  if (workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const paths = validateWorkspace(workspace, input.workspaceId);
+  const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
+  try {
+    const project = getActiveProject(index, paths.projectsDirectory, input.projectId);
+    const directory = getManagedProjectDirectory(paths.projectsDirectory, project.directoryName);
+    const manifest = readValidPublishedProject(directory);
+    if (!manifest) throw new Error('PROJECT_NOT_FOUND');
+    const current = readProjectMetadata(manifest, workspace.workspaceId);
+    const next = updateProjectMetadata(current, input.patch);
+    const nextManifest: ProjectManifest = { ...manifest, name: next.name, metadata: next };
+    const temporary = join(directory, `.${projectManifestName}.tmp-${randomUUID()}`);
+    try {
+      writeFileSync(temporary, `${JSON.stringify(nextManifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+      renameSync(temporary, join(directory, projectManifestName));
+    } catch (error) {
+      if (pathEntryExists(temporary)) rmSync(temporary, { force: true });
+      throw error;
+    }
+    const database = new Database(join(directory, projectDatabaseName), { timeout: 0 });
+    try {
+      database.prepare('UPDATE project_metadata SET display_name = ? WHERE project_id = ?').run(next.name, input.projectId);
+    } finally {
+      database.close();
+    }
+    index.prepare('UPDATE projects SET display_name = ? WHERE project_id = ?').run(next.name, input.projectId);
+    return structuredClone(next);
   } finally {
     index.close();
   }
@@ -747,6 +850,8 @@ const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOpt
 export const createProjectStore = (handle: WorkspaceHandle, options: ProjectStoreOptions = {}): ProjectStore => ({
   createProjectContainer: async (input): Promise<CreateProjectContainerResult> => createProject(handle, options, input),
   listActiveProjects: async (): Promise<ActiveProject[]> => listActiveProjects(handle),
+  getProjectMetadata: async (projectId): Promise<ProjectMetadata | null> => getProjectMetadata(handle, projectId),
+  updateProjectMetadata: async (input): Promise<ProjectMetadata> => updateProjectMetadataForHandle(handle, input),
   moveProjectToTrash: async (input): Promise<TrashedProject> => moveProjectToTrash(handle, options, input),
   listTrashedProjects: async (): Promise<TrashedProject[]> => listTrashedProjects(handle),
   restoreProjectFromTrash: async (input): Promise<RestoreProjectResult> => restoreProjectFromTrash(handle, options, input),

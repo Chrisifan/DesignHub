@@ -19,7 +19,7 @@ import {
 } from './ipc/credentials';
 import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore } from './storage/project-store';
-import { createProjectContainerHandler, listActiveProjectsHandler, projectCreateChannel, projectListChannel } from './ipc/projects';
+import { createProjectContainerHandler, getProjectMetadataHandler, listActiveProjectsHandler, projectCreateChannel, projectListChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, updateProjectMetadataHandler } from './ipc/projects';
 import { designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, saveDesignerStateHandler } from './ipc/designers';
 import { loadDesignerState, saveDesignerState } from './storage/designer-store';
 import { runStorageSmoke } from './storage/storage-smoke';
@@ -106,6 +106,14 @@ app.whenReady().then(() => {
   ipcMain.handle(projectCreateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createProjectContainerHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).createProjectContainer(projectInput))(event, input);
+  });
+  ipcMain.handle(projectMetadataGetChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return getProjectMetadataHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectId) => createProjectStore(workspace).getProjectMetadata(projectId))(event, input);
+  });
+  ipcMain.handle(projectMetadataUpdateChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return updateProjectMetadataHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, metadataInput) => createProjectStore(workspace).updateProjectMetadata(metadataInput))(event, input);
   });
   ipcMain.handle(designerLoadChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
