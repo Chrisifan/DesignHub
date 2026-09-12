@@ -252,6 +252,22 @@ it('submits provider-backed background tools through the active project callback
   await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'remove-background' })));
 });
 
+it('requires and applies a region before submitting a regional image tool', async () => {
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  render(<Workbench {...makeProps({ onSubmitImageTask })} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '移除对象' }));
+  expect(onSubmitImageTask).not.toHaveBeenCalled();
+  const mask = screen.getByRole('form', { name: '遮罩编辑' });
+  fireEvent.change(within(mask).getByRole('spinbutton', { name: '宽度' }), { target: { value: '200' } });
+  fireEvent.change(within(mask).getByRole('spinbutton', { name: '高度' }), { target: { value: '200' } });
+  fireEvent.click(within(mask).getByRole('button', { name: '应用遮罩' }));
+  await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({
+    tool: 'remove-object',
+    region: { x: 0, y: 0, width: 200, height: 200 },
+  })));
+});
+
 it('exposes the complete provider-backed image tool set from the tools panel', async () => {
   const onSubmitImageTask = vi.fn(async () => undefined);
   render(<Workbench {...makeProps({ onSubmitImageTask })} />);

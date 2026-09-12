@@ -192,6 +192,7 @@
 
 2026-09-13：M07 非主文档定稿选择修复（变更 ID M07-20260913-14）。交付页定稿资格改为依据当前选中文档的 `finalizedRevisionId`，不再错误依赖项目顶层 `documentId`；多文档项目可正确导出第二及后续文档的定稿修订。先新增 `LibraryPages` Red，再 Green；focused 交付/导出 48/48、lint、typecheck、diff check 通过。归档流、颜色管理、Windows 与人工图像质量仍开放。
 2026-09-13：M07 项目包条目分类（变更 ID M07-20260913-15）。主进程项目包遍历复用路径分类策略，区分输出、预览、对话、凭据、字体与普通项目文件，确保只读交付白名单不会因默认标记而携带私有内容。先新增 package-policy Red，再 Green；package/IPC/export focused 10/10、lint、typecheck、diff check 通过。归档流、跨设备闭包、Windows 与人工扫描仍开放。
+2026-09-13：M07 工作台区域工具选择（变更 ID M07-20260913-16）。工作台局部工具在提交前显示现有遮罩编辑器并要求有效选区，应用区域后通过 typed image-task 回调传递，取消/清除不创建任务。先新增 Workbench Red，再 Green；Workbench/MaskEditor/target focused 30/30、lint、typecheck、diff check 通过。provider 遮罩栅格化、真实模型执行、Windows 与人工质量仍开放。
 
 ## 发布前检查
 

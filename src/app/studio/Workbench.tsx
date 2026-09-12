@@ -3,10 +3,12 @@ import { useEffect, useId, useState, type CSSProperties, type FormEvent } from '
 import type { Locale } from '../i18n';
 import type { Project } from './types';
 import { CanvasWorkspace, type CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
+import { MaskEditor } from '../../features/canvas/MaskEditor';
+import type { Region } from '../../features/canvas/selection';
 import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
-import type { ImageTool } from '../../features/image-tools/target';
+import { needsRegion, type ImageTool } from '../../features/image-tools/target';
 import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
 import type { TaskCandidate, TaskRecord } from '../../features/tasks/state';
 import { CompareRevisions } from '../../features/revisions/CompareRevisions';
@@ -36,7 +38,7 @@ export type WorkbenchProps = {
   onExport: () => void;
   onConnections: () => void;
   onSubmitConversation?: (message: string) => void | Promise<void>;
-  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; baseRevisionId: string | null }) => void | Promise<void>;
+  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
   modelConnected?: boolean;
@@ -114,6 +116,8 @@ export const Workbench = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
   const [prompt, setPrompt] = useState('');
+  const [toolRegion, setToolRegion] = useState<Region | undefined>();
+  const [pendingRegionalTool, setPendingRegionalTool] = useState<{ tool: ImageTool; prompt: string } | null>(null);
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
@@ -344,12 +348,20 @@ export const Workbench = ({
     }
     void Promise.resolve(onSubmitImageGeneration(prompt.trim(), currentRevisionId)).then(() => setPrompt('')).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
-  const runImageTask = (tool: ImageTool, taskPrompt: string): void => {
+  const submitImageTask = (tool: ImageTool, taskPrompt: string, region?: Region): void => {
     if (!onSubmitImageTask) {
       onConnections();
       return;
     }
-    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, baseRevisionId: currentRevisionId })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, baseRevisionId: currentRevisionId, ...(region ? { region } : {}) })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+  };
+  const runImageTask = (tool: ImageTool, taskPrompt: string): void => {
+    if (needsRegion(tool) && !toolRegion) {
+      setPendingRegionalTool({ tool, prompt: taskPrompt });
+      notify(t(locale, '请先选择区域', 'Select a region first'));
+      return;
+    }
+    submitImageTask(tool, taskPrompt, toolRegion);
   };
 
   return (
@@ -978,6 +990,19 @@ export const Workbench = ({
                   </div>
                   <Button aria-label={t(locale, '放大图像', 'Upscale image')} variant="secondary" icon="scan-line" onClick={() => runImageTask('upscale', 'Upscale the image while preserving important details')}>{t(locale, '执行', 'Run')}</Button>
                 </div>
+                {pendingRegionalTool && <MaskEditor
+                  locale={locale}
+                  image={{ width: scene.width, height: scene.height }}
+                  region={toolRegion}
+                  onChange={setToolRegion}
+                  onApply={(region) => {
+                    setToolRegion(region);
+                    submitImageTask(pendingRegionalTool.tool, pendingRegionalTool.prompt, region);
+                    setPendingRegionalTool(null);
+                  }}
+                  onCancel={() => setPendingRegionalTool(null)}
+                  onClear={() => setToolRegion(undefined)}
+                />}
               </div>
             )}
           </aside>
