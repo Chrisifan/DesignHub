@@ -3,7 +3,8 @@ import { useId, useState, type CSSProperties, type FormEvent } from 'react';
 import type { Locale } from '../i18n';
 import type { Project } from './types';
 import { CanvasWorkspace } from '../../features/canvas/CanvasWorkspace';
-import { createScene, type DesignScene } from '../../features/canvas/scene';
+import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
+import { getDesktopApi } from '../../platform/runtime';
 import {
   ArtworkPreview,
   Badge,
@@ -88,6 +89,26 @@ export const Workbench = ({
   const [prompt, setPrompt] = useState('');
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project));
 
+  const persistScene = (nextScene: DesignScene): void => {
+    setScene(nextScene);
+    if (workspaceId && documentId) {
+      const request = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId: project.id, documentId, scene: nextScene });
+      if (request) void request.catch(() => undefined);
+    }
+  };
+  const syncTextState = (nextScene: DesignScene): void => {
+    const textLayer = nextScene.layers.find((layer): layer is TextLayer => layer.type === 'text');
+    if (!textLayer) return;
+    setTitle(textLayer.text);
+    setPosition({ x: textLayer.x, y: textLayer.y });
+    setOpacity(Math.round(textLayer.opacity * 100));
+  };
+  const updateTextLayer = (patch: Partial<Pick<TextLayer, 'text' | 'x' | 'y' | 'opacity'>>): void => {
+    const textLayer = scene.layers.find((layer): layer is TextLayer => layer.type === 'text');
+    if (!textLayer || textLayer.locked) return;
+    persistScene(replaceSceneLayer(scene, { ...textLayer, ...patch }));
+  };
+
   const layerCopy: Record<
     LayerId,
     { label: string; kind: string; icon: string }
@@ -144,11 +165,11 @@ export const Workbench = ({
   };
   const updatePosition = (axis: 'x' | 'y', rawValue: string): void => {
     const value = Number(rawValue);
-    if (Number.isFinite(value))
-      setPosition((current) => ({
-        ...current,
-        [axis]: clamp(value, -999, 999),
-      }));
+    if (Number.isFinite(value)) {
+      const nextValue = clamp(value, -999, 999);
+      setPosition((current) => ({ ...current, [axis]: nextValue }));
+      updateTextLayer({ [axis]: nextValue });
+    }
   };
   const togglePanel = (nextPanel: ContextPanel): void => {
     setPanel((current) => (current === nextPanel ? null : nextPanel));
@@ -387,7 +408,7 @@ export const Workbench = ({
               <CanvasWorkspace
                 locale={locale}
                 scene={scene}
-                onSceneChange={setScene}
+                onSceneChange={(nextScene) => { syncTextState(nextScene); setScene(nextScene); }}
                 workspaceId={workspaceId}
                 projectId={project.id}
                 documentId={documentId}
@@ -493,7 +514,7 @@ export const Workbench = ({
                         aria-label={t(locale, '标题文字', 'Title text')}
                         value={title}
                         disabled={locked.text}
-                        onChange={(event) => setTitle(event.target.value)}
+                        onChange={(event) => { const value = event.target.value; setTitle(value); updateTextLayer({ text: value }); }}
                       />
                     </Field>
                     <div className="workbench-property-section">
@@ -538,9 +559,7 @@ export const Workbench = ({
                         value={opacity}
                         disabled={locked.text}
                         aria-label={t(locale, '不透明度', 'Opacity')}
-                        onChange={(event) =>
-                          setOpacity(Number(event.target.value))
-                        }
+                        onChange={(event) => { const value = Number(event.target.value); setOpacity(value); updateTextLayer({ opacity: value / 100 }); }}
                       />
                     </div>
                   </>

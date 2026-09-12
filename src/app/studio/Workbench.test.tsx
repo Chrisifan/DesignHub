@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { expect, it, vi } from 'vitest';
 
@@ -216,4 +216,19 @@ it('renders the persisted canvas workspace for a real project document', () => {
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
   expect(screen.getByRole('complementary', { name: '图层' })).toBeInTheDocument();
   expect(screen.getByRole('complementary', { name: '检查器' })).toBeInTheDocument();
+});
+
+it('persists property edits into the active document scene', async () => {
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, saveDocumentScene };
+  const scene = createScene({
+    id: 'scene-1', width: 1080, height: 1440,
+    layers: [{ id: 'title', type: 'text', text: '春间市集', fontFamily: 'Inter', fontSize: 96, fontWeight: 'bold', align: 'center', color: '#24262B', x: 120, y: 520, width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false }],
+  });
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  fireEvent.change(screen.getByRole('textbox', { name: '标题文字' }), { target: { value: '新的标题' } });
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({
+    workspaceId: 'workspace-1', projectId: 'spring-market', documentId: 'doc-1',
+    scene: expect.objectContaining({ layers: [expect.objectContaining({ text: '新的标题' })] }),
+  })));
 });
