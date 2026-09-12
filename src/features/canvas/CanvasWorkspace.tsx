@@ -7,10 +7,12 @@ import { getDesktopApi } from '../../platform/runtime';
 import { Inspector } from './Inspector';
 import { LayerList } from './LayerList';
 import {
+  createScene,
   fitViewport,
   isLayerInteractive,
   moveLayer,
   replaceSceneLayer,
+  reorderLayers,
   resizeLayer,
   selectLayerIds,
   type DesignScene,
@@ -105,13 +107,40 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     return () => { cancelled = true; };
   }, [documentId, onSceneChange, projectId, workspaceId]);
   const select = (ids: string[]) => setSelectedIds(selectLayerIds(scene, ids));
-  const replace = (layer: SceneLayer) => {
-    const nextScene = replaceSceneLayer(scene, layer);
+  const persist = (nextScene: DesignScene): void => {
     onSceneChange?.(nextScene);
     if (workspaceId && projectId && documentId) {
       const request = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId, documentId, scene: nextScene });
       if (request) void request.catch(() => undefined);
     }
+  };
+  const replace = (layer: SceneLayer): void => persist(replaceSceneLayer(scene, layer));
+  const move = (layerId: string, direction: 'up' | 'down'): void => {
+    const index = scene.layers.findIndex((layer) => layer.id === layerId);
+    if (index < 0) return;
+    const target = direction === 'up' ? index + 1 : index - 1;
+    if (target < 0 || target >= scene.layers.length) return;
+    const order = scene.layers.map((layer) => layer.id);
+    [order[index], order[target]] = [order[target], order[index]];
+    persist(createScene({ ...scene, layers: reorderLayers(scene.layers, order) }));
+  };
+  const duplicate = (layerId: string): void => {
+    const layer = scene.layers.find((entry) => entry.id === layerId);
+    if (!layer) return;
+    const base = `${layer.id}-copy`;
+    let id = base;
+    let index = 2;
+    while (scene.layers.some((entry) => entry.id === id)) id = `${base}-${index++}`;
+    const copy = { ...structuredClone(layer), id, x: layer.x + 16, y: layer.y + 16 };
+    const position = scene.layers.findIndex((entry) => entry.id === layerId);
+    const layers = [...scene.layers.slice(0, position + 1), copy, ...scene.layers.slice(position + 1)];
+    persist(createScene({ ...scene, layers }));
+    setSelectedIds([id]);
+  };
+  const remove = (layerId: string): void => {
+    if (!scene.layers.some((layer) => layer.id === layerId)) return;
+    persist(createScene({ ...scene, layers: scene.layers.filter((layer) => layer.id !== layerId) }));
+    setSelectedIds((ids) => ids.filter((id) => id !== layerId));
   };
   const updateLayer = (layer: SceneLayer) => {
     const next = layer.width > 0 && layer.height > 0 ? layer : resizeLayer(layer, { width: Math.max(1, layer.width), height: Math.max(1, layer.height) });
@@ -127,7 +156,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
         </div>
       </header>
       <div className="canvas-workspace__body">
-        <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} />
+        <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} />
         <div className="canvas-workspace__stage" style={{ overflow: 'auto' }}>
           {canvasReady ? <Stage width={stageDimensions.width} height={stageDimensions.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
             <Layer>

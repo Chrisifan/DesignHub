@@ -62,3 +62,14 @@ it('requests managed image bytes for image layers in a workspace scene', async (
   render(<CanvasWorkspace locale="zh-CN" scene={imageScene} workspaceId="workspace-1" projectId="project-1" documentId="doc-1" />);
   await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-1' }));
 });
+
+it('duplicates and deletes layers through the scene persistence bridge', async () => {
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, saveDocumentScene };
+  render(<CanvasWorkspace locale="zh-CN" scene={editable} workspaceId="workspace-1" projectId="project-1" documentId="doc-1" />);
+  fireEvent.click(screen.getByRole('button', { name: '复制图层' }));
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ id: 'text-1' }), expect.objectContaining({ text: '标题' })]) }) })));
+  fireEvent.click(screen.getByRole('button', { name: '删除图层' }));
+  fireEvent.click(screen.getByRole('button', { name: '删除图层' }));
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ layers: [] }) })));
+});
