@@ -972,6 +972,7 @@ export const Studio = ({
               </PageHeader>
               <DesignerHero
                 personaId={projectPersonaId(selected)}
+                profile={designerOptions.find((profile) => profile.id === projectPersonaId(selected))}
                 locale={locale}
                 label={t(locale, '当前设计师', 'Active designer')}
               />

@@ -55,3 +55,5 @@ Browser preview tests are not evidence for the native gates above. No release ar
 - Related-size document entry: a finalized source document can create an independent 1080x1080 (or user-specified) document while preserving source document/revision provenance. Focused Studio/metadata regression passed 22/22; automatic layout conversion and cross-document visual QA remain open release gates.
 
 - Multi-contributor attribution and related-scene conversion: project credits can include multiple designer versions, revisions preserve lead/direction roles, and related-size creation scales the finalized source scene into an independent document. Affected focused suite passed 53/53; semantic layout reflow and human visual QA remain release gates.
+
+- Custom persona artwork now remains visible on project detail pages for persisted non-built-in profiles, with an explicit unavailable fallback when no artwork is available. Focused `DesignerHero` regression passed 1/1; generated bitmap persistence remains an external gate.
