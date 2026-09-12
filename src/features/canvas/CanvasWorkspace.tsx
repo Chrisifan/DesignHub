@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Ellipse, Layer, Line, Rect, Stage, Text } from 'react-konva';
 
 import { getMessages, type Locale } from '../../app/i18n';
 import { Button } from '../../app/studio/ui';
+import { getDesktopApi } from '../../platform/runtime';
 import { Inspector } from './Inspector';
 import { LayerList } from './LayerList';
 import {
@@ -21,6 +22,9 @@ export type CanvasWorkspaceProps = {
   locale: Locale;
   scene: DesignScene;
   onSceneChange?: (scene: DesignScene) => void;
+  workspaceId?: string;
+  projectId?: string;
+  documentId?: string;
 };
 
 const initialViewport: ViewportState = { zoom: 1, offsetX: 0, offsetY: 0 };
@@ -50,13 +54,30 @@ const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void,
   return <Rect {...common} fill={layer.type === 'shape' ? layer.fill : '#d7dce5'} dash={layer.type === 'image' ? [8, 6] : undefined} />;
 };
 
-export const CanvasWorkspace = ({ locale, scene, onSceneChange }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId }: CanvasWorkspaceProps) => {
   const messages = getMessages(locale);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [viewport, setViewport] = useState<ViewportState>(initialViewport);
   const selectedLayer = useMemo(() => scene.layers.find((layer) => layer.id === selectedIds[0]), [scene.layers, selectedIds]);
+  useEffect(() => {
+    if (!workspaceId || !projectId || !documentId) return undefined;
+    let cancelled = false;
+    const request = getDesktopApi().loadDocumentScene?.(workspaceId, projectId, documentId);
+    if (!request) return undefined;
+    void request.then((stored) => {
+      if (!cancelled && stored) onSceneChange?.(stored);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [documentId, onSceneChange, projectId, workspaceId]);
   const select = (ids: string[]) => setSelectedIds(selectLayerIds(scene, ids));
-  const replace = (layer: SceneLayer) => onSceneChange?.(replaceSceneLayer(scene, layer));
+  const replace = (layer: SceneLayer) => {
+    const nextScene = replaceSceneLayer(scene, layer);
+    onSceneChange?.(nextScene);
+    if (workspaceId && projectId && documentId) {
+      const request = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId, documentId, scene: nextScene });
+      if (request) void request.catch(() => undefined);
+    }
+  };
   const updateLayer = (layer: SceneLayer) => {
     const next = layer.width > 0 && layer.height > 0 ? layer : resizeLayer(layer, { width: Math.max(1, layer.width), height: Math.max(1, layer.height) });
     replace(next);

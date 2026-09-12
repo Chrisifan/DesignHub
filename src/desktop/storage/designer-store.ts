@@ -44,9 +44,11 @@ export const loadDesignerState = async (
   try {
     await access(filePath, constants.R_OK);
     const value: unknown = JSON.parse(await readFile(filePath, 'utf8'));
-    return isDesignerLibraryState(value) ? cloneDesignerState(value) : null;
+    if (!isDesignerLibraryState(value)) throw new Error('INVALID_DESIGNER_STATE');
+    return cloneDesignerState(value);
   } catch (error) {
-    if (error instanceof SyntaxError || (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT')) return null;
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return null;
+    if (error instanceof SyntaxError) throw new Error('INVALID_DESIGNER_STATE');
     throw error;
   }
 };

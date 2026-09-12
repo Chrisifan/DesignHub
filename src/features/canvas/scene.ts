@@ -118,6 +118,15 @@ const validateScene = (value: unknown): DesignScene => {
   return clone(value as DesignScene);
 };
 
+export const isScene = (value: unknown): value is DesignScene => {
+  try {
+    validateScene(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const validateSize = (size: { width: number; height: number }): void => {
   if (!isFiniteNumber(size.width) || !isFiniteNumber(size.height) || size.width <= 0 || size.height <= 0) {
     throw new Error('INVALID_SIZE');

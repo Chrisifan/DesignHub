@@ -674,6 +674,11 @@ const getProjectManifestForId = (handle: WorkspaceHandle, projectId: string): { 
   }
 };
 
+export const resolveProjectDirectory = (handle: WorkspaceHandle, projectId: string): string | null => {
+  const found = getProjectManifestForId(handle, projectId);
+  return found?.directory ?? null;
+};
+
 const getProjectMetadata = (handle: WorkspaceHandle, projectId: string): ProjectMetadata | null => {
   const found = getProjectManifestForId(handle, projectId);
   return found ? readProjectMetadata(found.manifest, handle.workspace.workspaceId) : null;

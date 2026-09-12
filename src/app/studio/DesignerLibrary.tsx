@@ -64,6 +64,8 @@ const mergeProfiles = (persisted: PersonaProfile[] | undefined): PersonaProfile[
   return [...builtins, ...custom];
 };
 
+const canBeDefault = (profile: PersonaProfile | undefined): boolean => profile?.status === 'built-in' || profile?.status === 'published';
+
 export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, readOnly = false }: DesignerLibraryProps) => {
   const [profiles, setProfiles] = useState(personaProfiles);
   const [selectedId, setSelectedId] = useState(personaProfiles[0].id);
@@ -135,8 +137,9 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
         editDrafts: editDrafts as Record<string, DesignerDraftState>,
       },
     };
-    const request = getDesktopApi().saveDesignerState?.(workspaceId, state);
-    if (request) saveQueue.current = saveQueue.current.catch(() => undefined).then(() => request.catch(() => undefined));
+    saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
+      await getDesktopApi().saveDesignerState?.(workspaceId, state);
+    }).catch(() => undefined);
   }, [defaultId, editDrafts, newDraft, profiles, readOnly, workspaceId]);
   const selected = profiles.find((profile) => profile.id === selectedId);
   const activeDraft = editor?.mode === 'edit' ? editDrafts[editor.profileId] ?? (selected ? profileToDraft(selected, locale) : emptyDraft) : newDraft;
@@ -231,9 +234,9 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId, read
       <PageHeader title={t(locale, '设计师', 'Designers')} eyebrow={t(locale, '创作档案', 'Creative profiles')} description={t(locale, '管理设计风格、人物形象与创作规则。', 'Manage style, character artwork and creative rules.')} />
       <div className="library-split library-split--designer">
         <PersonaRepository locale={locale} profiles={profiles} selectedId={selectedId} query={query} statusFilter={statusFilter} defaultId={defaultId} onQueryChange={setQuery} onStatusFilterChange={setStatusFilter} onSelect={setSelectedId} onCreate={readOnly || loading || loadFailed ? undefined : openCreate} />
-        <PersonaInspector locale={locale} profile={selected} isDefault={selectedId === defaultId} readOnly={readOnly || loading || loadFailed} onEdit={openEdit} onDelete={deleteSelected} onDuplicate={duplicateSelected} onSetDefault={() => { if (readOnly || loading || loadFailed) return; setDefaultId(selectedId); notify(t(locale, '已设为会话默认', 'Set as session default')); }} onUseForNew={() => { if (onUseForNew && selected) onUseForNew(selected.id); else notify(t(locale, '请从项目库新建', 'Start a new design from Projects')); }} />
+        <PersonaInspector locale={locale} profile={selected} isDefault={selectedId === defaultId} readOnly={readOnly || loading || loadFailed} canSetDefault={canBeDefault(selected)} onEdit={openEdit} onDelete={deleteSelected} onDuplicate={duplicateSelected} onRestore={() => { if (!selected || readOnly || loading || loadFailed) return; setProfiles((previous) => previous.map((profile) => profile.id === selected.id ? { ...profile, status: 'published' } : profile)); notify(t(locale, '档案已恢复', 'Profile restored')); }} onSetDefault={() => { if (readOnly || loading || loadFailed || !canBeDefault(selected)) return; setDefaultId(selectedId); notify(t(locale, '已设为会话默认', 'Set as session default')); }} onUseForNew={() => { if (loading || loadFailed) return; if (onUseForNew && selected) onUseForNew(selected.id); else notify(t(locale, '请从项目库新建', 'Start a new design from Projects')); }} />
       </div>
-      <p className="page-footnote"><Icon name="circle-help" size={14} />{readOnly ? t(locale, '当前工作区只读，设计师档案不可修改。', 'This workspace is read-only; designer profiles cannot be changed.') : t(locale, '人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。', 'When character bitmaps are unavailable, profiles and drafts are saved to the current workspace.')}</p>
+      <p className="page-footnote"><Icon name="circle-help" size={14} />{loadFailed ? <><span>{t(locale, '设计师档案读取失败。', 'Designer profiles could not be loaded.')}</span><button type="button" onClick={() => window.location.reload()}>{t(locale, '重试', 'Retry')}</button></> : readOnly ? t(locale, '当前工作区只读，设计师档案不可修改。', 'This workspace is read-only; designer profiles cannot be changed.') : t(locale, '人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。', 'When character bitmaps are unavailable, profiles and drafts are saved to the current workspace.')}</p>
       {editor && <DesignerEditorModal locale={locale} draft={activeDraft} mode={editor.mode} source={creationSource} candidatePhase={candidatePhase} rightsConfirmed={rightsConfirmed} portfolioSources={portfolioSources} selectedCandidateId={selectedCandidateId} publishedInSession={publishedInSession} error={creationError} onSourceChange={setCreationSource} onRightsConfirmed={setRightsConfirmed} onPortfolioSourcesChange={setPortfolioSources} onCandidatePhaseChange={setCandidatePhase} onCandidateSelect={setSelectedCandidateId} onRequestCandidates={requestCandidates} onPublish={publishPreview} onDraftChange={setActiveDraft} onClose={() => setEditor(null)} onSubmit={saveDraft} />}
     </section>
   );

@@ -44,7 +44,7 @@ it('returns no state for malformed data and refuses writes in read-only workspac
   const filePath = join(workspace.workspace.directory, '.designhub', designersFileName);
   await saveDesignerState(workspace, workspace.workspace.workspaceId, { profiles: [], defaultId: 'builtin-v1' });
   await writeFile(filePath, '{bad json', 'utf8');
-  await expect(loadDesignerState(workspace, workspace.workspace.workspaceId)).resolves.toBeNull();
+  await expect(loadDesignerState(workspace, workspace.workspace.workspaceId)).rejects.toThrow('INVALID_DESIGNER_STATE');
   const reopened = await openWorkspace(workspace.workspace.directory);
   try {
     await expect(saveDesignerState(reopened, reopened.workspace.workspaceId, { profiles: [], defaultId: 'builtin-v1' })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
