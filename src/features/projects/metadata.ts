@@ -45,6 +45,13 @@ export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief
 
 const clone = <T>(value: T): T => structuredClone(value);
 
+const normalizeContributorIds = (activeDesignerVersionId: string | undefined, contributorDesignerVersionIds: string[] | undefined): string[] | undefined => {
+  const contributors = [...new Set((contributorDesignerVersionIds ?? []).map((id) => id.trim()).filter(Boolean))];
+  if (!activeDesignerVersionId?.trim()) return contributors.length > 0 ? contributors : undefined;
+  const activeId = activeDesignerVersionId.trim();
+  return [activeId, ...contributors.filter((id) => id !== activeId)];
+};
+
 const validateDocument = (document: Omit<ProjectDocumentMetadata, 'updatedAt'>): void => {
   if (!document.id || !document.name.trim() || !Number.isFinite(document.width) || !Number.isFinite(document.height) || document.width <= 0 || document.height <= 0) {
     throw new Error('INVALID_DOCUMENT');
@@ -67,7 +74,7 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
     name: input.name.trim(),
     ...(input.brief === undefined ? {} : { brief: input.brief }),
     ...(input.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: input.activeDesignerVersionId }),
-    ...(input.contributorDesignerVersionIds === undefined ? {} : { contributorDesignerVersionIds: [...new Set(input.contributorDesignerVersionIds.filter((id) => id.trim()))] }),
+    ...(normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) ? { contributorDesignerVersionIds: normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) } : {}),
     ...(input.designerSnapshot === undefined ? {} : { designerSnapshot: clone(input.designerSnapshot) }),
     ...(input.brandSnapshot === undefined ? {} : { brandSnapshot: clone(input.brandSnapshot) }),
     documents: (input.documents ?? []).map((document) => normalizeDocument(document, updatedAt)),
@@ -89,8 +96,13 @@ export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectM
     ...clone(metadata),
     ...(patch.name === undefined ? {} : { name: patch.name.trim() }),
     ...(patch.brief === undefined ? {} : { brief: patch.brief }),
-    ...(patch.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: patch.activeDesignerVersionId }),
-    ...(patch.contributorDesignerVersionIds === undefined ? {} : { contributorDesignerVersionIds: [...new Set(patch.contributorDesignerVersionIds.filter((id) => id.trim()))] }),
+    ...(patch.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: patch.activeDesignerVersionId.trim() }),
+    ...(() => {
+      const nextActive = patch.activeDesignerVersionId === undefined ? metadata.activeDesignerVersionId : patch.activeDesignerVersionId;
+      const nextContributors = patch.contributorDesignerVersionIds === undefined ? metadata.contributorDesignerVersionIds : patch.contributorDesignerVersionIds;
+      const normalized = normalizeContributorIds(nextActive, nextContributors);
+      return normalized ? { contributorDesignerVersionIds: normalized } : { contributorDesignerVersionIds: undefined };
+    })(),
     ...(patch.designerSnapshot === undefined ? {} : { designerSnapshot: clone(patch.designerSnapshot) }),
     ...(patch.brandSnapshot === undefined ? {} : { brandSnapshot: clone(patch.brandSnapshot) }),
     documents: clone(nextDocuments),

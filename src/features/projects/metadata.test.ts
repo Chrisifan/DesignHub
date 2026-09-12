@@ -39,5 +39,28 @@ it('keeps designer and brand snapshots immutable when updated', () => {
   expect(metadata.brandSnapshot).toEqual({ version: 'v2', colors: ['#fff'] });
 });
 
+it('always includes the active designer as the first contributor', () => {
+  const metadata = createProjectMetadata({
+    projectId: 'project-1',
+    name: '项目',
+    workspaceId: 'workspace-1',
+    activeDesignerVersionId: 'designer-a',
+    contributorDesignerVersionIds: ['designer-b', 'designer-a', 'designer-b'],
+  });
+  expect(metadata.contributorDesignerVersionIds).toEqual(['designer-a', 'designer-b']);
+});
+
+it('moves a switched active designer to the lead without dropping existing contributors', () => {
+  const initial = createProjectMetadata({
+    projectId: 'project-1',
+    name: '项目',
+    workspaceId: 'workspace-1',
+    activeDesignerVersionId: 'designer-a',
+    contributorDesignerVersionIds: ['designer-a', 'designer-b'],
+  });
+  const updated = updateProjectMetadata(initial, { activeDesignerVersionId: 'designer-c' });
+  expect(updated.contributorDesignerVersionIds).toEqual(['designer-c', 'designer-a', 'designer-b']);
+});
+
 const _typeCheck = (value: ProjectMetadata): ProjectMetadata => value;
 void _typeCheck;
