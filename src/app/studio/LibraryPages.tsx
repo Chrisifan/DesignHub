@@ -27,6 +27,7 @@ type LibraryPagesProps = PageProps & {
   onLocaleChange: (value: Locale) => void;
   deliveryProject?: Project | null;
   onUseForNew?: (personaId: string) => void;
+  workspaceId?: string;
 };
 
 type Localized = { zh: string; en: string };
@@ -1025,6 +1026,7 @@ export const LibraryPages = ({
   onLocaleChange,
   deliveryProject,
   onUseForNew,
+  workspaceId,
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
@@ -1036,7 +1038,7 @@ export const LibraryPages = ({
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
   const pages: Record<Exclude<View, 'projects'>, ReactNode> = {
     designers: (
-      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} />
+      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} workspaceId={workspaceId} />
     ),
     assets: (
       <AssetsPage

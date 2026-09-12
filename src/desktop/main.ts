@@ -20,6 +20,8 @@ import {
 import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore } from './storage/project-store';
 import { createProjectContainerHandler, listActiveProjectsHandler, projectCreateChannel, projectListChannel } from './ipc/projects';
+import { designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, saveDesignerStateHandler } from './ipc/designers';
+import { loadDesignerState, saveDesignerState } from './storage/designer-store';
 import { runStorageSmoke } from './storage/storage-smoke';
 import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
@@ -104,6 +106,14 @@ app.whenReady().then(() => {
   ipcMain.handle(projectCreateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createProjectContainerHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).createProjectContainer(projectInput))(event, input);
+  });
+  ipcMain.handle(designerLoadChannel, async (event, workspaceId) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return loadDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadDesignerState)(event, workspaceId);
+  });
+  ipcMain.handle(designerSaveChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return saveDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, state) => saveDesignerState(workspace, workspace.workspace.workspaceId, state))(event, input);
   });
   ipcMain.handle(credentialStoreChannel, async (event, connectionId, secret) => {
     if (!activeWindow || !activeTrustedUrl) return false;

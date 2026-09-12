@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 import { DesignerLibrary } from './DesignerLibrary';
@@ -56,4 +56,16 @@ it('presents three example candidates and marks preview publish as session-only'
   expect(candidates[1]).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByRole('button', { name: '发布预览' }));
   expect(screen.getByText('已在本次示例会话中发布，不会写入磁盘。')).toBeInTheDocument();
+});
+
+it('hydrates and persists designer state through the desktop workspace bridge', async () => {
+  const loadDesignerState = vi.fn(async () => ({ profiles: [], defaultId: 'builtin-v1', drafts: { newDraft: { name: '工作区草稿' } } }));
+  const saveDesignerState = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDesignerState, saveDesignerState };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-1" />);
+  await waitFor(() => expect(loadDesignerState).toHaveBeenCalledWith('workspace-1'));
+  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '名称' })).toHaveValue('工作区草稿'));
+  fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: '已保存草稿' } });
+  await waitFor(() => expect(saveDesignerState).toHaveBeenCalledWith('workspace-1', expect.objectContaining({ drafts: expect.objectContaining({ newDraft: expect.objectContaining({ name: '已保存草稿' }) }) })));
 });

@@ -1,5 +1,6 @@
 import type { WorkspaceDescriptor } from '../features/workspace/open-workspace';
 import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult } from '../features/workspace/project-store';
+import type { DesignerLibraryState } from '../features/designers/persistence';
 
 export type WorkspaceCreateInput = {
   parentDirectory: string;
@@ -12,6 +13,8 @@ export type DesktopApi = {
   openWorkspace?: (directory: string) => Promise<WorkspaceDescriptor | null>;
   listActiveProjects?: (workspaceId: string) => Promise<ActiveProject[] | null>;
   createProjectContainer?: (input: CreateProjectContainerInput) => Promise<CreateProjectContainerResult | null>;
+  loadDesignerState?: (workspaceId: string) => Promise<DesignerLibraryState | null>;
+  saveDesignerState?: (workspaceId: string, state: DesignerLibraryState) => Promise<boolean>;
   storeCredential?: (connectionId: string, secret: string) => Promise<boolean>;
   deleteCredential?: (connectionId: string) => Promise<boolean>;
 };

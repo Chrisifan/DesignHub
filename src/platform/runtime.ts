@@ -6,6 +6,8 @@ const unavailableDesktopApi: DesktopApi = {
   openWorkspace: async () => null,
   listActiveProjects: async () => null,
   createProjectContainer: async () => null,
+  loadDesignerState: async () => null,
+  saveDesignerState: async () => false,
   storeCredential: async () => false,
   deleteCredential: async () => false,
 };

@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
 import { PersonaArtwork } from './PersonaArtwork';
@@ -6,6 +6,8 @@ import { PersonaInspector } from './PersonaInspector';
 import { PersonaRepository, type PersonaStatusFilter } from './PersonaRepository';
 import { localize, personaProfiles, type LocalizedText, type PersonaProfile } from './personas';
 import { Button, Field, Icon, Modal, PageHeader, t } from './ui';
+import { getDesktopApi } from '../../platform/runtime';
+import type { DesignerDraftState } from '../../features/designers/persistence';
 
 type DesignerDraft = {
   name: string;
@@ -48,12 +50,14 @@ type DesignerLibraryProps = {
   locale: Locale;
   notify: (message: string) => void;
   onUseForNew?: (personaId: string) => void;
+  workspaceId?: string;
 };
 
-export const DesignerLibrary = ({ locale, notify, onUseForNew }: DesignerLibraryProps) => {
+export const DesignerLibrary = ({ locale, notify, onUseForNew, workspaceId }: DesignerLibraryProps) => {
   const [profiles, setProfiles] = useState(personaProfiles);
   const [selectedId, setSelectedId] = useState(personaProfiles[0].id);
   const [defaultId, setDefaultId] = useState(personaProfiles[0].id);
+  const isHydrating = useRef(Boolean(workspaceId));
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<PersonaStatusFilter>('all');
   const [editor, setEditor] = useState<{ mode: 'new' } | { mode: 'edit'; profileId: string } | null>(null);
@@ -66,6 +70,51 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew }: DesignerLibrary
   const [creationError, setCreationError] = useState('');
   const [newDraft, setNewDraft] = useState<DesignerDraft>(emptyDraft);
   const [editDrafts, setEditDrafts] = useState<Record<string, DesignerDraft>>({});
+  useEffect(() => {
+    let cancelled = false;
+    isHydrating.current = Boolean(workspaceId);
+    const hydrate = async () => {
+      if (!workspaceId) {
+        if (!cancelled) {
+          setProfiles(personaProfiles);
+          setSelectedId(personaProfiles[0].id);
+          setDefaultId(personaProfiles[0].id);
+          setNewDraft(emptyDraft);
+          setEditDrafts({});
+          isHydrating.current = false;
+        }
+        return;
+      }
+      let next = null;
+      try {
+        next = await getDesktopApi().loadDesignerState?.(workspaceId) ?? null;
+      } catch {
+        next = null;
+      }
+      if (cancelled) return;
+      setProfiles(next?.profiles ?? personaProfiles);
+      setSelectedId(next?.profiles[0]?.id ?? personaProfiles[0].id);
+      setDefaultId(next?.defaultId ?? personaProfiles[0].id);
+      setNewDraft(next?.drafts?.newDraft ? { ...emptyDraft, ...next.drafts.newDraft } : emptyDraft);
+      setEditDrafts(Object.fromEntries(Object.entries(next?.drafts?.editDrafts ?? {}).map(([id, draft]) => [id, { ...emptyDraft, ...draft }])));
+      isHydrating.current = false;
+    };
+    void hydrate();
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+  useEffect(() => {
+    if (!workspaceId || isHydrating.current) return;
+    const state = {
+      profiles,
+      defaultId,
+      drafts: {
+        newDraft: newDraft as DesignerDraftState,
+        editDrafts: editDrafts as Record<string, DesignerDraftState>,
+      },
+    };
+    const request = getDesktopApi().saveDesignerState?.(workspaceId, state);
+    if (request) void request.catch(() => undefined);
+  }, [defaultId, editDrafts, newDraft, profiles, workspaceId]);
   const selected = profiles.find((profile) => profile.id === selectedId);
   const activeDraft = editor?.mode === 'edit' ? editDrafts[editor.profileId] ?? (selected ? profileToDraft(selected, locale) : emptyDraft) : newDraft;
   const setActiveDraft = (draft: DesignerDraft) => {
@@ -142,7 +191,7 @@ export const DesignerLibrary = ({ locale, notify, onUseForNew }: DesignerLibrary
         <PersonaRepository locale={locale} profiles={profiles} selectedId={selectedId} query={query} statusFilter={statusFilter} defaultId={defaultId} onQueryChange={setQuery} onStatusFilterChange={setStatusFilter} onSelect={setSelectedId} onCreate={openCreate} />
         <PersonaInspector locale={locale} profile={selected} isDefault={selectedId === defaultId} onEdit={openEdit} onDelete={deleteSelected} onDuplicate={duplicateSelected} onSetDefault={() => { setDefaultId(selectedId); notify(t(locale, '已设为会话默认', 'Set as session default')); }} onUseForNew={() => { if (onUseForNew && selected) onUseForNew(selected.id); else notify(t(locale, '请从项目库新建', 'Start a new design from Projects')); }} />
       </div>
-      <p className="page-footnote"><Icon name="circle-help" size={14} />{t(locale, '人物位图尚未生成时会显示待生成；档案修改仅在本次预览保留。', 'When character bitmaps are unavailable, the UI shows a pending state; profile changes last for this preview only.')}</p>
+      <p className="page-footnote"><Icon name="circle-help" size={14} />{t(locale, '人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。', 'When character bitmaps are unavailable, the UI shows a pending state; profiles and drafts are saved to the current workspace.')}</p>
       {editor && <DesignerEditorModal locale={locale} draft={activeDraft} mode={editor.mode} source={creationSource} candidatePhase={candidatePhase} rightsConfirmed={rightsConfirmed} portfolioSources={portfolioSources} selectedCandidateId={selectedCandidateId} publishedInSession={publishedInSession} error={creationError} onSourceChange={setCreationSource} onRightsConfirmed={setRightsConfirmed} onPortfolioSourcesChange={setPortfolioSources} onCandidatePhaseChange={setCandidatePhase} onCandidateSelect={setSelectedCandidateId} onRequestCandidates={requestCandidates} onPublish={publishPreview} onDraftChange={setActiveDraft} onClose={() => setEditor(null)} onSubmit={saveDraft} />}
     </section>
   );
