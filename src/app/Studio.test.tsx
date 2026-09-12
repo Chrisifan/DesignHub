@@ -158,14 +158,25 @@ it('hydrates persisted workspace projects and creates through the desktop API', 
 it('imports a project package and refreshes the persisted project list', async () => {
   const listActiveProjects = vi.fn()
     .mockResolvedValueOnce([])
-    .mockResolvedValueOnce([{ projectId: 'project-imported', name: 'Imported project' }]);
+    .mockResolvedValueOnce([{
+      projectId: 'project-imported',
+      name: 'Imported project',
+      activeDesignerVersionId: 'paper-type',
+      contributorDesignerVersionIds: ['paper-type', 'natural-story'],
+      designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' },
+      documents: [{ id: 'doc-imported', name: '导入方图', width: 720, height: 720, updatedAt: '2026-09-12T00:00:00.000Z' }],
+    }]);
   const importProjectPackage = vi.fn(async () => ({ projectId: 'project-imported' }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, importProjectPackage };
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('heading', { name: '项目库' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: '导入项目包' }));
   await waitFor(() => expect(importProjectPackage).toHaveBeenCalledWith({ workspaceId: 'workspace-1' }));
-  expect(await screen.findByRole('button', { name: 'Imported project' })).toBeInTheDocument();
+  const imported = await screen.findByRole('button', { name: 'Imported project' });
+  expect(within(imported).getByLabelText('版本署名')).toHaveTextContent('自然叙事');
+  fireEvent.click(imported);
+  expect(screen.getByRole('button', { name: '打开主海报' })).toBeInTheDocument();
+  expect(screen.getAllByText(/720 × 720/).length).toBeGreaterThan(0);
 });
 
 it('renames, archives and duplicates a persisted project from its detail view', async () => {

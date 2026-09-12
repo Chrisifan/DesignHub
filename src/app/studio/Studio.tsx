@@ -10,6 +10,7 @@ import { getPersona, localize, personaProfiles, type PersonaProfile } from './pe
 import { Workbench } from './Workbench';
 import type { CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
+import type { ActiveProject } from '../../features/workspace/project-store';
 import { getDesktopApi } from '../../platform/runtime';
 import {
   ArtworkPreview,
@@ -44,6 +45,29 @@ const navigation: { view: View; icon: string; zh: string; en: string }[] = [
 
 const readOperatorName = (): string => {
   try { return localStorage.getItem('designhub.operator.name') ?? ''; } catch { return ''; }
+};
+
+const toStudioProject = (entry: ActiveProject, workspaceId: string, locale: Locale): Project => {
+  const snapshot = entry.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
+  const primaryDesigner = snapshot?.name?.zh ?? '纸感排版';
+  return {
+    id: entry.projectId,
+    workspaceId,
+    documentId: entry.documents?.[0]?.id,
+    name: entry.name,
+    enName: entry.name,
+    description: entry.brief ?? t(locale, '本地项目', 'Local project'),
+    enDescription: entry.brief ?? 'Local project',
+    designers: [primaryDesigner],
+    activeDesignerVersionId: entry.activeDesignerVersionId,
+    contributorDesignerVersionIds: entry.contributorDesignerVersionIds,
+    designerSnapshot: entry.designerSnapshot,
+    brandSnapshot: entry.brandSnapshot,
+    artwork: 'blank',
+    documents: entry.documents?.length ?? 1,
+    documentEntries: entry.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
+    archived: entry.archived,
+  };
 };
 
 type StudioProps = {
@@ -116,24 +140,7 @@ export const Studio = ({
       }
       void request?.then((entries) => {
         if (cancelled || !entries) return;
-        setProjects(entries.map((entry) => ({
-          id: entry.projectId,
-          workspaceId: workspace.workspaceId,
-          documentId: entry.documents?.[0]?.id,
-          name: entry.name,
-          enName: entry.name,
-          description: entry.brief ?? t(locale, '本地项目', 'Local project'),
-          enDescription: entry.brief ?? 'Local project',
-          designers: ['纸感排版'],
-          activeDesignerVersionId: entry.activeDesignerVersionId,
-          contributorDesignerVersionIds: entry.contributorDesignerVersionIds,
-          designerSnapshot: entry.designerSnapshot,
-          brandSnapshot: entry.brandSnapshot,
-          artwork: 'blank' as const,
-          documents: entry.documents?.length ?? 1,
-          documentEntries: entry.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
-          archived: entry.archived,
-        })));
+        setProjects(entries.map((entry) => toStudioProject(entry, workspace.workspaceId, locale)));
       }).catch(() => undefined);
     }
     setSelected(null);
@@ -315,19 +322,7 @@ export const Studio = ({
       if (!result) return;
       const entries = await getDesktopApi().listActiveProjects?.(workspace.workspaceId);
       if (entries) {
-        setProjects(entries.map((entry) => ({
-          id: entry.projectId,
-          workspaceId: workspace.workspaceId,
-          documentId: entry.documents?.[0]?.id,
-          name: entry.name,
-          enName: entry.name,
-          description: entry.brief ?? t(locale, '本地项目', 'Local project'),
-          enDescription: entry.brief ?? 'Local project',
-          designers: ['纸感排版'],
-          artwork: 'blank' as const,
-          documents: entry.documents?.length ?? 1,
-          archived: entry.archived,
-        })));
+        setProjects(entries.map((entry) => toStudioProject(entry, workspace.workspaceId, locale)));
       }
       notify(t(locale, '项目包已导入', 'Project package imported'));
     } catch {
