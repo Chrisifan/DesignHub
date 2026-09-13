@@ -41,13 +41,13 @@ import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
 import { createWindowOptions } from './window-options';
 import { createCredentialBoundary, createUnavailableCredentialStore, type SystemCredentialStore, type CredentialBoundary } from './security/credentials';
-import { createKeyringCredentialStore, migrateLegacyCredentials } from './security/keyring-credentials';
+import { createKeyringCredentialStore, migrateLegacyCredentials, migrateLegacyProviderCredential } from './security/keyring-credentials';
 import { listTasksHandler, taskListChannel } from './ipc/tasks';
 import { loadTaskState } from './storage/task-store';
 import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
-import { createOpenAICompatibleAdapter, type GeneratedImage } from '../features/providers/adapter';
+import type { GeneratedImage } from '../features/providers/adapter';
 import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
 import { createPortfolioDiscardHandler, createPortfolioInspectionHandler, createPortfolioSelectionHandler, portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
 import { createPortfolioSourceInspector } from './portfolio-source-inspector';
@@ -67,6 +67,7 @@ import { appendWorkspaceExportHistory, loadWorkspaceExportHistory } from './stor
 import { exportHistoryListChannel, listExportHistoryHandler } from './ipc/export-history';
 import { loadProviderConfigs, saveProviderConfigs } from './security/provider-config';
 import { createProviderConfigLoadHandler, createProviderConfigSaveHandler, providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
+import { createProviderAdapterResolver } from './provider-adapter-resolver';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -238,9 +239,12 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
       resolveAdapter: async (connectionId) => {
         if (connectionId !== 'openai-compatible') throw new Error('PROVIDER_NOT_CONFIGURED');
         const savedConfig = (await loadProviderConfigs(providerConfigPath()))['openai-compatible'];
-        const baseUrl = savedConfig?.baseUrl ?? process.env.DESIGNHUB_PROVIDER_BASE_URL ?? '';
-        const apiKey = await credentialStore.getCredential?.(connectionId) ?? process.env.DESIGNHUB_PROVIDER_API_KEY ?? '';
-        return createOpenAICompatibleAdapter({ baseUrl, apiKey, imageTransport: savedConfig?.imageTransport, models: savedConfig?.models });
+        return createProviderAdapterResolver({
+          connectionId,
+          config: savedConfig,
+          environment: { baseUrl: process.env.DESIGNHUB_PROVIDER_BASE_URL, apiKey: process.env.DESIGNHUB_PROVIDER_API_KEY },
+          getCredential: async (account) => credentialStore.getCredential?.(account) ?? null,
+        })();
       },
     });
     return bindAgentTaskService(service);
@@ -251,6 +255,7 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
 app.whenReady().then(async () => {
   credentialStore = await createSystemCredentialStore();
   credentialBoundary = createCredentialBoundary(credentialStore);
+  await migrateLegacyProviderCredential(credentialStore, 'openai-compatible');
   await migrateLegacyCredentialFile(join(app.getPath('userData'), 'secure'), credentialStore);
   protocol.handle(
     designerArtworkScheme,
