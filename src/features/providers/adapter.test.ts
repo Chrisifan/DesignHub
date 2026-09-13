@@ -9,6 +9,8 @@ import {
 const response = (body: unknown, status = 200, headers?: Record<string, string>): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 
+const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+
 describe('OpenAI-compatible provider adapter', () => {
   it('exposes an explicit capability matrix', () => {
     expect(providerCapabilityMatrix).toEqual({
@@ -94,7 +96,7 @@ describe('OpenAI-compatible provider adapter', () => {
         tools: [{ type: 'image_generation', size: '1024x1024' }],
         tool_choice: { type: 'image_generation' },
       });
-      return response({ output: [{ type: 'image_generation_call', result: 'generated-base64' }] });
+      return response({ output: [{ type: 'image_generation_call', result: pngBase64 }] });
     });
     const adapter = createOpenAICompatibleAdapter({
       baseUrl: 'https://gateway.example.test/openai/v1',
@@ -105,7 +107,7 @@ describe('OpenAI-compatible provider adapter', () => {
     });
 
     await expect(adapter.generateImage({ prompt: 'A minimal poster', size: '1024x1024' })).resolves.toEqual({
-      images: [{ base64: 'generated-base64' }],
+      images: [{ base64: pngBase64 }],
       cost: null,
     });
   });
@@ -121,7 +123,7 @@ describe('OpenAI-compatible provider adapter', () => {
       ]));
       expect(payload.input[0]?.content.find((item) => item.type === 'input_text')?.text).toContain('"feather":12');
       expect(payload.input[0]?.content.find((item) => item.type === 'input_text')?.text).toContain('"width":30');
-      return response({ output: [{ type: 'image_generation_call', result: 'edited-base64' }] });
+      return response({ output: [{ type: 'image_generation_call', result: pngBase64 }] });
     });
     const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://gateway.example.test/v1', apiKey: 'secret-key', imageTransport: 'responses', fetch: fetcher });
 
@@ -132,7 +134,7 @@ describe('OpenAI-compatible provider adapter', () => {
       tool: 'remove-object',
       toolParams: { feather: 12 },
       region: { x: 1, y: 2, width: 30, height: 40 },
-    })).resolves.toEqual({ images: [{ base64: 'edited-base64' }], cost: null });
+    })).resolves.toEqual({ images: [{ base64: pngBase64 }], cost: null });
   });
 
   it('rejects unsupported multi-image Responses requests before making a network call', async () => {
@@ -152,6 +154,59 @@ describe('OpenAI-compatible provider adapter', () => {
     });
 
     await expect(adapter.generateImage({ prompt: 'A poster' })).rejects.toMatchObject({ kind: 'invalid_response' });
+  });
+
+  it('rejects a hosted image result that is not base64', async () => {
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'secret-key',
+      imageTransport: 'responses',
+      fetch: vi.fn(async () => response({ output: [{ type: 'image_generation_call', result: 'not-base64' }] })),
+    });
+
+    await expect(adapter.generateImage({ prompt: 'A poster' })).rejects.toMatchObject({ kind: 'invalid_response' });
+  });
+
+  it('rejects a Base64 hosted result without a PNG signature', async () => {
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'secret-key',
+      imageTransport: 'responses',
+      fetch: vi.fn(async () => response({ output: [{ type: 'image_generation_call', result: 'dGV4dA==' }] })),
+    });
+
+    await expect(adapter.generateImage({ prompt: 'A poster' })).rejects.toMatchObject({ kind: 'invalid_response' });
+  });
+
+  it('maps an aborted Responses image request to local cancellation', async () => {
+    const controller = new AbortController();
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBe(controller.signal);
+      throw new DOMException('Request aborted', 'AbortError');
+    });
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'secret-key',
+      imageTransport: 'responses',
+      fetch: fetcher,
+    });
+    controller.abort();
+
+    await expect(adapter.generateImage({ prompt: 'A poster' }, controller.signal)).rejects.toMatchObject({ kind: 'cancelled' });
+  });
+
+  it('redacts the API key from Responses provider errors', async () => {
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'secret-key',
+      imageTransport: 'responses',
+      fetch: vi.fn(async () => response({ error: { message: 'Request rejected for secret-key' } }, 401)),
+    });
+
+    await expect(adapter.generateImage({ prompt: 'A poster' })).rejects.toMatchObject({
+      kind: 'http',
+      message: 'Request rejected for [redacted]',
+    });
   });
 
   it('sends image tool metadata, parameters, and region with edit requests', async () => {

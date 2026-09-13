@@ -132,12 +132,29 @@ const blobDataUrl = async (blob: Blob): Promise<string> => {
   return `data:${blob.type || 'image/png'};base64,${base64}`;
 };
 
+const isBase64 = (value: string): boolean => value.length > 0
+  && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
+
+const isPngBase64 = (value: string): boolean => {
+  if (!isBase64(value)) return false;
+  const bytes = Buffer.from(value, 'base64');
+  return bytes.length >= 8
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[4] === 0x0d
+    && bytes[5] === 0x0a
+    && bytes[6] === 0x1a
+    && bytes[7] === 0x0a;
+};
+
 const responsesImages = (payload: Record<string, unknown>): GeneratedImage[] => {
   const output = Array.isArray(payload.output) ? payload.output : [];
   return output.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return [];
     const item = entry as Record<string, unknown>;
-    return item.type === 'image_generation_call' && typeof item.result === 'string' && item.result.length > 0
+    return item.type === 'image_generation_call' && typeof item.result === 'string' && isPngBase64(item.result)
       ? [{ base64: item.result }]
       : [];
   });
