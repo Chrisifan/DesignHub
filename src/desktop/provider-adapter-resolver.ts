@@ -1,5 +1,5 @@
-import { createOpenAICompatibleAdapter, providerCapabilities, type MainOnlyAdapterOptions, type OpenAICompatibleAdapter } from '../features/providers/adapter';
-import { providerCredentialAccount, type ProviderConfig, type ProviderProfile } from '../features/providers/config';
+import { createOpenAICompatibleAdapter, providerCapabilities, type ChatStreamEvent, type MainOnlyAdapterOptions, type OpenAICompatibleAdapter } from '../features/providers/adapter';
+import { type ProviderConfig, type ProviderProfile } from '../features/providers/config';
 import { resolveProviderCredential } from './security/keyring-credentials';
 
 export type ProviderAdapterResolverOptions = {
@@ -11,6 +11,17 @@ export type ProviderAdapterResolverOptions = {
 };
 
 const profileConfig = (config: ProviderConfig | undefined, profile: ProviderProfile) => profile === 'conversation' ? config?.conversation : config?.image;
+
+const forwardConversationStream = (adapterPromise: Promise<OpenAICompatibleAdapter>, request: Parameters<OpenAICompatibleAdapter['streamChat']>[0], signal?: AbortSignal): AsyncIterable<ChatStreamEvent> => ({
+  [Symbol.asyncIterator]: () => {
+    let iteratorPromise: Promise<AsyncIterator<ChatStreamEvent>> | undefined;
+    const getIterator = (): Promise<AsyncIterator<ChatStreamEvent>> => {
+      iteratorPromise ??= adapterPromise.then((adapter) => adapter.streamChat(request, signal)[Symbol.asyncIterator]());
+      return iteratorPromise;
+    };
+    return { next: () => getIterator().then((iterator) => iterator.next()) };
+  },
+});
 
 export const createProviderAdapterResolver = (options: ProviderAdapterResolverOptions): (() => Promise<OpenAICompatibleAdapter>) => {
   const createAdapter = options.createAdapter ?? createOpenAICompatibleAdapter;
@@ -43,10 +54,7 @@ export const createProviderAdapterResolver = (options: ProviderAdapterResolverOp
   return async () => ({
     capabilities: providerCapabilities,
     chat: (request, signal) => getProfileAdapter('conversation').then((adapter) => adapter.chat(request, signal)),
-    streamChat: (request, signal) => (async function* () {
-      const adapter = await getProfileAdapter('conversation');
-      for await (const event of adapter.streamChat(request, signal)) yield event;
-    })(),
+    streamChat: (request, signal) => forwardConversationStream(getProfileAdapter('conversation'), request, signal),
     analyzeVision: (request, signal) => getProfileAdapter('conversation').then((adapter) => adapter.analyzeVision(request, signal)),
     generateImage: (request, signal) => getProfileAdapter('image').then((adapter) => adapter.generateImage(request, signal)),
     editImage: (request, signal) => getProfileAdapter('image').then((adapter) => adapter.editImage(request, signal)),

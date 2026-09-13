@@ -16,10 +16,23 @@ const config: ProviderConfig = {
   },
 };
 
+const oneEvent = (label: string): AsyncIterable<{ text: string }> => ({
+  [Symbol.asyncIterator]: () => {
+    let done = false;
+    return {
+      next: async () => {
+        if (done) return { done: true, value: undefined };
+        done = true;
+        return { done: false, value: { text: label } };
+      },
+    };
+  },
+});
+
 const adapter = (label: string): OpenAICompatibleAdapter => ({
   capabilities: ['conversation', 'vision-analysis', 'image-generation', 'image-editing'],
   chat: vi.fn(async () => ({ text: label, cost: null })),
-  streamChat: vi.fn(() => (async function* () { yield { text: label }; })()),
+  streamChat: vi.fn(() => oneEvent(label)),
   analyzeVision: vi.fn(async () => ({ text: label, cost: null })),
   generateImage: vi.fn(async () => ({ images: [{ url: `${label}.png` }], cost: null })),
   editImage: vi.fn(async () => ({ images: [{ url: `${label}.png` }], cost: null })),
@@ -83,4 +96,3 @@ it('uses environment fallback when no saved config exists', async () => {
   await expect(combined.generateImage({ prompt: 'a chair' })).resolves.toMatchObject({ images: [{ url: 'https://env.example/v1.png' }] });
   expect(createAdapter).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: 'https://env.example/v1', apiKey: 'env-key', imageTransport: 'images' }));
 });
-
