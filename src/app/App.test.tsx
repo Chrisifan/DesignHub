@@ -74,7 +74,7 @@ it('preserves workspace input when the native folder chooser fails', async () =>
   );
 });
 
-it('opens the desktop application directly in the workspace shell', () => {
+it('opens the desktop application on the welcome shell by default', () => {
   vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
     'DesignHub Electron/44.3.0',
   );
@@ -82,8 +82,8 @@ it('opens the desktop application directly in the workspace shell', () => {
 
   render(<App />);
 
-  expect(screen.getByRole('heading', { name: '项目库' })).toBeVisible();
-  expect(screen.queryByRole('heading', { name: '开始本地创作' })).toBeNull();
+  expect(screen.getByRole('heading', { name: '开始本地创作' })).toBeVisible();
+  expect(screen.queryByRole('heading', { name: '项目库' })).toBeNull();
 });
 
 it('creates a real workspace from the welcome form instead of entering example mode', async () => {
@@ -137,6 +137,33 @@ it('opens a selected workspace and preserves read-only mode in the shell', async
   await waitFor(() => expect(openWorkspace).toHaveBeenCalledWith('/tmp/designhub-workspace'));
   expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('只读空间');
   expect(screen.getByRole('heading', { name: '项目库' })).toBeVisible();
+});
+
+it('keeps opened workspaces in the switcher for later selection', async () => {
+  const chooseWorkspaceDirectory = vi.fn()
+    .mockResolvedValueOnce('/tmp/first')
+    .mockResolvedValueOnce('/tmp/second');
+  const openWorkspace = vi.fn(async (directory: string) => ({
+    workspaceId: directory.endsWith('first') ? 'workspace-first' : 'workspace-second',
+    name: directory.endsWith('first') ? 'First space' : 'Second space',
+    directory,
+    formatVersion: 1,
+    openMode: 'writable' as const,
+  }));
+  window.designhub = { chooseWorkspaceDirectory, openWorkspace };
+  render(<App />);
+
+  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
+  await screen.findByRole('button', { name: '切换工作区' });
+  fireEvent.click(screen.getByRole('button', { name: '切换工作区' }));
+  fireEvent.click(screen.getByRole('button', { name: '工作区' }));
+  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
+  await screen.findByRole('button', { name: '切换工作区' });
+  fireEvent.click(screen.getByRole('button', { name: '切换工作区' }));
+
+  expect(screen.getByRole('button', { name: /First space/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /First space/ }));
+  await waitFor(() => expect(openWorkspace).toHaveBeenLastCalledWith('/tmp/first'));
 });
 
 it('keeps the create form when workspace storage rejects the request', async () => {

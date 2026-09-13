@@ -61,6 +61,18 @@ export type PortfolioAnalysisInput = {
   rightsConfirmed: boolean;
 };
 
+export type ImageGenerationTestInput = {
+  connectionId: string;
+  prompt: string;
+  model?: string;
+  size?: string;
+};
+
+export type ImageGenerationTestResult = {
+  image: GeneratedImage;
+  cost: number | null;
+};
+
 type ConversationAdapter = {
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
   analyzeVision?: (request: { prompt: string; image: { url: string } | { base64: string; mimeType?: string } }, signal?: AbortSignal) => Promise<ChatResponse>;
@@ -74,6 +86,7 @@ export type AgentTaskService = {
   submitImageGeneration: (input: ImageGenerationInput) => Promise<TaskRecord>;
   submitDesignerArtworkGeneration: (input: DesignerArtworkGenerationInput) => Promise<TaskRecord>;
   submitImageEdit: (input: ImageEditInput) => Promise<TaskRecord>;
+  testImageGeneration: (input: ImageGenerationTestInput) => Promise<ImageGenerationTestResult>;
   retry: (taskId: string) => Promise<TaskRecord | undefined>;
   cancel: (taskId: string) => TaskRecord | undefined;
   flush: () => Promise<void>;
@@ -285,6 +298,20 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await executeImageTask(task, input, 'edit');
     return task;
   };
+  const testImageGeneration = async (input: ImageGenerationTestInput): Promise<ImageGenerationTestResult> => {
+    if (!input.connectionId.trim() || !input.prompt.trim()) throw new Error('IMAGE_TEST_BINDING_REQUIRED');
+    const adapter = await options.resolveAdapter(input.connectionId);
+    if (!adapter.generateImage) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
+    const response = await adapter.generateImage({
+      prompt: input.prompt.trim(),
+      ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+      ...(input.size?.trim() ? { size: input.size.trim() } : {}),
+      count: 1,
+    });
+    const image = response.images[0];
+    if (!image) throw new Error('IMAGE_RESULT_EMPTY');
+    return { image, cost: response.cost };
+  };
   const retry = async (taskId: string): Promise<TaskRecord | undefined> => {
     const previous = options.runtime.get(taskId);
     if (!previous?.requestText || !previous.providerId || !previous.source?.id) return undefined;
@@ -365,5 +392,5 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await Promise.all([...pending]);
     await options.runtime.flush();
   };
-  return { submitConversation, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, retry, cancel, flush };
+  return { submitConversation, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testImageGeneration, retry, cancel, flush };
 };

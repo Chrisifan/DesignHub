@@ -56,6 +56,7 @@ test('launches the workspace shell with only the DesignHub bridge', async () => 
       'submitPortfolioSelection',
       'discardPortfolioInspection',
       'submitImageGeneration',
+      'testImageGeneration',
       'submitDesignerArtworkGeneration',
       'submitImageEdit',
       'cancelTask',

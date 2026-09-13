@@ -18,6 +18,30 @@ it('runs a conversation task and stores the assistant result', async () => {
   expect(runtime.get(task.id)).toMatchObject({ state: 'completed', result: { text: '好的，已整理简报' } });
 });
 
+it('tests image generation through the resolved adapter without creating a task', async () => {
+  const runtime = createTaskRuntime();
+  const generateImage = vi.fn(async (request: { prompt: string; model?: string; size?: string; count?: number }) => ({
+    images: [{ base64: 'preview-bytes' }],
+    cost: 0.01,
+    request,
+  }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: '', cost: null }), generateImage }),
+  });
+
+  const result = await service.testImageGeneration({
+    connectionId: 'provider-1',
+    prompt: 'A random connection test image',
+    model: 'image-model',
+    size: '1024x1024',
+  });
+
+  expect(result).toEqual({ image: { base64: 'preview-bytes' }, cost: 0.01 });
+  expect(generateImage).toHaveBeenCalledWith({ prompt: 'A random connection test image', model: 'image-model', size: '1024x1024', count: 1 });
+  expect(runtime.list()).toEqual([]);
+});
+
 it('persists a conversation cost when the provider reports one', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({

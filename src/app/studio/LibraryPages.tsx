@@ -21,6 +21,7 @@ import {
   IconButton,
   Modal,
   PageHeader,
+  Select,
   t,
 } from './ui';
 import { getDesktopApi } from '../../platform/runtime';
@@ -377,15 +378,7 @@ const AssetsPage = ({
           />
         </label>
         <Field label={t(locale, '类型', 'Type')}>
-          <select
-            value={type}
-            onChange={(event) => onTypeChange(event.target.value as AssetType)}
-          >
-            <option value="all">{t(locale, '全部', 'All')}</option>
-            <option value="image">{t(locale, '图像', 'Images')}</option>
-            <option value="logo">{t(locale, '标志', 'Logos')}</option>
-            <option value="texture">{t(locale, '纹理', 'Textures')}</option>
-          </select>
+          <Select ariaLabel={t(locale, '类型', 'Type')} value={type} onChange={(value) => onTypeChange(value as AssetType)} options={[{ value: 'all', label: t(locale, '全部', 'All') }, { value: 'image', label: t(locale, '图像', 'Images') }, { value: 'logo', label: t(locale, '标志', 'Logos') }, { value: 'texture', label: t(locale, '纹理', 'Textures') }]} />
         </Field>
         <div
           className="view-toggle"
@@ -482,14 +475,14 @@ const AssetsPage = ({
               <Button icon="rotate-ccw" onClick={() => onAssetAction({ assetId: selected.id, mode: 'replace', projectId })}>{t(locale, '替换选中图像', 'Replace selected image')}</Button>
             </div>
           )}
-          <p className="panel-note">
+          {!usingManagedAssets && <p className="panel-note">
             <Icon name="lock" size={15} />
             {t(
               locale,
               usingManagedAssets ? '受管原图保留在当前工作区，外部引用不会自动下载。' : '此页只浏览示例元数据，不读取或写入本机文件。',
               usingManagedAssets ? 'Managed originals stay in this workspace; external references are not downloaded automatically.' : 'This page only browses example metadata and does not read or write local files.',
             )}
-          </p>
+          </p>}
         </aside> : <div className="details-panel asset-details"><EmptyState icon="image" title={t(locale, '暂无素材', 'No assets yet')} description={t(locale, '导入素材后会显示在这里。', 'Import assets to see them here.')} /></div>}
       </div>
     </section>
@@ -634,14 +627,14 @@ const BrandsPage = ({
                 : t(locale, '1 个项目 · 快照 v1', '1 project · snapshot v1')}
             </DetailRow>
           </dl>
-          <p className="panel-note">
+          {!workspaceId && <p className="panel-note">
             <Icon name="history" size={15} />
             {t(
               locale,
               workspaceId ? '项目继续使用创建时保存的品牌快照。' : '示例项目不会自动升级到当前品牌版本。',
               workspaceId ? 'Projects continue using their creation-time brand snapshot.' : 'Example projects are not automatically upgraded to the current brand version.',
             )}
-          </p>
+          </p>}
           {workspaceId && <div className="dialog-actions brand-actions">
             <Button icon="pencil" onClick={() => { if (selectedRecord) setEditor(selectedRecord); }}>{t(locale, '编辑', 'Edit')}</Button>
             <Button icon="trash-2" onClick={() => { if (selectedRecord) setDeletePending(selectedRecord); }}>{t(locale, '删除', 'Delete')}</Button>
@@ -658,7 +651,8 @@ const BrandsPage = ({
 const ConnectionsPage = ({
   locale,
   navigate,
-}: Pick<PageProps, 'locale' | 'navigate'>) => {
+  workspaceId,
+}: Pick<PageProps, 'locale' | 'navigate'> & { workspaceId?: string }) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
   useEffect(() => {
@@ -680,21 +674,21 @@ const ConnectionsPage = ({
     <PageHeader
       title={t(locale, '模型连接', 'Model connections')}
       eyebrow={t(locale, '本机能力', 'Local capability')}
-      description={t(
+      description={!workspaceId ? t(
         locale,
         '连接由本机适配器提供；项目与密钥不会进入示例数据。',
         'Connections are provided by local adapters; projects and keys never enter example data.',
-      )}
+      ) : ''}
     />
     <div className="connection-layout">
       <EmptyState
         icon="plug"
         title={t(locale, '尚未连接模型', 'No models connected')}
-        description={t(
+        description={!workspaceId ? t(
           locale,
           '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
           'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
-        )}
+        ) : ''}
       >
         <Button
           variant="secondary"
@@ -713,6 +707,7 @@ const ConnectionsPage = ({
           if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
           return saved;
         }}
+        onTestImageGeneration={workspaceId ? async (connectionId, input) => getDesktopApi().testImageGeneration?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
         onCheckCredential={async (connectionId) => getDesktopApi().hasCredential?.(connectionId) ?? false}
         onStoreCredential={async (connectionId, secret) => {
           const stored = await (getDesktopApi().storeCredential?.(connectionId, secret) ?? false);
@@ -746,14 +741,14 @@ const ConnectionsPage = ({
         ))}
       </div>
     </div>
-    <p className="page-footnote">
+    {!workspaceId && <p className="page-footnote">
       <Icon name="lock" size={15} />
       {t(
         locale,
         '此页面不收集密钥，也不会伪装连接检测。状态只显示本机安全存储中的配置结果。',
         'This page does not collect keys or simulate checks. Status reflects configuration in local secure storage.',
       )}
-    </p>
+    </p>}
   </section>
   );
 };
@@ -853,11 +848,11 @@ const TasksPage = ({
     </div> : <EmptyState
       icon="clock"
       title={t(locale, '没有模型任务', 'No model tasks')}
-      description={t(
+      description={!workspaceId ? t(
         locale,
         '示例不会提交真实生成请求。连接模型后，任务会显示来源、提供方、上传范围和可验证状态。',
         'The example does not submit real generation requests. Once connected, tasks show their source, provider, upload scope and verified state.',
-      )}
+      ) : ''}
     >
       <Button
         variant="secondary"
@@ -1080,24 +1075,13 @@ const DeliveryPage = ({
           </div>
           <div className="config-grid">
             {project?.documentEntries && project.documentEntries.length > 1 && <Field label={t(locale, '文档', 'Document')}>
-              <select value={activeDocumentId} onChange={(event) => setDocumentId(event.target.value)}>
-                {project.documentEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-              </select>
+              <Select ariaLabel={t(locale, '文档', 'Document')} value={activeDocumentId} onChange={setDocumentId} options={project.documentEntries.map((entry) => ({ value: entry.id, label: entry.name }))} />
             </Field>}
             <Field label={t(locale, '来源', 'Source')}>
-              <select value={source} onChange={(event) => setSource(event.target.value as 'current' | 'final')}>
-                <option value="current">
-                  {t(locale, persistedProject ? '当前文档' : '示例原稿', persistedProject ? 'Current document' : 'Example source artwork')}
-                </option>
-                {hasFinalizedRevision && <option value="final">{t(locale, '已定稿', 'Finalized revision')}</option>}
-              </select>
+              <Select ariaLabel={t(locale, '来源', 'Source')} value={source} onChange={(value) => setSource(value as 'current' | 'final')} options={[{ value: 'current', label: t(locale, persistedProject ? '当前文档' : '示例原稿', persistedProject ? 'Current document' : 'Example source artwork') }, ...(hasFinalizedRevision ? [{ value: 'final', label: t(locale, '已定稿', 'Finalized revision') }] : [])]} />
             </Field>
             <Field label={t(locale, '颜色空间', 'Color space')}>
-              <select value="srgb" disabled>
-                <option value="srgb">
-                  {t(locale, 'sRGB（首版）', 'sRGB (first release)')}
-                </option>
-              </select>
+              <Select ariaLabel={t(locale, '颜色空间', 'Color space')} value="srgb" disabled onChange={() => undefined} options={[{ value: 'srgb', label: t(locale, 'sRGB（首版）', 'sRGB (first release)') }]} />
             </Field>
           </div>
           <label className="check-row">
@@ -1397,11 +1381,7 @@ const StoragePage = ({
         </dl>
         <div className="backup-settings">
           <Field label={t(locale, '备份周期', 'Backup schedule')}>
-            <select aria-label={t(locale, '备份周期', 'Backup schedule')} value={backupSchedule} disabled={!hasWorkspace || readOnly || busy} onChange={(event) => updateBackupSchedule(event.target.value as BackupSchedule)}>
-              <option value="manual">{t(locale, '手动', 'Manual')}</option>
-              <option value="daily">{t(locale, '每天', 'Daily')}</option>
-              <option value="weekly">{t(locale, '每周', 'Weekly')}</option>
-            </select>
+            <Select ariaLabel={t(locale, '备份周期', 'Backup schedule')} value={backupSchedule} disabled={!hasWorkspace || readOnly || busy} onChange={(value) => updateBackupSchedule(value as BackupSchedule)} options={[{ value: 'manual', label: t(locale, '手动', 'Manual') }, { value: 'daily', label: t(locale, '每天', 'Daily') }, { value: 'weekly', label: t(locale, '每周', 'Weekly') }]} />
           </Field>
         </div>
         <div className="storage-actions">
@@ -1555,15 +1535,7 @@ const SettingsPage = ({
         </div>
         <div className="settings-control">
           <Field label={t(locale, '语言', 'Language')}>
-            <select
-              value={locale}
-              onChange={(event) => onLocaleChange(event.target.value as Locale)}
-            >
-              <option value="zh-CN">
-                {t(locale, '简体中文', 'Simplified Chinese')}
-              </option>
-              <option value="en">{t(locale, 'English', 'English')}</option>
-            </select>
+            <Select ariaLabel={t(locale, '语言', 'Language')} value={locale} onChange={(value) => onLocaleChange(value as Locale)} options={[{ value: 'zh-CN', label: t(locale, '简体中文', 'Simplified Chinese') }, { value: 'en', label: t(locale, 'English', 'English') }]} />
           </Field>
           <span>
             {t(
@@ -1686,7 +1658,7 @@ export const LibraryPages = ({
         workspaceId={workspaceId}
       />
     ),
-    connections: <ConnectionsPage locale={locale} navigate={navigate} />,
+    connections: <ConnectionsPage locale={locale} navigate={navigate} workspaceId={workspaceId} />,
     tasks: <TasksPage locale={locale} navigate={navigate} workspaceId={workspaceId} />,
     delivery: (
       <DeliveryPage

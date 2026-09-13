@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Select } from '../../app/studio/ui';
 import type { ExportFormat } from './export-policy';
 
 export type ExportDialogProps = {
@@ -15,7 +16,7 @@ export const ExportDialog = ({ revisionId, onExport }: ExportDialogProps) => {
   };
   return (
     <section className="export-dialog" aria-label="Export document">
-      <label>Format<select value={format} onChange={(event) => setFormat(event.target.value as ExportFormat)}><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option><option value="pdf">PDF</option></select></label>
+      <label>Format<Select ariaLabel="Format" value={format} onChange={(value) => setFormat(value as ExportFormat)} options={[{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }, { value: 'webp', label: 'WebP' }, { value: 'pdf', label: 'PDF' }]} /></label>
       <button type="button" onClick={submit} disabled={busy}>{busy ? 'Working' : 'Export'}</button>
     </section>
   );

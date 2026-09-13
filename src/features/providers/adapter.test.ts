@@ -10,6 +10,7 @@ const response = (body: unknown, status = 200, headers?: Record<string, string>)
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 
 const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC';
+const jpegBase64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBD';
 
 describe('OpenAI-compatible provider adapter', () => {
   it('exposes an explicit capability matrix', () => {
@@ -167,15 +168,29 @@ describe('OpenAI-compatible provider adapter', () => {
     await expect(adapter.generateImage({ prompt: 'A poster' })).rejects.toMatchObject({ kind: 'invalid_response' });
   });
 
-  it('rejects a Base64 hosted result without a PNG signature', async () => {
+  it('rejects an empty hosted Base64 result', async () => {
     const adapter = createOpenAICompatibleAdapter({
       baseUrl: 'https://gateway.example.test/v1',
       apiKey: 'secret-key',
       imageTransport: 'responses',
-      fetch: vi.fn(async () => response({ output: [{ type: 'image_generation_call', result: 'dGV4dA==' }] })),
+      fetch: vi.fn(async () => response({ output: [{ type: 'image_generation_call', result: '' }] })),
     });
 
     await expect(adapter.generateImage({ prompt: 'A poster' })).rejects.toMatchObject({ kind: 'invalid_response' });
+  });
+
+  it('accepts a valid non-PNG Responses image data URL and preserves its MIME type', async () => {
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'secret-key',
+      imageTransport: 'responses',
+      fetch: vi.fn(async () => response({ output: [{ type: 'image_generation_call', result: `data:image/jpeg;base64,${jpegBase64}` }] })),
+    });
+
+    await expect(adapter.generateImage({ prompt: 'A poster' })).resolves.toEqual({
+      images: [{ base64: jpegBase64, mimeType: 'image/jpeg' }],
+      cost: null,
+    });
   });
 
   it('maps an aborted Responses image request to local cancellation', async () => {

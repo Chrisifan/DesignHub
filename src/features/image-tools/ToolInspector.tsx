@@ -1,5 +1,5 @@
 import type { Locale } from '../../app/i18n';
-import { Button, Field, t } from '../../app/studio/ui';
+import { Button, Field, Select, t } from '../../app/studio/ui';
 import { getToolDefinition, imageTools, type ImageTool, type ToolParams } from './target';
 import { MaskEditor } from '../canvas/MaskEditor';
 import type { Region } from '../canvas/selection';
@@ -66,11 +66,11 @@ export const ToolInspector = ({ tool, params, tools = imageTools, locale = 'en',
     onRun?.(nextRegion);
   };
   return <aside aria-label={t(locale, '图像工具', 'Image tools')}>
-    {tools.length > 1 && <Field label={t(locale, '工具', 'Tool')}><select value={tool} disabled={readOnly} onChange={(event) => onToolChange(event.target.value as ImageTool)}>{tools.map((name) => <option key={name} value={name}>{toolLabel(locale, name)}</option>)}</select></Field>}
+    {tools.length > 1 && <Field label={t(locale, '工具', 'Tool')}><Select ariaLabel={t(locale, '工具', 'Tool')} value={tool} disabled={readOnly} onChange={(value) => onToolChange(value as ImageTool)} options={tools.map((name) => ({ value: name, label: toolLabel(locale, name) }))} /></Field>}
     {definition.schema.map((field) => {
       const label = fieldLabel(locale, field.key, field.label);
       return <Field key={field.key} label={label}>{field.type === 'select'
-        ? <select aria-label={label} value={String(params[field.key] ?? '')} disabled={readOnly} onChange={(event) => set(field.key, event.target.value)}>{!field.required && <option value="">{t(locale, '未指定', 'Unspecified')}</option>}{field.options?.map((option) => <option key={option} value={option}>{option}</option>)}</select>
+        ? <Select ariaLabel={label} value={String(params[field.key] ?? '')} disabled={readOnly} onChange={(value) => set(field.key, value)} options={[...(!field.required ? [{ value: '', label: t(locale, '未指定', 'Unspecified') }] : []), ...(field.options?.map((option) => ({ value: option, label: option })) ?? [])]} />
         : <input aria-label={label} type={field.type} value={String(params[field.key] ?? '')} disabled={readOnly} onChange={(event) => set(field.key, field.type === 'number' ? Number(event.target.value) : event.target.value)} />}</Field>;
     })}
     {definition.requiresRegion && image

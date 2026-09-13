@@ -22,7 +22,7 @@ export type ChatStreamEvent = { text: string; finishReason?: string | null };
 export type VisionRequest = { prompt: string; image: { url: string } | { base64: string; mimeType?: string } };
 export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number };
 export type ImageEditRequest = { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: string; toolParams?: ToolParams; region?: { x: number; y: number; width: number; height: number } };
-export type GeneratedImage = { url?: string; base64?: string };
+export type GeneratedImage = { url?: string; base64?: string; mimeType?: string };
 export type ImageResponse = { images: GeneratedImage[]; cost: number | null };
 
 export type ProviderAdapterErrorKind = 'http' | 'rate_limited' | 'invalid_response' | 'cancelled';
@@ -135,18 +135,29 @@ const blobDataUrl = async (blob: Blob): Promise<string> => {
 const isBase64 = (value: string): boolean => value.length > 0
   && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
 
-const isPngBase64 = (value: string): boolean => {
-  if (!isBase64(value)) return false;
-  const bytes = Buffer.from(value, 'base64');
-  return bytes.length >= 8
-    && bytes[0] === 0x89
-    && bytes[1] === 0x50
-    && bytes[2] === 0x4e
-    && bytes[3] === 0x47
-    && bytes[4] === 0x0d
-    && bytes[5] === 0x0a
-    && bytes[6] === 0x1a
-    && bytes[7] === 0x0a;
+const imageMimeType = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const mimeType = value.trim().toLowerCase();
+  return /^image\/[a-z0-9.+-]+$/u.test(mimeType) ? mimeType : undefined;
+};
+
+const responseImage = (item: Record<string, unknown>): GeneratedImage | undefined => {
+  if (item.type !== 'image_generation_call' || typeof item.result !== 'string') return undefined;
+
+  let result = item.result.trim();
+  let mimeType: string | undefined;
+  const dataUrl = result.match(/^data:([^;,]+);base64,(.*)$/su);
+  if (dataUrl) {
+    mimeType = imageMimeType(dataUrl[1]);
+    if (!mimeType) return undefined;
+    result = dataUrl[2];
+  } else {
+    mimeType = imageMimeType(item.mime_type) ?? imageMimeType(item.mimeType);
+  }
+
+  const base64 = result.replace(/\s+/gu, '');
+  if (!isBase64(base64) || Buffer.from(base64, 'base64').length === 0) return undefined;
+  return { base64, ...(mimeType ? { mimeType } : {}) };
 };
 
 const responsesImages = (payload: Record<string, unknown>): GeneratedImage[] => {
@@ -154,9 +165,8 @@ const responsesImages = (payload: Record<string, unknown>): GeneratedImage[] => 
   return output.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return [];
     const item = entry as Record<string, unknown>;
-    return item.type === 'image_generation_call' && typeof item.result === 'string' && isPngBase64(item.result)
-      ? [{ base64: item.result }]
-      : [];
+    const image = responseImage(item);
+    return image ? [image] : [];
   });
 };
 

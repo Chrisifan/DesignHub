@@ -22,6 +22,7 @@ import {
   IconButton,
   Modal,
   PageHeader,
+  Select,
   t,
 } from './ui';
 import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
@@ -79,6 +80,8 @@ type StudioProps = {
   onThemeChange: (theme: Theme) => void;
   onExit: () => void;
   onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
+  recentWorkspaces?: WorkspaceDescriptor[];
+  onOpenWorkspace?: (directory: string) => Promise<WorkspaceDescriptor | null>;
 };
 
 export const Studio = ({
@@ -89,6 +92,8 @@ export const Studio = ({
   onThemeChange,
   onExit,
   onWorkspaceChange,
+  recentWorkspaces = [],
+  onOpenWorkspace,
 }: StudioProps) => {
   const [view, setView] = useState<View>('projects');
   const [surface, setSurface] = useState<StudioSurface>('projects');
@@ -993,14 +998,14 @@ export const Studio = ({
                   {t(locale, '开始创作', 'Start creating')}
                 </Button>
               </div>
-              <p className="example-footnote">
+              {!workspace && <p className="example-footnote">
                 <Icon name="circle-help" size={14} />
                 {t(
                   locale,
                   '这些示例用于浏览界面。预览中的修改仅在本次会话保留。',
                   'Explore with example content. Preview changes last for this session only.',
                 )}
-              </p>
+              </p>}
             </section>
           )}
           {surface === 'projects' && view === 'projects' && selected && !documentOpen && (
@@ -1035,9 +1040,7 @@ export const Studio = ({
                 <strong>{projectContributorLabel(selected)}</strong>
               </p>}
               {workspace?.openMode === 'writable' && selected.workspaceId && <Field label={t(locale, '设计师', 'Designer')}>
-                <select value={projectPersonaId(selected)} onChange={(event) => { void switchProjectDesigner(event.target.value); }}>
-                  {designerOptions.filter((profile) => profile.status !== 'archived').map((profile) => <option key={profile.id} value={profile.id}>{localize(locale, profile.name)} · {profile.version}</option>)}
-                </select>
+                <Select ariaLabel={t(locale, '设计师', 'Designer')} value={projectPersonaId(selected)} onChange={(value) => { void switchProjectDesigner(value); }} options={designerOptions.filter((profile) => profile.status !== 'archived').map((profile) => ({ value: profile.id, label: `${localize(locale, profile.name)} · ${profile.version}` }))} />
               </Field>}
               {workspace?.openMode === 'writable' && selected.workspaceId && <fieldset className="project-contributors">
                 <legend>{t(locale, '版本署名', 'Revision credits')}</legend>
@@ -1233,13 +1236,11 @@ export const Studio = ({
           onClose={() => setDialog(null)}
           locale={locale}
         >
-          <p className="muted">
-            {workspace
-              ? workspace.openMode === 'read-only'
-                ? t(locale, '当前工作区为只读模式。', 'This workspace is read-only.')
-                : t(locale, '当前工作区保存在本机目录。', 'This workspace is stored in a local folder.')
+          {(!workspace || workspace.openMode === 'read-only') && <p className="muted">
+            {workspace?.openMode === 'read-only'
+              ? t(locale, '当前工作区为只读模式。', 'This workspace is read-only.')
               : t(locale, '示例修改仅在本次预览中保留，离开示例后会清除。', 'Example edits stay in this preview and are cleared when you leave it.')}
-          </p>
+          </p>}
           <button className="workspace-choice" onClick={() => setDialog(null)}>
             <span className="workspace-monogram">{workspace?.name.slice(0, 1).toUpperCase() ?? 'D'}</span>
             <span>
@@ -1254,6 +1255,34 @@ export const Studio = ({
             </span>
             <Icon name="check" />
           </button>
+          {recentWorkspaces.length > 0 && (
+            <div className="workspace-recent-list" aria-label={t(locale, '最近访问', 'Recently opened')}>
+              <p className="panel-label">{t(locale, '最近访问', 'Recently opened')}</p>
+              {recentWorkspaces
+                .filter((entry) => entry.workspaceId !== workspace?.workspaceId)
+                .map((entry) => (
+                  <button
+                    type="button"
+                    className="workspace-choice workspace-choice--recent"
+                    key={`${entry.workspaceId}:${entry.directory}`}
+                    onClick={() => {
+                      if (!onOpenWorkspace) return;
+                      setDialog(null);
+                      void onOpenWorkspace(entry.directory).then((opened) => {
+                        if (!opened) setDialog('workspace');
+                      });
+                    }}
+                  >
+                    <span className="workspace-monogram">{entry.name.slice(0, 1).toUpperCase()}</span>
+                    <span>
+                      <strong>{entry.name}</strong>
+                      <small>{entry.directory}</small>
+                    </span>
+                    <Icon name="arrow-up-right" size={15} />
+                  </button>
+                ))}
+            </div>
+          )}
           <div className="dialog-actions">
             <Button onClick={onExit} icon="folder-open">
               {t(locale, '工作区', 'Workspace welcome')}

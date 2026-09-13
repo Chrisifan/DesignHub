@@ -1,7 +1,9 @@
 import {
+  useEffect,
   useLayoutEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type ReactNode,
 } from 'react';
@@ -81,6 +83,122 @@ export const Field = ({
     {hint && <small>{hint}</small>}
   </label>
 );
+
+export type SelectOption = {
+  value: string;
+  label: ReactNode;
+  disabled?: boolean;
+};
+
+export const Select = ({
+  value,
+  options,
+  onChange,
+  disabled = false,
+  ariaLabel,
+  className = '',
+}: {
+  value: string;
+  options: readonly SelectOption[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+  className?: string;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)));
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  const choose = (option: SelectOption): void => {
+    if (option.disabled) return;
+    onChange(option.value);
+    setActiveIndex(Math.max(0, options.findIndex((entry) => entry.value === option.value)));
+    setOpen(false);
+  };
+  const move = (direction: 1 | -1): void => {
+    const start = activeIndex;
+    for (let offset = 1; offset <= options.length; offset += 1) {
+      const index = (start + direction * offset + options.length) % options.length;
+      if (!options[index]?.disabled) {
+        setActiveIndex(index);
+        return;
+      }
+    }
+  };
+
+  return (
+    <div
+      ref={rootRef}
+      className={`ui-select ${open ? 'is-open' : ''} ${className}`}
+    >
+      <input
+        type="text"
+        className="ui-select__trigger"
+        role="combobox"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-valuetext={selected ? String(selected.label) : value}
+        value={value}
+        readOnly
+        disabled={disabled || options.length === 0}
+        onClick={() => setOpen((current) => !current)}
+        onChange={(event) => {
+          const next = (event.target as HTMLButtonElement).value;
+          if (next !== value && options.some((option) => option.value === next)) onChange(next);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setOpen(false);
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (!open) {
+              setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value)));
+              setOpen(true);
+            } else move(event.key === 'ArrowDown' ? 1 : -1);
+          }
+          if (event.key === 'Enter' && open) {
+            event.preventDefault();
+            const option = options[activeIndex];
+            if (option) choose(option);
+          } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setActiveIndex(Math.max(0, options.findIndex((option) => option.value === value)));
+            setOpen(true);
+          }
+        }}
+      />
+      <span className="ui-select__value" aria-hidden="true">{selected?.label}</span>
+      <Icon name="chevron-down" size={15} />
+      <div className={`ui-select__menu ${open ? '' : 'is-closed'}`} role="listbox">
+        {options.map((option) => (
+          <button
+            type="button"
+            role="option"
+            aria-selected={option.value === value}
+            aria-disabled={option.disabled || undefined}
+            className={`${option.value === value ? 'is-selected' : ''} ${options[activeIndex]?.value === option.value ? 'is-active' : ''}`}
+            key={option.value}
+            disabled={option.disabled}
+            onClick={() => choose(option)}
+          >
+            <span>{option.label}</span>
+            {option.value === value && <Icon name="check" size={14} />}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
 export const PageHeader = ({
   title,
   description,
@@ -117,7 +235,7 @@ export const EmptyState = ({
       <Icon name={icon} size={28} />
     </span>
     <h2>{title}</h2>
-    <p>{description}</p>
+    {description && <p>{description}</p>}
     {children}
   </div>
 );

@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
 import type { Locale } from '../../app/i18n';
-import { Badge, Button, Field, Icon, t } from '../../app/studio/ui';
+import { Badge, Button, Field, Icon, Select, t } from '../../app/studio/ui';
 import { normalizeProviderConfig, providerCapabilities, type ImageTransport, type ProviderCapability, type ProviderConfig, type ProviderConfigMap } from './config';
+import type { GeneratedImage } from './adapter';
+import type { ImageGenerationTestResult } from '../agent/task-service';
 import type { ProviderConnection } from './connection';
 
 export type ProviderSettingsProps = {
@@ -13,6 +15,7 @@ export type ProviderSettingsProps = {
   onCheckCredential?: (connectionId: string) => Promise<boolean>;
   configs?: ProviderConfigMap;
   onSaveProviderConfig?: (connectionId: string, config: ProviderConfig) => Promise<boolean>;
+  onTestImageGeneration?: (connectionId: string, input: { prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
 };
 
 type ProviderConfigDraft = {
@@ -22,6 +25,11 @@ type ProviderConfigDraft = {
 };
 
 const emptyProviderConfigs: ProviderConfigMap = {};
+const connectionTestPrompts = [
+  'A clean editorial poster with a single orange chair on a pale blue background',
+  'A warm still life of a ceramic vase, folded paper and a green leaf in soft daylight',
+  'A geometric abstract composition in cobalt blue, vermilion and cream with crisp edges',
+];
 
 const emptyConfigDraft = (): ProviderConfigDraft => ({
   baseUrl: '',
@@ -54,11 +62,14 @@ export const ProviderSettings = ({
   onCheckCredential,
   configs = emptyProviderConfigs,
   onSaveProviderConfig,
+  onTestImageGeneration,
 }: ProviderSettingsProps) => {
   const [selectedId, setSelectedId] = useState(connections[0]?.id ?? '');
   const [configured, setConfigured] = useState<Record<string, boolean>>(() => Object.fromEntries(connections.map((connection) => [connection.id, connection.status === 'connected'])));
   const [secret, setSecret] = useState('');
   const [message, setMessage] = useState('');
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState<ImageGenerationTestResult | null>(null);
   const [configDraft, setConfigDraft] = useState<ProviderConfigDraft>(() => emptyConfigDraft());
   const selected = connections.find((connection) => connection.id === selectedId);
   useEffect(() => {
@@ -69,6 +80,7 @@ export const ProviderSettings = ({
   }, [onCheckCredential, selectedId]);
   useEffect(() => {
     setConfigDraft(configDraftFrom(configs[selectedId as keyof ProviderConfigMap]));
+    setTestResult(null);
   }, [configs, selectedId]);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -107,8 +119,32 @@ export const ProviderSettings = ({
     const saved = await onSaveProviderConfig(selected.id, config).catch(() => false);
     setMessage(saved ? t(locale, '连接配置已保存。', 'Connection configuration saved.') : t(locale, '无法保存连接配置，请重试。', 'Connection configuration could not be saved. Try again.'));
   };
+  const testImageGeneration = async (): Promise<void> => {
+    if (!selected || !onTestImageGeneration || !configured[selected.id] || !configDraft.baseUrl.trim()) return;
+    setTestBusy(true);
+    setTestResult(null);
+    const prompt = connectionTestPrompts[Math.floor(Math.random() * connectionTestPrompts.length)] ?? connectionTestPrompts[0];
+    try {
+      const result = await onTestImageGeneration(selected.id, {
+        prompt,
+        ...(configDraft.models['image-generation'].trim() ? { model: configDraft.models['image-generation'].trim() } : {}),
+        size: '1024x1024',
+      });
+      if (!result?.image) throw new Error('IMAGE_RESULT_EMPTY');
+      setTestResult(result);
+      setMessage(t(locale, '图片生成连接测试成功。', 'Image generation connection test succeeded.'));
+    } catch {
+      setMessage(t(locale, '图片生成连接测试失败，请检查地址、密钥和模型。', 'Image generation connection test failed. Check the URL, key and model.'));
+    } finally {
+      setTestBusy(false);
+    }
+  };
+  const testImageSource = (image: GeneratedImage): string | undefined => {
+    if (image.base64) return image.base64.startsWith('data:') ? image.base64 : `data:${image.mimeType ?? 'image/png'};base64,${image.base64}`;
+    return image.url;
+  };
   return (
-    <section aria-labelledby="provider-settings-title" className="settings-section">
+    <section aria-labelledby="provider-settings-title" className="provider-settings">
       <div className="settings-section-heading">
         <span className="settings-icon"><Icon name="plug" size={19} /></span>
         <div>
@@ -121,9 +157,7 @@ export const ProviderSettings = ({
       ) : (
         <>
           <Field label={t(locale, '连接', 'Connection')}>
-            <select aria-label={t(locale, '连接', 'Connection')} value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
-              {connections.map((connection) => <option key={connection.id} value={connection.id}>{connection.label}</option>)}
-            </select>
+            <Select ariaLabel={t(locale, '连接', 'Connection')} value={selectedId} onChange={setSelectedId} options={connections.map((connection) => ({ value: connection.id, label: connection.label }))} />
           </Field>
           {selected && (
             <div>
@@ -134,10 +168,7 @@ export const ProviderSettings = ({
                   <input aria-label={t(locale, '服务地址', 'Base URL')} type="url" autoComplete="off" placeholder="https://api.example.com/v1" value={configDraft.baseUrl} onChange={(event) => setConfigDraft((current) => ({ ...current, baseUrl: event.target.value }))} />
                 </Field>
                 <Field label={t(locale, '图片传输模式', 'Image transport')}>
-                  <select aria-label={t(locale, '图片传输模式', 'Image transport')} value={configDraft.imageTransport} onChange={(event) => setConfigDraft((current) => ({ ...current, imageTransport: event.target.value as ImageTransport }))}>
-                    <option value="images">{t(locale, '图片 API', 'Images API')}</option>
-                    <option value="responses">{t(locale, 'Responses 图像工具', 'Responses image tool')}</option>
-                  </select>
+                  <Select ariaLabel={t(locale, '图片传输模式', 'Image transport')} value={configDraft.imageTransport} onChange={(value) => setConfigDraft((current) => ({ ...current, imageTransport: value as ImageTransport }))} options={[{ value: 'images', label: t(locale, '图片 API', 'Images API') }, { value: 'responses', label: t(locale, 'Responses 图像工具', 'Responses image tool') }]} />
                 </Field>
                 <div className="provider-model-grid">
                   {providerCapabilities.map((capability) => (
@@ -147,6 +178,16 @@ export const ProviderSettings = ({
                   ))}
                 </div>
                 {onSaveProviderConfig && <div className="provider-config-actions"><Button type="button" variant="secondary" icon="save" disabled={!configDraft.baseUrl.trim()} onClick={() => { void saveConfig(); }}>{t(locale, '保存配置', 'Save config')}</Button></div>}
+                {onTestImageGeneration && <div className="provider-test-actions">
+                  <Button type="button" variant="ai" icon="image" disabled={testBusy || !configured[selected.id] || !configDraft.baseUrl.trim()} onClick={() => { void testImageGeneration(); }}>
+                    {testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}
+                  </Button>
+                  <small>{t(locale, '使用随机提示词生成一张临时预览，不会写入任务或素材库。', 'Generates one temporary preview with a random prompt; nothing is added to tasks or assets.')}</small>
+                </div>}
+                {testResult && testImageSource(testResult.image) && <div className="provider-test-result">
+                  <img src={testImageSource(testResult.image)} alt={t(locale, '连接测试结果', 'Connection test result')} />
+                  <small>{t(locale, '临时预览', 'Temporary preview')}</small>
+                </div>}
                 <Field label={t(locale, 'API 密钥', 'API key')} hint={t(locale, '输入后仅发送到桌面主进程并立即清空。', 'Sent to the desktop host and cleared immediately after saving.')}>
                   <input aria-label={t(locale, 'API 密钥', 'API key')} type="password" autoComplete="off" value={secret} onChange={(event) => setSecret(event.target.value)} />
                 </Field>

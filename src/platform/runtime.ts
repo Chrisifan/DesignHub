@@ -44,6 +44,7 @@ const unavailableDesktopApi: DesktopApi = {
   submitPortfolioSelection: async () => null,
   discardPortfolioInspection: async () => false,
   submitImageGeneration: async () => null,
+  testImageGeneration: async () => null,
   submitImageEdit: async () => null,
   cancelTask: async () => false,
   retryTask: async () => null,

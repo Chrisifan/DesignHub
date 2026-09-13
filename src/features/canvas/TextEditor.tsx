@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { getMessages, type Locale } from '../../app/i18n';
-import { Field } from '../../app/studio/ui';
+import { Field, Select } from '../../app/studio/ui';
 import { assessFontAvailability } from './font-availability';
 import type { TextLayer } from './scene';
 import { shouldHandleCanvasShortcut } from './text-input';
@@ -40,11 +40,7 @@ export const TextEditor = ({ locale, layer, availableFonts, onChange }: TextEdit
         <input aria-label={messages.textColor} value={draft.color} onChange={(event) => update('color', event.target.value)} />
       </Field>
       <Field label={messages.textAlign}>
-        <select aria-label={messages.textAlign} value={draft.align} onChange={(event) => update('align', event.target.value as TextLayer['align'])}>
-          <option value="left">Left</option>
-          <option value="center">Center</option>
-          <option value="right">Right</option>
-        </select>
+        <Select ariaLabel={messages.textAlign} value={draft.align} onChange={(value) => update('align', value as TextLayer['align'])} options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]} />
       </Field>
       <button type="submit">{messages.textApply}</button>
     </form>

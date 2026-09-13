@@ -26,8 +26,26 @@ const savePreference = (key: string, value: string): void => {
 };
 
 const opensStudioOnLaunch = (): boolean =>
-  new URLSearchParams(window.location.search).get('preview') === '1' ||
-  (navigator.userAgent.includes('Electron/') && Boolean(window.designhub));
+  new URLSearchParams(window.location.search).get('preview') === '1';
+
+const recentWorkspacesKey = 'designhub.recent.workspaces';
+const isWorkspaceDescriptor = (value: unknown): value is WorkspaceDescriptor => {
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as Partial<WorkspaceDescriptor>;
+  return typeof item.workspaceId === 'string' && item.workspaceId.length > 0
+    && typeof item.name === 'string' && item.name.trim().length > 0
+    && typeof item.directory === 'string' && item.directory.trim().length > 0
+    && typeof item.formatVersion === 'number' && Number.isInteger(item.formatVersion) && item.formatVersion > 0
+    && (item.openMode === 'writable' || item.openMode === 'read-only' || item.openMode === 'migration-required');
+};
+const readRecentWorkspaces = (): WorkspaceDescriptor[] => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(recentWorkspacesKey) ?? '');
+    return Array.isArray(value) ? value.filter(isWorkspaceDescriptor).slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+};
 
 export const App = () => {
   const [locale, setLocale] = useState<Locale>(() =>
@@ -43,6 +61,7 @@ export const App = () => {
   const [directory, setDirectory] = useState('');
   const [workspaceError, setWorkspaceError] = useState('');
   const [workspace, setWorkspace] = useState<WorkspaceDescriptor | null>(null);
+  const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceDescriptor[]>(readRecentWorkspaces);
   const changeLocale = (value: Locale) => {
     setLocale(value);
     savePreference('designhub.ui.locale', value);
@@ -68,6 +87,38 @@ export const App = () => {
       delete document.documentElement.dataset.theme;
     };
   }, [theme]);
+  const rememberWorkspace = (next: WorkspaceDescriptor): void => {
+    setRecentWorkspaces((current) => {
+      const updated = [next, ...current.filter((entry) => entry.workspaceId !== next.workspaceId && entry.directory !== next.directory)].slice(0, 8);
+      try { localStorage.setItem(recentWorkspacesKey, JSON.stringify(updated)); } catch { /* in-memory fallback */ }
+      return updated;
+    });
+  };
+  const applyWorkspace = (next: WorkspaceDescriptor): WorkspaceDescriptor => {
+    setWorkspace(next);
+    rememberWorkspace(next);
+    setEntered(true);
+    return next;
+  };
+  const openWorkspaceDirectory = async (path: string): Promise<WorkspaceDescriptor | null> => {
+    setWorkspaceError('');
+    const opener = getDesktopApi().openWorkspace;
+    if (!opener) {
+      setWorkspaceError(t(locale, '当前环境无法打开工作区。', 'Workspace opening is unavailable in this environment.'));
+      return null;
+    }
+    try {
+      const opened = await opener(path);
+      if (!opened) {
+        setWorkspaceError(t(locale, '无法打开工作区，请确认目录有效。', 'Could not open the workspace. Check that the folder is valid.'));
+        return null;
+      }
+      return applyWorkspace(opened);
+    } catch {
+      setWorkspaceError(t(locale, '无法打开工作区，请确认目录有效。', 'Could not open the workspace. Check that the folder is valid.'));
+      return null;
+    }
+  };
   const chooseWorkspaceDirectory = async (purpose: 'create' | 'open' = 'create'): Promise<void> => {
     setWorkspaceError('');
     if (!window.designhub) {
@@ -95,22 +146,8 @@ export const App = () => {
     }
     if (!path) return;
     if (purpose === 'open') {
-      try {
-        const opened = await getDesktopApi().openWorkspace?.(path);
-        if (!opened) {
-          setWorkspaceError(
-            t(locale, '无法打开工作区，请确认目录有效。', 'Could not open the workspace. Check that the folder is valid.'),
-          );
-          return;
-        }
-        setWorkspace(opened);
-        setWorkspaceForm(false);
-        setEntered(true);
-      } catch {
-        setWorkspaceError(
-          t(locale, '无法打开工作区，请确认目录有效。', 'Could not open the workspace. Check that the folder is valid.'),
-        );
-      }
+      await openWorkspaceDirectory(path);
+      setWorkspaceForm(false);
       return;
     }
     setDirectory(path);
@@ -131,7 +168,7 @@ export const App = () => {
         );
         return;
       }
-      setWorkspace(created);
+      applyWorkspace(created);
       setWorkspaceName('');
       setDirectory('');
       setWorkspaceForm(false);
@@ -167,7 +204,9 @@ export const App = () => {
           onLocaleChange={changeLocale}
           onThemeChange={changeTheme}
           onExit={() => setEntered(false)}
-          onWorkspaceChange={setWorkspace}
+          recentWorkspaces={recentWorkspaces}
+          onOpenWorkspace={openWorkspaceDirectory}
+          onWorkspaceChange={applyWorkspace}
         />
       ) : (
         <section className="welcome" aria-labelledby="welcome-title">

@@ -3,7 +3,7 @@ import { useEffect, useRef, type FormEvent } from 'react';
 import type { Locale } from '../i18n';
 import { getPersona, localize, type PersonaProfile } from './personas';
 import { DesignerHero } from './DesignerHero';
-import { Button, Field, Icon, t } from './ui';
+import { Button, Field, Icon, Select, t } from './ui';
 import type { NewDesignDraft } from './types';
 import { documentSizePresets } from '../../features/projects/size';
 
@@ -73,7 +73,7 @@ export const NewDesignPage = ({
               <Field label={t(locale, '创作想法', 'Creative idea')}>
                 <textarea rows={6} value={draft.brief} onChange={(event) => onDraftChange({ ...draft, brief: event.target.value })} placeholder={t(locale, '例如：春季市集宣传图', 'For example: spring market campaign')} />
               </Field>
-              <p className="inline-notice"><Icon name="plug" size={16} />{t(locale, '模型未连接，想法已保留在示例草稿中。', 'No model connected. Your idea stays in this example draft.')}</p>
+              {!persisted && <p className="inline-notice"><Icon name="plug" size={16} />{t(locale, '模型未连接，想法已保留在示例草稿中。', 'No model connected. Your idea stays in this example draft.')}</p>}
               {conversationResult && (
                 <section className="conversation-review" aria-label={t(locale, '简报审阅', 'Brief review')}>
                   <div className="conversation-review__heading"><Icon name="check" size={18} /><strong>{t(locale, '模型已整理简报', 'Model brief ready')}</strong></div>
@@ -96,9 +96,9 @@ export const NewDesignPage = ({
             </div>
           </Field>
           <Field label={t(locale, '文档尺寸', 'Document size')}>
-            <select aria-label={t(locale, '文档尺寸', 'Document size')} value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value as NewDesignDraft['size'] })}>{documentSizePresets.map((size) => <option key={size} value={size}>{size}</option>)}</select>
+            <Select ariaLabel={t(locale, '文档尺寸', 'Document size')} value={draft.size} onChange={(value) => onDraftChange({ ...draft, size: value as NewDesignDraft['size'] })} options={documentSizePresets.map((size) => ({ value: size, label: size }))} />
           </Field>
-          <p className="inline-notice"><Icon name="circle-help" size={16} />{persisted ? t(locale, '项目将保存到当前本地工作区。', 'The project will be saved to the current local workspace.') : t(locale, '此处创建预览草稿，仅本次会话可见，不写入磁盘。', 'Creates a session-only preview draft. Nothing is written to disk.')}</p>
+          {!persisted && <p className="inline-notice"><Icon name="circle-help" size={16} />{t(locale, '此处创建预览草稿，仅本次会话可见，不写入磁盘。', 'Creates a session-only preview draft. Nothing is written to disk.')}</p>}
           <div className="dialog-actions"><Button type="submit" variant="primary" icon={draft.mode === 'conversation' ? 'send' : 'plus'} disabled={!draft.name.trim() || (draft.mode === 'conversation' && !draft.brief.trim())}>{draft.mode === 'conversation' ? t(locale, '提交简报', 'Submit brief') : persisted ? t(locale, '创建项目', 'Create project') : t(locale, '创建预览', 'Create preview')}</Button></div>
         </form>
         <DesignerHero personaId={draft.personaId} profile={personas.find((persona) => persona.id === draft.personaId)} locale={locale} label={t(locale, '新建设计的当前设计师', 'New design active designer')} />

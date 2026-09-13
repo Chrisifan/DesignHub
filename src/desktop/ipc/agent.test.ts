@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 
 import * as agentIpc from './agent';
-import { createConversationHandler, cancelTaskHandler, createImageEditHandler, createImageGenerationHandler, retryTaskHandler, createPortfolioAnalysisHandler } from './agent';
+import { createConversationHandler, cancelTaskHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, retryTaskHandler, createPortfolioAnalysisHandler } from './agent';
 import type { TaskRecord } from '../../features/tasks/state';
 
 const makeFixture = (url: string) => {
@@ -66,6 +66,19 @@ it('accepts image generation and edit only with validated project bindings', asy
     return task;
   });
   await expect(edited(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'remove', image: new Blob(['image']) })).resolves.toEqual(task);
+});
+
+it('accepts image generation connection tests only from the active trusted workspace', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1' } };
+  const result = { image: { base64: 'preview-bytes' }, cost: null };
+  const submit = createImageGenerationTestHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
+    expect(input.connectionId).toBe('provider-1');
+    return result;
+  });
+  await expect(submit(fixture.event, { workspaceId: 'workspace-1', connectionId: 'provider-1', prompt: 'test image' })).resolves.toEqual(result);
+  await expect(submit(fixture.event, { workspaceId: 'workspace-2', connectionId: 'provider-1', prompt: 'test image' })).resolves.toBeNull();
+  await expect(submit(fixture.event, { workspaceId: 'workspace-1', connectionId: 'provider-1', prompt: ' ' })).resolves.toBeNull();
 });
 
 it('rejects image-edit tool parameters that do not match the declared tool schema', async () => {

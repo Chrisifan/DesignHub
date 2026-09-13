@@ -1,7 +1,7 @@
 import type { TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import type { AgentTaskService, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } from '../../features/agent/task-service';
+import type { AgentTaskService, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
@@ -10,6 +10,7 @@ export const conversationSubmitChannel = 'agent:conversation-submit';
 export const taskCancelChannel = 'agent:task-cancel';
 export const taskRetryChannel = 'agent:task-retry';
 export const imageGenerationSubmitChannel = 'agent:image-generation-submit';
+export const imageGenerationTestChannel = 'agent:image-generation-test';
 export const designerArtworkGenerationSubmitChannel = 'agent:submit-designer-artwork';
 export const imageEditSubmitChannel = 'agent:image-edit-submit';
 export const portfolioAnalysisSubmitChannel = 'agent:portfolio-analysis-submit';
@@ -29,6 +30,7 @@ export type ConversationInput = {
 };
 export type ConversationBridgeInput = ConversationInput & { workspaceId: string };
 export type ImageGenerationBridgeInput = ImageGenerationInput & { workspaceId: string };
+export type ImageGenerationTestBridgeInput = ImageGenerationTestInput & { workspaceId: string };
 export type DesignerArtworkGenerationBridgeInput = DesignerArtworkGenerationInput & { workspaceId: string };
 export type ImageEditBridgeInput = ImageEditInput & { workspaceId: string };
 export type PortfolioAnalysisBridgeInput = PortfolioAnalysisInput & { workspaceId: string };
@@ -90,6 +92,13 @@ const isImageGenerationInput = (value: unknown): value is ImageGenerationBridgeI
     && (input.model === undefined || isNonEmpty(input.model))
     && (input.size === undefined || isNonEmpty(input.size))
     && (input.count === undefined || (Number.isInteger(input.count) && Number(input.count) >= 1 && Number(input.count) <= 4));
+};
+const isImageGenerationTestInput = (value: unknown): value is ImageGenerationTestBridgeInput => {
+  if (!value || typeof value !== 'object') return false;
+  const input = value as Record<string, unknown>;
+  return isNonEmpty(input.workspaceId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
+    && (input.model === undefined || isNonEmpty(input.model))
+    && (input.size === undefined || isNonEmpty(input.size));
 };
 const isDesignerArtworkGenerationInput = (value: unknown): value is DesignerArtworkGenerationBridgeInput => {
   if (!value || typeof value !== 'object') return false;
@@ -159,6 +168,18 @@ export const createImageGenerationHandler = (
   submit: (workspace: WorkspaceHandle, input: ImageGenerationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageGenerationInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return submit(workspace, input);
+};
+
+export const createImageGenerationTestHandler = (
+  window: AgentWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  submit: (workspace: WorkspaceHandle, input: ImageGenerationTestBridgeInput) => Promise<ImageGenerationTestResult>,
+) => async (event: AgentRequest, input: unknown): Promise<ImageGenerationTestResult | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageGenerationTestInput(input)) return null;
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
   return submit(workspace, input);

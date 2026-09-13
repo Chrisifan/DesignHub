@@ -48,7 +48,7 @@ import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import { createOpenAICompatibleAdapter, type GeneratedImage } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
 import { createPortfolioDiscardHandler, createPortfolioInspectionHandler, createPortfolioSelectionHandler, portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
 import { createPortfolioSourceInspector } from './portfolio-source-inspector';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
@@ -86,8 +86,15 @@ const portfolioSourceInspector = createPortfolioSourceInspector();
 const providerConfigPath = (): string => join(app.getPath('userData'), 'provider-connections.json');
 
 const generatedImageBytes = async (image: GeneratedImage): Promise<{ bytes: Uint8Array; mimeType: string }> => {
-  const fromBase64 = image.base64 ? Buffer.from(image.base64, 'base64') : null;
-  if (fromBase64) return { bytes: new Uint8Array(fromBase64), mimeType: 'image/png' };
+  if (image.base64) {
+    const dataUrl = image.base64.match(/^data:([^;,]+);base64,(.*)$/su);
+    const encoded = dataUrl ? dataUrl[2].replace(/\s+/gu, '') : image.base64.replace(/\s+/gu, '');
+    const fromBase64 = Buffer.from(encoded, 'base64');
+    if (fromBase64.length > 0) {
+      const mimeType = image.mimeType ?? (dataUrl?.[1].toLowerCase() || 'image/png');
+      return { bytes: new Uint8Array(fromBase64), mimeType };
+    }
+  }
   if (!image.url) throw new Error('GENERATED_IMAGE_EMPTY');
   const response = await fetch(image.url);
   if (!response.ok) throw new Error('GENERATED_IMAGE_DOWNLOAD_FAILED');
@@ -450,6 +457,19 @@ app.whenReady().then(async () => {
     return createImageGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, imageInput) => {
       const service = await getAgentTaskService();
       return service.submitImageGeneration(imageInput);
+    })(event, input);
+  });
+  ipcMain.handle(imageGenerationTestChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createImageGenerationTestHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, testInput) => {
+      const service = await getAgentTaskService();
+      const result = await service.testImageGeneration(testInput);
+      if (!result.image.url) return result;
+      const generated = await generatedImageBytes(result.image);
+      return {
+        image: { base64: Buffer.from(generated.bytes).toString('base64'), mimeType: generated.mimeType },
+        cost: result.cost,
+      };
     })(event, input);
   });
   ipcMain.handle(designerArtworkGenerationSubmitChannel, async (event, input) => {

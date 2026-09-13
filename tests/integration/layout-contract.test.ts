@@ -114,3 +114,31 @@ it('fills library regions and keeps sibling content aligned', () => {
     /\.settings-section:last-child\s*\{[\s\S]*border-bottom:\s*0;/,
   );
 });
+
+it('keeps the model connection empty state compact beside the capability matrix', () => {
+  const libraryStyles = readStyle('../../src/app/studio/library.css');
+
+  expect(libraryStyles).toMatch(
+    /\.connection-layout\s*\{[\s\S]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/,
+  );
+  expect(libraryStyles).toMatch(
+    /\.library-page\s*>\s*\.connection-layout\s*\{[\s\S]*min-height:\s*max-content;/,
+  );
+  expect(libraryStyles).toMatch(
+    /\.connection-layout\s*>\s*\.empty-state\s*\{[\s\S]*grid-column:\s*1;[\s\S]*grid-row:\s*1;[\s\S]*align-self:\s*start;/,
+  );
+  expect(libraryStyles).toMatch(
+    /\.connection-layout\s*>\s*\.provider-settings\s*\{[\s\S]*grid-column:\s*2;[\s\S]*grid-row:\s*1\s*\/\s*span\s*2;/,
+  );
+  expect(libraryStyles).toMatch(
+    /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*grid-column:\s*1;[\s\S]*grid-row:\s*2;/,
+  );
+});
+
+it('hides the backing select input text so the custom label is rendered once', () => {
+  const styles = readStyle('../../src/app/styles/studio.css');
+
+  expect(styles).toMatch(
+    /\.ui-select__trigger\s*\{[\s\S]*color:\s*transparent\s*!important;[\s\S]*-webkit-text-fill-color:\s*transparent\s*!important;[\s\S]*text-indent:\s*-9999px;/,
+  );
+});

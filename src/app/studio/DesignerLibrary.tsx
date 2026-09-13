@@ -864,6 +864,7 @@ export const DesignerLibrary = ({
         <PersonaInspector
           locale={locale}
           profile={selected}
+          workspaceId={workspaceId}
           isDefault={selectedId === defaultId}
           readOnly={readOnly || loading || loadFailed}
           canSetDefault={canBeDefault(selected)}
@@ -898,7 +899,7 @@ export const DesignerLibrary = ({
           }}
         />
       </div>
-      <p className="page-footnote">
+      {(loadFailed || readOnly || !workspaceId) && <p className="page-footnote">
         <Icon name="circle-help" size={14} />
         {loadFailed ? (
           <>
@@ -919,14 +920,14 @@ export const DesignerLibrary = ({
             "当前工作区只读，设计师档案不可修改。",
             "This workspace is read-only; designer profiles cannot be changed.",
           )
-        ) : (
+        ) : !workspaceId ? (
           t(
             locale,
             "人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。",
             "When character bitmaps are unavailable, profiles and drafts are saved to the current workspace.",
           )
-        )}
-      </p>
+        ) : null}
+      </p>}
       {editor && (
         <DesignerEditorModal
           locale={locale}

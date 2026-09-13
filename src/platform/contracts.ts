@@ -10,7 +10,7 @@ import type { TaskRecord } from '../features/tasks/state';
 import type { TaskSource } from '../features/tasks/state';
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
 import type { BrandLibraryState } from '../features/brands/constraints';
-import type { DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput } from '../features/agent/task-service';
+import type { DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestResult } from '../features/agent/task-service';
 import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
@@ -114,6 +114,7 @@ export type DesktopApi = {
   submitPortfolioSelection?: (input: PortfolioSelectionInput) => Promise<TaskRecord | null>;
   discardPortfolioInspection?: (input: { workspaceId: string; inspectionId: string }) => Promise<boolean>;
   submitImageGeneration?: (input: ImageGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
+  testImageGeneration?: (input: { workspaceId: string; connectionId: string; prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
   submitDesignerArtworkGeneration?: (input: DesignerArtworkGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   submitImageEdit?: (input: ImageEditInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;

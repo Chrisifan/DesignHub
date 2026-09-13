@@ -9,6 +9,7 @@ type PersonaInspectorProps = {
   isDefault?: boolean;
   isSessionDefault?: boolean;
   readOnly?: boolean;
+  workspaceId?: string;
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
@@ -34,6 +35,7 @@ export const PersonaInspector = ({
   isDefault = false,
   isSessionDefault,
   readOnly = false,
+  workspaceId,
   onEdit,
   onDelete,
   onDuplicate,
@@ -110,7 +112,7 @@ export const PersonaInspector = ({
         <div className="section-title"><h3>{t(locale, '精选作品', 'Curated Portfolio Sheets')}</h3><span className="mono">{profile.portfolioSheets.length.toString().padStart(2, '0')}</span></div>
         <div className="portfolio-strip">{profile.portfolioSheets.map((sheet) => <div className="portfolio-item" key={sheet.id}><ArtworkPreview kind={sheet.artwork} /><strong>{localize(locale, sheet.title)}</strong><small>{localize(locale, sheet.note)}</small></div>)}</div>
       </section>
-      <p className="panel-note"><Icon name="hard-drive" size={15} />{readOnly ? t(locale, '当前工作区只读。', 'Current workspace is read-only.') : t(locale, '档案保存到当前工作区。', 'Profiles are saved to the current workspace.')}</p>
+      {(readOnly || !workspaceId) && <p className="panel-note"><Icon name="hard-drive" size={15} />{readOnly ? t(locale, '当前工作区只读。', 'Current workspace is read-only.') : t(locale, '档案保存到当前工作区。', 'Profiles are saved to the current workspace.')}</p>}
     </aside>
   );
 };

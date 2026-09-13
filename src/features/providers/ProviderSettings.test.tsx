@@ -86,3 +86,23 @@ it('reports a recoverable message when saving connection configuration rejects',
 
   expect(await screen.findByRole('status')).toHaveTextContent('Connection configuration could not be saved');
 });
+
+it('runs a random image connection test and shows the temporary preview', async () => {
+  const testImageGeneration = vi.fn(async () => ({ image: { base64: 'preview-bytes' }, cost: null }));
+  render(
+    <ProviderSettings
+      locale="en"
+      connections={[{ id: 'openai-compatible', label: 'OpenAI compatible', status: 'connected', capabilities: ['image-generation'] }]}
+      configs={{ 'openai-compatible': { baseUrl: 'https://api.example.test/v1', imageTransport: 'responses', models: { 'image-generation': 'image-model' } } }}
+      onTestImageGeneration={testImageGeneration}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Test image generation' }));
+
+  expect(await screen.findByRole('img', { name: 'Connection test result' })).toHaveAttribute('src', 'data:image/png;base64,preview-bytes');
+  expect(testImageGeneration).toHaveBeenCalledWith('openai-compatible', expect.objectContaining({ prompt: expect.any(String), model: 'image-model', size: '1024x1024' }));
+  expect(screen.getByRole('status')).toHaveTextContent('Image generation connection test succeeded');
+});
