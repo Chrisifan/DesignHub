@@ -88,8 +88,14 @@ it('accepts only explicit designer-draft portfolio vision sources from the trust
   });
   await expect(submit(fixture.event, {
     workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1',
+    rightsConfirmed: true,
     sources: [{ id: 'source-a', description: 'poster', image: { url: 'https://img.test/a.png' } }],
   })).resolves.toEqual(task);
+  await expect(submit(fixture.event, {
+    workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1',
+    rightsConfirmed: false,
+    sources: [{ id: 'source-a', description: 'poster', image: { url: 'https://img.test/a.png' } }],
+  })).resolves.toBeNull();
   await expect(submit(fixture.event, {
     workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1',
     sources: [{ id: 'source-a', description: 'poster', image: { url: 'file:///tmp/a.png' } }],

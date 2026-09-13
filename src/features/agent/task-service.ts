@@ -58,6 +58,7 @@ export type PortfolioAnalysisInput = {
   source: { kind: 'designer-draft'; id: string };
   connectionId: string;
   sources: PortfolioImageSource[];
+  rightsConfirmed: boolean;
 };
 
 type ConversationAdapter = {
@@ -93,6 +94,17 @@ const errorCode = (error: unknown): string => {
   if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return 'CANCELLED';
   if (error instanceof Error && /^[A-Z][A-Z0-9_]{2,63}$/u.test(error.message)) return error.message;
   return 'PROVIDER_REQUEST_FAILED';
+};
+
+const sourceDataValues = (sources: readonly PortfolioImageSource[]): string[] => sources.flatMap((source) => [
+  source.description,
+  'base64' in source.image ? source.image.base64 : source.image.url,
+]).filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+const containsSourceData = (value: unknown, sources: readonly string[]): boolean => {
+  if (typeof value === 'string') return sources.some((source) => value.includes(source));
+  if (Array.isArray(value)) return value.some((item) => containsSourceData(item, sources));
+  return Boolean(value && typeof value === 'object' && Object.values(value).some((item) => containsSourceData(item, sources)));
 };
 
 export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentTaskService => {
@@ -132,6 +144,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           adapter: adapter.analyzeVision ? { analyzeVision: adapter.analyzeVision } : undefined,
           signal: controller.signal,
         });
+        if (containsSourceData(analysis.candidates, sourceDataValues(input.sources))) throw new Error('PORTFOLIO_RESPONSE_SOURCE_DATA');
         await options.runtime.complete(task.id, {
           text: JSON.stringify({ candidates: analysis.candidates }),
           cost: analysis.cost,
@@ -239,7 +252,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     return task;
   };
   const submitPortfolioAnalysis = async (input: PortfolioAnalysisInput): Promise<TaskRecord> => {
-    if (input.source.kind !== 'designer-draft' || !input.source.id.trim() || !input.connectionId.trim() || input.sources.length === 0) throw new Error('PORTFOLIO_TASK_BINDING_REQUIRED');
+    if (input.source.kind !== 'designer-draft' || !input.source.id.trim() || !input.connectionId.trim() || input.sources.length === 0 || input.rightsConfirmed !== true) throw new Error('PORTFOLIO_TASK_BINDING_REQUIRED');
     const task = options.runtime.start({
       id: taskId(),
       requestId: requestId(),
@@ -247,6 +260,10 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       source: { kind: 'designer-draft', id: input.source.id.trim() },
       providerId: input.connectionId.trim(),
       capability: 'vision-analysis',
+      portfolio: {
+        sourceIds: input.sources.map((source) => source.id),
+        rightsConfirmed: true,
+      },
       createdAt: new Date().toISOString(),
     });
     await executePortfolioTask(task, input);

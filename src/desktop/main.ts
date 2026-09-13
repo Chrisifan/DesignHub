@@ -48,7 +48,9 @@ import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import { createOpenAICompatibleAdapter, type GeneratedImage } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createPortfolioAnalysisHandler, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, portfolioAnalysisSubmitChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
+import { createPortfolioDiscardHandler, createPortfolioInspectionHandler, createPortfolioSelectionHandler, portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
+import { createPortfolioSourceInspector } from './portfolio-source-inspector';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
 import { exportSceneToFile } from './export-scene';
 import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
@@ -79,6 +81,7 @@ let activeWorkspaceHandle: WorkspaceHandle | null = null;
 let taskServicePromise: Promise<AgentTaskService> | null = null;
 let credentialStore: SystemCredentialStore = createUnavailableCredentialStore();
 let credentialBoundary: CredentialBoundary = createCredentialBoundary(credentialStore);
+const portfolioSourceInspector = createPortfolioSourceInspector();
 
 const providerConfigPath = (): string => join(app.getPath('userData'), 'provider-connections.json');
 
@@ -172,12 +175,14 @@ const createWindow = (): { window: BrowserWindow; trustedUrl: string } => {
     activeTrustedUrl = null;
     activeWorkspaceHandle?.close();
     activeWorkspaceHandle = null;
+    portfolioSourceInspector.discardAll();
   });
   return { window, trustedUrl };
 };
 
 const activateWorkspace = (workspace: WorkspaceHandle): WorkspaceHandle => {
   activeWorkspaceHandle?.close();
+  portfolioSourceInspector.discardAll();
   activeWorkspaceHandle = workspace;
   taskServicePromise = null;
   return workspace;
@@ -417,12 +422,28 @@ app.whenReady().then(async () => {
       return service.submitConversation(conversation);
     })(event, input);
   });
-  ipcMain.handle(portfolioAnalysisSubmitChannel, async (event, input) => {
+  ipcMain.handle(portfolioInspectChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createPortfolioAnalysisHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, portfolioInput) => {
+    return createPortfolioInspectionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (kind) => {
+      const result = await dialog.showOpenDialog(activeWindow!, {
+        properties: kind === 'local-images' ? ['openFile', 'multiSelections'] : ['openFile'],
+        filters: kind === 'local-images'
+          ? [{ name: 'Portfolio images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+          : [{ name: 'Portfolio archive', extensions: ['zip'] }],
+      });
+      return result.canceled ? null : result.filePaths;
+    }, portfolioSourceInspector)(event, input);
+  });
+  ipcMain.handle(portfolioSelectChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createPortfolioSelectionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, portfolioSourceInspector, async (_workspace, portfolioInput) => {
       const service = await getAgentTaskService();
       return service.submitPortfolioAnalysis(portfolioInput);
     })(event, input);
+  });
+  ipcMain.handle(portfolioDiscardChannel, (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return createPortfolioDiscardHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, portfolioSourceInspector)(event, input);
   });
   ipcMain.handle(imageGenerationSubmitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;

@@ -13,6 +13,11 @@ export type TaskCandidate = {
   createdAt: string;
 };
 
+export type PortfolioTaskMetadata = {
+  sourceIds: string[];
+  rightsConfirmed: boolean;
+};
+
 export type TaskRecord = {
   id: string;
   requestId: string;
@@ -28,6 +33,7 @@ export type TaskRecord = {
   designerVersionId?: string;
   providerId?: string;
   capability?: string;
+  portfolio?: PortfolioTaskMetadata;
   model?: string;
   size?: string;
   count?: number;

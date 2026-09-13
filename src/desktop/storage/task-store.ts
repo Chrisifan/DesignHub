@@ -16,6 +16,18 @@ const isTaskSource = (value: unknown): value is TaskSource => isRecord(value)
   && (value.kind === 'project' || value.kind === 'creation-draft' || value.kind === 'designer-draft')
   && typeof value.id === 'string'
   && value.id.trim().length > 0;
+const isPortfolioSourceId = (value: unknown): value is string => typeof value === 'string'
+  && value.trim().length > 0 && value.length <= 128 && !/[\u0000-\u001F/\\]/u.test(value);
+const isPortfolioMetadata = (value: unknown): boolean => isRecord(value)
+  && Object.keys(value).length === 2
+  && Object.hasOwn(value, 'sourceIds')
+  && Object.hasOwn(value, 'rightsConfirmed')
+  && value.rightsConfirmed === true
+  && Array.isArray(value.sourceIds)
+  && value.sourceIds.length > 0
+  && value.sourceIds.length <= 8
+  && value.sourceIds.every(isPortfolioSourceId)
+  && new Set(value.sourceIds).size === value.sourceIds.length;
 const isRegion = (value: unknown): boolean => isRecord(value)
   && ['x', 'y', 'width', 'height'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0)
   && Number(value.width) > 0 && Number(value.height) > 0;
@@ -50,6 +62,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.designerVersionId === undefined || typeof value.designerVersionId === 'string')
   && (value.providerId === undefined || typeof value.providerId === 'string')
   && (value.capability === undefined || typeof value.capability === 'string')
+  && (value.portfolio === undefined || isPortfolioMetadata(value.portfolio))
   && (value.model === undefined || typeof value.model === 'string')
   && (value.size === undefined || typeof value.size === 'string')
   && (value.count === undefined || (Number.isInteger(value.count) && Number(value.count) > 0))

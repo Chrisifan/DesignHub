@@ -75,6 +75,25 @@ it('persists the managed source asset binding used for image retries', async () 
   }
 });
 
+it('accepts only selected portfolio IDs and a rights acknowledgement in task state', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const portfolioTask: TaskRecord = {
+    ...task,
+    capability: 'vision-analysis',
+    portfolio: { sourceIds: ['portfolio-source-1'], rightsConfirmed: true },
+  };
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [portfolioTask])).resolves.toBe(true);
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+    ...portfolioTask,
+    portfolio: { sourceIds: ['portfolio-source-1'], rightsConfirmed: true, rawBytes: 'not-allowed' },
+  } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+    ...portfolioTask,
+    portfolio: { sourceIds: [], rightsConfirmed: true },
+  }])).rejects.toThrow('INVALID_TASK_STATE');
+  workspace.close();
+});
+
 it('rejects invalid persisted image-tool parameters', async () => {
   const workspace = await createTemporaryWorkspace();
   const invalidTask = {

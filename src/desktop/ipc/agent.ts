@@ -69,7 +69,7 @@ const isPortfolioAnalysisInput = (value: unknown): value is PortfolioAnalysisBri
   const input = value as Record<string, unknown>;
   const source = input.source;
   if (!source || typeof source !== 'object' || (source as Record<string, unknown>).kind !== 'designer-draft' || !isNonEmpty((source as Record<string, unknown>).id)) return false;
-  if (!isNonEmpty(input.workspaceId) || !isNonEmpty(input.connectionId) || !Array.isArray(input.sources) || input.sources.length === 0 || input.sources.length > 8) return false;
+  if (!isNonEmpty(input.workspaceId) || !isNonEmpty(input.connectionId) || input.rightsConfirmed !== true || !Array.isArray(input.sources) || input.sources.length === 0 || input.sources.length > 8) return false;
   return input.sources.every((item) => {
     if (!item || typeof item !== 'object') return false;
     const sourceItem = item as Record<string, unknown>;

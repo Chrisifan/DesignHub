@@ -10,11 +10,38 @@ import type { TaskRecord } from '../features/tasks/state';
 import type { TaskSource } from '../features/tasks/state';
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
 import type { BrandLibraryState } from '../features/brands/constraints';
-import type { DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } from '../features/agent/task-service';
+import type { DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput } from '../features/agent/task-service';
 import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
 import type { ProviderConfigMap, ProviderConfigSaveInput } from '../features/providers/config';
+
+export type PortfolioInspectionRequest = {
+  kind: 'local-images' | 'local-zip' | 'remote-image' | 'remote-page';
+  url?: string;
+};
+
+export type PortfolioInspectionCandidate = {
+  id: string;
+  label: string;
+  description: string;
+  origin: 'local-image' | 'zip-image' | 'remote-image' | 'page-image';
+  previewUrl: string;
+};
+
+export type PortfolioInspection = {
+  id: string;
+  candidates: PortfolioInspectionCandidate[];
+};
+
+export type PortfolioSelectionInput = {
+  workspaceId: string;
+  source: { kind: 'designer-draft'; id: string };
+  connectionId: string;
+  inspectionId: string;
+  sourceIds: string[];
+  rightsConfirmed: boolean;
+};
 
 export type ConversationTaskInput = {
   workspaceId: string;
@@ -83,7 +110,9 @@ export type DesktopApi = {
   saveProviderConfig?: (input: ProviderConfigSaveInput) => Promise<boolean>;
   listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
-  submitPortfolioAnalysis?: (input: PortfolioAnalysisInput & { workspaceId: string }) => Promise<TaskRecord | null>;
+  inspectPortfolioSources?: (input: { workspaceId: string; request: PortfolioInspectionRequest }) => Promise<PortfolioInspection | null>;
+  submitPortfolioSelection?: (input: PortfolioSelectionInput) => Promise<TaskRecord | null>;
+  discardPortfolioInspection?: (input: { workspaceId: string; inspectionId: string }) => Promise<boolean>;
   submitImageGeneration?: (input: ImageGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   submitDesignerArtworkGeneration?: (input: DesignerArtworkGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   submitImageEdit?: (input: ImageEditInput & { workspaceId: string }) => Promise<TaskRecord | null>;

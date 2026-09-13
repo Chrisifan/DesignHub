@@ -418,8 +418,9 @@ it('fails image tasks that return no generated images', async () => {
 
 it('runs a dedicated portfolio vision task for each explicit source', async () => {
   const runtime = createTaskRuntime();
-  const analyzeVision = vi.fn(async (request: { prompt: string; image: { url: string } | { base64: string; mimeType?: string } }) => ({
-    text: JSON.stringify({ candidates: [{ name: { zh: "url" in request.image ? request.image.url : request.image.base64, en: "url" in request.image ? request.image.url : request.image.base64 } }] }),
+  let analysisCount = 0;
+  const analyzeVision = vi.fn(async () => ({
+    text: JSON.stringify({ candidates: [{ name: { zh: `Candidate ${++analysisCount}`, en: `Candidate ${analysisCount}` } }] }),
     cost: null,
   }));
   const service = createAgentTaskService({
@@ -432,6 +433,7 @@ it('runs a dedicated portfolio vision task for each explicit source', async () =
   const task = await service.submitPortfolioAnalysis({
     source: { kind: 'designer-draft', id: 'designer-draft-vision' },
     connectionId: 'provider-1',
+    rightsConfirmed: true,
     sources: [
       { id: 'source-a', description: 'first', image: { url: 'https://img.test/a.png' } },
       { id: 'source-b', description: 'second', image: { url: 'https://img.test/b.png' } },
@@ -439,10 +441,54 @@ it('runs a dedicated portfolio vision task for each explicit source', async () =
   });
   await service.flush();
   expect(analyzeVision).toHaveBeenCalledTimes(2);
+  expect(analyzeVision).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    prompt: expect.stringContaining('source-a'),
+    image: { url: 'https://img.test/a.png' },
+  }), expect.any(AbortSignal));
+  expect(analyzeVision).toHaveBeenNthCalledWith(2, expect.objectContaining({
+    prompt: expect.stringContaining('source-b'),
+    image: { url: 'https://img.test/b.png' },
+  }), expect.any(AbortSignal));
   expect(runtime.get(task.id)).toMatchObject({
     state: 'completed',
     capability: 'vision-analysis',
     source: { kind: 'designer-draft', id: 'designer-draft-vision' },
-    result: { text: expect.stringContaining('https://img.test/a.png') },
+    result: { text: expect.stringContaining('Candidate 1') },
   });
+});
+
+it('fails closed when a provider candidate echoes portfolio source data', async () => {
+  const sourceDescription = 'Private portfolio cover composition';
+  const sourceBytes = 'cHJpdmF0ZS1yYXctcG9ydGZvbGlvLWltYWdlLWJ5dGVz';
+  const sourceUrl = 'https://private.test/portfolio.png';
+  const persisted: TaskRecord[][] = [];
+  const runtime = createTaskRuntime({ persist: async (tasks) => { persisted.push([...tasks]); } });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      analyzeVision: async () => ({ text: JSON.stringify({
+        candidates: [{
+          name: { zh: sourceDescription, en: sourceDescription },
+          summary: { zh: sourceBytes, en: sourceBytes },
+          artworkUrl: sourceUrl,
+        }],
+      }), cost: null }),
+    }),
+  });
+  const task = await service.submitPortfolioAnalysis({
+    source: { kind: 'designer-draft', id: 'designer-draft-metadata' }, connectionId: 'provider-1', rightsConfirmed: true,
+    sources: [
+      { id: 'selected-source', description: sourceDescription, image: { base64: sourceBytes, mimeType: 'image/png' } },
+      { id: 'selected-remote-source', description: 'Private remote portfolio image', image: { url: sourceUrl } },
+    ],
+  });
+  await service.flush();
+
+  const serialized = JSON.stringify(persisted.at(-1));
+  expect(persisted.at(-1)?.[0]).toMatchObject({ portfolio: { sourceIds: ['selected-source', 'selected-remote-source'], rightsConfirmed: true } });
+  expect(runtime.get(task.id)).toMatchObject({ state: 'failed', errorCode: 'PORTFOLIO_RESPONSE_SOURCE_DATA' });
+  expect(serialized).not.toContain(sourceBytes);
+  expect(serialized).not.toContain(sourceDescription);
+  expect(serialized).not.toContain(sourceUrl);
 });
