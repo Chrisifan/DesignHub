@@ -34,7 +34,7 @@ The canonical persisted provider configuration becomes:
 }
 ```
 
-`conversation.models` accepts only `conversation` and `vision-analysis`; `image.models` accepts only `image-generation` and `image-editing`. Each profile has the existing normalized HTTPS/local-HTTP URL rules. `image.imageTransport` accepts only `images` or `responses`.
+`conversation.models` accepts only `conversation` and `vision-analysis`; `image.models` accepts only `image-generation` and `image-editing`. Each non-empty profile URL uses the existing normalized HTTPS/local-HTTP rules. Canonical profiles may have an empty `baseUrl` so either section can be saved independently; the resolver then uses the environment fallback or reports a missing provider configuration. Legacy flat configurations still require a non-empty valid URL. `image.imageTransport` accepts only `images` or `responses`.
 
 The normalizer accepts the existing flat shape (`baseUrl`, `imageTransport`, and `models`) as a read/migration input. It creates both profiles by copying the old URL and credential scope, splitting models by capability. The canonical save shape is nested and rejects unknown keys, malformed profiles, unsupported transports, invalid URLs, and invalid model names. A missing profile is normalized to an empty profile only where the existing provider configuration is absent; a present malformed profile is rejected.
 
