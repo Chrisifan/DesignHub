@@ -6,7 +6,11 @@ const retainViteOutputAndNativeStorage = (file: string): boolean => Boolean(file
   && !file.startsWith('/.vite')
   && file !== '/node_modules'
   && file !== '/node_modules/better-sqlite3'
-  && !file.startsWith('/node_modules/better-sqlite3/');
+  && !file.startsWith('/node_modules/better-sqlite3/')
+  && file !== '/node_modules/@napi-rs'
+  && file !== '/node_modules/@napi-rs/keyring'
+  && !file.startsWith('/node_modules/@napi-rs/keyring/')
+  && !file.startsWith('/node_modules/@napi-rs/keyring-');
 
 const config = {
   packagerConfig: { asar: true, ignore: retainViteOutputAndNativeStorage },

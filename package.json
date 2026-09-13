@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@napi-rs/keyring": "2.0.0",
     "better-sqlite3": "13.0.3",
     "fflate": "0.8.2",
     "konva": "10.5.0",

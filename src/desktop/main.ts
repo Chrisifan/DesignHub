@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 
 import {
   createWorkspaceFromParentHandler,
@@ -41,6 +41,7 @@ import { createWorkspace, openWorkspace } from './storage/workspace-store';
 import type { WorkspaceHandle } from '../features/workspace/open-workspace';
 import { createWindowOptions } from './window-options';
 import { createCredentialBoundary, createUnavailableCredentialStore, type SystemCredentialStore, type CredentialBoundary } from './security/credentials';
+import { createKeyringCredentialStore, migrateLegacyCredentials } from './security/keyring-credentials';
 import { listTasksHandler, taskListChannel } from './ipc/tasks';
 import { loadTaskState } from './storage/task-store';
 import { saveTaskState } from './storage/task-store';
@@ -93,39 +94,36 @@ const generatedImageBytes = async (image: GeneratedImage): Promise<{ bytes: Uint
   };
 };
 
-const createElectronCredentialStore = (directory: string): SystemCredentialStore => {
+const createSystemCredentialStore = async (): Promise<SystemCredentialStore> => {
+  try {
+    const { Entry } = await import('@napi-rs/keyring');
+    return createKeyringCredentialStore((service, account) => new Entry(service, account));
+  } catch {
+    return createUnavailableCredentialStore();
+  }
+};
+
+const migrateLegacyCredentialFile = async (directory: string, store: SystemCredentialStore): Promise<void> => {
   const file = join(directory, 'credentials.bin');
-  let cache: Record<string, string> | null = null;
-  const load = async (): Promise<Record<string, string>> => {
-    if (cache) return cache;
-    try {
-      const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
-      cache = parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {};
-    } catch { cache = {}; }
-    return cache;
-  };
-  const persist = async (next: Record<string, string>): Promise<void> => {
-    await mkdir(directory, { recursive: true });
-    const temporary = `${file}.tmp-${randomUUID()}`;
-    try { await writeFile(temporary, JSON.stringify(next), { encoding: 'utf8', flag: 'wx' }); await rename(temporary, file); }
-    catch (error) { await rm(temporary, { force: true }); throw error; }
-  };
-  return {
-    setCredential: async (connectionId, secret) => {
+  await migrateLegacyCredentials({
+    read: async () => {
+      try {
+        const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+        const values = Object.entries(parsed);
+        if (!values.every(([connectionId, value]) => connectionId.trim() && typeof value === 'string' && value.length > 0)) return null;
+        return Object.fromEntries(values) as Record<string, string>;
+      } catch {
+        return null;
+      }
+    },
+    remove: async () => { await rm(file, { force: true }); },
+    decrypt: (value) => {
       if (!safeStorage.isEncryptionAvailable()) throw new Error('SYSTEM_CREDENTIAL_STORE_UNAVAILABLE');
-      const current = await load();
-      current[connectionId] = safeStorage.encryptString(secret).toString('base64');
-      await persist(current);
+      return safeStorage.decryptString(Buffer.from(value, 'base64'));
     },
-    deleteCredential: async (connectionId) => { const current = await load(); delete current[connectionId]; await persist(current); },
-    getCredential: async (connectionId) => {
-      if (!safeStorage.isEncryptionAvailable()) return null;
-      const current = await load();
-      const encoded = current[connectionId];
-      if (!encoded) return null;
-      try { return safeStorage.decryptString(Buffer.from(encoded, 'base64')); } catch { return null; }
-    },
-  };
+    store,
+  });
 };
 
 export const createMainProjectStore = (workspace: WorkspaceHandle) => createProjectStore(workspace);
@@ -238,9 +236,10 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
   return taskServicePromise;
 };
 
-app.whenReady().then(() => {
-  credentialStore = createElectronCredentialStore(join(app.getPath('userData'), 'secure'));
+app.whenReady().then(async () => {
+  credentialStore = await createSystemCredentialStore();
   credentialBoundary = createCredentialBoundary(credentialStore);
+  await migrateLegacyCredentialFile(join(app.getPath('userData'), 'secure'), credentialStore);
   protocol.handle(
     designerArtworkScheme,
     createDesignerArtworkProtocolHandler(

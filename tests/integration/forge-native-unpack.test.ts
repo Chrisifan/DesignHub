@@ -16,11 +16,15 @@ it('keeps the main-only project storage entry and its native SQLite dependency p
   expect(storageEntry).toContain("./storage/project-store");
   expect(storageEntry).toContain("typeof MAIN_WINDOW_VITE_DEV_SERVER_URL");
   expect(external).toContain('better-sqlite3');
+  expect(external).toContain('@napi-rs/keyring');
   expect(config.packagerConfig.ignore('')).toBe(false);
   expect(config.packagerConfig.ignore('/package.json')).toBe(false);
   expect(config.packagerConfig.ignore('/node_modules')).toBe(false);
   expect(config.packagerConfig.ignore('/node_modules/better-sqlite3')).toBe(false);
   expect(config.packagerConfig.ignore('/node_modules/better-sqlite3/lib/index.js')).toBe(false);
+  expect(config.packagerConfig.ignore('/node_modules/@napi-rs/keyring')).toBe(false);
+  expect(config.packagerConfig.ignore('/node_modules/@napi-rs/keyring/index.js')).toBe(false);
+  expect(config.packagerConfig.ignore('/node_modules/@napi-rs/keyring-darwin-arm64/keyring.darwin-arm64.node')).toBe(false);
   expect(config.packagerConfig.ignore('/node_modules/other-package/index.js')).toBe(true);
 });
 
