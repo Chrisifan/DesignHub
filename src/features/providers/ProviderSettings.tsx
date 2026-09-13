@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import type { Locale } from '../../app/i18n';
 import { Badge, Button, Field, Icon, t } from '../../app/studio/ui';
-import { normalizeProviderConfig, providerCapabilities, type ProviderCapability, type ProviderConfig, type ProviderConfigMap } from './config';
+import { normalizeProviderConfig, providerCapabilities, type ImageTransport, type ProviderCapability, type ProviderConfig, type ProviderConfigMap } from './config';
 import type { ProviderConnection } from './connection';
 
 export type ProviderSettingsProps = {
@@ -17,6 +17,7 @@ export type ProviderSettingsProps = {
 
 type ProviderConfigDraft = {
   baseUrl: string;
+  imageTransport: ImageTransport;
   models: Record<ProviderCapability, string>;
 };
 
@@ -24,11 +25,13 @@ const emptyProviderConfigs: ProviderConfigMap = {};
 
 const emptyConfigDraft = (): ProviderConfigDraft => ({
   baseUrl: '',
+  imageTransport: 'images',
   models: { conversation: '', 'vision-analysis': '', 'image-generation': '', 'image-editing': '' },
 });
 
 const configDraftFrom = (config: ProviderConfig | undefined): ProviderConfigDraft => ({
   baseUrl: config?.baseUrl ?? '',
+  imageTransport: config?.imageTransport ?? 'images',
   models: {
     conversation: config?.models.conversation ?? '',
     'vision-analysis': config?.models['vision-analysis'] ?? '',
@@ -96,7 +99,7 @@ export const ProviderSettings = ({
       const model = configDraft.models[capability].trim();
       if (model) models[capability] = model;
     });
-    const config = normalizeProviderConfig({ baseUrl: configDraft.baseUrl, models });
+    const config = normalizeProviderConfig({ baseUrl: configDraft.baseUrl, imageTransport: configDraft.imageTransport, models });
     if (!config) {
       setMessage(t(locale, '请填写有效服务地址。', 'Enter a valid service URL.'));
       return;
@@ -129,6 +132,12 @@ export const ProviderSettings = ({
               <form onSubmit={submit}>
                 <Field label={t(locale, '服务地址', 'Base URL')} hint={t(locale, '仅支持 HTTPS，或本机 HTTP 服务。', 'HTTPS is required except for a local HTTP service.')}>
                   <input aria-label={t(locale, '服务地址', 'Base URL')} type="url" autoComplete="off" placeholder="https://api.example.com/v1" value={configDraft.baseUrl} onChange={(event) => setConfigDraft((current) => ({ ...current, baseUrl: event.target.value }))} />
+                </Field>
+                <Field label={t(locale, '图片传输模式', 'Image transport')}>
+                  <select aria-label={t(locale, '图片传输模式', 'Image transport')} value={configDraft.imageTransport} onChange={(event) => setConfigDraft((current) => ({ ...current, imageTransport: event.target.value as ImageTransport }))}>
+                    <option value="images">{t(locale, '图片 API', 'Images API')}</option>
+                    <option value="responses">{t(locale, 'Responses 图像工具', 'Responses image tool')}</option>
+                  </select>
                 </Field>
                 <div className="provider-model-grid">
                   {providerCapabilities.map((capability) => (

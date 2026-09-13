@@ -216,7 +216,7 @@ it('shows honest unavailable states for connections and delivery', () => {
 
 it('hydrates and saves the non-secret provider connection configuration', async () => {
   const loadProviderConfigs = vi.fn(async () => ({
-    'openai-compatible': { baseUrl: 'https://api.example.test/v1', models: { conversation: 'chat-old' } },
+    'openai-compatible': { baseUrl: 'https://api.example.test/v1', imageTransport: 'images' as const, models: { conversation: 'chat-old' } },
   }));
   const saveProviderConfig = vi.fn(async () => true);
   window.designhub = { chooseWorkspaceDirectory: async () => null, loadProviderConfigs, saveProviderConfig };
@@ -227,7 +227,7 @@ it('hydrates and saves the non-secret provider connection configuration', async 
   fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
   await waitFor(() => expect(saveProviderConfig).toHaveBeenCalledWith({
     connectionId: 'openai-compatible',
-    config: { baseUrl: 'https://api.example.test/v1', models: { conversation: 'chat-new' } },
+    config: { baseUrl: 'https://api.example.test/v1', imageTransport: 'images', models: { conversation: 'chat-new' } },
   }));
 });
 

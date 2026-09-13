@@ -6,12 +6,15 @@ export const providerCapabilities = [
 ] as const;
 
 export const providerConnectionIds = ['openai-compatible'] as const;
+export const imageTransports = ['images', 'responses'] as const;
 
 export type ProviderCapability = (typeof providerCapabilities)[number];
 export type ProviderConnectionId = (typeof providerConnectionIds)[number];
+export type ImageTransport = (typeof imageTransports)[number];
 export type ProviderModelConfig = Partial<Record<ProviderCapability, string>>;
 export type ProviderConfig = {
   baseUrl: string;
+  imageTransport: ImageTransport;
   models: ProviderModelConfig;
 };
 export type ProviderConfigMap = Partial<Record<ProviderConnectionId, ProviderConfig>>;
@@ -23,6 +26,7 @@ export type ProviderConfigSaveInput = {
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[]): boolean => Object.keys(value).every((key) => allowed.includes(key));
 const isProviderCapability = (value: string): value is ProviderCapability => providerCapabilities.includes(value as ProviderCapability);
+const isImageTransport = (value: unknown): value is ImageTransport => typeof value === 'string' && imageTransports.includes(value as ImageTransport);
 
 const normalizeBaseUrl = (value: unknown): string | null => {
   if (typeof value !== 'string' || value.trim().length === 0 || value.length > 2048) return null;
@@ -51,10 +55,11 @@ const normalizeModels = (value: unknown): ProviderModelConfig | null => {
 };
 
 export const normalizeProviderConfig = (value: unknown): ProviderConfig | null => {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['baseUrl', 'models'])) return null;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['baseUrl', 'imageTransport', 'models'])) return null;
   const baseUrl = normalizeBaseUrl(value.baseUrl);
+  const imageTransport = value.imageTransport === undefined ? 'images' : isImageTransport(value.imageTransport) ? value.imageTransport : null;
   const models = normalizeModels(value.models);
-  return baseUrl && models ? { baseUrl, models } : null;
+  return baseUrl && imageTransport && models ? { baseUrl, imageTransport, models } : null;
 };
 
 export const normalizeProviderConfigs = (value: unknown): ProviderConfigMap | null => {

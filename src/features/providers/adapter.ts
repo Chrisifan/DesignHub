@@ -1,4 +1,4 @@
-import { providerCapabilities, type ProviderCapability, type ProviderConfig } from './config';
+import { providerCapabilities, type ImageTransport, type ProviderCapability, type ProviderConfig } from './config';
 import type { ToolParams } from '../image-tools/target';
 
 export { providerCapabilities } from './config';
@@ -36,6 +36,7 @@ export type ProviderAdapterError = Error & {
 export type MainOnlyAdapterOptions = {
   baseUrl: string;
   apiKey: string;
+  imageTransport?: ImageTransport;
   models?: ProviderConfig['models'];
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
   fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
@@ -111,6 +112,61 @@ const networkError = (cause: unknown, redact: (value: string) => string): Provid
   const message = cause instanceof Error ? redact(cause.message) : 'Provider network request failed.';
   return toError(message || 'Provider network request failed.', 'http');
 };
+
+const blobBytes = async (blob: Blob): Promise<ArrayBuffer> => {
+  if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer();
+  if (typeof FileReader === 'undefined') throw toError('Provider cannot read the supplied image.', 'invalid_response');
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(toError('Provider cannot read the supplied image.', 'invalid_response'));
+    reader.onload = () => reader.result instanceof ArrayBuffer
+      ? resolve(reader.result)
+      : reject(toError('Provider returned an unreadable image.', 'invalid_response'));
+    reader.readAsArrayBuffer(blob);
+  });
+};
+
+const blobDataUrl = async (blob: Blob): Promise<string> => {
+  const bytes = new Uint8Array(await blobBytes(blob));
+  const base64 = Buffer.from(bytes).toString('base64');
+  return `data:${blob.type || 'image/png'};base64,${base64}`;
+};
+
+const isBase64 = (value: string): boolean => value.length > 0
+  && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
+
+const isPngBase64 = (value: string): boolean => {
+  if (!isBase64(value)) return false;
+  const bytes = Buffer.from(value, 'base64');
+  return bytes.length >= 8
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[4] === 0x0d
+    && bytes[5] === 0x0a
+    && bytes[6] === 0x1a
+    && bytes[7] === 0x0a;
+};
+
+const responsesImages = (payload: Record<string, unknown>): GeneratedImage[] => {
+  const output = Array.isArray(payload.output) ? payload.output : [];
+  return output.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const item = entry as Record<string, unknown>;
+    return item.type === 'image_generation_call' && typeof item.result === 'string' && isPngBase64(item.result)
+      ? [{ base64: item.result }]
+      : [];
+  });
+};
+
+const editInstruction = (request: ImageEditRequest): string => [
+  request.prompt,
+  ...(request.mask ? ['The second input image is an edit mask guide. Apply changes only within its marked region.'] : []),
+  ...(request.tool ? [`Requested edit tool: ${request.tool}.`] : []),
+  ...(request.toolParams ? [`Tool parameters: ${JSON.stringify(request.toolParams)}.`] : []),
+  ...(request.region ? [`Target region: ${JSON.stringify(request.region)}.`] : []),
+].join('\n\n');
 
 const contentText = (value: unknown): string => {
   if (typeof value === 'string') return value;
@@ -199,6 +255,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
   if (!options.apiKey.trim()) throw new Error('PROVIDER_API_KEY_REQUIRED');
   const baseUrl = options.baseUrl.replace(/\/+$/, '');
   const apiKey = options.apiKey;
+  const imageTransport = options.imageTransport ?? 'images';
   const configuredModel = (capability: ProviderCapability, requested?: string): string | undefined => requested ?? options.models?.[capability];
   const fetcher = options.fetch ?? options.fetchImpl ?? ((input: string, init?: RequestInit): Promise<Response> => globalThis.fetch(input, init));
   const redact = (value: string): string => apiKey ? value.replaceAll(apiKey, '[redacted]') : value;
@@ -273,6 +330,19 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     return chatFor('vision-analysis', { messages: [{ role: 'user', content: [{ type: 'text', text: request.prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }] }, signal);
   };
   const generateImage = async (request: ImageRequest, signal?: AbortSignal): Promise<ImageResponse> => {
+    if (imageTransport === 'responses') {
+      if (request.count !== undefined && request.count !== 1) throw new Error('RESPONSES_IMAGE_COUNT_UNSUPPORTED');
+      const model = configuredModel('image-generation', request.model);
+      const payload = await postJson('/responses', {
+        ...(model ? { model } : {}),
+        input: [{ role: 'user', content: [{ type: 'input_text', text: request.prompt }] }],
+        tools: [{ type: 'image_generation', ...(request.size ? { size: request.size } : {}) }],
+        tool_choice: { type: 'image_generation' },
+      }, signal);
+      const images = responsesImages(payload);
+      if (images.length === 0) throw toError('Provider returned no hosted image result.', 'invalid_response');
+      return { images, cost: null };
+    }
     const model = configuredModel('image-generation', request.model);
     const payload = await postJson('/images/generations', { prompt: request.prompt, ...(model ? { model } : {}), ...(request.size ? { size: request.size } : {}), ...(request.count === undefined ? {} : { n: request.count }) }, signal);
     return { images: Array.isArray(payload.data) ? payload.data.map((entry) => {
@@ -281,6 +351,25 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     }) : [], cost: null };
   };
   const editImage = async (request: ImageEditRequest, signal?: AbortSignal): Promise<ImageResponse> => {
+    if (imageTransport === 'responses') {
+      const model = configuredModel('image-editing', request.model);
+      const payload = await postJson('/responses', {
+        ...(model ? { model } : {}),
+        input: [{
+          role: 'user',
+          content: [
+            { type: 'input_image', image_url: await blobDataUrl(request.image) },
+            ...(request.mask ? [{ type: 'input_image', image_url: await blobDataUrl(request.mask) }] : []),
+            { type: 'input_text', text: editInstruction(request) },
+          ],
+        }],
+        tools: [{ type: 'image_generation', ...(request.size ? { size: request.size } : {}) }],
+        tool_choice: { type: 'image_generation' },
+      }, signal);
+      const images = responsesImages(payload);
+      if (images.length === 0) throw toError('Provider returned no hosted image result.', 'invalid_response');
+      return { images, cost: null };
+    }
     const form = new FormData();
     form.append('prompt', request.prompt);
     form.append('image', request.image);

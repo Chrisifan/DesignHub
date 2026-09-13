@@ -233,7 +233,7 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         const savedConfig = (await loadProviderConfigs(providerConfigPath()))['openai-compatible'];
         const baseUrl = savedConfig?.baseUrl ?? process.env.DESIGNHUB_PROVIDER_BASE_URL ?? '';
         const apiKey = await credentialStore.getCredential?.(connectionId) ?? process.env.DESIGNHUB_PROVIDER_API_KEY ?? '';
-        return createOpenAICompatibleAdapter({ baseUrl, apiKey, models: savedConfig?.models });
+        return createOpenAICompatibleAdapter({ baseUrl, apiKey, imageTransport: savedConfig?.imageTransport, models: savedConfig?.models });
       },
     });
     return bindAgentTaskService(service);

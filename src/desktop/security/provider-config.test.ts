@@ -19,6 +19,7 @@ it('round-trips endpoint and model configuration without accepting credentials',
   const configs: ProviderConfigMap = {
     'openai-compatible': {
       baseUrl: 'https://api.example.test/v1',
+      imageTransport: 'responses',
       models: { conversation: 'chat-model', 'image-editing': 'image-edit-model' },
     },
   };
@@ -35,6 +36,17 @@ it('fails closed for malformed persisted provider configuration', async () => {
   await writeFile(path, JSON.stringify({ 'openai-compatible': { baseUrl: 'file:///tmp/provider' } }));
 
   await expect(loadProviderConfigs(path)).rejects.toThrow('INVALID_PROVIDER_CONFIG');
-  await expect(saveProviderConfigs(path, { 'openai-compatible': { baseUrl: 'https://api.example.test', models: {} } })).resolves.toBe(true);
-  await expect(loadProviderConfigs(path)).resolves.toEqual({ 'openai-compatible': { baseUrl: 'https://api.example.test', models: {} } });
+  await expect(saveProviderConfigs(path, { 'openai-compatible': { baseUrl: 'https://api.example.test', imageTransport: 'images', models: {} } })).resolves.toBe(true);
+  await expect(loadProviderConfigs(path)).resolves.toEqual({ 'openai-compatible': { baseUrl: 'https://api.example.test', imageTransport: 'images', models: {} } });
+});
+
+it('migrates a persisted configuration that predates image transport selection', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'designhub-provider-config-'));
+  directories.push(directory);
+  const path = join(directory, 'providers.json');
+  await writeFile(path, JSON.stringify({ 'openai-compatible': { baseUrl: 'https://gateway.example.test/openai/v1', models: {} } }));
+
+  await expect(loadProviderConfigs(path)).resolves.toEqual({
+    'openai-compatible': { baseUrl: 'https://gateway.example.test/openai/v1', imageTransport: 'images', models: {} },
+  });
 });

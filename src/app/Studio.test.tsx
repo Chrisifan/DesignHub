@@ -241,6 +241,53 @@ it('submits project conversation through the desktop task bridge', async () => {
   await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', projectId: 'project-1', connectionId: 'openai-compatible', message: '调整标题' })));
 });
 
+it('submits one image when the saved provider uses the Responses image transport', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
+  const loadProviderConfigs = vi.fn(async () => ({
+    'openai-compatible': { baseUrl: 'https://api.example.test/v1', imageTransport: 'responses' as const, models: {} },
+  }));
+  const submitImageGeneration = vi.fn(async () => ({ id: 'task-image-1', requestId: 'request-image-1', state: 'running' as const, cancelRequested: false, attempt: 1 }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadProviderConfigs, submitImageGeneration };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+
+  await screen.findByRole('button', { name: 'Persisted project' });
+  fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
+  fireEvent.click(screen.getByRole('button', { name: '打开主海报' }));
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成项目主视觉' } });
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+  await waitFor(() => expect(submitImageGeneration).toHaveBeenCalledWith(expect.objectContaining({
+    workspaceId: 'workspace-1',
+    projectId: 'project-1',
+    connectionId: 'openai-compatible',
+    prompt: '生成项目主视觉',
+    count: 1,
+  })));
+});
+
+it('keeps two-image generation when no provider transport is saved', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
+  const submitImageGeneration = vi.fn(async () => ({ id: 'task-image-1', requestId: 'request-image-1', state: 'running' as const, cancelRequested: false, attempt: 1 }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, submitImageGeneration };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+
+  await screen.findByRole('button', { name: 'Persisted project' });
+  fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
+  fireEvent.click(screen.getByRole('button', { name: '打开主海报' }));
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成项目主视觉' } });
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+  await waitFor(() => expect(submitImageGeneration).toHaveBeenCalledWith(expect.objectContaining({
+    workspaceId: 'workspace-1',
+    projectId: 'project-1',
+    connectionId: 'openai-compatible',
+    prompt: '生成项目主视觉',
+    count: 2,
+  })));
+});
+
 it('uses the persisted designer version and lets a writable project switch designers', async () => {
   const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', activeDesignerVersionId: 'paper-type', designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' }, documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
   const loadDesignerState = vi.fn(async () => ({ profiles: [], defaultId: 'paper-type' }));
