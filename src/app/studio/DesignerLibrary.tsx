@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -79,6 +80,16 @@ const profileToDraft = (
 });
 
 const localized = (value: string): LocalizedText => ({ zh: value, en: value });
+
+const designerArtworkPrompt = (profile: PersonaProfile): string => [
+  "Create one original, stylized character portrait for a graphic designer profile.",
+  `Persona name: ${profile.name.en}.`,
+  `Style summary: ${profile.summary.en}.`,
+  `Creative principle: ${profile.principle.en}.`,
+  `Palette: ${profile.styleDna.palette.join(", ") || "not specified"}.`,
+  "Use an editorial illustration rather than a real-person likeness. Do not depict a public figure, existing fictional character, logo, or readable text.",
+  "Output a single square portrait with a clear subject and an uncluttered background.",
+].join("\n");
 
 const fileToBase64 = async (file: File): Promise<string> => {
   if (typeof file.arrayBuffer === "function") {
@@ -183,6 +194,9 @@ export const DesignerLibrary = ({
     [],
   );
   const [analysisTaskId, setAnalysisTaskId] = useState<string>();
+  const [artworkTask, setArtworkTask] = useState<
+    { taskId: string; candidateId: string } | undefined
+  >();
   const [publishedInSession, setPublishedInSession] = useState(false);
   const [creationError, setCreationError] = useState("");
   const [newDraft, setNewDraft] = useState<DesignerDraft>(emptyDraft);
@@ -278,6 +292,31 @@ export const DesignerLibrary = ({
       setEditDrafts((previous) => ({ ...previous, [editor.profileId]: draft }));
     else setNewDraft(draft);
   };
+  const adoptArtworkTask = useCallback(
+    async (candidateId: string, task: TaskRecord): Promise<boolean> => {
+      if (!workspaceId || task.state !== "completed") return false;
+      const artworkId = task.result?.assetIds?.[0];
+      if (!artworkId) return false;
+      const artwork = await getDesktopApi().readDesignerArtwork?.({
+        workspaceId,
+        artworkId,
+      });
+      if (!artwork) return false;
+      setCandidateProfiles((previous) =>
+        previous.map((profile) =>
+          profile.id === candidateId
+            ? {
+                ...profile,
+                artworkAssetId: artwork.artworkId,
+                artworkUrl: `designhub-artwork://${artwork.artworkId}`,
+              }
+            : profile,
+        ),
+      );
+      return true;
+    },
+    [workspaceId],
+  );
   const openCreate = () => {
     if (readOnly || loading || loadFailed) return;
     setCreationSource("description");
@@ -288,6 +327,7 @@ export const DesignerLibrary = ({
     setSelectedCandidateId(undefined);
     setCandidateProfiles([]);
     setAnalysisTaskId(undefined);
+    setArtworkTask(undefined);
     setPublishedInSession(false);
     setCreationError("");
     setEditor({ mode: "new" });
@@ -614,6 +654,135 @@ export const DesignerLibrary = ({
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [analysisTaskId, editor, locale, workspaceId]);
+  const requestCandidateArtwork = async () => {
+    if (!workspaceId || readOnly || !selectedCandidateId) return;
+    const candidate = candidateProfiles.find(
+      (profile) => profile.id === selectedCandidateId,
+    );
+    if (!candidate) {
+      setCreationError(
+        t(
+          locale,
+          "候选结果已不可用，请重新分析。",
+          "This candidate is no longer available; analyse again.",
+        ),
+      );
+      return;
+    }
+    const submit = getDesktopApi().submitDesignerArtworkGeneration;
+    if (!submit) {
+      setCreationError(
+        t(
+          locale,
+          "当前工作区未连接模型，无法生成形象。",
+          "No connected model is available to generate artwork.",
+        ),
+      );
+      return;
+    }
+    setCreationError("");
+    try {
+      const task = await submit({
+        workspaceId,
+        source: { kind: "designer-draft", id: candidate.id },
+        connectionId: "openai-compatible",
+        prompt: designerArtworkPrompt(candidate),
+        size: "1024x1024",
+        count: 1,
+      });
+      if (!task) throw new Error("DESIGNER_ARTWORK_UNAVAILABLE");
+      if (await adoptArtworkTask(candidate.id, task)) {
+        notify(t(locale, "人物形象已生成", "Character artwork generated"));
+        return;
+      }
+      if (task.state === "failed" || task.state === "cancelled") {
+        throw new Error("DESIGNER_ARTWORK_FAILED");
+      }
+      setArtworkTask({ taskId: task.id, candidateId: candidate.id });
+      setCreationError(
+        t(
+          locale,
+          "人物形象正在生成，请稍后查看。",
+          "Character artwork is generating; check again shortly.",
+        ),
+      );
+    } catch {
+      setArtworkTask(undefined);
+      setCreationError(
+        t(
+          locale,
+          "人物形象生成失败，请重试。",
+          "Character artwork generation failed; try again.",
+        ),
+      );
+    }
+  };
+  useEffect(() => {
+    if (!artworkTask || !workspaceId || !editor) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: number | undefined;
+    const poll = async (): Promise<void> => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const listTasks = getDesktopApi().listTasks;
+        if (!listTasks) throw new Error("TASK_LIST_UNAVAILABLE");
+        const tasks = (await listTasks(workspaceId)) ?? [];
+        if (cancelled) return;
+        const task = tasks.find((item) => item.id === artworkTask.taskId);
+        if (task?.state === "completed") {
+          const adopted = await adoptArtworkTask(artworkTask.candidateId, task);
+          if (cancelled) return;
+          setArtworkTask(undefined);
+          if (adopted) {
+            setCreationError("");
+            notify(t(locale, "人物形象已生成", "Character artwork generated"));
+          } else {
+            setCreationError(
+              t(
+                locale,
+                "人物形象无法读取，请重试。",
+                "Character artwork could not be read; try again.",
+              ),
+            );
+          }
+          return;
+        }
+        if (task?.state === "failed" || task?.state === "cancelled" || attempts >= 12) {
+          setArtworkTask(undefined);
+          setCreationError(
+            t(
+              locale,
+              "人物形象生成失败，请重试。",
+              "Character artwork generation failed; try again.",
+            ),
+          );
+          return;
+        }
+        timer = window.setTimeout(() => {
+          void poll();
+        }, 500);
+      } catch {
+        if (cancelled) return;
+        setArtworkTask(undefined);
+        setCreationError(
+          t(
+            locale,
+            "人物形象生成失败，请重试。",
+            "Character artwork generation failed; try again.",
+          ),
+        );
+      }
+    };
+    timer = window.setTimeout(() => {
+      void poll();
+    }, 500);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [adoptArtworkTask, artworkTask, editor, locale, notify, workspaceId]);
   const publishPreview = () => {
     if (!selectedCandidateId) {
       setCreationError(
@@ -819,6 +988,9 @@ export const DesignerLibrary = ({
           onCandidatePhaseChange={setCandidatePhase}
           onCandidateSelect={setSelectedCandidateId}
           onRequestCandidates={requestCandidates}
+          onGenerateArtwork={requestCandidateArtwork}
+          artworkBusy={Boolean(artworkTask)}
+          canGenerateArtwork={Boolean(workspaceId) && !readOnly}
           onPublish={publishPreview}
           onDraftChange={setActiveDraft}
           onClose={() => setEditor(null)}
@@ -850,6 +1022,9 @@ const DesignerEditorModal = ({
   onCandidatePhaseChange,
   onCandidateSelect,
   onRequestCandidates,
+  onGenerateArtwork,
+  artworkBusy,
+  canGenerateArtwork,
   onPublish,
   onDraftChange,
   onClose,
@@ -875,6 +1050,9 @@ const DesignerEditorModal = ({
   onCandidatePhaseChange: (phase: "form" | "review") => void;
   onCandidateSelect: (id: string) => void;
   onRequestCandidates: () => void;
+  onGenerateArtwork: () => void;
+  artworkBusy: boolean;
+  canGenerateArtwork: boolean;
   onPublish: () => void;
   onDraftChange: (draft: DesignerDraft) => void;
   onClose: () => void;
@@ -936,6 +1114,9 @@ const DesignerEditorModal = ({
           publishedInSession={publishedInSession}
           error={error}
           onSelect={onCandidateSelect}
+          onGenerateArtwork={onGenerateArtwork}
+          artworkBusy={artworkBusy}
+          canGenerateArtwork={canGenerateArtwork}
           onPublish={onPublish}
         />
       ) : (
@@ -1090,6 +1271,9 @@ const CandidateReview = ({
   publishedInSession,
   error,
   onSelect,
+  onGenerateArtwork,
+  artworkBusy,
+  canGenerateArtwork,
   onPublish,
 }: {
   locale: Locale;
@@ -1099,6 +1283,9 @@ const CandidateReview = ({
   publishedInSession: boolean;
   error: string;
   onSelect: (candidateId: string) => void;
+  onGenerateArtwork: () => void;
+  artworkBusy: boolean;
+  canGenerateArtwork: boolean;
   onPublish: () => void;
 }) => {
   const visibleCandidates =
@@ -1167,6 +1354,15 @@ const CandidateReview = ({
           {error}
         </p>
       )}
+      <Button
+        type="button"
+        variant="ai"
+        icon="sparkles"
+        disabled={!canGenerateArtwork || !selectedCandidateId || artworkBusy || visibleCandidates.length === 0}
+        onClick={onGenerateArtwork}
+      >
+        {t(locale, "生成形象", "Generate art")}
+      </Button>
       <Button
         type="button"
         variant="primary"

@@ -263,6 +263,8 @@
 
 2026-09-13：M07 图像工具参数贯通（变更 ID M07-20260913-24）。Workbench 的每个模型图像工具通过现有 Modal/ToolInspector 配置明确 schema 参数；可信 image-edit IPC、任务状态存储、受管源素材重试以及 OpenAI-compatible multipart 请求共同保留并校验 `toolParams`。先观察 Workbench/IPC/task-store/task-service/provider adapter 9 项 Red，再补 managed-source retry 和 UI invalid-parameter Red；Green 为 8 个聚焦文件/80 测试以及最终 unit 96/407、integration 23/105、E2E 24/24、native source 2 passed/1 skipped、build/lint/typecheck/diff check。影响 M05 Workbench、M06 task/IPC/provider 直接消费者，已完成其聚焦回归；真实 provider 扩展、遮罩栅格化、原生 worker 和人工图像质量仍是外部发布门禁。
 
+2026-09-13：M03/M06 受管设计师形象生成（变更 ID M03-20260913-07）。设计师候选现在可显式提交 `designer-draft` 图像生成任务；主进程将生成位图原子保存到活动工作区 `.designhub/designer-artwork`，任务不绑定文档也不创建画布候选。候选预览和发布档案只保存 `artworkAssetId` 与 `designhub-artwork://<id>`，Electron 主进程以活动工作区为边界解析受控协议并返回位图响应，CSP 只新增该本地图片方案。先观察服务/存储/IPC/UI 缺失和 D19 data-URL/CSP/协议 404 Red，再 Green；focused 7 files/61 tests、unit 97/417、integration 23/105、E2E 24/24、package 后 native 3/3、lint、typecheck、build、diff check 通过。影响 M03 持久化、M06 图像生成/重试与 M01 native bridge，已全部重新验证；真实 provider 输出、远端下载、Windows 渲染和人工形象质量仍属外部门禁。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

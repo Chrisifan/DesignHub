@@ -28,6 +28,15 @@ export type ImageGenerationInput = {
   count?: number;
 };
 
+export type DesignerArtworkGenerationInput = {
+  source: { kind: 'designer-draft'; id: string };
+  connectionId: string;
+  prompt: string;
+  model?: string;
+  size?: string;
+  count?: number;
+};
+
 export type ImageEditInput = {
   projectId: string;
   documentId: string;
@@ -62,6 +71,7 @@ export type AgentTaskService = {
   submitConversation: (input: ConversationInput) => Promise<TaskRecord>;
   submitPortfolioAnalysis: (input: PortfolioAnalysisInput) => Promise<TaskRecord>;
   submitImageGeneration: (input: ImageGenerationInput) => Promise<TaskRecord>;
+  submitDesignerArtworkGeneration: (input: DesignerArtworkGenerationInput) => Promise<TaskRecord>;
   submitImageEdit: (input: ImageEditInput) => Promise<TaskRecord>;
   retry: (taskId: string) => Promise<TaskRecord | undefined>;
   cancel: (taskId: string) => TaskRecord | undefined;
@@ -72,6 +82,7 @@ export type AgentTaskServiceOptions = {
   runtime: TaskRuntime;
   resolveAdapter: (connectionId: string) => Promise<ConversationAdapter>;
   persistGeneratedImages?: (input: { projectId: string; images: GeneratedImage[] }) => Promise<string[]>;
+  persistDesignerArtwork?: (input: { designerDraftId: string; images: GeneratedImage[] }) => Promise<string[]>;
   loadSourceImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
 };
 
@@ -135,8 +146,12 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     pending.add(execution);
     void execution.finally(() => pending.delete(execution));
   };
-  const createImageTask = (input: ImageGenerationInput | ImageEditInput, capability: 'image-generation' | 'image-editing'): TaskRecord => {
-    if (!input.projectId.trim() || !input.documentId.trim() || !input.connectionId.trim() || !input.prompt.trim()) throw new Error('IMAGE_TASK_BINDING_REQUIRED');
+  const createImageTask = (input: ImageGenerationInput | ImageEditInput | DesignerArtworkGenerationInput, capability: 'image-generation' | 'image-editing'): TaskRecord => {
+    const source = 'source' in input ? input.source : { kind: 'project' as const, id: input.projectId };
+    const documentId = 'documentId' in input ? input.documentId : undefined;
+    if (!source.id.trim() || !input.connectionId.trim() || !input.prompt.trim()
+      || (capability === 'image-editing' && (!documentId || source.kind !== 'project'))
+      || (source.kind === 'project' && !documentId)) throw new Error('IMAGE_TASK_BINDING_REQUIRED');
     if ('tool' in input && (input.tool
       ? (!input.toolParams || !validateToolParams(input.tool, input.toolParams).ok)
       : input.toolParams !== undefined)) throw new Error('INVALID_PARAMS');
@@ -144,10 +159,12 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       id: taskId(),
       requestId: requestId(),
       requestText: input.prompt.trim(),
-      source: { kind: 'project', id: input.projectId.trim() },
-      documentId: input.documentId.trim(),
-      baseRevisionId: input.baseRevisionId ?? null,
-      ...(input.designerVersionId ? { designerVersionId: input.designerVersionId } : {}),
+      source: { kind: source.kind, id: source.id.trim() },
+      ...(documentId ? {
+        documentId: documentId.trim(),
+        baseRevisionId: 'baseRevisionId' in input ? input.baseRevisionId ?? null : null,
+      } : {}),
+      ...('designerVersionId' in input && input.designerVersionId ? { designerVersionId: input.designerVersionId } : {}),
       ...('model' in input && input.model ? { model: input.model } : {}),
       ...('size' in input && input.size ? { size: input.size } : {}),
       ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}),
@@ -163,7 +180,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       createdAt: new Date().toISOString(),
     });
   };
-  const executeImageTask = async (task: TaskRecord, input: ImageGenerationInput | ImageEditInput, operation: 'generate' | 'edit'): Promise<void> => {
+  const executeImageTask = async (task: TaskRecord, input: ImageGenerationInput | ImageEditInput | DesignerArtworkGenerationInput, operation: 'generate' | 'edit'): Promise<void> => {
     const controller = new AbortController();
     controllers.set(task.id, controller);
     const execution = (async (): Promise<void> => {
@@ -174,18 +191,26 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('tool' in input && input.tool ? { tool: input.tool } : {}), ...('toolParams' in input && input.toolParams ? { toolParams: { ...input.toolParams } } : {}), ...('region' in input && input.region ? { region: input.region } : {}) }, controller.signal) : undefined);
         if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
         if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
-        const assetIds = options.persistGeneratedImages ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images }) : [];
+        const assetIds = task.source?.kind === 'designer-draft'
+          ? (options.persistDesignerArtwork
+            ? await options.persistDesignerArtwork({ designerDraftId: task.source.id, images: response.images })
+            : (() => { throw new Error('DESIGNER_ARTWORK_PERSISTENCE_UNAVAILABLE'); })())
+          : (options.persistGeneratedImages && 'projectId' in input
+            ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images })
+            : []);
         await options.runtime.complete(task.id, {
           assetIds,
           imageCount: response.images.length,
           cost: response.cost,
-          candidate: {
-            id: `candidate-${task.id}`,
-            baseRevisionId: task.baseRevisionId ?? null,
-            assetIds: [...assetIds],
-            ...(assetIds[0] ? { sceneAssetId: assetIds[0] } : {}),
-            createdAt: new Date().toISOString(),
-          },
+          ...(task.source?.kind === 'project' ? {
+            candidate: {
+              id: `candidate-${task.id}`,
+              baseRevisionId: task.baseRevisionId ?? null,
+              assetIds: [...assetIds],
+              ...(assetIds[0] ? { sceneAssetId: assetIds[0] } : {}),
+              createdAt: new Date().toISOString(),
+            },
+          } : {}),
         });
       } catch (error) {
         if (controller.signal.aborted) await options.runtime.complete(task.id);
@@ -232,6 +257,12 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await executeImageTask(task, input, 'generate');
     return task;
   };
+  const submitDesignerArtworkGeneration = async (input: DesignerArtworkGenerationInput): Promise<TaskRecord> => {
+    if (input.source.kind !== 'designer-draft') throw new Error('DESIGNER_ARTWORK_BINDING_REQUIRED');
+    const task = createImageTask(input, 'image-generation');
+    await executeImageTask(task, input, 'generate');
+    return task;
+  };
   const submitImageEdit = async (input: ImageEditInput): Promise<TaskRecord> => {
     const task = createImageTask(input, 'image-editing');
     await executeImageTask(task, input, 'edit');
@@ -265,22 +296,33 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       return running;
     }
     if (previous.capability === 'image-generation') {
-      if (previous.source.kind !== 'project' || !previous.documentId) return undefined;
+      if (previous.source.kind !== 'project' && previous.source.kind !== 'designer-draft') return undefined;
+      if (previous.source.kind === 'project' && !previous.documentId) return undefined;
       const retried = options.runtime.retry(taskId);
       if (!retried) return undefined;
       const running = options.runtime.run(retried.id);
       if (!running) return undefined;
-      await executeImageTask(running, {
-        projectId: previous.source.id,
-        documentId: previous.documentId,
-        baseRevisionId: previous.baseRevisionId ?? null,
-        ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
-        connectionId: previous.providerId,
-        prompt: previous.requestText,
-        ...(previous.model ? { model: previous.model } : {}),
-        ...(previous.size ? { size: previous.size } : {}),
-        ...(previous.count === undefined ? {} : { count: previous.count }),
-      }, 'generate');
+      const input: ImageGenerationInput | DesignerArtworkGenerationInput = previous.source.kind === 'designer-draft'
+        ? {
+          source: { kind: 'designer-draft', id: previous.source.id },
+          connectionId: previous.providerId,
+          prompt: previous.requestText,
+          ...(previous.model ? { model: previous.model } : {}),
+          ...(previous.size ? { size: previous.size } : {}),
+          ...(previous.count === undefined ? {} : { count: previous.count }),
+        }
+        : {
+          projectId: previous.source.id,
+          documentId: previous.documentId as string,
+          baseRevisionId: previous.baseRevisionId ?? null,
+          ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
+          connectionId: previous.providerId,
+          prompt: previous.requestText,
+          ...(previous.model ? { model: previous.model } : {}),
+          ...(previous.size ? { size: previous.size } : {}),
+          ...(previous.count === undefined ? {} : { count: previous.count }),
+        };
+      await executeImageTask(running, input, 'generate');
       return running;
     }
     if (previous.capability !== 'conversation') return undefined;
@@ -306,5 +348,5 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await Promise.all([...pending]);
     await options.runtime.flush();
   };
-  return { submitConversation, submitPortfolioAnalysis, submitImageGeneration, submitImageEdit, retry, cancel, flush };
+  return { submitConversation, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, retry, cancel, flush };
 };

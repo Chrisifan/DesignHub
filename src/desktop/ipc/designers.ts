@@ -4,6 +4,7 @@ import { isTrustedWorkspaceRequest } from './workspace';
 
 export const designerLoadChannel = 'designer:load-state';
 export const designerSaveChannel = 'designer:save-state';
+export const designerArtworkReadChannel = 'designer:read-artwork';
 
 type DesignerSender = {
   mainFrame: { url: string };
@@ -23,6 +24,14 @@ const isSaveInput = (value: unknown): value is { workspaceId: string; state: Des
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
   return isWorkspaceId(input.workspaceId) && isDesignerLibraryState(input.state);
+};
+
+const isArtworkReadInput = (value: unknown): value is { workspaceId: string; artworkId: string } => {
+  if (typeof value !== 'object' || value === null) return false;
+  const input = value as Record<string, unknown>;
+  return isWorkspaceId(input.workspaceId)
+    && typeof input.artworkId === 'string'
+    && input.artworkId.trim().length > 0;
 };
 
 export const loadDesignerStateHandler = (
@@ -47,4 +56,16 @@ export const saveDesignerStateHandler = (
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return false;
   return saveState(workspace, input.state);
+};
+
+export const readDesignerArtworkHandler = (
+  window: DesignerWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  readArtwork: (workspace: WorkspaceHandle, workspaceId: string, artworkId: string) => Promise<{ artworkId: string; dataUrl: string } | null>,
+) => async (event: DesignerRequest, input: unknown): Promise<{ artworkId: string; dataUrl: string } | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isArtworkReadInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return readArtwork(workspace, input.workspaceId, input.artworkId);
 };

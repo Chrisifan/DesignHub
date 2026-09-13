@@ -10,7 +10,7 @@ import type { TaskRecord } from '../features/tasks/state';
 import type { TaskSource } from '../features/tasks/state';
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
 import type { BrandLibraryState } from '../features/brands/constraints';
-import type { ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } from '../features/agent/task-service';
+import type { DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } from '../features/agent/task-service';
 import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
@@ -65,6 +65,7 @@ export type DesktopApi = {
   exportProjectPackage?: (input: { workspaceId: string; projectId: string }) => Promise<{ path: string; sha256: string } | null>;
   loadDesignerState?: (workspaceId: string) => Promise<DesignerLibraryState | null>;
   saveDesignerState?: (workspaceId: string, state: DesignerLibraryState) => Promise<boolean>;
+  readDesignerArtwork?: (input: { workspaceId: string; artworkId: string }) => Promise<{ artworkId: string; dataUrl: string } | null>;
   loadBrandState?: (workspaceId: string) => Promise<BrandLibraryState | null>;
   saveBrandState?: (workspaceId: string, state: BrandLibraryState) => Promise<boolean>;
   listAssets?: (input: AssetStoreInput) => Promise<ManagedAsset[] | null>;
@@ -84,6 +85,7 @@ export type DesktopApi = {
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
   submitPortfolioAnalysis?: (input: PortfolioAnalysisInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   submitImageGeneration?: (input: ImageGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
+  submitDesignerArtworkGeneration?: (input: DesignerArtworkGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   submitImageEdit?: (input: ImageEditInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;
   retryTask?: (workspaceId: string, taskId: string) => Promise<TaskRecord | null>;

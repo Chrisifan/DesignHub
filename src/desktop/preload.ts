@@ -2,11 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import type { DesktopApi } from '../platform/contracts';
 import { credentialDeleteChannel, credentialStatusChannel, credentialStoreChannel } from './ipc/credentials';
-import { designerLoadChannel, designerSaveChannel } from './ipc/designers';
+import { designerArtworkReadChannel, designerLoadChannel, designerSaveChannel } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/assets';
 import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
 import { taskListChannel } from './ipc/tasks';
-import { conversationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, portfolioAnalysisSubmitChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
+import { conversationSubmitChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, portfolioAnalysisSubmitChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { exportDocumentChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
@@ -42,6 +42,7 @@ const api: DesktopApi = {
   exportProjectPackage: (input) => ipcRenderer.invoke(projectPackageExportChannel, input),
   loadDesignerState: (workspaceId) => ipcRenderer.invoke(designerLoadChannel, workspaceId),
   saveDesignerState: (workspaceId, state) => ipcRenderer.invoke(designerSaveChannel, { workspaceId, state }),
+  readDesignerArtwork: (input) => ipcRenderer.invoke(designerArtworkReadChannel, input),
   loadBrandState: (workspaceId) => ipcRenderer.invoke(brandLoadChannel, workspaceId),
   saveBrandState: (workspaceId, state) => ipcRenderer.invoke(brandSaveChannel, { workspaceId, state }),
   listAssets: (input) => ipcRenderer.invoke(assetListChannel, input),
@@ -61,6 +62,7 @@ const api: DesktopApi = {
   submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
   submitPortfolioAnalysis: (input) => ipcRenderer.invoke(portfolioAnalysisSubmitChannel, input),
   submitImageGeneration: (input) => ipcRenderer.invoke(imageGenerationSubmitChannel, input),
+  submitDesignerArtworkGeneration: (input) => ipcRenderer.invoke(designerArtworkGenerationSubmitChannel, input),
   submitImageEdit: (input) => ipcRenderer.invoke(imageEditSubmitChannel, input),
   cancelTask: (workspaceId, taskId) => ipcRenderer.invoke(taskCancelChannel, { workspaceId, taskId }),
   retryTask: (workspaceId, taskId) => ipcRenderer.invoke(taskRetryChannel, { workspaceId, taskId }),

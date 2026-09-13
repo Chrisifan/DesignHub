@@ -1,7 +1,7 @@
 import type { TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import type { AgentTaskService, ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } from '../../features/agent/task-service';
+import type { AgentTaskService, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
@@ -10,6 +10,7 @@ export const conversationSubmitChannel = 'agent:conversation-submit';
 export const taskCancelChannel = 'agent:task-cancel';
 export const taskRetryChannel = 'agent:task-retry';
 export const imageGenerationSubmitChannel = 'agent:image-generation-submit';
+export const designerArtworkGenerationSubmitChannel = 'agent:submit-designer-artwork';
 export const imageEditSubmitChannel = 'agent:image-edit-submit';
 export const portfolioAnalysisSubmitChannel = 'agent:portfolio-analysis-submit';
 
@@ -28,6 +29,7 @@ export type ConversationInput = {
 };
 export type ConversationBridgeInput = ConversationInput & { workspaceId: string };
 export type ImageGenerationBridgeInput = ImageGenerationInput & { workspaceId: string };
+export type DesignerArtworkGenerationBridgeInput = DesignerArtworkGenerationInput & { workspaceId: string };
 export type ImageEditBridgeInput = ImageEditInput & { workspaceId: string };
 export type PortfolioAnalysisBridgeInput = PortfolioAnalysisInput & { workspaceId: string };
 
@@ -89,6 +91,21 @@ const isImageGenerationInput = (value: unknown): value is ImageGenerationBridgeI
     && (input.size === undefined || isNonEmpty(input.size))
     && (input.count === undefined || (Number.isInteger(input.count) && Number(input.count) >= 1 && Number(input.count) <= 4));
 };
+const isDesignerArtworkGenerationInput = (value: unknown): value is DesignerArtworkGenerationBridgeInput => {
+  if (!value || typeof value !== 'object') return false;
+  const input = value as Record<string, unknown>;
+  const source = input.source;
+  return isNonEmpty(input.workspaceId)
+    && isNonEmpty(input.connectionId)
+    && isNonEmpty(input.prompt)
+    && source !== null
+    && typeof source === 'object'
+    && (source as Record<string, unknown>).kind === 'designer-draft'
+    && isNonEmpty((source as Record<string, unknown>).id)
+    && (input.model === undefined || isNonEmpty(input.model))
+    && (input.size === undefined || isNonEmpty(input.size))
+    && (input.count === undefined || (Number.isInteger(input.count) && Number(input.count) >= 1 && Number(input.count) <= 4));
+};
 const isBlobLike = (value: unknown): value is Blob => Boolean(value && typeof value === 'object' && typeof (value as Blob).size === 'number' && (typeof (value as Blob).arrayBuffer === 'function' || typeof (value as Blob).stream === 'function' || typeof (value as Blob).slice === 'function'));
 const isRegion = (value: unknown): boolean => value !== null && typeof value === 'object'
   && ['x', 'y', 'width', 'height'].every((key) => typeof (value as Record<string, unknown>)[key] === 'number' && Number.isFinite((value as Record<string, unknown>)[key]))
@@ -144,6 +161,18 @@ export const createImageGenerationHandler = (
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageGenerationInput(input)) return null;
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return submit(workspace, input);
+};
+
+export const createDesignerArtworkGenerationHandler = (
+  window: AgentWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  submit: (workspace: WorkspaceHandle, input: DesignerArtworkGenerationInput) => Promise<TaskRecord>,
+) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignerArtworkGenerationInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
   return submit(workspace, input);
 };
 

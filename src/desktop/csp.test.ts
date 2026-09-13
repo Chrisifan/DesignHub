@@ -9,3 +9,10 @@ it('allows Vite inline styles only for the development renderer', () => {
   expect(createContentSecurityPolicy(false)).toContain("style-src 'self'");
   expect(createContentSecurityPolicy(false)).not.toContain("'unsafe-inline'");
 });
+
+it('allows managed designer artwork without permitting arbitrary remote images', () => {
+  expect(createContentSecurityPolicy(false)).toContain(
+    "img-src 'self' data: designhub-artwork:",
+  );
+  expect(createContentSecurityPolicy(false)).not.toContain('https:');
+});

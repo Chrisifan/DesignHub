@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 
+import type { DesignerLibraryState } from "../../features/designers/persistence";
 import { DesignerLibrary } from "./DesignerLibrary";
 
 const createDeferred = <T,>() => {
@@ -216,6 +217,116 @@ it("reviews a completed portfolio candidate and persists the published profile",
       }),
     ),
   );
+});
+
+it("requests artwork for a selected candidate and adopts the managed image before publishing", async () => {
+  const saveDesignerState = vi.fn(
+    async (...args: [string, DesignerLibraryState]) => args.length === 2,
+  );
+  const candidate = {
+    id: "candidate-artwork-1",
+    name: { zh: "未来编辑", en: "Future editor" },
+    signature: { zh: "形象候选", en: "Artwork candidate" },
+    summary: { zh: "理性、明亮的数字排版", en: "Rational, bright digital typography" },
+    principle: { zh: "保留阅读秩序", en: "Keep reading order" },
+    personaCode: "FUTURE-1",
+    version: "v0.1",
+    status: "draft" as const,
+    artworkUrl: "",
+    artworkAlt: { zh: "未来编辑形象", en: "Future editor portrait" },
+    tags: [],
+    referenceCount: 0,
+    styleDna: {
+      palette: [],
+      typography: { zh: "", en: "" },
+      composition: { zh: "", en: "" },
+      texture: { zh: "", en: "" },
+    },
+    negativeRules: [],
+    portfolioSheets: [],
+  };
+  const submitDesignerArtworkGeneration = vi.fn(async () => ({
+    id: "task-artwork",
+    requestId: "request-artwork",
+    state: "completed" as const,
+    cancelRequested: false,
+    attempt: 1,
+    source: { kind: "designer-draft" as const, id: candidate.id },
+    result: { assetIds: ["artwork-portrait-1"], imageCount: 1 },
+  }));
+  const readDesignerArtwork = vi.fn(async () => ({
+    artworkId: "artwork-portrait-1",
+    dataUrl: "data:image/png;base64,AQID",
+  }));
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    submitConversation: vi.fn(async () => ({
+      id: "task-candidate",
+      requestId: "request-candidate",
+      state: "completed" as const,
+      cancelRequested: false,
+      attempt: 1,
+      source: { kind: "designer-draft" as const, id: "draft-source" },
+      result: { text: JSON.stringify({ candidates: [candidate] }) },
+    })),
+    submitDesignerArtworkGeneration,
+    readDesignerArtwork,
+    saveDesignerState,
+  } as typeof window.designhub;
+
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-1" />);
+  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
+    target: { value: "理性、明亮的数字排版" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "生成" }));
+  fireEvent.click(await screen.findByRole("button", { name: /候选 1/ }));
+  fireEvent.click(screen.getByRole("button", { name: "生成形象" }));
+
+  await waitFor(() => expect(submitDesignerArtworkGeneration).toHaveBeenCalledWith(expect.objectContaining({
+    workspaceId: "workspace-1",
+    source: { kind: "designer-draft", id: candidate.id },
+    prompt: expect.stringContaining("Future editor"),
+  })));
+  await waitFor(() => expect(readDesignerArtwork).toHaveBeenCalledWith({
+    workspaceId: "workspace-1",
+    artworkId: "artwork-portrait-1",
+  }));
+  expect(screen.getByRole("img", { name: "未来编辑形象的人物形象" })).toHaveAttribute(
+    "src",
+    "designhub-artwork://artwork-portrait-1",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "发布预览" }));
+  await waitFor(() =>
+    expect(saveDesignerState).toHaveBeenCalledWith(
+      "workspace-1",
+      expect.objectContaining({
+        profiles: expect.arrayContaining([
+          expect.objectContaining({
+            status: "published",
+            artworkAssetId: "artwork-portrait-1",
+            artworkUrl: "designhub-artwork://artwork-portrait-1",
+          }),
+        ]),
+      }),
+    ),
+  );
+  const persistedProfiles = saveDesignerState.mock.calls
+    .flatMap(([, state]) => state.profiles)
+    .filter((profile) => profile.artworkAssetId === "artwork-portrait-1");
+  expect(persistedProfiles).toHaveLength(1);
+  expect(persistedProfiles[0]?.artworkUrl).not.toMatch(/^data:/u);
+});
+
+it("disables artwork generation for offline example candidates", async () => {
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "创建" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
+    target: { value: "克制的编辑风格" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "生成" }));
+  fireEvent.click(await screen.findByRole("button", { name: /候选 1/ }));
+  expect(screen.getByRole("button", { name: "生成形象" })).toBeDisabled();
 });
 
 it("does not show fabricated candidates when the completed portfolio task failed", async () => {

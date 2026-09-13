@@ -1,7 +1,7 @@
 const baseDirectives = [
   "default-src 'self'",
   "connect-src 'self'",
-  "img-src 'self' data:",
+  "img-src 'self' data: designhub-artwork:",
   "script-src 'self'",
 ];
 

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 
 import { createWorkspace, openWorkspace } from './workspace-store';
+import * as designerStore from './designer-store';
 import { designersFileName, loadDesignerState, saveDesignerState } from './designer-store';
 
 const temporaryDirectories: string[] = [];
@@ -62,4 +63,36 @@ it('rejects a symlinked designer state instead of reading outside the workspace'
   await symlink(externalPath, filePath);
   await expect(loadDesignerState(workspace, workspace.workspace.workspaceId)).rejects.toThrow('INVALID_DESIGNER_STATE');
   workspace.close();
+});
+
+it('persists generated artwork bytes separately from designer profile metadata', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const artworkStore = designerStore as typeof designerStore & {
+    saveDesignerArtwork: (handle: Awaited<ReturnType<typeof createTemporaryWorkspace>>, workspaceId: string, artworkId: string, bytes: Uint8Array, mimeType: string) => Promise<{ artworkId: string }>;
+    readDesignerArtwork: (handle: Awaited<ReturnType<typeof createTemporaryWorkspace>>, workspaceId: string, artworkId: string) => Promise<{ artworkId: string; dataUrl: string } | null>;
+  };
+  expect(artworkStore.saveDesignerArtwork).toBeTypeOf('function');
+  expect(artworkStore.readDesignerArtwork).toBeTypeOf('function');
+  await expect(artworkStore.saveDesignerArtwork(
+    workspace,
+    workspace.workspace.workspaceId,
+    'artwork-portrait-1',
+    new Uint8Array([1, 2, 3]),
+    'image/png',
+  )).resolves.toEqual({ artworkId: 'artwork-portrait-1' });
+  workspace.close();
+
+  const reopened = await openWorkspace(workspace.workspace.directory);
+  try {
+    await expect(artworkStore.readDesignerArtwork(
+      reopened,
+      reopened.workspace.workspaceId,
+      'artwork-portrait-1',
+    )).resolves.toEqual({
+      artworkId: 'artwork-portrait-1',
+      dataUrl: 'data:image/png;base64,AQID',
+    });
+  } finally {
+    reopened.close();
+  }
 });

@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 
+import * as agentIpc from './agent';
 import { createConversationHandler, cancelTaskHandler, createImageEditHandler, createImageGenerationHandler, retryTaskHandler, createPortfolioAnalysisHandler } from './agent';
 import type { TaskRecord } from '../../features/tasks/state';
 
@@ -92,5 +93,44 @@ it('accepts only explicit designer-draft portfolio vision sources from the trust
   await expect(submit(fixture.event, {
     workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1',
     sources: [{ id: 'source-a', description: 'poster', image: { url: 'file:///tmp/a.png' } }],
+  })).resolves.toBeNull();
+});
+
+it('accepts designer artwork generation only for an explicit designer draft', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1', openMode: 'writable' } };
+  const artworkIpc = agentIpc as typeof agentIpc & {
+    designerArtworkGenerationSubmitChannel: string;
+    createDesignerArtworkGenerationHandler: (
+      window: never,
+      trustedUrl: string,
+      getWorkspace: () => never,
+      submit: (workspace: never, input: { source: { kind: 'designer-draft'; id: string }; connectionId: string; prompt: string; size?: string; count?: number }) => Promise<TaskRecord>,
+    ) => (event: never, input: unknown) => Promise<TaskRecord | null>;
+  };
+  expect(artworkIpc.createDesignerArtworkGenerationHandler).toBeTypeOf('function');
+  expect(artworkIpc.designerArtworkGenerationSubmitChannel).toBe('agent:submit-designer-artwork');
+  const submit = artworkIpc.createDesignerArtworkGenerationHandler(
+    fixture.window as never,
+    'http://localhost:5173/?preview=1',
+    () => workspace as never,
+    async (_workspace, input) => {
+      expect(input.source).toEqual({ kind: 'designer-draft', id: 'designer-draft-1' });
+      return task;
+    },
+  );
+  await expect(submit(fixture.event as never, {
+    workspaceId: 'workspace-1',
+    source: { kind: 'designer-draft', id: 'designer-draft-1' },
+    connectionId: 'provider-1',
+    prompt: 'Original art director portrait',
+    size: '1024x1024',
+    count: 1,
+  })).resolves.toEqual(task);
+  await expect(submit(fixture.event as never, {
+    workspaceId: 'workspace-1',
+    source: { kind: 'project', id: 'project-1' },
+    connectionId: 'provider-1',
+    prompt: 'Original art director portrait',
   })).resolves.toBeNull();
 });

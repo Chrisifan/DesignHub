@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage } from 'electron';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
@@ -14,6 +14,7 @@ import {
   workspaceOpenChannel,
 } from './ipc/workspace';
 import { createContentSecurityPolicy } from './csp';
+import { createDesignerArtworkProtocolHandler, designerArtworkScheme } from './artwork-protocol';
 import {
   createCredentialDeleteHandler,
   createCredentialStatusHandler,
@@ -25,11 +26,11 @@ import {
 import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore, resolveProjectDirectory } from './storage/project-store';
 import { createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listTrashedProjectsHandler, moveProjectToTrashHandler, projectCreateChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, updateProjectMetadataHandler } from './ipc/projects';
-import { designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, saveDesignerStateHandler } from './ipc/designers';
+import { designerArtworkReadChannel, designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, readDesignerArtworkHandler, saveDesignerStateHandler } from './ipc/designers';
 import { brandLoadChannel, brandSaveChannel, loadBrandStateHandler, saveBrandStateHandler } from './ipc/brands';
 import { assetImportChannel, assetListChannel, assetReadChannel, importAssetsHandler, listAssetsHandler, readAssetHandler } from './ipc/assets';
 import { createAssetStore } from './storage/asset-store';
-import { loadDesignerState, saveDesignerState } from './storage/designer-store';
+import { loadDesignerState, readDesignerArtwork, saveDesignerArtwork, saveDesignerState } from './storage/designer-store';
 import { loadBrandState, saveBrandState } from './storage/brand-store';
 import { loadDocumentScene, saveDocumentScene } from './storage/scene-store';
 import { commitDocumentRevision, loadDocumentRevisions, setFinalDocumentRevision } from './storage/revision-store';
@@ -45,8 +46,8 @@ import { loadTaskState } from './storage/task-store';
 import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
-import { createOpenAICompatibleAdapter } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createImageEditHandler, createImageGenerationHandler, createPortfolioAnalysisHandler, imageEditSubmitChannel, imageGenerationSubmitChannel, portfolioAnalysisSubmitChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
+import { createOpenAICompatibleAdapter, type GeneratedImage } from '../features/providers/adapter';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createPortfolioAnalysisHandler, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, portfolioAnalysisSubmitChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
 import { exportSceneToFile } from './export-scene';
 import { diagnosticsExportChannel, exportDiagnosticsHandler } from './ipc/diagnostics';
@@ -64,6 +65,13 @@ import { exportHistoryListChannel, listExportHistoryHandler } from './ipc/export
 import { loadProviderConfigs, saveProviderConfigs } from './security/provider-config';
 import { createProviderConfigLoadHandler, createProviderConfigSaveHandler, providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: designerArtworkScheme,
+    privileges: { secure: true, standard: true },
+  },
+]);
+
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
 let activeWorkspaceHandle: WorkspaceHandle | null = null;
@@ -72,6 +80,18 @@ let credentialStore: SystemCredentialStore = createUnavailableCredentialStore();
 let credentialBoundary: CredentialBoundary = createCredentialBoundary(credentialStore);
 
 const providerConfigPath = (): string => join(app.getPath('userData'), 'provider-connections.json');
+
+const generatedImageBytes = async (image: GeneratedImage): Promise<{ bytes: Uint8Array; mimeType: string }> => {
+  const fromBase64 = image.base64 ? Buffer.from(image.base64, 'base64') : null;
+  if (fromBase64) return { bytes: new Uint8Array(fromBase64), mimeType: 'image/png' };
+  if (!image.url) throw new Error('GENERATED_IMAGE_EMPTY');
+  const response = await fetch(image.url);
+  if (!response.ok) throw new Error('GENERATED_IMAGE_DOWNLOAD_FAILED');
+  return {
+    bytes: new Uint8Array(await response.arrayBuffer()),
+    mimeType: response.headers.get('content-type')?.split(';', 1)[0] || 'image/png',
+  };
+};
 
 const createElectronCredentialStore = (directory: string): SystemCredentialStore => {
   const file = join(directory, 'credentials.bin');
@@ -181,23 +201,25 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
       runtime,
       persistGeneratedImages: async ({ projectId, images }) => {
         const items = await Promise.all(images.map(async (image, index) => {
-          const fromBase64 = image.base64 ? Buffer.from(image.base64, 'base64') : null;
-          let bytes: Uint8Array;
-          let mimeType = 'image/png';
-          if (fromBase64) bytes = new Uint8Array(fromBase64);
-          else if (image.url) {
-            const response = await fetch(image.url);
-            if (!response.ok) throw new Error('GENERATED_IMAGE_DOWNLOAD_FAILED');
-            mimeType = response.headers.get('content-type')?.split(';', 1)[0] || mimeType;
-            bytes = new Uint8Array(await response.arrayBuffer());
-          } else throw new Error('GENERATED_IMAGE_EMPTY');
-          const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png';
-          return { name: `generated-${index + 1}.${extension}`, mimeType, data: bytes };
+          const generated = await generatedImageBytes(image);
+          const extension = generated.mimeType === 'image/jpeg' ? 'jpg' : generated.mimeType === 'image/webp' ? 'webp' : 'png';
+          return { name: `generated-${index + 1}.${extension}`, mimeType: generated.mimeType, data: generated.bytes };
         }));
         const imported = await createAssetStore(workspace).importAssets({ workspaceId: workspace.workspace.workspaceId, projectId, items });
         const failures = imported.filter((result) => result.status === 'error');
         if (failures.length > 0) throw new Error(failures[0].error);
         return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
+      },
+      persistDesignerArtwork: async ({ images }) => {
+        const generated = await Promise.all(images.map(generatedImageBytes));
+        const saved = await Promise.all(generated.map((image) => saveDesignerArtwork(
+          workspace,
+          workspace.workspace.workspaceId,
+          `artwork-${randomUUID()}`,
+          image.bytes,
+          image.mimeType,
+        )));
+        return saved.map((item) => item.artworkId);
       },
       loadSourceImage: async ({ projectId, assetId }) => {
         const bytes = await createAssetStore(workspace).readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
@@ -219,6 +241,13 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
 app.whenReady().then(() => {
   credentialStore = createElectronCredentialStore(join(app.getPath('userData'), 'secure'));
   credentialBoundary = createCredentialBoundary(credentialStore);
+  protocol.handle(
+    designerArtworkScheme,
+    createDesignerArtworkProtocolHandler(
+      () => activeWorkspaceHandle,
+      readDesignerArtwork,
+    ),
+  );
   if (storageSmokeResultPath) {
     void runStorageSmoke(storageSmokeResultPath).finally(() => app.quit());
     return;
@@ -311,6 +340,10 @@ app.whenReady().then(() => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return saveDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, state) => saveDesignerState(workspace, workspace.workspace.workspaceId, state))(event, input);
   });
+  ipcMain.handle(designerArtworkReadChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return readDesignerArtworkHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, readDesignerArtwork)(event, input);
+  });
   ipcMain.handle(brandLoadChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return loadBrandStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadBrandState)(event, workspaceId);
@@ -397,6 +430,13 @@ app.whenReady().then(() => {
     return createImageGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, imageInput) => {
       const service = await getAgentTaskService();
       return service.submitImageGeneration(imageInput);
+    })(event, input);
+  });
+  ipcMain.handle(designerArtworkGenerationSubmitChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createDesignerArtworkGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, artworkInput) => {
+      const service = await getAgentTaskService();
+      return service.submitDesignerArtworkGeneration(artworkInput);
     })(event, input);
   });
   ipcMain.handle(imageEditSubmitChannel, async (event, input) => {

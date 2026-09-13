@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 
 import { createTaskRuntime } from '../tasks/runtime';
+import type { TaskRecord } from '../tasks/state';
 import { createAgentTaskService } from './task-service';
 
 it('runs a conversation task and stores the assistant result', async () => {
@@ -118,6 +119,51 @@ it('runs image generation as a persisted project task and records asset referenc
   });
   await service.flush();
   expect(runtime.get(task.id)).toMatchObject({ state: 'completed', capability: 'image-generation', baseRevisionId: null, result: { assetIds: ['asset-generated'], imageCount: 1, cost: 0.02, candidate: { baseRevisionId: null, assetIds: ['asset-generated'] } } });
+});
+
+it('stores generated designer artwork without creating a document candidate', async () => {
+  const runtime = createTaskRuntime();
+  const persistDesignerArtwork = vi.fn(async () => ['artwork-portrait-1']);
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async () => ({ images: [{ base64: 'portrait-bytes' }], cost: 0.01 }),
+    }),
+    persistDesignerArtwork,
+  });
+  const artworkService = service as typeof service & {
+    submitDesignerArtworkGeneration: (input: {
+      source: { kind: 'designer-draft'; id: string };
+      connectionId: string;
+      prompt: string;
+      size?: string;
+      count?: number;
+    }) => Promise<TaskRecord>;
+  };
+  expect(artworkService.submitDesignerArtworkGeneration).toBeTypeOf('function');
+
+  const task = await artworkService.submitDesignerArtworkGeneration({
+    source: { kind: 'designer-draft', id: 'designer-draft-1' },
+    connectionId: 'provider-1',
+    prompt: 'An original art director character portrait',
+    size: '1024x1024',
+    count: 1,
+  });
+  await service.flush();
+
+  expect(persistDesignerArtwork).toHaveBeenCalledWith(expect.objectContaining({
+    designerDraftId: 'designer-draft-1',
+    images: [{ base64: 'portrait-bytes' }],
+  }));
+  expect(runtime.get(task.id)).toMatchObject({
+    state: 'completed',
+    capability: 'image-generation',
+    source: { kind: 'designer-draft', id: 'designer-draft-1' },
+    result: { assetIds: ['artwork-portrait-1'], imageCount: 1, cost: 0.01 },
+  });
+  expect(runtime.get(task.id)?.documentId).toBeUndefined();
+  expect(runtime.get(task.id)?.result?.candidate).toBeUndefined();
 });
 
 it('records the submitted revision as a candidate base without changing the active document', async () => {
