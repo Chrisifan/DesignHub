@@ -2,6 +2,8 @@ import { expect, it } from 'vitest';
 
 import {
   createKeyringCredentialStore,
+  migrateLegacyProviderCredential,
+  resolveProviderCredential,
   migrateLegacyCredentials,
   type KeyringEntry,
 } from './keyring-credentials';
@@ -69,4 +71,45 @@ it('removes the legacy encrypted file only after every credential is written', a
   expect(migrated).toBe(true);
   expect(written).toEqual([{ id: 'first', secret: 'plain-first' }, { id: 'second', secret: 'plain-second' }]);
   expect(deleted).toEqual(['legacy']);
+});
+
+it('copies the legacy provider key to both profile accounts', async () => {
+  const values = new Map<string, string>([['openai-compatible', 'legacy-secret']]);
+  const store = {
+    setCredential: async (id: string, secret: string) => { values.set(id, secret); },
+    deleteCredential: async () => undefined,
+    getCredential: async (id: string) => values.get(id) ?? null,
+  };
+
+  await expect(migrateLegacyProviderCredential(store, 'openai-compatible')).resolves.toBe(true);
+  expect(values.get('openai-compatible:conversation')).toBe('legacy-secret');
+  expect(values.get('openai-compatible:image')).toBe('legacy-secret');
+});
+
+it('keeps the legacy provider key when profile migration is partial', async () => {
+  const values = new Map<string, string>([['openai-compatible', 'legacy-secret']]);
+  const store = {
+    setCredential: async (id: string, secret: string) => {
+      if (id.endsWith(':image')) throw new Error('KEYRING_UNAVAILABLE');
+      values.set(id, secret);
+    },
+    deleteCredential: async () => undefined,
+    getCredential: async (id: string) => values.get(id) ?? null,
+  };
+
+  await expect(migrateLegacyProviderCredential(store, 'openai-compatible')).resolves.toBe(false);
+  expect(values.get('openai-compatible')).toBe('legacy-secret');
+});
+
+it('prefers a profile key and falls back to the legacy provider key', async () => {
+  const values = new Map<string, string>([['openai-compatible', 'legacy-secret']]);
+  const store = {
+    setCredential: async () => undefined,
+    deleteCredential: async () => undefined,
+    getCredential: async (id: string) => values.get(id) ?? null,
+  };
+
+  await expect(resolveProviderCredential(store, 'openai-compatible', 'conversation')).resolves.toBe('legacy-secret');
+  values.set('openai-compatible:conversation', 'conversation-secret');
+  await expect(resolveProviderCredential(store, 'openai-compatible', 'conversation')).resolves.toBe('conversation-secret');
 });
