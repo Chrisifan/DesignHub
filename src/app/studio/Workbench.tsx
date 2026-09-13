@@ -3,12 +3,12 @@ import { useEffect, useId, useState, type CSSProperties, type FormEvent } from '
 import type { Locale } from '../i18n';
 import type { Project } from './types';
 import { CanvasWorkspace, type CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
-import { MaskEditor } from '../../features/canvas/MaskEditor';
 import type { Region } from '../../features/canvas/selection';
 import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
-import { needsRegion, type ImageTool } from '../../features/image-tools/target';
+import { defaultToolParams, validateToolParams, type ImageTool, type ToolParams } from '../../features/image-tools/target';
+import { ToolInspector } from '../../features/image-tools/ToolInspector';
 import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
 import type { TaskCandidate, TaskRecord } from '../../features/tasks/state';
 import { CompareRevisions } from '../../features/revisions/CompareRevisions';
@@ -19,6 +19,7 @@ import {
   Field,
   Icon,
   IconButton,
+  Modal,
   t,
 } from './ui';
 import './workbench.css';
@@ -27,6 +28,32 @@ type LayerId = 'text' | 'shape' | 'image';
 type ContextPanel = 'properties' | 'conversation' | 'history' | 'tools';
 type LayerState = Record<LayerId, boolean>;
 type RevisionState = { revisions: RevisionRecord[]; timeline: RevisionTimelineEvent[]; finalRevisionId: string | null };
+
+const toolPrompt: Record<ImageTool, string> = {
+  'remove-background': 'Remove the background and preserve the subject with clean edges',
+  'replace-background': 'Replace the background while preserving the original subject',
+  'remove-object': 'Remove the selected object and reconstruct the surrounding detail',
+  inpaint: 'Inpaint the selected region according to the requested direction',
+  expand: 'Expand the canvas edges while preserving the primary composition',
+  'smart-crop': 'Smart crop while preserving the primary subject',
+  upscale: 'Upscale the image while preserving important details',
+  resize: 'Resize the image',
+};
+
+const toolName = (locale: Locale, tool: ImageTool): string => {
+  const labels: Record<ImageTool, [string, string]> = {
+    'remove-background': ['去除背景', 'Remove background'],
+    'replace-background': ['替换背景', 'Replace background'],
+    'remove-object': ['移除对象', 'Remove object'],
+    inpaint: ['局部重绘', 'Inpaint'],
+    expand: ['扩展画布', 'Expand canvas'],
+    'smart-crop': ['智能裁切', 'Smart crop'],
+    upscale: ['放大图像', 'Upscale image'],
+    resize: ['调整尺寸', 'Resize'],
+  };
+  const [zh, en] = labels[tool];
+  return t(locale, zh, en);
+};
 
 export type WorkbenchProps = {
   locale: Locale;
@@ -38,7 +65,7 @@ export type WorkbenchProps = {
   onExport: () => void;
   onConnections: () => void;
   onSubmitConversation?: (message: string) => void | Promise<void>;
-  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
+  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
   modelConnected?: boolean;
@@ -119,7 +146,8 @@ export const Workbench = ({
   const [rotation, setRotation] = useState(0);
   const [prompt, setPrompt] = useState('');
   const [toolRegion, setToolRegion] = useState<Region | undefined>();
-  const [pendingRegionalTool, setPendingRegionalTool] = useState<{ tool: ImageTool; prompt: string } | null>(null);
+  const [activeTool, setActiveTool] = useState<ImageTool | null>(null);
+  const [toolParams, setToolParams] = useState<ToolParams>({});
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
@@ -364,21 +392,32 @@ export const Workbench = ({
     }
     void Promise.resolve(onSubmitImageGeneration(prompt.trim(), currentRevisionId)).then(() => setPrompt('')).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
-  const submitImageTask = (tool: ImageTool, taskPrompt: string, region?: Region): void => {
+  const submitImageTask = (tool: ImageTool, taskPrompt: string, params: ToolParams, region?: Region): void => {
     if (readOnly) return;
     if (!onSubmitImageTask) {
       onConnections();
       return;
     }
-    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, baseRevisionId: currentRevisionId, ...(region ? { region } : {}) })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
-  };
-  const runImageTask = (tool: ImageTool, taskPrompt: string): void => {
-    if (needsRegion(tool) && !toolRegion) {
-      setPendingRegionalTool({ tool, prompt: taskPrompt });
-      notify(t(locale, '请先选择区域', 'Select a region first'));
+    if (!validateToolParams(tool, params).ok) {
+      notify(t(locale, '参数无效', 'Invalid parameters'));
       return;
     }
-    submitImageTask(tool, taskPrompt, toolRegion);
+    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, params, baseRevisionId: currentRevisionId, ...(region ? { region } : {}) })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+  };
+  const configureImageTool = (tool: ImageTool): void => {
+    setActiveTool(tool);
+    setToolParams(defaultToolParams(tool, { width: scene.width, height: scene.height }));
+    setToolRegion(undefined);
+  };
+  const runConfiguredTool = (region?: Region): void => {
+    if (!activeTool) return;
+    if (onSubmitImageTask && !validateToolParams(activeTool, toolParams).ok) {
+      notify(t(locale, '参数无效', 'Invalid parameters'));
+      return;
+    }
+    submitImageTask(activeTool, toolPrompt[activeTool], toolParams, region);
+    setActiveTool(null);
+    setToolRegion(undefined);
   };
 
   return (
@@ -957,11 +996,12 @@ export const Workbench = ({
                   </div>
                   <Button
                     variant="secondary"
-                    icon="plug"
+                    icon="sliders-horizontal"
+                    aria-label={t(locale, '配置智能裁切', 'Configure smart crop')}
                     disabled={readOnly}
-                    onClick={() => runImageTask('smart-crop', 'Smart crop while preserving the primary subject')}
+                    onClick={() => configureImageTool('smart-crop')}
                   >
-                    {t(locale, '连接', 'Connect')}
+                    {t(locale, '配置', 'Configure')}
                   </Button>
                 </div>
                 <div className="workbench-tool-entry">
@@ -970,7 +1010,7 @@ export const Workbench = ({
                     <strong>{t(locale, '去除背景', 'Remove background')}</strong>
                     <p>{t(locale, '保留主体，生成透明背景副本。', 'Keep the subject and create a transparent-background copy.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '去除背景', 'Remove background')} variant="secondary" icon="wand-sparkles" disabled={readOnly} onClick={() => runImageTask('remove-background', 'Remove the background and preserve the subject with clean edges')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '配置去除背景', 'Configure remove background')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('remove-background')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="image-plus" /></span>
@@ -978,7 +1018,7 @@ export const Workbench = ({
                     <strong>{t(locale, '替换背景', 'Replace background')}</strong>
                     <p>{t(locale, '使用描述生成新的背景方向。', 'Generate a new background direction from a description.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '替换背景', 'Replace background')} variant="secondary" icon="image-plus" disabled={readOnly} onClick={() => runImageTask('replace-background', 'Replace the background while preserving the original subject')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '配置替换背景', 'Configure replace background')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('replace-background')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="eraser" /></span>
@@ -986,7 +1026,7 @@ export const Workbench = ({
                     <strong>{t(locale, '移除对象', 'Remove object')}</strong>
                     <p>{t(locale, '移除选区中的对象并保留周围细节。', 'Remove an object from a selected region while preserving nearby detail.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '移除对象', 'Remove object')} variant="secondary" icon="eraser" disabled={readOnly} onClick={() => runImageTask('remove-object', 'Remove the selected object and reconstruct the surrounding detail')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '配置移除对象', 'Configure remove object')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('remove-object')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="paintbrush" /></span>
@@ -994,7 +1034,7 @@ export const Workbench = ({
                     <strong>{t(locale, '局部重绘', 'Inpaint')}</strong>
                     <p>{t(locale, '根据描述重绘选区内容。', 'Redraw a selected region from a description.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '局部重绘', 'Inpaint')} variant="secondary" icon="paintbrush" disabled={readOnly} onClick={() => runImageTask('inpaint', 'Inpaint the selected region according to the requested direction')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '配置局部重绘', 'Configure inpaint')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('inpaint')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="expand" /></span>
@@ -1002,7 +1042,7 @@ export const Workbench = ({
                     <strong>{t(locale, '扩展画布', 'Expand canvas')}</strong>
                     <p>{t(locale, '延展画布边缘并保持主体构图。', 'Extend the canvas while preserving the primary composition.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '扩展画布', 'Expand canvas')} variant="secondary" icon="expand" disabled={readOnly} onClick={() => runImageTask('expand', 'Expand the canvas edges while preserving the primary composition')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '配置扩展画布', 'Configure expand canvas')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('expand')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="scan-line" /></span>
@@ -1010,22 +1050,8 @@ export const Workbench = ({
                     <strong>{t(locale, '放大图像', 'Upscale image')}</strong>
                     <p>{t(locale, '提升图像尺寸并尽量保留细节。', 'Increase image resolution while preserving detail.')}</p>
                   </div>
-                  <Button aria-label={t(locale, '放大图像', 'Upscale image')} variant="secondary" icon="scan-line" disabled={readOnly} onClick={() => runImageTask('upscale', 'Upscale the image while preserving important details')}>{t(locale, '执行', 'Run')}</Button>
+                  <Button aria-label={t(locale, '配置放大图像', 'Configure upscale image')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('upscale')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
-                {pendingRegionalTool && <MaskEditor
-                  locale={locale}
-                  image={{ width: scene.width, height: scene.height }}
-                  region={toolRegion}
-                  onChange={setToolRegion}
-                  onApply={(region) => {
-                    setToolRegion(region);
-                    submitImageTask(pendingRegionalTool.tool, pendingRegionalTool.prompt, region);
-                    setPendingRegionalTool(null);
-                  }}
-                  readOnly={readOnly}
-                  onCancel={() => setPendingRegionalTool(null)}
-                  onClear={() => setToolRegion(undefined)}
-                />}
               </div>
             )}
           </aside>
@@ -1043,6 +1069,24 @@ export const Workbench = ({
         </span>
         <span>{workspaceId ? t(locale, '本地会话', 'Local session') : t(locale, '示例会话', 'Example session')}</span>
       </footer>
+      {activeTool && <Modal title={toolName(locale, activeTool)} locale={locale} onClose={() => setActiveTool(null)}>
+        <ToolInspector
+          tool={activeTool}
+          tools={[activeTool]}
+          params={toolParams}
+          locale={locale}
+          readOnly={readOnly}
+          image={{ width: scene.width, height: scene.height }}
+          region={toolRegion}
+          onToolChange={(tool) => configureImageTool(tool)}
+          onParamsChange={setToolParams}
+          onRegionChange={setToolRegion}
+          onApplyRegion={setToolRegion}
+          onCancelRegion={() => setActiveTool(null)}
+          onClearRegion={() => setToolRegion(undefined)}
+          onRun={runConfiguredTool}
+        />
+      </Modal>}
     </section>
   );
 };

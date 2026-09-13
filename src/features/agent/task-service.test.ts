@@ -165,9 +165,27 @@ it('retains the selected image tool and region in the task record', async () => 
   });
   const task = await service.submitImageEdit({
     projectId: 'project-1', documentId: 'doc-1', connectionId: 'provider-1', prompt: 'Remove object', image: new Blob(['image']),
-    tool: 'remove-object', region: { x: 0, y: 0, width: 10, height: 20 },
+    tool: 'remove-object', toolParams: { feather: 10 }, region: { x: 0, y: 0, width: 10, height: 20 },
   });
   expect(task).toMatchObject({ tool: 'remove-object', region: { x: 0, y: 0, width: 10, height: 20 } });
+});
+
+it('persists and forwards image-tool parameters with an edit task', async () => {
+  const runtime = createTaskRuntime();
+  const editImage = vi.fn(async () => ({ images: [{ base64: 'cropped' }], cost: null }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: '', cost: null }), editImage }),
+  });
+  const task = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'doc-1', connectionId: 'provider-1', prompt: 'Crop for a square post', image: new Blob(['image']),
+    tool: 'smart-crop', toolParams: { width: 1080, height: 1080, focus: 'subject' },
+  });
+  await service.flush();
+  expect(task).toMatchObject({ tool: 'smart-crop', toolParams: { width: 1080, height: 1080, focus: 'subject' } });
+  expect(editImage).toHaveBeenCalledWith(expect.objectContaining({
+    tool: 'smart-crop', toolParams: { width: 1080, height: 1080, focus: 'subject' },
+  }), expect.any(AbortSignal));
 });
 
 it('retries a failed image generation with the image adapter and preserves its capability', async () => {
@@ -266,6 +284,35 @@ it('retries image editing when its managed source asset can be reloaded', async 
   expect(calls).toBe(2);
 });
 
+it('retries a managed image edit with the original tool parameters', async () => {
+  const runtime = createTaskRuntime();
+  const requests: Array<{ tool?: string; toolParams?: Record<string, string | number> }> = [];
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async (request) => {
+        requests.push({ tool: request.tool, toolParams: request.toolParams });
+        if (requests.length === 1) throw Object.assign(new Error('offline'), { kind: 'http' });
+        return { images: [{ base64: 'retried' }], cost: null };
+      },
+    }),
+    loadSourceImage: async () => new Blob(['managed image'], { type: 'image/png' }),
+  });
+  const first = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'crop again',
+    image: new Blob(['image']), sourceAssetId: 'asset-source', tool: 'smart-crop',
+    toolParams: { width: 1080, height: 1080, focus: 'subject' },
+  });
+  await service.flush();
+  await service.retry(first.id);
+  await service.flush();
+  expect(requests).toEqual([
+    { tool: 'smart-crop', toolParams: { width: 1080, height: 1080, focus: 'subject' } },
+    { tool: 'smart-crop', toolParams: { width: 1080, height: 1080, focus: 'subject' } },
+  ]);
+});
+
 it('does not retry regional image editing without a persisted mask', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({
@@ -279,7 +326,7 @@ it('does not retry regional image editing without a persisted mask', async () =>
   const first = await service.submitImageEdit({
     projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'regional edit',
     image: new Blob(['image']), sourceAssetId: 'asset-source', mask: new Blob(['mask']),
-    region: { x: 1, y: 2, width: 10, height: 12 }, tool: 'remove-object',
+    region: { x: 1, y: 2, width: 10, height: 12 }, tool: 'remove-object', toolParams: { feather: 10 },
   });
   await service.flush();
   expect(runtime.get(first.id)).toMatchObject({ hasMask: true });

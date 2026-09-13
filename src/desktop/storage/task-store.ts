@@ -4,7 +4,7 @@ import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { TaskRecord, TaskSource, TaskState } from '../../features/tasks/state';
-import { imageTools } from '../../features/image-tools/target';
+import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
 
@@ -54,6 +54,9 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.size === undefined || typeof value.size === 'string')
   && (value.count === undefined || (Number.isInteger(value.count) && Number(value.count) > 0))
   && (value.tool === undefined || imageTools.includes(value.tool as typeof imageTools[number]))
+  && (value.tool === undefined
+    ? value.toolParams === undefined
+    : validateToolParams(value.tool as typeof imageTools[number], value.toolParams).ok)
   && (value.region === undefined || isRegion(value.region))
   && (value.createdAt === undefined || typeof value.createdAt === 'string')
   && (value.updatedAt === undefined || typeof value.updatedAt === 'string')

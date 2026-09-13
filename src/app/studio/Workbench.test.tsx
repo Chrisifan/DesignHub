@@ -240,7 +240,8 @@ it('exposes background editing tools with an explicit connection handoff', () =>
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
   expect(screen.getByText('去除背景')).toBeInTheDocument();
   expect(screen.getByText('替换背景')).toBeInTheDocument();
-  fireEvent.click(screen.getAllByRole('button', { name: '连接' })[0]!);
+  fireEvent.click(screen.getByRole('button', { name: '配置替换背景' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '执行' }));
   expect(onConnections).toHaveBeenCalled();
 });
 
@@ -248,17 +249,45 @@ it('submits provider-backed background tools through the active project callback
   const onSubmitImageTask = vi.fn(async () => undefined);
   render(<Workbench {...makeProps({ onSubmitImageTask })} />);
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
-  fireEvent.click(screen.getAllByRole('button', { name: '去除背景' })[0]!);
+  fireEvent.click(screen.getByRole('button', { name: '配置去除背景' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '执行' }));
   await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'remove-background' })));
+});
+
+it('does not submit an invalid configured image tool', () => {
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  const notify = vi.fn();
+  render(<Workbench {...makeProps({ onSubmitImageTask, notify })} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置替换背景' }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '执行' }));
+  expect(onSubmitImageTask).not.toHaveBeenCalled();
+  expect(notify).toHaveBeenCalledWith('参数无效');
+});
+
+it('configures smart crop parameters before submitting the image task', async () => {
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  render(<Workbench {...makeProps({ onSubmitImageTask })} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置智能裁切' }));
+  const dialog = screen.getByRole('dialog');
+  fireEvent.change(within(dialog).getByRole('spinbutton', { name: '宽度' }), { target: { value: '960' } });
+  fireEvent.change(within(dialog).getByRole('spinbutton', { name: '高度' }), { target: { value: '640' } });
+  fireEvent.change(within(dialog).getByRole('combobox', { name: '焦点' }), { target: { value: 'subject' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '执行' }));
+  await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({
+    tool: 'smart-crop',
+    params: { width: 960, height: 640, focus: 'subject' },
+  })));
 });
 
 it('requires and applies a region before submitting a regional image tool', async () => {
   const onSubmitImageTask = vi.fn(async () => undefined);
   render(<Workbench {...makeProps({ onSubmitImageTask })} />);
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
-  fireEvent.click(screen.getByRole('button', { name: '移除对象' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置移除对象' }));
   expect(onSubmitImageTask).not.toHaveBeenCalled();
-  const mask = screen.getByRole('form', { name: '遮罩编辑' });
+  const mask = within(screen.getByRole('dialog')).getByRole('form', { name: '遮罩编辑' });
   fireEvent.change(within(mask).getByRole('spinbutton', { name: '宽度' }), { target: { value: '200' } });
   fireEvent.change(within(mask).getByRole('spinbutton', { name: '高度' }), { target: { value: '200' } });
   fireEvent.click(within(mask).getByRole('button', { name: '应用遮罩' }));
@@ -272,12 +301,10 @@ it('exposes the complete provider-backed image tool set from the tools panel', a
   const onSubmitImageTask = vi.fn(async () => undefined);
   render(<Workbench {...makeProps({ onSubmitImageTask })} />);
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
-  for (const label of ['移除对象', '局部重绘', '扩展画布', '放大图像']) expect(screen.getByText(label)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '移除对象' }));
-  fireEvent.click(screen.getByRole('button', { name: '局部重绘' }));
-  fireEvent.click(screen.getByRole('button', { name: '扩展画布' }));
-  fireEvent.click(screen.getByRole('button', { name: '放大图像' }));
-  await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'upscale' })));
+  for (const label of ['移除对象', '局部重绘', '扩展画布', '放大图像']) {
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `配置${label}` })).toBeInTheDocument();
+  }
 });
 
 it('provides the exact English canvas and back labels', () => {
@@ -314,7 +341,7 @@ it('keeps a read-only workspace from persisting edits or submitting tasks', asyn
   expect(onSubmitConversation).not.toHaveBeenCalled();
 
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
-  fireEvent.click(screen.getByRole('button', { name: '去除背景' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置去除背景' }));
   expect(onSubmitImageTask).not.toHaveBeenCalled();
 });
 

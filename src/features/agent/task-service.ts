@@ -3,7 +3,7 @@ import type { TaskRecord } from '../tasks/state';
 import type { TaskSource } from '../tasks/state';
 import type { TaskRuntime } from '../tasks/runtime';
 import type { Region } from '../canvas/selection';
-import type { ImageTool } from '../image-tools/target';
+import { validateToolParams, type ImageTool, type ToolParams } from '../image-tools/target';
 import { analyzePortfolio, type PortfolioImageSource } from './analyze-portfolio';
 
 export type ConversationInput = {
@@ -41,6 +41,7 @@ export type ImageEditInput = {
   model?: string;
   size?: string;
   tool?: ImageTool;
+  toolParams?: ToolParams;
   region?: Region;
 };
 
@@ -54,7 +55,7 @@ type ConversationAdapter = {
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
   analyzeVision?: (request: { prompt: string; image: { url: string } | { base64: string; mimeType?: string } }, signal?: AbortSignal) => Promise<ChatResponse>;
   generateImage?: (request: { prompt: string; model?: string; size?: string; count?: number }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
-  editImage?: (request: { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: ImageTool; region?: Region }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
+  editImage?: (request: { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: ImageTool; toolParams?: ToolParams; region?: Region }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
 };
 
 export type AgentTaskService = {
@@ -136,6 +137,9 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   };
   const createImageTask = (input: ImageGenerationInput | ImageEditInput, capability: 'image-generation' | 'image-editing'): TaskRecord => {
     if (!input.projectId.trim() || !input.documentId.trim() || !input.connectionId.trim() || !input.prompt.trim()) throw new Error('IMAGE_TASK_BINDING_REQUIRED');
+    if ('tool' in input && (input.tool
+      ? (!input.toolParams || !validateToolParams(input.tool, input.toolParams).ok)
+      : input.toolParams !== undefined)) throw new Error('INVALID_PARAMS');
     return options.runtime.start({
       id: taskId(),
       requestId: requestId(),
@@ -148,6 +152,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       ...('size' in input && input.size ? { size: input.size } : {}),
       ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}),
       ...('tool' in input && input.tool ? { tool: input.tool } : {}),
+      ...('tool' in input && input.toolParams ? { toolParams: { ...input.toolParams } } : {}),
       ...('region' in input && input.region ? { region: { ...input.region } } : {}),
       ...('sourceAssetId' in input && input.sourceAssetId ? { sourceAssetId: input.sourceAssetId } : {}),
       ...(capability === 'image-editing'
@@ -166,7 +171,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         const adapter = await options.resolveAdapter(input.connectionId);
         const response = operation === 'generate'
           ? (adapter.generateImage ? await adapter.generateImage({ prompt: input.prompt.trim(), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}) }, controller.signal) : undefined)
-          : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('tool' in input && input.tool ? { tool: input.tool } : {}), ...('region' in input && input.region ? { region: input.region } : {}) }, controller.signal) : undefined);
+          : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('tool' in input && input.tool ? { tool: input.tool } : {}), ...('toolParams' in input && input.toolParams ? { toolParams: { ...input.toolParams } } : {}), ...('region' in input && input.region ? { region: input.region } : {}) }, controller.signal) : undefined);
         if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
         if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
         const assetIds = options.persistGeneratedImages ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images }) : [];
@@ -255,6 +260,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         ...(previous.model ? { model: previous.model } : {}),
         ...(previous.size ? { size: previous.size } : {}),
         ...(previous.tool ? { tool: previous.tool } : {}),
+        ...(previous.toolParams ? { toolParams: { ...previous.toolParams } } : {}),
       }, 'edit');
       return running;
     }

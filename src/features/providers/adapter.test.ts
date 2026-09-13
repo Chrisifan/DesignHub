@@ -84,15 +84,16 @@ describe('OpenAI-compatible provider adapter', () => {
     await expect(adapter.editImage({ prompt: 'remove logo', image: new Blob(['image']) })).resolves.toMatchObject({ images: [{ url: 'https://cdn.test/edited.png' }] });
   });
 
-  it('sends image tool metadata and region with edit requests', async () => {
+  it('sends image tool metadata, parameters, and region with edit requests', async () => {
     const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
       const form = init?.body as FormData;
       expect(form.get('tool')).toBe('remove-object');
+      expect(form.get('tool_params')).toBe(JSON.stringify({ feather: 12 }));
       expect(form.get('region')).toBe(JSON.stringify({ x: 1, y: 2, width: 30, height: 40 }));
       return response({ data: [] });
     });
     const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key', fetch: fetcher });
-    await adapter.editImage({ prompt: 'remove object', image: new Blob(['image']), tool: 'remove-object', region: { x: 1, y: 2, width: 30, height: 40 } });
+    await adapter.editImage({ prompt: 'remove object', image: new Blob(['image']), tool: 'remove-object', toolParams: { feather: 12 }, region: { x: 1, y: 2, width: 30, height: 40 } });
   });
 
   it('reports rate limits without leaking credentials and exposes local-only cancellation', async () => {

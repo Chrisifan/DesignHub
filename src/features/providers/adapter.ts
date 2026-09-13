@@ -1,4 +1,5 @@
 import { providerCapabilities, type ProviderCapability, type ProviderConfig } from './config';
+import type { ToolParams } from '../image-tools/target';
 
 export { providerCapabilities } from './config';
 
@@ -20,7 +21,7 @@ export type ChatResponse = { text: string; usage?: ChatUsage; cost: number | nul
 export type ChatStreamEvent = { text: string; finishReason?: string | null };
 export type VisionRequest = { prompt: string; image: { url: string } | { base64: string; mimeType?: string } };
 export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number };
-export type ImageEditRequest = { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: string; region?: { x: number; y: number; width: number; height: number } };
+export type ImageEditRequest = { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: string; toolParams?: ToolParams; region?: { x: number; y: number; width: number; height: number } };
 export type GeneratedImage = { url?: string; base64?: string };
 export type ImageResponse = { images: GeneratedImage[]; cost: number | null };
 
@@ -285,6 +286,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     form.append('image', request.image);
     if (request.mask) form.append('mask', request.mask);
     if (request.tool) form.append('tool', request.tool);
+    if (request.toolParams) form.append('tool_params', JSON.stringify(request.toolParams));
     if (request.region) form.append('region', JSON.stringify(request.region));
     const model = configuredModel('image-editing', request.model);
     if (model) form.append('model', model);

@@ -67,6 +67,16 @@ it('accepts image generation and edit only with validated project bindings', asy
   await expect(edited(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'remove', image: new Blob(['image']) })).resolves.toEqual(task);
 });
 
+it('rejects image-edit tool parameters that do not match the declared tool schema', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1' } };
+  const submit = createImageEditHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async () => task);
+  await expect(submit(fixture.event, {
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'crop', image: new Blob(['image']),
+    tool: 'smart-crop', toolParams: { width: -1, height: 640, focus: 'subject' },
+  })).resolves.toBeNull();
+});
+
 it('accepts only explicit designer-draft portfolio vision sources from the trusted workspace', async () => {
   const fixture = makeFixture('http://localhost:5173/?preview=1');
   const workspace = { workspace: { workspaceId: 'workspace-1' } };

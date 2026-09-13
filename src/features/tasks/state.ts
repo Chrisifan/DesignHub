@@ -1,5 +1,5 @@
 import type { Region } from '../canvas/selection';
-import type { ImageTool } from '../image-tools/target';
+import type { ImageTool, ToolParams } from '../image-tools/target';
 
 export type TaskState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -32,6 +32,7 @@ export type TaskRecord = {
   size?: string;
   count?: number;
   tool?: ImageTool;
+  toolParams?: ToolParams;
   region?: Region;
   createdAt?: string;
   updatedAt?: string;

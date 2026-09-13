@@ -261,6 +261,8 @@
 2026-09-13：M01/M02/M06/M08 packaged recovery 回归（变更 ID REL-20260913-01）。串行执行 `pnpm build`、`pnpm package` 后，使用最新 macOS arm64 packaged executable 执行 `DESIGNHUB_PACKAGED_APP_PATH=... pnpm test:native`，native 3/3 通过；可执行文件 SHA-256 `588478afc5f2bc73b6433d6e565a214dc830144be39a3d79805723292754ccd8`。Windows、签名/公证、钥匙串、真实提供方和人工图像质量仍开放。
 2026-09-13：M06 提供方连接配置（变更 ID M06-20260913-20）。固定 OpenAI-compatible 连接现在可在本机配置端点及对话、视觉、生成、编辑模型；配置以原子文件写入 Electron `userData`，凭据继续只存安全存储。配置 schema 只接受 HTTPS 或 loopback HTTP，拒绝 URL 凭据、查询/片段、未知字段和 `apiKey`；受信 preload/IPC 仅允许主 frame 读取或写入。适配器按能力读取已选模型，并保留环境变量作为未配置时的兼容回退。设置页默认配置引用引发的重复渲染以真实超时回归复现后修复；IPC/文件写入拒绝会显示可恢复的保存失败状态。focused provider/config/UI 6 files/55 tests、unit 96 files/401 tests、integration 23 files/105 tests、E2E 24/24、native source smoke 2 passed/1 skipped、lint、typecheck、build、diff check 通过。真实提供方执行、原生钥匙串、Windows 与远端取消/幂等语义仍开放。
 
+2026-09-13：M07 图像工具参数贯通（变更 ID M07-20260913-24）。Workbench 的每个模型图像工具通过现有 Modal/ToolInspector 配置明确 schema 参数；可信 image-edit IPC、任务状态存储、受管源素材重试以及 OpenAI-compatible multipart 请求共同保留并校验 `toolParams`。先观察 Workbench/IPC/task-store/task-service/provider adapter 9 项 Red，再补 managed-source retry 和 UI invalid-parameter Red；Green 为 8 个聚焦文件/80 测试以及最终 unit 96/407、integration 23/105、E2E 24/24、native source 2 passed/1 skipped、build/lint/typecheck/diff check。影响 M05 Workbench、M06 task/IPC/provider 直接消费者，已完成其聚焦回归；真实 provider 扩展、遮罩栅格化、原生 worker 和人工图像质量仍是外部发布门禁。
+
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。

@@ -3,6 +3,7 @@ export type ImageTool = (typeof imageTools)[number];
 export type ToolCapability = 'image-editing' | 'image-generation' | 'local-transform';
 export type ToolField = { key: string; label: string; type: 'number' | 'text' | 'select'; required: boolean; options?: readonly string[] };
 export type ToolDefinition = { tool: ImageTool; capability: ToolCapability; requiresConnection: boolean; requiresRegion: boolean; schema: readonly ToolField[] };
+export type ToolParams = Record<string, string | number>;
 
 const definitions: Record<ImageTool, ToolDefinition> = {
   'remove-background': { tool: 'remove-background', capability: 'image-editing', requiresConnection: true, requiresRegion: false, schema: [{ key: 'edgeRefinement', label: 'Edge refinement', type: 'number', required: false }] },
@@ -17,6 +18,17 @@ const definitions: Record<ImageTool, ToolDefinition> = {
 
 export const needsRegion = (tool: ImageTool): boolean => definitions[tool].requiresRegion;
 export const getToolDefinition = (tool: ImageTool): ToolDefinition => definitions[tool];
+
+export const defaultToolParams = (tool: ImageTool, dimensions: { width: number; height: number }): ToolParams => {
+  if (tool === 'remove-background') return { edgeRefinement: 50 };
+  if (tool === 'replace-background') return { prompt: '', lighting: 'match-original' };
+  if (tool === 'remove-object') return { feather: 10 };
+  if (tool === 'inpaint') return { prompt: '', strength: 0.5 };
+  if (tool === 'expand') return { top: 0, right: 0, bottom: 0, left: 0 };
+  if (tool === 'smart-crop') return { width: dimensions.width, height: dimensions.height, focus: 'subject' };
+  if (tool === 'upscale') return { scale: 2, preserveDetails: 'balanced' };
+  return { width: dimensions.width, height: dimensions.height, format: 'png' };
+};
 
 export type ToolParamsValidation = { ok: true } | { ok: false; reason: 'INVALID_PARAMS' };
 const finitePositive = (value: unknown): boolean => typeof value === 'number' && Number.isFinite(value) && value > 0;

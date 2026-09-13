@@ -3,7 +3,7 @@ import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import type { AgentTaskService, ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
-import { imageTools } from '../../features/image-tools/target';
+import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const conversationSubmitChannel = 'agent:conversation-submit';
@@ -105,6 +105,9 @@ const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
     && (input.model === undefined || isNonEmpty(input.model))
     && (input.size === undefined || isNonEmpty(input.size))
     && (input.tool === undefined || imageTools.includes(input.tool as typeof imageTools[number]))
+    && (input.tool === undefined
+      ? input.toolParams === undefined
+      : validateToolParams(input.tool as typeof imageTools[number], input.toolParams).ok)
     && (input.region === undefined || isRegion(input.region));
 };
 

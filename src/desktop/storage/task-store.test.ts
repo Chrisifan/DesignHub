@@ -62,6 +62,7 @@ it('persists the managed source asset binding used for image retries', async () 
     sourceAssetId: 'asset-source',
     requestText: 'remove object',
     tool: 'remove-object',
+    toolParams: { feather: 10 },
   };
   await saveTaskState(workspace, workspace.workspace.workspaceId, [imageTask]);
   workspace.close();
@@ -72,6 +73,18 @@ it('persists the managed source asset binding used for image retries', async () 
   } finally {
     reopened.close();
   }
+});
+
+it('rejects invalid persisted image-tool parameters', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const invalidTask = {
+    ...task,
+    capability: 'image-editing',
+    tool: 'smart-crop',
+    toolParams: { width: -1, height: 640, focus: 'subject' },
+  } as unknown as TaskRecord;
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [invalidTask])).rejects.toThrow('INVALID_TASK_STATE');
+  workspace.close();
 });
 
 it('rejects malformed task state without treating it as an empty list', async () => {
