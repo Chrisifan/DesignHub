@@ -10,6 +10,7 @@ export const imageTransports = ['images', 'responses'] as const;
 export const providerProfiles = ['conversation', 'image'] as const;
 
 export type ProviderCapability = (typeof providerCapabilities)[number];
+export type ProviderModelConfig = Partial<Record<ProviderCapability, string>>;
 export type ProviderConnectionId = (typeof providerConnectionIds)[number];
 export type ImageTransport = (typeof imageTransports)[number];
 export type ProviderProfile = (typeof providerProfiles)[number];
@@ -42,8 +43,9 @@ const isImageTransport = (value: unknown): value is ImageTransport => typeof val
 const conversationCapabilities: readonly ProviderConversationCapability[] = ['conversation', 'vision-analysis'];
 const imageCapabilities: readonly ProviderImageCapability[] = ['image-generation', 'image-editing'];
 
-const normalizeBaseUrl = (value: unknown): string | null => {
-  if (typeof value !== 'string' || value.trim().length === 0 || value.length > 2048) return null;
+const normalizeBaseUrl = (value: unknown, allowEmpty = false): string | null => {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  if (value.trim().length === 0) return allowEmpty ? '' : null;
   try {
     const url = new URL(value.trim());
     const localHttp = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
@@ -70,17 +72,17 @@ const normalizeModels = <T extends string>(value: unknown, allowed: readonly T[]
 
 const normalizeConversationConfig = (value: unknown): ProviderConversationConfig | null => {
   if (!isRecord(value) || !hasOnlyKeys(value, ['baseUrl', 'models'])) return null;
-  const baseUrl = normalizeBaseUrl(value.baseUrl);
+  const baseUrl = normalizeBaseUrl(value.baseUrl, true);
   const models = normalizeModels(value.models, conversationCapabilities);
-  return baseUrl && models ? { baseUrl, models } : null;
+  return baseUrl !== null && models ? { baseUrl, models } : null;
 };
 
 const normalizeImageConfig = (value: unknown): ProviderImageConfig | null => {
   if (!isRecord(value) || !hasOnlyKeys(value, ['baseUrl', 'imageTransport', 'models'])) return null;
-  const baseUrl = normalizeBaseUrl(value.baseUrl);
+  const baseUrl = normalizeBaseUrl(value.baseUrl, true);
   const imageTransport = value.imageTransport === undefined ? 'images' : isImageTransport(value.imageTransport) ? value.imageTransport : null;
   const models = normalizeModels(value.models, imageCapabilities);
-  return baseUrl && imageTransport && models ? { baseUrl, imageTransport, models } : null;
+  return baseUrl !== null && imageTransport && models ? { baseUrl, imageTransport, models } : null;
 };
 
 const normalizeCanonicalProviderConfig = (value: Record<string, unknown>): ProviderConfig | null => {
@@ -138,4 +140,3 @@ export const normalizeProviderConfigSaveInput = (value: unknown): ProviderConfig
 };
 
 export const providerCredentialAccount = (connectionId: string, profile: ProviderProfile): string => `${connectionId}:${profile}`;
-

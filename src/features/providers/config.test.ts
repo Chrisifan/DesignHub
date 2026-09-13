@@ -54,9 +54,19 @@ it('derives profile-specific credential accounts', () => {
   expect(providerCredentialAccount('openai-compatible', 'image')).toBe('openai-compatible:image');
 });
 
+it('allows an unconfigured canonical profile for independent saving', () => {
+  expect(normalizeProviderConfig({
+    conversation: { baseUrl: 'https://text.example', models: {} },
+    image: { baseUrl: '', imageTransport: 'images', models: {} },
+  })).toEqual({
+    conversation: { baseUrl: 'https://text.example', models: {} },
+    image: { baseUrl: '', imageTransport: 'images', models: {} },
+  });
+});
+
 it('rejects malformed profiles, unsupported fields, and cross-profile model settings', () => {
   expect(normalizeProviderConfig(null)).toBeNull();
-  expect(normalizeProviderConfig({ conversation: { baseUrl: '', models: {} }, image: { baseUrl: 'https://image.example', imageTransport: 'images', models: {} } })).toBeNull();
+  expect(normalizeProviderConfig({ baseUrl: '', models: {} })).toBeNull();
   expect(normalizeProviderConfig({
     conversation: { baseUrl: 'https://text.example', models: { 'image-generation': 'wrong-profile' } },
     image: { baseUrl: 'https://image.example', imageTransport: 'images', models: {} },
@@ -74,4 +84,3 @@ it('rejects malformed profiles, unsupported fields, and cross-profile model sett
     image: { baseUrl: 'https://image.example', imageTransport: 'images', models: {} },
   })).toBeNull();
 });
-

@@ -755,6 +755,41 @@
   padding: 28px;
 }
 
+.provider-profile-section {
+  padding: 18px 0 22px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.provider-profile-section:first-of-type {
+  margin-top: 18px;
+}
+
+.provider-profile-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.provider-profile-heading h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.provider-profile-heading p {
+  margin: 8px 0 0;
+}
+
+.provider-profile-capabilities {
+  max-width: 180px;
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: right;
+}
+
 .connection-layout > .capability-matrix {
   grid-column: 1;
   grid-row: 2;
@@ -1424,6 +1459,16 @@
 
   .search-control {
     width: 100%;
+  }
+
+  .provider-profile-heading {
+    display: grid;
+    gap: 8px;
+  }
+
+  .provider-profile-capabilities {
+    max-width: none;
+    text-align: left;
   }
 
   .asset-toolbar .result-count {

@@ -244,7 +244,10 @@ it('submits project conversation through the desktop task bridge', async () => {
 it('submits one image when the saved provider uses the Responses image transport', async () => {
   const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
   const loadProviderConfigs = vi.fn(async () => ({
-    'openai-compatible': { baseUrl: 'https://api.example.test/v1', imageTransport: 'responses' as const, models: {} },
+    'openai-compatible': {
+      conversation: { baseUrl: 'https://text.example.test/v1', models: {} },
+      image: { baseUrl: 'https://image.example.test/v1', imageTransport: 'responses' as const, models: {} },
+    },
   }));
   const submitImageGeneration = vi.fn(async () => ({ id: 'task-image-1', requestId: 'request-image-1', state: 'running' as const, cancelRequested: false, attempt: 1 }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadProviderConfigs, submitImageGeneration };

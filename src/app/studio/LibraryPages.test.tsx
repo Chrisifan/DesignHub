@@ -201,7 +201,7 @@ it('imports an image pasted from the clipboard for a workspace project', async (
 it('shows honest unavailable states for connections and delivery', () => {
   const { unmount } = render(<Harness initialView="connections" />);
   expect(screen.getByText('尚未连接模型')).toBeInTheDocument();
-  expect(screen.getByLabelText('API 密钥')).toBeInTheDocument();
+  expect(screen.getByLabelText('对话与视觉 API 密钥')).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: /检测/ }),
   ).not.toBeInTheDocument();
@@ -216,18 +216,24 @@ it('shows honest unavailable states for connections and delivery', () => {
 
 it('hydrates and saves the non-secret provider connection configuration', async () => {
   const loadProviderConfigs = vi.fn(async () => ({
-    'openai-compatible': { baseUrl: 'https://api.example.test/v1', imageTransport: 'images' as const, models: { conversation: 'chat-old' } },
+    'openai-compatible': {
+      conversation: { baseUrl: 'https://text.example.test/v1', models: { conversation: 'chat-old' } },
+      image: { baseUrl: 'https://image.example.test/v1', imageTransport: 'images' as const, models: {} },
+    },
   }));
   const saveProviderConfig = vi.fn(async () => true);
   window.designhub = { chooseWorkspaceDirectory: async () => null, loadProviderConfigs, saveProviderConfig };
   render(<Harness initialView="connections" />);
 
-  await waitFor(() => expect(screen.getByLabelText('服务地址')).toHaveValue('https://api.example.test/v1'));
+  await waitFor(() => expect(screen.getByLabelText('对话服务地址')).toHaveValue('https://text.example.test/v1'));
   fireEvent.change(screen.getByLabelText('对话模型'), { target: { value: 'chat-new' } });
-  fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '保存配置' })[0]!);
   await waitFor(() => expect(saveProviderConfig).toHaveBeenCalledWith({
     connectionId: 'openai-compatible',
-    config: { baseUrl: 'https://api.example.test/v1', imageTransport: 'images', models: { conversation: 'chat-new' } },
+    config: {
+      conversation: { baseUrl: 'https://text.example.test/v1', models: { conversation: 'chat-new' } },
+      image: { baseUrl: 'https://image.example.test/v1', imageTransport: 'images', models: {} },
+    },
   }));
 });
 

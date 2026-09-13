@@ -31,7 +31,7 @@ import { ProviderSettings } from '../../features/providers/ProviderSettings';
 import { BrandEditor } from '../../features/brands/BrandEditor';
 import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
-import type { ProviderConfigMap } from '../../features/providers/config';
+import { providerCredentialAccount, providerProfiles, type ProviderConfigMap } from '../../features/providers/config';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
@@ -657,7 +657,10 @@ const ConnectionsPage = ({
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
   useEffect(() => {
     let cancelled = false;
-    const checks = availableConnections.map(async (connection) => [connection.id, await getDesktopApi().hasCredential?.(connection.id) ?? false] as const);
+    const checks = availableConnections.flatMap((connection) => providerProfiles.map(async (profile) => {
+      const account = providerCredentialAccount(connection.id, profile);
+      return [account, await getDesktopApi().hasCredential?.(account) ?? false] as const;
+    }));
     void Promise.all([
       Promise.all(checks),
       getDesktopApi().loadProviderConfigs?.() ?? Promise.resolve(null),
@@ -668,7 +671,7 @@ const ConnectionsPage = ({
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
-  const connections = availableConnections.map((connection) => ({ ...connection, status: connectionState[connection.id] ? 'connected' as const : 'not-configured' as const }));
+  const connections = availableConnections.map((connection) => ({ ...connection, status: providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)]) ? 'connected' as const : 'not-configured' as const }));
   return (
   <section className="page-content library-page">
     <PageHeader
@@ -736,7 +739,7 @@ const ConnectionsPage = ({
               <Icon name={icon} size={17} />
               {label}
             </span>
-            <Badge tone={connectionState['openai-compatible'] ? 'success' : ''}>{connectionState['openai-compatible'] ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge>
+            <Badge tone={providerProfiles.some((profile) => connectionState[providerCredentialAccount('openai-compatible', profile)]) ? 'success' : ''}>{providerProfiles.some((profile) => connectionState[providerCredentialAccount('openai-compatible', profile)]) ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge>
           </div>
         ))}
       </div>

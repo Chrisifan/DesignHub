@@ -1,4 +1,4 @@
-import { providerCapabilities, type ImageTransport, type ProviderCapability, type ProviderConfig } from './config';
+import { providerCapabilities, type ImageTransport, type ProviderCapability, type ProviderModelConfig } from './config';
 import type { ToolParams } from '../image-tools/target';
 
 export { providerCapabilities } from './config';
@@ -37,7 +37,7 @@ export type MainOnlyAdapterOptions = {
   baseUrl: string;
   apiKey: string;
   imageTransport?: ImageTransport;
-  models?: ProviderConfig['models'];
+  models?: ProviderModelConfig;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
   fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
 };

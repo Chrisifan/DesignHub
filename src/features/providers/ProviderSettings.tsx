@@ -1,8 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { Locale } from '../../app/i18n';
 import { Badge, Button, Field, Icon, Select, t } from '../../app/studio/ui';
-import { normalizeProviderConfig, providerCapabilities, type ImageTransport, type ProviderCapability, type ProviderConfig, type ProviderConfigMap } from './config';
+import { normalizeProviderConfig, providerCredentialAccount, type ImageTransport, type ProviderCapability, type ProviderConfig, type ProviderConfigMap, type ProviderProfile } from './config';
 import type { GeneratedImage } from './adapter';
 import type { ImageGenerationTestResult } from '../agent/task-service';
 import type { ProviderConnection } from './connection';
@@ -18,13 +18,24 @@ export type ProviderSettingsProps = {
   onTestImageGeneration?: (connectionId: string, input: { prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
 };
 
-type ProviderConfigDraft = {
+type ConversationDraft = {
+  baseUrl: string;
+  models: Record<'conversation' | 'vision-analysis', string>;
+};
+
+type ImageDraft = {
   baseUrl: string;
   imageTransport: ImageTransport;
-  models: Record<ProviderCapability, string>;
+  models: Record<'image-generation' | 'image-editing', string>;
+};
+
+type ProviderConfigDraft = {
+  conversation: ConversationDraft;
+  image: ImageDraft;
 };
 
 const emptyProviderConfigs: ProviderConfigMap = {};
+const profiles: readonly ProviderProfile[] = ['conversation', 'image'];
 const connectionTestPrompts = [
   'A clean editorial poster with a single orange chair on a pale blue background',
   'A warm still life of a ceramic vase, folded paper and a green leaf in soft daylight',
@@ -32,21 +43,30 @@ const connectionTestPrompts = [
 ];
 
 const emptyConfigDraft = (): ProviderConfigDraft => ({
-  baseUrl: '',
-  imageTransport: 'images',
-  models: { conversation: '', 'vision-analysis': '', 'image-generation': '', 'image-editing': '' },
+  conversation: { baseUrl: '', models: { conversation: '', 'vision-analysis': '' } },
+  image: { baseUrl: '', imageTransport: 'images', models: { 'image-generation': '', 'image-editing': '' } },
 });
 
-const configDraftFrom = (config: ProviderConfig | undefined): ProviderConfigDraft => ({
-  baseUrl: config?.baseUrl ?? '',
-  imageTransport: config?.imageTransport ?? 'images',
-  models: {
-    conversation: config?.models.conversation ?? '',
-    'vision-analysis': config?.models['vision-analysis'] ?? '',
-    'image-generation': config?.models['image-generation'] ?? '',
-    'image-editing': config?.models['image-editing'] ?? '',
-  },
-});
+const configDraftFrom = (config: ProviderConfig | undefined): ProviderConfigDraft => {
+  const normalized = config ? normalizeProviderConfig(config) : null;
+  return {
+    conversation: {
+      baseUrl: normalized?.conversation.baseUrl ?? '',
+      models: {
+        conversation: normalized?.conversation.models.conversation ?? '',
+        'vision-analysis': normalized?.conversation.models['vision-analysis'] ?? '',
+      },
+    },
+    image: {
+      baseUrl: normalized?.image.baseUrl ?? '',
+      imageTransport: normalized?.image.imageTransport ?? 'images',
+      models: {
+        'image-generation': normalized?.image.models['image-generation'] ?? '',
+        'image-editing': normalized?.image.models['image-editing'] ?? '',
+      },
+    },
+  };
+};
 
 const modelLabel = (locale: Locale, capability: ProviderCapability): string => {
   if (capability === 'conversation') return t(locale, '对话模型', 'Conversation model');
@@ -54,6 +74,11 @@ const modelLabel = (locale: Locale, capability: ProviderCapability): string => {
   if (capability === 'image-generation') return t(locale, '生成模型', 'Image generation model');
   return t(locale, '编辑模型', 'Image editing model');
 };
+
+const profileTitle = (locale: Locale, profile: ProviderProfile): string => profile === 'conversation'
+  ? t(locale, '对话与视觉', 'Conversation and vision')
+  : t(locale, '图片生成与编辑', 'Image generation and editing');
+
 export const ProviderSettings = ({
   locale,
   connections,
@@ -65,69 +90,91 @@ export const ProviderSettings = ({
   onTestImageGeneration,
 }: ProviderSettingsProps) => {
   const [selectedId, setSelectedId] = useState(connections[0]?.id ?? '');
-  const [configured, setConfigured] = useState<Record<string, boolean>>(() => Object.fromEntries(connections.map((connection) => [connection.id, connection.status === 'connected'])));
-  const [secret, setSecret] = useState('');
+  const [configured, setConfigured] = useState<Record<ProviderProfile, boolean>>({ conversation: false, image: false });
+  const [secrets, setSecrets] = useState<Record<ProviderProfile, string>>({ conversation: '', image: '' });
   const [message, setMessage] = useState('');
   const [testBusy, setTestBusy] = useState(false);
   const [testResult, setTestResult] = useState<ImageGenerationTestResult | null>(null);
   const [configDraft, setConfigDraft] = useState<ProviderConfigDraft>(() => emptyConfigDraft());
   const selected = connections.find((connection) => connection.id === selectedId);
+
   useEffect(() => {
-    if (!onCheckCredential || !selectedId) return undefined;
+    if (!selectedId) return undefined;
+    setConfigured({ conversation: selected?.status === 'connected', image: selected?.status === 'connected' });
+    if (!onCheckCredential) return undefined;
     let cancelled = false;
-    void onCheckCredential(selectedId).then((value) => { if (!cancelled) setConfigured((current) => ({ ...current, [selectedId]: value })); }).catch(() => undefined);
+    void Promise.all(profiles.map(async (profile) => [profile, await onCheckCredential(providerCredentialAccount(selectedId, profile))] as const))
+      .then((entries) => {
+        if (cancelled) return;
+        setConfigured(Object.fromEntries(entries) as Record<ProviderProfile, boolean>);
+      })
+      .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [onCheckCredential, selectedId]);
+  }, [onCheckCredential, selected?.status, selectedId]);
+
   useEffect(() => {
     setConfigDraft(configDraftFrom(configs[selectedId as keyof ProviderConfigMap]));
     setTestResult(null);
+    setMessage('');
   }, [configs, selectedId]);
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!selected || secret.length === 0) return;
-    const stored = await onStoreCredential(selected.id, secret);
-    setSecret('');
-    if (stored) setConfigured((current) => ({ ...current, [selected.id]: true }));
+
+  const saveConfig = async () => {
+    if (!selected || !onSaveProviderConfig) return;
+    const conversationModels: ProviderConfig['conversation']['models'] = {};
+    (['conversation', 'vision-analysis'] as const).forEach((capability) => {
+      const model = configDraft.conversation.models[capability].trim();
+      if (model) conversationModels[capability] = model;
+    });
+    const imageModels: ProviderConfig['image']['models'] = {};
+    (['image-generation', 'image-editing'] as const).forEach((capability) => {
+      const model = configDraft.image.models[capability].trim();
+      if (model) imageModels[capability] = model;
+    });
+    const config = normalizeProviderConfig({
+      conversation: { baseUrl: configDraft.conversation.baseUrl, models: conversationModels },
+      image: { baseUrl: configDraft.image.baseUrl, imageTransport: configDraft.image.imageTransport, models: imageModels },
+    });
+    if (!config) {
+      setMessage(t(locale, '请填写有效服务地址。', 'Enter valid service URLs.'));
+      return;
+    }
+    const saved = await onSaveProviderConfig(selected.id, config).catch(() => false);
+    setMessage(saved ? t(locale, '连接配置已保存。', 'Connection configuration saved.') : t(locale, '无法保存连接配置，请重试。', 'Connection configuration could not be saved. Try again.'));
+  };
+
+  const submitCredential = async (profile: ProviderProfile) => {
+    if (!selected || !secrets[profile]) return;
+    const account = providerCredentialAccount(selected.id, profile);
+    const stored = await onStoreCredential(account, secrets[profile]);
+    setSecrets((current) => ({ ...current, [profile]: '' }));
+    if (stored) setConfigured((current) => ({ ...current, [profile]: true }));
     setMessage(
       stored
         ? t(locale, '凭据已保存到系统安全存储。', 'Credential saved to system secure storage.')
         : t(locale, '无法保存凭据，请检查系统安全存储。', 'Credential could not be saved. Check system secure storage.'),
     );
   };
-  const remove = async () => {
+
+  const removeCredential = async (profile: ProviderProfile) => {
     if (!selected) return;
-    const deleted = await onDeleteCredential(selected.id);
-    if (deleted) setConfigured((current) => ({ ...current, [selected.id]: false }));
+    const deleted = await onDeleteCredential(providerCredentialAccount(selected.id, profile));
+    if (deleted) setConfigured((current) => ({ ...current, [profile]: false }));
     setMessage(
       deleted
         ? t(locale, '凭据已删除。', 'Credential deleted.')
         : t(locale, '无法删除凭据，请重试。', 'Credential could not be deleted. Try again.'),
     );
   };
-  const saveConfig = async () => {
-    if (!selected || !onSaveProviderConfig) return;
-    const models: ProviderConfig['models'] = {};
-    providerCapabilities.forEach((capability) => {
-      const model = configDraft.models[capability].trim();
-      if (model) models[capability] = model;
-    });
-    const config = normalizeProviderConfig({ baseUrl: configDraft.baseUrl, imageTransport: configDraft.imageTransport, models });
-    if (!config) {
-      setMessage(t(locale, '请填写有效服务地址。', 'Enter a valid service URL.'));
-      return;
-    }
-    const saved = await onSaveProviderConfig(selected.id, config).catch(() => false);
-    setMessage(saved ? t(locale, '连接配置已保存。', 'Connection configuration saved.') : t(locale, '无法保存连接配置，请重试。', 'Connection configuration could not be saved. Try again.'));
-  };
+
   const testImageGeneration = async (): Promise<void> => {
-    if (!selected || !onTestImageGeneration || !configured[selected.id] || !configDraft.baseUrl.trim()) return;
+    if (!selected || !onTestImageGeneration || !configured.image || !configDraft.image.baseUrl.trim()) return;
     setTestBusy(true);
     setTestResult(null);
     const prompt = connectionTestPrompts[Math.floor(Math.random() * connectionTestPrompts.length)] ?? connectionTestPrompts[0];
     try {
       const result = await onTestImageGeneration(selected.id, {
         prompt,
-        ...(configDraft.models['image-generation'].trim() ? { model: configDraft.models['image-generation'].trim() } : {}),
+        ...(configDraft.image.models['image-generation'].trim() ? { model: configDraft.image.models['image-generation'].trim() } : {}),
         size: '1024x1024',
       });
       if (!result?.image) throw new Error('IMAGE_RESULT_EMPTY');
@@ -139,10 +186,73 @@ export const ProviderSettings = ({
       setTestBusy(false);
     }
   };
+
   const testImageSource = (image: GeneratedImage): string | undefined => {
     if (image.base64) return image.base64.startsWith('data:') ? image.base64 : `data:${image.mimeType ?? 'image/png'};base64,${image.base64}`;
     return image.url;
   };
+
+  const renderProfile = (profile: ProviderProfile) => {
+    const isImage = profile === 'image';
+    const profileDraft = configDraft[profile];
+    const modelCapabilities = isImage ? (['image-generation', 'image-editing'] as const) : (['conversation', 'vision-analysis'] as const);
+    return (
+      <section key={profile} className="provider-profile-section" aria-labelledby={`provider-${profile}-title`}>
+        <div className="provider-profile-heading">
+          <div>
+            <h3 id={`provider-${profile}-title`}>{profileTitle(locale, profile)}</h3>
+            <p><Badge tone={configured[profile] ? 'success' : ''}>{configured[profile] ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge></p>
+          </div>
+          <span className="provider-profile-capabilities">{isImage ? t(locale, '图片生成、图片编辑', 'Image generation and editing') : t(locale, '对话、视觉分析', 'Conversation and vision analysis')}</span>
+        </div>
+        <Field label={isImage ? t(locale, '图片服务地址', 'Image base URL') : t(locale, '对话服务地址', 'Conversation base URL')} hint={t(locale, '仅支持 HTTPS，或本机 HTTP 服务。', 'HTTPS is required except for a local HTTP service.')}>
+          <input aria-label={isImage ? t(locale, '图片服务地址', 'Image base URL') : t(locale, '对话服务地址', 'Conversation base URL')} type="url" autoComplete="off" placeholder="https://api.example.com/v1" value={profileDraft.baseUrl} onChange={(event) => setConfigDraft((current) => ({ ...current, [profile]: { ...current[profile], baseUrl: event.target.value } }))} />
+        </Field>
+        {isImage && <Field label={t(locale, '图片传输模式', 'Image transport')}>
+          <Select ariaLabel={t(locale, '图片传输模式', 'Image transport')} value={configDraft.image.imageTransport} onChange={(value) => setConfigDraft((current) => ({ ...current, image: { ...current.image, imageTransport: value as ImageTransport } }))} options={[{ value: 'images', label: t(locale, '图片 API', 'Images API') }, { value: 'responses', label: t(locale, 'Responses 图像工具', 'Responses image tool') }]} />
+        </Field>}
+        <div className="provider-model-grid">
+          {modelCapabilities.map((capability) => {
+            const value = isImage
+              ? configDraft.image.models[capability as 'image-generation' | 'image-editing']
+              : configDraft.conversation.models[capability as 'conversation' | 'vision-analysis'];
+            return (
+              <Field key={capability} label={modelLabel(locale, capability)}>
+                <input aria-label={modelLabel(locale, capability)} autoComplete="off" value={value} onChange={(event) => setConfigDraft((current) => ({
+                  ...current,
+                  [profile]: {
+                    ...current[profile],
+                    models: { ...current[profile].models, [capability]: event.target.value },
+                  },
+                }))} />
+              </Field>
+            );
+          })}
+        </div>
+        {onSaveProviderConfig && <div className="provider-config-actions"><Button type="button" variant="secondary" icon="save" onClick={() => { void saveConfig(); }}>{t(locale, '保存配置', 'Save config')}</Button></div>}
+        <form onSubmit={(event) => { event.preventDefault(); void submitCredential(profile); }}>
+          <Field label={t(locale, 'API 密钥', 'API key')} hint={t(locale, '输入后仅发送到桌面主进程并立即清空。', 'Sent to the desktop host and cleared immediately after saving.')}>
+            <input aria-label={`${profileTitle(locale, profile)} ${t(locale, 'API 密钥', 'API key')}`} type="password" autoComplete="off" value={secrets[profile]} onChange={(event) => setSecrets((current) => ({ ...current, [profile]: event.target.value }))} />
+          </Field>
+          <div className="settings-actions">
+            <Button type="submit" variant="primary" icon="lock" disabled={!secrets[profile]}>{t(locale, '保存密钥', 'Save key')}</Button>
+            <Button type="button" variant="secondary" icon="trash-2" onClick={() => { void removeCredential(profile); }}>{t(locale, '删除密钥', 'Delete key')}</Button>
+          </div>
+        </form>
+        {isImage && onTestImageGeneration && <div className="provider-test-actions">
+          <Button type="button" variant="ai" icon="image" disabled={testBusy || !configured.image || !configDraft.image.baseUrl.trim()} onClick={() => { void testImageGeneration(); }}>
+            {testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}
+          </Button>
+          <small>{t(locale, '使用随机提示词生成一张临时预览，不会写入任务或素材库。', 'Generates one temporary preview with a random prompt; nothing is added to tasks or assets.')}</small>
+        </div>}
+        {isImage && testResult && testImageSource(testResult.image) && <div className="provider-test-result">
+          <img src={testImageSource(testResult.image)} alt={t(locale, '连接测试结果', 'Connection test result')} />
+          <small>{t(locale, '临时预览', 'Temporary preview')}</small>
+        </div>}
+      </section>
+    );
+  };
+
   return (
     <section aria-labelledby="provider-settings-title" className="provider-settings">
       <div className="settings-section-heading">
@@ -159,46 +269,11 @@ export const ProviderSettings = ({
           <Field label={t(locale, '连接', 'Connection')}>
             <Select ariaLabel={t(locale, '连接', 'Connection')} value={selectedId} onChange={setSelectedId} options={connections.map((connection) => ({ value: connection.id, label: connection.label }))} />
           </Field>
-          {selected && (
-            <div>
-              <p><Badge tone={configured[selected.id] ? 'success' : ''}>{configured[selected.id] ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge></p>
-              <p>{t(locale, '能力', 'Capabilities')}: {selected.capabilities.join(', ')}</p>
-              <form onSubmit={submit}>
-                <Field label={t(locale, '服务地址', 'Base URL')} hint={t(locale, '仅支持 HTTPS，或本机 HTTP 服务。', 'HTTPS is required except for a local HTTP service.')}>
-                  <input aria-label={t(locale, '服务地址', 'Base URL')} type="url" autoComplete="off" placeholder="https://api.example.com/v1" value={configDraft.baseUrl} onChange={(event) => setConfigDraft((current) => ({ ...current, baseUrl: event.target.value }))} />
-                </Field>
-                <Field label={t(locale, '图片传输模式', 'Image transport')}>
-                  <Select ariaLabel={t(locale, '图片传输模式', 'Image transport')} value={configDraft.imageTransport} onChange={(value) => setConfigDraft((current) => ({ ...current, imageTransport: value as ImageTransport }))} options={[{ value: 'images', label: t(locale, '图片 API', 'Images API') }, { value: 'responses', label: t(locale, 'Responses 图像工具', 'Responses image tool') }]} />
-                </Field>
-                <div className="provider-model-grid">
-                  {providerCapabilities.map((capability) => (
-                    <Field key={capability} label={modelLabel(locale, capability)}>
-                      <input aria-label={modelLabel(locale, capability)} autoComplete="off" value={configDraft.models[capability]} onChange={(event) => setConfigDraft((current) => ({ ...current, models: { ...current.models, [capability]: event.target.value } }))} />
-                    </Field>
-                  ))}
-                </div>
-                {onSaveProviderConfig && <div className="provider-config-actions"><Button type="button" variant="secondary" icon="save" disabled={!configDraft.baseUrl.trim()} onClick={() => { void saveConfig(); }}>{t(locale, '保存配置', 'Save config')}</Button></div>}
-                {onTestImageGeneration && <div className="provider-test-actions">
-                  <Button type="button" variant="ai" icon="image" disabled={testBusy || !configured[selected.id] || !configDraft.baseUrl.trim()} onClick={() => { void testImageGeneration(); }}>
-                    {testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}
-                  </Button>
-                  <small>{t(locale, '使用随机提示词生成一张临时预览，不会写入任务或素材库。', 'Generates one temporary preview with a random prompt; nothing is added to tasks or assets.')}</small>
-                </div>}
-                {testResult && testImageSource(testResult.image) && <div className="provider-test-result">
-                  <img src={testImageSource(testResult.image)} alt={t(locale, '连接测试结果', 'Connection test result')} />
-                  <small>{t(locale, '临时预览', 'Temporary preview')}</small>
-                </div>}
-                <Field label={t(locale, 'API 密钥', 'API key')} hint={t(locale, '输入后仅发送到桌面主进程并立即清空。', 'Sent to the desktop host and cleared immediately after saving.')}>
-                  <input aria-label={t(locale, 'API 密钥', 'API key')} type="password" autoComplete="off" value={secret} onChange={(event) => setSecret(event.target.value)} />
-                </Field>
-                <div className="settings-actions">
-                  <Button type="submit" variant="primary" icon="lock" disabled={secret.length === 0}>{t(locale, '保存密钥', 'Save key')}</Button>
-                  <Button type="button" variant="secondary" icon="trash-2" onClick={remove}>{t(locale, '删除密钥', 'Delete key')}</Button>
-                </div>
-              </form>
-              {message && <p role="status">{message}</p>}
-            </div>
-          )}
+          {selected && <div>
+            <p>{t(locale, '能力', 'Capabilities')}: {selected.capabilities.join(', ')}</p>
+            {profiles.map(renderProfile)}
+            {message && <p role="status">{message}</p>}
+          </div>}
         </>
       )}
     </section>
