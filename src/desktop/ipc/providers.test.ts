@@ -7,18 +7,18 @@ const window = { webContents: { mainFrame: { url: trustedUrl }, getURL: () => tr
 const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
 
 it('loads and saves provider configuration only for the trusted main frame', async () => {
-  const load = vi.fn(async () => ({ 'openai-compatible': { baseUrl: 'https://api.example.test/v1', models: {} } }));
+  const load = vi.fn(async () => ({ 'openai-compatible': { baseUrl: 'https://api.example.test/v1', imageTransport: 'images' as const, models: {} } }));
   const save = vi.fn(async () => true);
   expect(providerConfigLoadChannel).toBe('provider:config-load');
   expect(providerConfigSaveChannel).toBe('provider:config-save');
-  await expect(createProviderConfigLoadHandler(window, trustedUrl, load)(event)).resolves.toEqual({ 'openai-compatible': { baseUrl: 'https://api.example.test/v1', models: {} } });
+  await expect(createProviderConfigLoadHandler(window, trustedUrl, load)(event)).resolves.toEqual({ 'openai-compatible': { baseUrl: 'https://api.example.test/v1', imageTransport: 'images', models: {} } });
   await expect(createProviderConfigSaveHandler(window, trustedUrl, save)(event, {
     connectionId: 'openai-compatible',
     config: { baseUrl: 'https://api.example.test/v1', models: { conversation: 'chat-model' } },
   })).resolves.toBe(true);
   expect(save).toHaveBeenCalledWith({
     connectionId: 'openai-compatible',
-    config: { baseUrl: 'https://api.example.test/v1', models: { conversation: 'chat-model' } },
+    config: { baseUrl: 'https://api.example.test/v1', imageTransport: 'images', models: { conversation: 'chat-model' } },
   });
 });
 

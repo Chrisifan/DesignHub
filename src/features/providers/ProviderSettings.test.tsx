@@ -48,7 +48,7 @@ it('saves the endpoint and capability models without mixing them with the API ke
     <ProviderSettings
       locale="en"
       connections={[{ id: 'openai-compatible', label: 'OpenAI compatible', status: 'not-configured', capabilities: ['conversation', 'vision-analysis', 'image-generation', 'image-editing'] }]}
-      configs={{ 'openai-compatible': { baseUrl: 'https://api.example.test/v1', models: { conversation: 'chat-old' } } }}
+      configs={{ 'openai-compatible': { baseUrl: 'https://api.example.test/v1', imageTransport: 'images', models: { conversation: 'chat-old' } } }}
       onSaveProviderConfig={saveConfig}
       onStoreCredential={vi.fn(async () => true)}
       onDeleteCredential={vi.fn(async () => true)}
@@ -56,12 +56,15 @@ it('saves the endpoint and capability models without mixing them with the API ke
   );
 
   expect(screen.getByLabelText('Base URL')).toHaveValue('https://api.example.test/v1');
+  expect(screen.getByLabelText('Image transport')).toHaveValue('images');
   fireEvent.change(screen.getByLabelText('Conversation model'), { target: { value: 'chat-new' } });
   fireEvent.change(screen.getByLabelText('Image generation model'), { target: { value: 'image-new' } });
+  fireEvent.change(screen.getByLabelText('Image transport'), { target: { value: 'responses' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save config' }));
 
   await waitFor(() => expect(saveConfig).toHaveBeenCalledWith('openai-compatible', {
     baseUrl: 'https://api.example.test/v1',
+    imageTransport: 'responses',
     models: { conversation: 'chat-new', 'image-generation': 'image-new' },
   }));
   expect(JSON.stringify(saveConfig.mock.calls)).not.toContain('API key');

@@ -84,6 +84,76 @@ describe('OpenAI-compatible provider adapter', () => {
     await expect(adapter.editImage({ prompt: 'remove logo', image: new Blob(['image']) })).resolves.toMatchObject({ images: [{ url: 'https://cdn.test/edited.png' }] });
   });
 
+  it('uses a custom Responses endpoint and parses hosted image tool output', async () => {
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('https://gateway.example.test/openai/v1/responses');
+      expect(init?.headers).toEqual({ authorization: 'Bearer secret-key', 'content-type': 'application/json' });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model: 'gpt-5.6-terra',
+        input: [{ role: 'user', content: [{ type: 'input_text', text: 'A minimal poster' }] }],
+        tools: [{ type: 'image_generation', size: '1024x1024' }],
+        tool_choice: { type: 'image_generation' },
+      });
+      return response({ output: [{ type: 'image_generation_call', result: 'generated-base64' }] });
+    });
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://gateway.example.test/openai/v1',
+      apiKey: 'secret-key',
+      imageTransport: 'responses',
+      models: { 'image-generation': 'gpt-5.6-terra' },
+      fetch: fetcher,
+    });
+
+    await expect(adapter.generateImage({ prompt: 'A minimal poster', size: '1024x1024' })).resolves.toEqual({
+      images: [{ base64: 'generated-base64' }],
+      cost: null,
+    });
+  });
+
+  it('uses input images and explicit edit guidance with the Responses transport', async () => {
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('https://gateway.example.test/v1/responses');
+      const payload = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ type: string; image_url?: string; text?: string }> }> };
+      expect(payload.input[0]?.content).toEqual(expect.arrayContaining([
+        { type: 'input_image', image_url: 'data:image/png;base64,c291cmNl' },
+        { type: 'input_image', image_url: 'data:image/png;base64,bWFzaw==' },
+        expect.objectContaining({ type: 'input_text', text: expect.stringContaining('remove-object') }),
+      ]));
+      expect(payload.input[0]?.content.find((item) => item.type === 'input_text')?.text).toContain('"feather":12');
+      expect(payload.input[0]?.content.find((item) => item.type === 'input_text')?.text).toContain('"width":30');
+      return response({ output: [{ type: 'image_generation_call', result: 'edited-base64' }] });
+    });
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://gateway.example.test/v1', apiKey: 'secret-key', imageTransport: 'responses', fetch: fetcher });
+
+    await expect(adapter.editImage({
+      prompt: 'Remove the selected object',
+      image: new Blob(['source'], { type: 'image/png' }),
+      mask: new Blob(['mask'], { type: 'image/png' }),
+      tool: 'remove-object',
+      toolParams: { feather: 12 },
+      region: { x: 1, y: 2, width: 30, height: 40 },
+    })).resolves.toEqual({ images: [{ base64: 'edited-base64' }], cost: null });
+  });
+
+  it('rejects unsupported multi-image Responses requests before making a network call', async () => {
+    const fetcher = vi.fn();
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://gateway.example.test/v1', apiKey: 'secret-key', imageTransport: 'responses', fetch: fetcher });
+
+    await expect(adapter.generateImage({ prompt: 'A poster', count: 2 })).rejects.toThrow('RESPONSES_IMAGE_COUNT_UNSUPPORTED');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('rejects Responses payloads without a hosted image result', async () => {
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://gateway.example.test/v1',
+      apiKey: 'secret-key',
+      imageTransport: 'responses',
+      fetch: vi.fn(async () => response({ output: [{ type: 'message', content: [] }] })),
+    });
+
+    await expect(adapter.generateImage({ prompt: 'A poster' })).rejects.toMatchObject({ kind: 'invalid_response' });
+  });
+
   it('sends image tool metadata, parameters, and region with edit requests', async () => {
     const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
       const form = init?.body as FormData;
