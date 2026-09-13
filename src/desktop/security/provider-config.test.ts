@@ -18,9 +18,15 @@ it('round-trips endpoint and model configuration without accepting credentials',
   const path = join(directory, 'providers.json');
   const configs: ProviderConfigMap = {
     'openai-compatible': {
-      baseUrl: 'https://api.example.test/v1',
-      imageTransport: 'responses',
-      models: { conversation: 'chat-model', 'image-editing': 'image-edit-model' },
+      conversation: {
+        baseUrl: 'https://text.example.test/v1',
+        models: { conversation: 'chat-model' },
+      },
+      image: {
+        baseUrl: 'https://image.example.test/v1',
+        imageTransport: 'responses',
+        models: { 'image-editing': 'image-edit-model' },
+      },
     },
   };
 
@@ -36,8 +42,14 @@ it('fails closed for malformed persisted provider configuration', async () => {
   await writeFile(path, JSON.stringify({ 'openai-compatible': { baseUrl: 'file:///tmp/provider' } }));
 
   await expect(loadProviderConfigs(path)).rejects.toThrow('INVALID_PROVIDER_CONFIG');
-  await expect(saveProviderConfigs(path, { 'openai-compatible': { baseUrl: 'https://api.example.test', imageTransport: 'images', models: {} } })).resolves.toBe(true);
-  await expect(loadProviderConfigs(path)).resolves.toEqual({ 'openai-compatible': { baseUrl: 'https://api.example.test', imageTransport: 'images', models: {} } });
+  await expect(saveProviderConfigs(path, { 'openai-compatible': {
+    conversation: { baseUrl: 'https://api.example.test', models: {} },
+    image: { baseUrl: 'https://api.example.test', imageTransport: 'images', models: {} },
+  } })).resolves.toBe(true);
+  await expect(loadProviderConfigs(path)).resolves.toEqual({ 'openai-compatible': {
+    conversation: { baseUrl: 'https://api.example.test', models: {} },
+    image: { baseUrl: 'https://api.example.test', imageTransport: 'images', models: {} },
+  } });
 });
 
 it('migrates a persisted configuration that predates image transport selection', async () => {
@@ -47,6 +59,9 @@ it('migrates a persisted configuration that predates image transport selection',
   await writeFile(path, JSON.stringify({ 'openai-compatible': { baseUrl: 'https://gateway.example.test/openai/v1', models: {} } }));
 
   await expect(loadProviderConfigs(path)).resolves.toEqual({
-    'openai-compatible': { baseUrl: 'https://gateway.example.test/openai/v1', imageTransport: 'images', models: {} },
+    'openai-compatible': {
+      conversation: { baseUrl: 'https://gateway.example.test/openai/v1', models: {} },
+      image: { baseUrl: 'https://gateway.example.test/openai/v1', imageTransport: 'images', models: {} },
+    },
   });
 });

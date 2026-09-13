@@ -1,51 +1,77 @@
 import { expect, it } from 'vitest';
 
-import { normalizeProviderConfig, type ProviderConfig } from './config';
+import { normalizeProviderConfig, providerCredentialAccount, type ProviderConfig } from './config';
 
-it('accepts an https endpoint and per-capability model names', () => {
+it('accepts canonical conversation and image profiles with independent model maps', () => {
   expect(normalizeProviderConfig({
-    baseUrl: ' https://api.example.test/v1/ ',
-    models: {
-      conversation: ' chat-model ',
-      'image-generation': 'image-model',
+    conversation: {
+      baseUrl: ' https://text.example.test/v1/ ',
+      models: { conversation: ' chat-model ', 'vision-analysis': 'vision-model' },
+    },
+    image: {
+      baseUrl: 'https://image.example.test/openai/v1/',
+      imageTransport: 'responses',
+      models: { 'image-generation': 'image-model', 'image-editing': 'edit-model' },
     },
   })).toEqual({
-    baseUrl: 'https://api.example.test/v1',
-    imageTransport: 'images',
-    models: {
-      conversation: 'chat-model',
-      'image-generation': 'image-model',
+    conversation: {
+      baseUrl: 'https://text.example.test/v1',
+      models: { conversation: 'chat-model', 'vision-analysis': 'vision-model' },
+    },
+    image: {
+      baseUrl: 'https://image.example.test/openai/v1',
+      imageTransport: 'responses',
+      models: { 'image-generation': 'image-model', 'image-editing': 'edit-model' },
     },
   } satisfies ProviderConfig);
 });
 
-it('defaults legacy configurations to the Images API transport and accepts Responses transport', () => {
+it('migrates flat historical configuration into two profiles', () => {
   expect(normalizeProviderConfig({
     baseUrl: 'https://gateway.example.test/openai/v1/',
-    models: {},
-  })).toEqual({
-    baseUrl: 'https://gateway.example.test/openai/v1',
-    imageTransport: 'images',
-    models: {},
-  } satisfies ProviderConfig);
-  expect(normalizeProviderConfig({
-    baseUrl: 'https://gateway.example.test/openai/v1',
     imageTransport: 'responses',
-    models: { 'image-generation': 'gpt-5.6-terra' },
+    models: {
+      conversation: 'chat-model',
+      'vision-analysis': 'vision-model',
+      'image-generation': 'image-model',
+      'image-editing': 'edit-model',
+    },
   })).toEqual({
-    baseUrl: 'https://gateway.example.test/openai/v1',
-    imageTransport: 'responses',
-    models: { 'image-generation': 'gpt-5.6-terra' },
+    conversation: {
+      baseUrl: 'https://gateway.example.test/openai/v1',
+      models: { conversation: 'chat-model', 'vision-analysis': 'vision-model' },
+    },
+    image: {
+      baseUrl: 'https://gateway.example.test/openai/v1',
+      imageTransport: 'responses',
+      models: { 'image-generation': 'image-model', 'image-editing': 'edit-model' },
+    },
   } satisfies ProviderConfig);
 });
 
-it('rejects malformed endpoints, credentials, and unsupported model settings', () => {
-  expect(normalizeProviderConfig(null)).toBeNull();
-  expect(normalizeProviderConfig({ baseUrl: '' })).toBeNull();
-  expect(normalizeProviderConfig({ baseUrl: 'file:///tmp/provider' })).toBeNull();
-  expect(normalizeProviderConfig({ baseUrl: 'https://user:pass@example.test/v1' })).toBeNull();
-  expect(normalizeProviderConfig({ baseUrl: 'https://example.test', apiKey: 'secret' })).toBeNull();
-  expect(normalizeProviderConfig({ baseUrl: 'https://example.test', imageTransport: 'unknown', models: {} })).toBeNull();
-  expect(normalizeProviderConfig({ baseUrl: 'https://example.test', models: { custom: 'x' } })).toBeNull();
-  expect(normalizeProviderConfig({ baseUrl: 'https://example.test', models: { conversation: 'x'.repeat(129) } })).toBeNull();
+it('derives profile-specific credential accounts', () => {
+  expect(providerCredentialAccount('openai-compatible', 'conversation')).toBe('openai-compatible:conversation');
+  expect(providerCredentialAccount('openai-compatible', 'image')).toBe('openai-compatible:image');
 });
+
+it('rejects malformed profiles, unsupported fields, and cross-profile model settings', () => {
+  expect(normalizeProviderConfig(null)).toBeNull();
+  expect(normalizeProviderConfig({ conversation: { baseUrl: '', models: {} }, image: { baseUrl: 'https://image.example', imageTransport: 'images', models: {} } })).toBeNull();
+  expect(normalizeProviderConfig({
+    conversation: { baseUrl: 'https://text.example', models: { 'image-generation': 'wrong-profile' } },
+    image: { baseUrl: 'https://image.example', imageTransport: 'images', models: {} },
+  })).toBeNull();
+  expect(normalizeProviderConfig({
+    conversation: { baseUrl: 'file:///tmp/provider', models: {} },
+    image: { baseUrl: 'https://image.example', imageTransport: 'images', models: {} },
+  })).toBeNull();
+  expect(normalizeProviderConfig({
+    conversation: { baseUrl: 'https://text.example', models: {} },
+    image: { baseUrl: 'https://image.example', imageTransport: 'unknown', models: {} },
+  })).toBeNull();
+  expect(normalizeProviderConfig({
+    conversation: { baseUrl: 'https://text.example', models: {}, extra: true },
+    image: { baseUrl: 'https://image.example', imageTransport: 'images', models: {} },
+  })).toBeNull();
+});
+
