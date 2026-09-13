@@ -30,6 +30,7 @@ import { ProviderSettings } from '../../features/providers/ProviderSettings';
 import { BrandEditor } from '../../features/brands/BrandEditor';
 import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
+import type { ProviderConfigMap } from '../../features/providers/config';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
@@ -659,10 +660,18 @@ const ConnectionsPage = ({
   navigate,
 }: Pick<PageProps, 'locale' | 'navigate'>) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
+  const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
   useEffect(() => {
     let cancelled = false;
     const checks = availableConnections.map(async (connection) => [connection.id, await getDesktopApi().hasCredential?.(connection.id) ?? false] as const);
-    void Promise.all(checks).then((entries) => { if (!cancelled) setConnectionState(Object.fromEntries(entries)); }).catch(() => undefined);
+    void Promise.all([
+      Promise.all(checks),
+      getDesktopApi().loadProviderConfigs?.() ?? Promise.resolve(null),
+    ]).then(([entries, configs]) => {
+      if (cancelled) return;
+      setConnectionState(Object.fromEntries(entries));
+      setProviderConfigs(configs ?? {});
+    }).catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
   const connections = availableConnections.map((connection) => ({ ...connection, status: connectionState[connection.id] ? 'connected' as const : 'not-configured' as const }));
@@ -698,6 +707,12 @@ const ConnectionsPage = ({
       <ProviderSettings
         locale={locale}
         connections={connections}
+        configs={providerConfigs}
+        onSaveProviderConfig={async (connectionId, config) => {
+          const saved = await (getDesktopApi().saveProviderConfig?.({ connectionId: connectionId as 'openai-compatible', config }) ?? false);
+          if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
+          return saved;
+        }}
         onCheckCredential={async (connectionId) => getDesktopApi().hasCredential?.(connectionId) ?? false}
         onStoreCredential={async (connectionId, secret) => {
           const stored = await (getDesktopApi().storeCredential?.(connectionId, secret) ?? false);

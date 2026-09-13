@@ -47,6 +47,8 @@ test('launches the workspace shell with only the DesignHub bridge', async () => 
       'storeCredential',
       'deleteCredential',
       'hasCredential',
+      'loadProviderConfigs',
+      'saveProviderConfig',
       'listTasks',
       'submitConversation',
       'submitPortfolioAnalysis',

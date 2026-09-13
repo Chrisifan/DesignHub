@@ -61,6 +61,8 @@ import { createProjectPackage, encodeProjectPackage } from '../features/delivery
 import { classifyPackageEntry, type PackageEntryKind } from '../features/delivery/package-policy';
 import { appendWorkspaceExportHistory, loadWorkspaceExportHistory } from './storage/export-history-store';
 import { exportHistoryListChannel, listExportHistoryHandler } from './ipc/export-history';
+import { loadProviderConfigs, saveProviderConfigs } from './security/provider-config';
+import { createProviderConfigLoadHandler, createProviderConfigSaveHandler, providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -68,6 +70,8 @@ let activeWorkspaceHandle: WorkspaceHandle | null = null;
 let taskServicePromise: Promise<AgentTaskService> | null = null;
 let credentialStore: SystemCredentialStore = createUnavailableCredentialStore();
 let credentialBoundary: CredentialBoundary = createCredentialBoundary(credentialStore);
+
+const providerConfigPath = (): string => join(app.getPath('userData'), 'provider-connections.json');
 
 const createElectronCredentialStore = (directory: string): SystemCredentialStore => {
   const file = join(directory, 'credentials.bin');
@@ -201,9 +205,10 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
       },
       resolveAdapter: async (connectionId) => {
         if (connectionId !== 'openai-compatible') throw new Error('PROVIDER_NOT_CONFIGURED');
-        const baseUrl = process.env.DESIGNHUB_PROVIDER_BASE_URL ?? '';
+        const savedConfig = (await loadProviderConfigs(providerConfigPath()))['openai-compatible'];
+        const baseUrl = savedConfig?.baseUrl ?? process.env.DESIGNHUB_PROVIDER_BASE_URL ?? '';
         const apiKey = await credentialStore.getCredential?.(connectionId) ?? process.env.DESIGNHUB_PROVIDER_API_KEY ?? '';
-        return createOpenAICompatibleAdapter({ baseUrl, apiKey });
+        return createOpenAICompatibleAdapter({ baseUrl, apiKey, models: savedConfig?.models });
       },
     });
     return bindAgentTaskService(service);
@@ -357,6 +362,17 @@ app.whenReady().then(() => {
   ipcMain.handle(credentialStatusChannel, async (event, connectionId) => {
     if (!activeWindow || !activeTrustedUrl) return false;
     return createCredentialStatusHandler(activeWindow, activeTrustedUrl, credentialBoundary)(event, connectionId);
+  });
+  ipcMain.handle(providerConfigLoadChannel, async (event) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createProviderConfigLoadHandler(activeWindow, activeTrustedUrl, () => loadProviderConfigs(providerConfigPath()))(event);
+  });
+  ipcMain.handle(providerConfigSaveChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return false;
+    return createProviderConfigSaveHandler(activeWindow, activeTrustedUrl, async (saveInput) => {
+      const current = await loadProviderConfigs(providerConfigPath());
+      return saveProviderConfigs(providerConfigPath(), { ...current, [saveInput.connectionId]: saveInput.config });
+    })(event, input);
   });
   ipcMain.handle(taskListChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;

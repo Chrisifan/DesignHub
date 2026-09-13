@@ -773,6 +773,18 @@
   color: var(--on-surface-variant);
 }
 
+.provider-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+
+.provider-config-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin: -4px 0 18px;
+}
+
 .page-footnote {
   justify-content: center;
   margin: 18px 0 0;
@@ -1337,6 +1349,7 @@
   .profile-library,
   .asset-collection--grid,
   .config-grid,
+  .provider-model-grid,
   .theme-grid {
     grid-template-columns: minmax(0, 1fr);
   }

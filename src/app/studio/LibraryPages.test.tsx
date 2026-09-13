@@ -214,6 +214,23 @@ it('shows honest unavailable states for connections and delivery', () => {
   expect(screen.getByRole('button', { name: '导出' })).toBeDisabled();
 });
 
+it('hydrates and saves the non-secret provider connection configuration', async () => {
+  const loadProviderConfigs = vi.fn(async () => ({
+    'openai-compatible': { baseUrl: 'https://api.example.test/v1', models: { conversation: 'chat-old' } },
+  }));
+  const saveProviderConfig = vi.fn(async () => true);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadProviderConfigs, saveProviderConfig };
+  render(<Harness initialView="connections" />);
+
+  await waitFor(() => expect(screen.getByLabelText('服务地址')).toHaveValue('https://api.example.test/v1'));
+  fireEvent.change(screen.getByLabelText('对话模型'), { target: { value: 'chat-new' } });
+  fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
+  await waitFor(() => expect(saveProviderConfig).toHaveBeenCalledWith({
+    connectionId: 'openai-compatible',
+    config: { baseUrl: 'https://api.example.test/v1', models: { conversation: 'chat-new' } },
+  }));
+});
+
 it('hydrates a workspace brand library and persists create/edit/delete actions', async () => {
   const loadBrandState = vi.fn(async () => ({ brands: [{ id: 'local', name: '本地品牌', version: 'v1', logo: 'mark', colorPalette: ['#000'], fonts: ['Geist'], tone: '清晰', fixedCopy: '开始', sizes: ['1080x1080'] }] }));
   const saveBrandState = vi.fn(async () => true);

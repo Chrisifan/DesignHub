@@ -1,11 +1,7 @@
-export const providerCapabilities = [
-  'conversation',
-  'vision-analysis',
-  'image-generation',
-  'image-editing',
-] as const;
+import { type ProviderCapability } from './config';
 
-export type ProviderCapability = (typeof providerCapabilities)[number];
+export { providerCapabilities } from './config';
+export type { ProviderCapability } from './config';
 export type ConnectionInput = {
   id: string;
   label: string;

@@ -17,6 +17,7 @@ import { brandLoadChannel, brandSaveChannel } from './ipc/brands';
 import { settingsLoadChannel, settingsSaveChannel } from './ipc/settings';
 import { searchQueryChannel, searchRebuildChannel } from './ipc/search';
 import { exportHistoryListChannel } from './ipc/export-history';
+import { providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
 
 const api: DesktopApi = {
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,
@@ -54,6 +55,8 @@ const api: DesktopApi = {
   storeCredential: (connectionId, secret) => ipcRenderer.invoke(credentialStoreChannel, connectionId, secret),
   deleteCredential: (connectionId) => ipcRenderer.invoke(credentialDeleteChannel, connectionId),
   hasCredential: (connectionId) => ipcRenderer.invoke(credentialStatusChannel, connectionId),
+  loadProviderConfigs: () => ipcRenderer.invoke(providerConfigLoadChannel),
+  saveProviderConfig: (input) => ipcRenderer.invoke(providerConfigSaveChannel, input),
   listTasks: (workspaceId) => ipcRenderer.invoke(taskListChannel, workspaceId),
   submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
   submitPortfolioAnalysis: (input) => ipcRenderer.invoke(portfolioAnalysisSubmitChannel, input),

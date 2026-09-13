@@ -34,6 +34,26 @@ describe('OpenAI-compatible provider adapter', () => {
     await expect(adapter.chat({ messages: [{ role: 'user', content: 'hi' }] })).resolves.toMatchObject({ text: 'hello', usage: { totalTokens: 4 }, cost: null });
   });
 
+  it('uses the configured default model for each provider capability', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (typeof init?.body === 'string') bodies.push(JSON.parse(init.body) as Record<string, unknown>);
+      return response({ choices: [{ message: { content: 'ok' } }], data: [{ b64_json: 'generated' }] });
+    });
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://example.test/v1',
+      apiKey: 'secret-key',
+      models: { conversation: 'chat-model', 'vision-analysis': 'vision-model', 'image-generation': 'image-model' },
+      fetch: fetcher,
+    });
+
+    await adapter.chat({ messages: [{ role: 'user', content: 'hi' }] });
+    await adapter.analyzeVision({ prompt: 'describe', image: { url: 'https://img.test/a.png' } });
+    await adapter.generateImage({ prompt: 'a poster' });
+
+    expect(bodies.map((body) => body.model)).toEqual(['chat-model', 'vision-model', 'image-model']);
+  });
+
   it('parses SSE chat deltas and terminates at [DONE]', async () => {
     const stream = new ReadableStream({
       start: (controller) => {

@@ -1,11 +1,13 @@
+import { providerCapabilities, type ProviderCapability, type ProviderConfig } from './config';
+
+export { providerCapabilities } from './config';
+
 export const providerCapabilityMatrix = {
   conversation: true,
   'vision-analysis': true,
   'image-generation': true,
   'image-editing': true,
 } as const;
-export const providerCapabilities = ['conversation', 'vision-analysis', 'image-generation', 'image-editing'] as const;
-
 export type ProviderCapabilityMatrix = typeof providerCapabilityMatrix;
 export type ChatRole = 'system' | 'user' | 'assistant';
 export type ChatContentPart =
@@ -33,6 +35,7 @@ export type ProviderAdapterError = Error & {
 export type MainOnlyAdapterOptions = {
   baseUrl: string;
   apiKey: string;
+  models?: ProviderConfig['models'];
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
   fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
 };
@@ -195,6 +198,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
   if (!options.apiKey.trim()) throw new Error('PROVIDER_API_KEY_REQUIRED');
   const baseUrl = options.baseUrl.replace(/\/+$/, '');
   const apiKey = options.apiKey;
+  const configuredModel = (capability: ProviderCapability, requested?: string): string | undefined => requested ?? options.models?.[capability];
   const fetcher = options.fetch ?? options.fetchImpl ?? ((input: string, init?: RequestInit): Promise<Response> => globalThis.fetch(input, init));
   const redact = (value: string): string => apiKey ? value.replaceAll(apiKey, '[redacted]') : value;
   const postJson = async (path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> => {
@@ -213,10 +217,10 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     if (!response.ok) throw await createHttpError(response, redact);
     return readJson(response);
   };
-  const chat = async (request: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> => {
+  const chatFor = async (capability: 'conversation' | 'vision-analysis', request: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> => {
     const payload = await postJson('/chat/completions', {
       messages: request.messages,
-      ...(request.model ? { model: request.model } : {}),
+      ...(configuredModel(capability, request.model) ? { model: configuredModel(capability, request.model) } : {}),
       ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
       ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
     }, signal);
@@ -225,6 +229,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     const message = first.message && typeof first.message === 'object' ? first.message as Record<string, unknown> : {};
     return { text: redact(contentText(message.content)), usage: toUsage(payload.usage), cost: null };
   };
+  const chat = async (request: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> => chatFor('conversation', request, signal);
   const streamChat = (request: ChatRequest, signal?: AbortSignal): AsyncIterable<ChatStreamEvent> => {
     let responsePromise: Promise<Response> | undefined;
     const getResponse = async (): Promise<Response> => {
@@ -236,7 +241,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
               headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
               body: JSON.stringify({
                 messages: request.messages,
-                ...(request.model ? { model: request.model } : {}),
+                ...(configuredModel('conversation', request.model) ? { model: configuredModel('conversation', request.model) } : {}),
                 ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
                 ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
                 stream: true,
@@ -264,10 +269,11 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
   };
   const analyzeVision = async (request: VisionRequest, signal?: AbortSignal): Promise<ChatResponse> => {
     const imageUrl = 'url' in request.image ? request.image.url : `data:${request.image.mimeType ?? 'image/png'};base64,${request.image.base64}`;
-    return chat({ messages: [{ role: 'user', content: [{ type: 'text', text: request.prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }] }, signal);
+    return chatFor('vision-analysis', { messages: [{ role: 'user', content: [{ type: 'text', text: request.prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }] }, signal);
   };
   const generateImage = async (request: ImageRequest, signal?: AbortSignal): Promise<ImageResponse> => {
-    const payload = await postJson('/images/generations', { prompt: request.prompt, ...(request.model ? { model: request.model } : {}), ...(request.size ? { size: request.size } : {}), ...(request.count === undefined ? {} : { n: request.count }) }, signal);
+    const model = configuredModel('image-generation', request.model);
+    const payload = await postJson('/images/generations', { prompt: request.prompt, ...(model ? { model } : {}), ...(request.size ? { size: request.size } : {}), ...(request.count === undefined ? {} : { n: request.count }) }, signal);
     return { images: Array.isArray(payload.data) ? payload.data.map((entry) => {
       const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
       return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { base64: redact(item.b64_json) } : {}) };
@@ -280,7 +286,8 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     if (request.mask) form.append('mask', request.mask);
     if (request.tool) form.append('tool', request.tool);
     if (request.region) form.append('region', JSON.stringify(request.region));
-    if (request.model) form.append('model', request.model);
+    const model = configuredModel('image-editing', request.model);
+    if (model) form.append('model', model);
     if (request.size) form.append('size', request.size);
     let response: Response;
     try {

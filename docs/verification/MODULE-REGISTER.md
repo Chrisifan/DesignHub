@@ -9,7 +9,7 @@
 | M03 | 部分验证；设计师发布/默认/归档、作品集候选审阅、工作区持久化、只读/内置/不可变回归与有界轮询已完成；真实分析、素材生成与历史集成仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
 | M04 | 部分验证；简报确认、项目容器、项目元数据快照、品牌/设计师归属、修订与图像候选定稿已完成；跨设备包闭包、崩溃恢复与实时提供方仍开放 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
 | M05 | 部分验证；画布 schema、Konva 编辑、中文文本、遮罩、撤销/恢复与工作区文档场景持久化已实现；大图、IME、跨平台原生与视觉性能开放 | `docs/verification/M05.md` | M06、M07、M08 |
-| M06 | 部分验证；连接边界、上下文隔离、任务状态/幂等、重试/取消、设计师交接、草稿任务与图像候选审阅已实现；真实提供方、系统钥匙串与远端取消语义开放 | `docs/verification/M06.md` | M03、M04、M07、M08 |
+| M06 | 部分验证；连接边界、本机端点/模型配置、上下文隔离、任务状态/幂等、重试/取消、设计师交接、草稿任务与图像候选审阅已实现；真实提供方、系统钥匙串与远端取消语义开放 | `docs/verification/M06.md` | M03、M04、M07、M08 |
 | M07 | 部分验证；工具目标、选区/遮罩、版本绑定导出、项目/只读包策略已实现；真实编码器、归档闭包、原生 worker 与人工图像质量开放 | `docs/verification/M07.md` | M02、M04、M08 |
 | M08 | 部分验证；本地检索、诊断白名单、设置、候选审阅与发布验收入口已实现；原生双平台、签名、真实模型和全链路证据开放 | `docs/verification/M08.md` | 改动涉及的基础模块与整条交付旅程 |
 
@@ -259,6 +259,7 @@
 2026-09-13：M06 受管源素材图像重试（变更 ID M06-20260913-18）。图像编辑任务持久化 `sourceAssetId`，失败重试从主进程受管素材存储重新加载原图并复用原能力；带区域遮罩的编辑因遮罩字节未持久化而明确不可重试。先补 task-service/task-store 边界回归，再 Green；focused 2 files/23 tests、integration 23 files/105 tests、lint、typecheck、diff check 通过。提供方幂等、远端取消、遮罩持久化、Windows 与打包恢复仍开放。
 2026-09-13：M06/M08 中断任务恢复（变更 ID M06-20260913-19）。运行时加载工作区任务时将遗留 `queued/running` 标记为 `failed/RESULT_UNKNOWN_AFTER_RESTART` 并持久化，任务列表显示“结果未知”且仅允许用户显式重试，不自动重发云请求。先补 runtime Red，再 Green；runtime/LibraryPages focused 41/41、task-recovery integration 1/1、lint、typecheck 通过。远端结果查询、跨进程回调、Windows 与打包恢复仍开放。
 2026-09-13：M01/M02/M06/M08 packaged recovery 回归（变更 ID REL-20260913-01）。串行执行 `pnpm build`、`pnpm package` 后，使用最新 macOS arm64 packaged executable 执行 `DESIGNHUB_PACKAGED_APP_PATH=... pnpm test:native`，native 3/3 通过；可执行文件 SHA-256 `588478afc5f2bc73b6433d6e565a214dc830144be39a3d79805723292754ccd8`。Windows、签名/公证、钥匙串、真实提供方和人工图像质量仍开放。
+2026-09-13：M06 提供方连接配置（变更 ID M06-20260913-20）。固定 OpenAI-compatible 连接现在可在本机配置端点及对话、视觉、生成、编辑模型；配置以原子文件写入 Electron `userData`，凭据继续只存安全存储。配置 schema 只接受 HTTPS 或 loopback HTTP，拒绝 URL 凭据、查询/片段、未知字段和 `apiKey`；受信 preload/IPC 仅允许主 frame 读取或写入。适配器按能力读取已选模型，并保留环境变量作为未配置时的兼容回退。设置页默认配置引用引发的重复渲染以真实超时回归复现后修复；IPC/文件写入拒绝会显示可恢复的保存失败状态。focused provider/config/UI 6 files/55 tests、unit 96 files/401 tests、integration 23 files/105 tests、E2E 24/24、native source smoke 2 passed/1 skipped、lint、typecheck、build、diff check 通过。真实提供方执行、原生钥匙串、Windows 与远端取消/幂等语义仍开放。
 
 ## 发布前检查
 

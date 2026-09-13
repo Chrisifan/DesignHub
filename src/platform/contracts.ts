@@ -14,6 +14,7 @@ import type { ImageEditInput, ImageGenerationInput, PortfolioAnalysisInput } fro
 import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
+import type { ProviderConfigMap, ProviderConfigSaveInput } from '../features/providers/config';
 
 export type ConversationTaskInput = {
   workspaceId: string;
@@ -77,6 +78,8 @@ export type DesktopApi = {
   storeCredential?: (connectionId: string, secret: string) => Promise<boolean>;
   deleteCredential?: (connectionId: string) => Promise<boolean>;
   hasCredential?: (connectionId: string) => Promise<boolean>;
+  loadProviderConfigs?: () => Promise<ProviderConfigMap | null>;
+  saveProviderConfig?: (input: ProviderConfigSaveInput) => Promise<boolean>;
   listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
   submitPortfolioAnalysis?: (input: PortfolioAnalysisInput & { workspaceId: string }) => Promise<TaskRecord | null>;
