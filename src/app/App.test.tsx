@@ -86,6 +86,28 @@ it('opens the desktop application on the welcome shell by default', () => {
   expect(screen.queryByRole('heading', { name: '项目库' })).toBeNull();
 });
 
+it('reopens the most recently accessed workspace on launch', async () => {
+  const recentWorkspace = {
+    workspaceId: 'workspace-recent',
+    name: '上次工作区',
+    directory: '/tmp/designhub-recent',
+    formatVersion: 1,
+    openMode: 'writable' as const,
+  };
+  localStorage.setItem('designhub.recent.workspaces', JSON.stringify([recentWorkspace]));
+  const openWorkspace = vi.fn(async () => recentWorkspace);
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    openWorkspace,
+  } as never;
+
+  render(<App />);
+
+  await waitFor(() => expect(openWorkspace).toHaveBeenCalledWith('/tmp/designhub-recent'));
+  expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('上次工作区');
+  expect(screen.queryByRole('heading', { name: '开始本地创作' })).toBeNull();
+});
+
 it('creates a real workspace from the welcome form instead of entering example mode', async () => {
   const createWorkspace = vi.fn(async ({ parentDirectory, name }: { parentDirectory: string; name: string }) => ({
     workspaceId: 'workspace-created',

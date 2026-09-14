@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { getMessages, type Locale } from './i18n';
 import { WindowBar } from './shell/WindowBar';
@@ -62,6 +62,7 @@ export const App = () => {
   const [workspaceError, setWorkspaceError] = useState('');
   const [workspace, setWorkspace] = useState<WorkspaceDescriptor | null>(null);
   const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceDescriptor[]>(readRecentWorkspaces);
+  const startupRestoreAttempted = useRef(false);
   const changeLocale = (value: Locale) => {
     setLocale(value);
     savePreference('designhub.ui.locale', value);
@@ -119,6 +120,11 @@ export const App = () => {
       return null;
     }
   };
+  useEffect(() => {
+    if (entered || opensStudioOnLaunch() || startupRestoreAttempted.current || recentWorkspaces.length === 0 || !window.designhub?.openWorkspace) return;
+    startupRestoreAttempted.current = true;
+    void openWorkspaceDirectory(recentWorkspaces[0].directory);
+  }, [entered, openWorkspaceDirectory, recentWorkspaces]);
   const chooseWorkspaceDirectory = async (purpose: 'create' | 'open' = 'create'): Promise<void> => {
     setWorkspaceError('');
     if (!window.designhub) {

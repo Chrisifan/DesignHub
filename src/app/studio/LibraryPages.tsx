@@ -31,7 +31,7 @@ import { ProviderSettings } from '../../features/providers/ProviderSettings';
 import { BrandEditor } from '../../features/brands/BrandEditor';
 import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
-import { providerCredentialAccount, providerProfiles, type ProviderConfigMap } from '../../features/providers/config';
+import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, type ProviderProfile } from '../../features/providers/config';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
@@ -655,6 +655,7 @@ const ConnectionsPage = ({
 }: Pick<PageProps, 'locale' | 'navigate'> & { workspaceId?: string }) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
+  const [activeProfile, setActiveProfile] = useState<ProviderProfile>('conversation');
   useEffect(() => {
     let cancelled = false;
     const checks = availableConnections.flatMap((connection) => providerProfiles.map(async (profile) => {
@@ -672,6 +673,11 @@ const ConnectionsPage = ({
     return () => { cancelled = true; };
   }, []);
   const connections = availableConnections.map((connection) => ({ ...connection, status: providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)]) ? 'connected' as const : 'not-configured' as const }));
+  const hasConnected = availableConnections.some((connection) => providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)]));
+  const profileRows: readonly { profile: ProviderProfile; icon: string; label: string }[] = [
+    { profile: 'conversation', icon: 'message-square', label: t(locale, '对话与视觉', 'Conversation and vision') },
+    { profile: 'image', icon: 'image', label: t(locale, '图片生成与编辑', 'Image generation and editing') },
+  ];
   return (
   <section className="page-content library-page">
     <PageHeader
@@ -686,12 +692,14 @@ const ConnectionsPage = ({
     <div className="connection-layout">
       <EmptyState
         icon="plug"
-        title={t(locale, '尚未连接模型', 'No models connected')}
-        description={!workspaceId ? t(
-          locale,
-          '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
-          'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
-        ) : ''}
+        title={hasConnected ? t(locale, '模型已连接', 'Models connected') : t(locale, '尚未连接模型', 'No models connected')}
+        description={hasConnected
+          ? t(locale, '已检测到本机安全存储中的模型凭据。', 'Model credentials were found in local secure storage.')
+          : !workspaceId ? t(
+            locale,
+            '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
+            'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
+          ) : ''}
       >
         <Button
           variant="secondary"
@@ -705,6 +713,8 @@ const ConnectionsPage = ({
         locale={locale}
         connections={connections}
         configs={providerConfigs}
+        activeProfile={activeProfile}
+        onActiveProfileChange={setActiveProfile}
         onSaveProviderConfig={async (connectionId, config) => {
           const saved = await (getDesktopApi().saveProviderConfig?.({ connectionId: connectionId as 'openai-compatible', config }) ?? false);
           if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
@@ -725,23 +735,28 @@ const ConnectionsPage = ({
       />
       <div className="capability-matrix">
         <div className="matrix-heading">
-          <span>{t(locale, '能力', 'Capability')}</span>
+          <span>{t(locale, '配置类别', 'Configuration group')}</span>
           <span>{t(locale, '连接状态', 'Connection state')}</span>
         </div>
-        {[
-          ['message-square', t(locale, '对话', 'Conversation')],
-          ['eye', t(locale, '视觉分析', 'Vision analysis')],
-          ['image', t(locale, '图像生成', 'Image generation')],
-          ['wand-sparkles', t(locale, '图像编辑', 'Image editing')],
-        ].map(([icon, label]) => (
-          <div className="matrix-row" key={label}>
-            <span>
-              <Icon name={icon} size={17} />
-              {label}
-            </span>
-            <Badge tone={providerProfiles.some((profile) => connectionState[providerCredentialAccount('openai-compatible', profile)]) ? 'success' : ''}>{providerProfiles.some((profile) => connectionState[providerCredentialAccount('openai-compatible', profile)]) ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge>
-          </div>
-        ))}
+        {profileRows.map(({ profile, icon, label }) => {
+          const connected = Boolean(connectionState[providerCredentialAccount('openai-compatible', profile)]);
+          return (
+            <button
+              type="button"
+              className={`matrix-row matrix-profile-button ${activeProfile === profile ? 'is-selected' : ''}`}
+              key={profile}
+              aria-label={label}
+              aria-pressed={activeProfile === profile}
+              onClick={() => setActiveProfile(profile)}
+            >
+              <span>
+                <Icon name={icon} size={17} />
+                {label}
+              </span>
+              <Badge tone={connected ? 'success' : ''}>{connected ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge>
+            </button>
+          );
+        })}
       </div>
     </div>
     {!workspaceId && <p className="page-footnote">

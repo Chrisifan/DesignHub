@@ -214,6 +214,27 @@ it('shows honest unavailable states for connections and delivery', () => {
   expect(screen.getByRole('button', { name: '导出' })).toBeDisabled();
 });
 
+it('shows a connected state and lets the model groups switch profile configuration', async () => {
+  const hasCredential = vi.fn(async (account: string) => account === 'openai-compatible:conversation');
+  const loadProviderConfigs = vi.fn(async () => ({
+    'openai-compatible': {
+      conversation: { baseUrl: 'https://text.example/v1', models: { conversation: 'chat-model' } },
+      image: { baseUrl: 'https://image.example/v1', imageTransport: 'images' as const, models: { 'image-generation': 'image-model' } },
+    },
+  }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, hasCredential, loadProviderConfigs };
+  render(<Harness initialView="connections" />);
+
+  await waitFor(() => expect(screen.getByText('模型已连接')).toBeInTheDocument());
+  expect(screen.queryByText('尚未连接模型')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '对话与视觉' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '图片生成与编辑' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '对话与视觉' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '图片生成与编辑' }));
+  expect(screen.getByRole('heading', { name: '图片生成与编辑' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Image base URL')).toHaveValue('https://image.example/v1');
+});
+
 it('hydrates and saves the non-secret provider connection configuration', async () => {
   const loadProviderConfigs = vi.fn(async () => ({
     'openai-compatible': {

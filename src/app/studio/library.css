@@ -830,6 +830,30 @@
   color: var(--on-surface-variant);
 }
 
+.matrix-profile-button {
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.matrix-profile-button:hover,
+.matrix-profile-button.is-selected {
+  color: var(--primary);
+  background: var(--surface-container-low);
+}
+
+.matrix-profile-button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
 .provider-model-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -874,6 +898,18 @@
 .provider-test-result small {
   color: var(--on-surface-variant);
   font-size: 10px;
+}
+
+.provider-key-status {
+  display: block;
+  margin-top: 7px;
+}
+
+.provider-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
 }
 
 .page-footnote {

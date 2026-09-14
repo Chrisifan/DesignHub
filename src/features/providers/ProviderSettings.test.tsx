@@ -55,6 +55,24 @@ it('loads profile status and updates it after save and delete', async () => {
   expect(onDeleteCredential).toHaveBeenCalledWith('provider-1:conversation');
 });
 
+it('makes a saved key visible as a status without exposing its value', async () => {
+  render(
+    <ProviderSettings
+      locale="en"
+      connections={[{ ...connection, status: 'connected' }]}
+      onCheckCredential={vi.fn(async (account: string) => account === 'openai-compatible:conversation')}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  expect(await screen.findByText('Key saved')).toBeInTheDocument();
+  expect(screen.getByLabelText('Conversation and vision API key')).toHaveAttribute('placeholder', 'Enter a new key to replace the saved key');
+  expect(screen.getByLabelText('Conversation and vision API key')).toHaveValue('');
+  expect(screen.getByTestId('conversation-key-actions')).toHaveClass('provider-key-actions');
+  expect(screen.queryByText('secret-value')).not.toBeInTheDocument();
+});
+
 it('saves nested profile configuration without mixing the two model groups', async () => {
   const saveConfig = vi.fn(async () => true);
   render(

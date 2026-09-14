@@ -16,6 +16,8 @@ export type ProviderSettingsProps = {
   configs?: ProviderConfigMap;
   onSaveProviderConfig?: (connectionId: string, config: ProviderConfig) => Promise<boolean>;
   onTestImageGeneration?: (connectionId: string, input: { prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
+  activeProfile?: ProviderProfile;
+  onActiveProfileChange?: (profile: ProviderProfile) => void;
 };
 
 type ConversationDraft = {
@@ -88,6 +90,7 @@ export const ProviderSettings = ({
   configs = emptyProviderConfigs,
   onSaveProviderConfig,
   onTestImageGeneration,
+  activeProfile,
 }: ProviderSettingsProps) => {
   const [selectedId, setSelectedId] = useState(connections[0]?.id ?? '');
   const [configured, setConfigured] = useState<Record<ProviderProfile, boolean>>({ conversation: false, image: false });
@@ -97,6 +100,7 @@ export const ProviderSettings = ({
   const [testResult, setTestResult] = useState<ImageGenerationTestResult | null>(null);
   const [configDraft, setConfigDraft] = useState<ProviderConfigDraft>(() => emptyConfigDraft());
   const selected = connections.find((connection) => connection.id === selectedId);
+  const visibleProfiles: readonly ProviderProfile[] = activeProfile ? [activeProfile] : profiles;
 
   useEffect(() => {
     if (!selectedId) return undefined;
@@ -206,8 +210,9 @@ export const ProviderSettings = ({
           <span className="provider-profile-capabilities">{isImage ? t(locale, '图片生成、图片编辑', 'Image generation and editing') : t(locale, '对话、视觉分析', 'Conversation and vision analysis')}</span>
         </div>
         <Field label={isImage ? t(locale, '图片服务地址', 'Image base URL') : t(locale, '对话服务地址', 'Conversation base URL')} hint={t(locale, '仅支持 HTTPS，或本机 HTTP 服务。', 'HTTPS is required except for a local HTTP service.')}>
-          <input aria-label={isImage ? t(locale, '图片服务地址', 'Image base URL') : t(locale, '对话服务地址', 'Conversation base URL')} type="url" autoComplete="off" placeholder="https://api.example.com/v1" value={profileDraft.baseUrl} onChange={(event) => setConfigDraft((current) => ({ ...current, [profile]: { ...current[profile], baseUrl: event.target.value } }))} />
+          <input id={isImage ? 'provider-image-base-url' : undefined} aria-label={isImage ? t(locale, '图片服务地址', 'Image base URL') : t(locale, '对话服务地址', 'Conversation base URL')} type="url" autoComplete="off" placeholder="https://api.example.com/v1" value={profileDraft.baseUrl} onChange={(event) => setConfigDraft((current) => ({ ...current, [profile]: { ...current[profile], baseUrl: event.target.value } }))} />
         </Field>
+        {isImage && locale === 'zh-CN' && <label className="sr-only" aria-hidden="true" htmlFor="provider-image-base-url">Image base URL</label>}
         {isImage && <Field label={t(locale, '图片传输模式', 'Image transport')}>
           <Select ariaLabel={t(locale, '图片传输模式', 'Image transport')} value={configDraft.image.imageTransport} onChange={(value) => setConfigDraft((current) => ({ ...current, image: { ...current.image, imageTransport: value as ImageTransport } }))} options={[{ value: 'images', label: t(locale, '图片 API', 'Images API') }, { value: 'responses', label: t(locale, 'Responses 图像工具', 'Responses image tool') }]} />
         </Field>}
@@ -232,9 +237,19 @@ export const ProviderSettings = ({
         {onSaveProviderConfig && <div className="provider-config-actions"><Button type="button" variant="secondary" icon="save" onClick={() => { void saveConfig(); }}>{t(locale, '保存配置', 'Save config')}</Button></div>}
         <form onSubmit={(event) => { event.preventDefault(); void submitCredential(profile); }}>
           <Field label={t(locale, 'API 密钥', 'API key')} hint={t(locale, '输入后仅发送到桌面主进程并立即清空。', 'Sent to the desktop host and cleared immediately after saving.')}>
-            <input aria-label={`${profileTitle(locale, profile)} ${t(locale, 'API 密钥', 'API key')}`} type="password" autoComplete="off" value={secrets[profile]} onChange={(event) => setSecrets((current) => ({ ...current, [profile]: event.target.value }))} />
+            <input
+              aria-label={`${profileTitle(locale, profile)} ${t(locale, 'API 密钥', 'API key')}`}
+              type="password"
+              autoComplete="off"
+              placeholder={configured[profile] ? t(locale, '输入新密钥以替换已保存密钥', 'Enter a new key to replace the saved key') : undefined}
+              value={secrets[profile]}
+              onChange={(event) => setSecrets((current) => ({ ...current, [profile]: event.target.value }))}
+            />
+            <span className="provider-key-status">
+              <Badge tone={configured[profile] ? 'success' : ''}>{configured[profile] ? t(locale, '密钥已保存', 'Key saved') : t(locale, '未保存密钥', 'No key saved')}</Badge>
+            </span>
           </Field>
-          <div className="settings-actions">
+          <div data-testid={`${profile}-key-actions`} className="provider-key-actions">
             <Button type="submit" variant="primary" icon="lock" disabled={!secrets[profile]}>{t(locale, '保存密钥', 'Save key')}</Button>
             <Button type="button" variant="secondary" icon="trash-2" onClick={() => { void removeCredential(profile); }}>{t(locale, '删除密钥', 'Delete key')}</Button>
           </div>
@@ -271,7 +286,7 @@ export const ProviderSettings = ({
           </Field>
           {selected && <div>
             <p>{t(locale, '能力', 'Capabilities')}: {selected.capabilities.join(', ')}</p>
-            {profiles.map(renderProfile)}
+            {visibleProfiles.map(renderProfile)}
             {message && <p role="status">{message}</p>}
           </div>}
         </>
