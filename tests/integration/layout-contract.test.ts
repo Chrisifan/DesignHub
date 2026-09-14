@@ -140,7 +140,10 @@ it('fills the model connection columns while keeping the right panel scrollable'
     /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*border-right:\s*1px\s+solid\s+var\(--border-subtle\);/,
   );
   expect(libraryStyles).toMatch(
-    /\.matrix-heading,\s*\.matrix-row\s*\{[\s\S]*margin-inline:\s*12px;/,
+    /\.matrix-heading,\s*\.matrix-row\s*\{[\s\S]*margin-inline:\s*0;/,
+  );
+  expect(libraryStyles).toMatch(
+    /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*padding:\s*28px\s+40px;/,
   );
 });
 
