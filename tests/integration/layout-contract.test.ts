@@ -139,6 +139,9 @@ it('fills the model connection columns while keeping the right panel scrollable'
   expect(libraryStyles).toMatch(
     /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*border-right:\s*1px\s+solid\s+var\(--border-subtle\);/,
   );
+  expect(libraryStyles).toMatch(
+    /\.matrix-heading,\s*\.matrix-row\s*\{[\s\S]*margin-inline:\s*12px;/,
+  );
 });
 
 it('hides the backing select input text so the custom label is rendered once', () => {

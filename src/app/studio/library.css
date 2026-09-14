@@ -808,6 +808,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
+  margin-inline: 12px;
 }
 
 .matrix-heading {
