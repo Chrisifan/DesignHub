@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import type { Locale } from '../../app/i18n';
-import { Badge, Button, Field, Icon, Select, t } from '../../app/studio/ui';
+import { Badge, Button, Field, Icon, IconButton, Select, t } from '../../app/studio/ui';
 import { normalizeProviderConfig, providerCredentialAccount, type ImageTransport, type ProviderCapability, type ProviderConfig, type ProviderConfigMap, type ProviderProfile } from './config';
 import type { GeneratedImage } from './adapter';
 import type { ImageGenerationTestResult } from '../agent/task-service';
@@ -38,6 +38,7 @@ type ProviderConfigDraft = {
 
 const emptyProviderConfigs: ProviderConfigMap = {};
 const profiles: readonly ProviderProfile[] = ['conversation', 'image'];
+const maskedSecret = '********';
 const connectionTestPrompts = [
   'A clean editorial poster with a single orange chair on a pale blue background',
   'A warm still life of a ceramic vase, folded paper and a green leaf in soft daylight',
@@ -101,16 +102,31 @@ export const ProviderSettings = ({
   const [configDraft, setConfigDraft] = useState<ProviderConfigDraft>(() => emptyConfigDraft());
   const selected = connections.find((connection) => connection.id === selectedId);
   const visibleProfiles: readonly ProviderProfile[] = activeProfile ? [activeProfile] : profiles;
+  const applyConfigured = (next: Record<ProviderProfile, boolean>): void => {
+    setConfigured(next);
+    setSecrets((current) => {
+      const updated = { ...current };
+      profiles.forEach((profile) => {
+        if (!next[profile]) updated[profile] = '';
+        else if (!updated[profile]) updated[profile] = maskedSecret;
+      });
+      return updated;
+    });
+  };
 
   useEffect(() => {
     if (!selectedId) return undefined;
-    setConfigured({ conversation: selected?.status === 'connected', image: selected?.status === 'connected' });
-    if (!onCheckCredential) return undefined;
+    if (!onCheckCredential) {
+      const fallback = selected?.status === 'connected';
+      applyConfigured({ conversation: fallback, image: fallback });
+      return undefined;
+    }
+    applyConfigured({ conversation: false, image: false });
     let cancelled = false;
     void Promise.all(profiles.map(async (profile) => [profile, await onCheckCredential(providerCredentialAccount(selectedId, profile))] as const))
       .then((entries) => {
         if (cancelled) return;
-        setConfigured(Object.fromEntries(entries) as Record<ProviderProfile, boolean>);
+        applyConfigured(Object.fromEntries(entries) as Record<ProviderProfile, boolean>);
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
@@ -147,10 +163,10 @@ export const ProviderSettings = ({
   };
 
   const submitCredential = async (profile: ProviderProfile) => {
-    if (!selected || !secrets[profile]) return;
+    if (!selected || !secrets[profile] || secrets[profile] === maskedSecret) return;
     const account = providerCredentialAccount(selected.id, profile);
     const stored = await onStoreCredential(account, secrets[profile]);
-    setSecrets((current) => ({ ...current, [profile]: '' }));
+    setSecrets((current) => ({ ...current, [profile]: stored || configured[profile] ? maskedSecret : '' }));
     if (stored) setConfigured((current) => ({ ...current, [profile]: true }));
     setMessage(
       stored
@@ -162,7 +178,10 @@ export const ProviderSettings = ({
   const removeCredential = async (profile: ProviderProfile) => {
     if (!selected) return;
     const deleted = await onDeleteCredential(providerCredentialAccount(selected.id, profile));
-    if (deleted) setConfigured((current) => ({ ...current, [profile]: false }));
+    if (deleted) {
+      setConfigured((current) => ({ ...current, [profile]: false }));
+      setSecrets((current) => ({ ...current, [profile]: '' }));
+    }
     setMessage(
       deleted
         ? t(locale, '凭据已删除。', 'Credential deleted.')
@@ -234,25 +253,28 @@ export const ProviderSettings = ({
             );
           })}
         </div>
-        {onSaveProviderConfig && <div className="provider-config-actions"><Button type="button" variant="secondary" icon="save" onClick={() => { void saveConfig(); }}>{t(locale, '保存配置', 'Save config')}</Button></div>}
         <form onSubmit={(event) => { event.preventDefault(); void submitCredential(profile); }}>
           <Field label={t(locale, 'API 密钥', 'API key')} hint={t(locale, '输入后仅发送到桌面主进程并立即清空。', 'Sent to the desktop host and cleared immediately after saving.')}>
-            <input
-              aria-label={`${profileTitle(locale, profile)} ${t(locale, 'API 密钥', 'API key')}`}
-              type="password"
-              autoComplete="off"
-              placeholder={configured[profile] ? t(locale, '输入新密钥以替换已保存密钥', 'Enter a new key to replace the saved key') : undefined}
-              value={secrets[profile]}
-              onChange={(event) => setSecrets((current) => ({ ...current, [profile]: event.target.value }))}
-            />
+            <div className="provider-key-row">
+              <input
+                aria-label={`${profileTitle(locale, profile)} ${t(locale, 'API 密钥', 'API key')}`}
+                type="password"
+                autoComplete="off"
+                placeholder={configured[profile] ? t(locale, '输入新密钥以替换已保存密钥', 'Enter a new key to replace the saved key') : undefined}
+                value={secrets[profile]}
+                onFocus={() => { if (secrets[profile] === maskedSecret) setSecrets((current) => ({ ...current, [profile]: '' })); }}
+                onChange={(event) => setSecrets((current) => ({ ...current, [profile]: event.target.value }))}
+                onBlur={() => { if (configured[profile] && !secrets[profile]) setSecrets((current) => ({ ...current, [profile]: maskedSecret })); }}
+              />
+              <div data-testid={`${profile}-key-actions`} className="provider-key-actions">
+                <IconButton type="submit" name="save" label={t(locale, '保存密钥', 'Save key')} disabled={!secrets[profile] || secrets[profile] === maskedSecret} />
+                <IconButton type="button" name="trash-2" label={t(locale, '删除密钥', 'Delete key')} onClick={() => { void removeCredential(profile); }} />
+              </div>
+            </div>
             <span className="provider-key-status">
               <Badge tone={configured[profile] ? 'success' : ''}>{configured[profile] ? t(locale, '密钥已保存', 'Key saved') : t(locale, '未保存密钥', 'No key saved')}</Badge>
             </span>
           </Field>
-          <div data-testid={`${profile}-key-actions`} className="provider-key-actions">
-            <Button type="submit" variant="primary" icon="lock" disabled={!secrets[profile]}>{t(locale, '保存密钥', 'Save key')}</Button>
-            <Button type="button" variant="secondary" icon="trash-2" onClick={() => { void removeCredential(profile); }}>{t(locale, '删除密钥', 'Delete key')}</Button>
-          </div>
         </form>
         {isImage && onTestImageGeneration && <div className="provider-test-actions">
           <Button type="button" variant="ai" icon="image" disabled={testBusy || !configured.image || !configDraft.image.baseUrl.trim()} onClick={() => { void testImageGeneration(); }}>
@@ -264,6 +286,7 @@ export const ProviderSettings = ({
           <img src={testImageSource(testResult.image)} alt={t(locale, '连接测试结果', 'Connection test result')} />
           <small>{t(locale, '临时预览', 'Temporary preview')}</small>
         </div>}
+        {onSaveProviderConfig && <div className="provider-config-actions"><Button type="button" variant="secondary" icon="save" onClick={() => { void saveConfig(); }}>{t(locale, '保存配置', 'Save config')}</Button></div>}
       </section>
     );
   };

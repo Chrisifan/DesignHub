@@ -439,11 +439,10 @@ it('changes theme and locale through the settings controls', () => {
   expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
 });
 
-it('uses functional navigation for the model setup action', () => {
+it('keeps model setup on the connections page without a redundant settings action', () => {
   render(<Harness initialView="connections" />);
-  fireEvent.click(screen.getByRole('button', { name: '查看设置' }));
-  expect(screen.getByLabelText('current-view')).toHaveTextContent('settings');
-  expect(screen.getByRole('heading', { name: '设置' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '查看设置' })).not.toBeInTheDocument();
+  expect(screen.getByLabelText('current-view')).toHaveTextContent('connections');
 });
 
 it('loads workspace trash entries and restores them through the desktop bridge', async () => {

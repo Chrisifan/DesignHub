@@ -650,9 +650,8 @@ const BrandsPage = ({
 
 const ConnectionsPage = ({
   locale,
-  navigate,
   workspaceId,
-}: Pick<PageProps, 'locale' | 'navigate'> & { workspaceId?: string }) => {
+}: Pick<PageProps, 'locale'> & { workspaceId?: string }) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
   const [activeProfile, setActiveProfile] = useState<ProviderProfile>('conversation');
@@ -700,15 +699,7 @@ const ConnectionsPage = ({
             '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
             'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
           ) : ''}
-      >
-        <Button
-          variant="secondary"
-          icon="settings"
-          onClick={() => navigate('settings')}
-        >
-          {t(locale, '查看设置', 'View settings')}
-        </Button>
-      </EmptyState>
+      />
       <ProviderSettings
         locale={locale}
         connections={connections}
@@ -1676,7 +1667,7 @@ export const LibraryPages = ({
         workspaceId={workspaceId}
       />
     ),
-    connections: <ConnectionsPage locale={locale} navigate={navigate} workspaceId={workspaceId} />,
+    connections: <ConnectionsPage locale={locale} workspaceId={workspaceId} />,
     tasks: <TasksPage locale={locale} navigate={navigate} workspaceId={workspaceId} />,
     delivery: (
       <DeliveryPage

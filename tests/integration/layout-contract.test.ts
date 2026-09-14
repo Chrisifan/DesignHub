@@ -115,23 +115,29 @@ it('fills library regions and keeps sibling content aligned', () => {
   );
 });
 
-it('keeps the model connection empty state compact beside the capability matrix', () => {
+it('fills the model connection columns while keeping the right panel scrollable', () => {
   const libraryStyles = readStyle('../../src/app/studio/library.css');
 
   expect(libraryStyles).toMatch(
     /\.connection-layout\s*\{[\s\S]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/,
   );
   expect(libraryStyles).toMatch(
-    /\.library-page\s*>\s*\.connection-layout\s*\{[\s\S]*min-height:\s*max-content;/,
+    /\.library-page\s*>\s*\.connection-layout\s*\{[\s\S]*min-height:\s*0;[\s\S]*overflow:\s*hidden;/,
   );
   expect(libraryStyles).toMatch(
-    /\.connection-layout\s*>\s*\.empty-state\s*\{[\s\S]*grid-column:\s*1;[\s\S]*grid-row:\s*1;[\s\S]*align-self:\s*start;/,
+    /\.connection-layout\s*>\s*\.empty-state\s*\{[\s\S]*grid-column:\s*1;[\s\S]*grid-row:\s*1;[\s\S]*align-self:\s*stretch;/,
   );
   expect(libraryStyles).toMatch(
     /\.connection-layout\s*>\s*\.provider-settings\s*\{[\s\S]*grid-column:\s*2;[\s\S]*grid-row:\s*1\s*\/\s*span\s*2;/,
   );
   expect(libraryStyles).toMatch(
     /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*grid-column:\s*1;[\s\S]*grid-row:\s*2;/,
+  );
+  expect(libraryStyles).toMatch(
+    /\.connection-layout\s*>\s*\.provider-settings\s*\{[\s\S]*overflow-y:\s*auto;/,
+  );
+  expect(libraryStyles).toMatch(
+    /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*border-right:\s*1px\s+solid\s+var\(--border-subtle\);/,
   );
 });
 

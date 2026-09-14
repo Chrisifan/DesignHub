@@ -26,7 +26,7 @@ it('clears the conversation secret after a successful save and exposes both prof
   fireEvent.change(screen.getByLabelText('Conversation and vision API key'), { target: { value: 'secret-value' } });
   fireEvent.click(screen.getAllByRole('button', { name: 'Save key' })[0]!);
   expect(await screen.findByRole('status')).toHaveTextContent('Credential saved');
-  expect(screen.getByLabelText('Conversation and vision API key')).toHaveValue('');
+  expect(screen.getByLabelText('Conversation and vision API key')).toHaveValue('********');
   expect(save).toHaveBeenCalledWith('provider-a:conversation', 'secret-value');
   expect(screen.queryByText('secret-value')).not.toBeInTheDocument();
 });
@@ -68,9 +68,27 @@ it('makes a saved key visible as a status without exposing its value', async () 
 
   expect(await screen.findByText('Key saved')).toBeInTheDocument();
   expect(screen.getByLabelText('Conversation and vision API key')).toHaveAttribute('placeholder', 'Enter a new key to replace the saved key');
-  expect(screen.getByLabelText('Conversation and vision API key')).toHaveValue('');
+  expect(screen.getByLabelText('Conversation and vision API key')).toHaveValue('********');
   expect(screen.getByTestId('conversation-key-actions')).toHaveClass('provider-key-actions');
+  expect(screen.getByLabelText('Conversation and vision API key').parentElement).toHaveClass('provider-key-row');
   expect(screen.queryByText('secret-value')).not.toBeInTheDocument();
+});
+
+it('keeps the configuration save action after the key controls', () => {
+  render(
+    <ProviderSettings
+      locale="en"
+      activeProfile="image"
+      connections={[connection]}
+      onSaveProviderConfig={vi.fn(async () => true)}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  const saveConfig = screen.getByRole('button', { name: 'Save config' });
+  const keyActions = screen.getByTestId('image-key-actions');
+  expect(keyActions.compareDocumentPosition(saveConfig) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 it('saves nested profile configuration without mixing the two model groups', async () => {

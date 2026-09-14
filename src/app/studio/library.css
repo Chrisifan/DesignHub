@@ -734,13 +734,14 @@
 }
 
 .library-page > .connection-layout {
-  min-height: max-content;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .connection-layout > .empty-state {
   grid-column: 1;
   grid-row: 1;
-  align-self: start;
+  align-self: stretch;
   padding: 40px 24px 32px;
   border-right: 1px solid var(--border-subtle);
 }
@@ -748,6 +749,9 @@
 .connection-layout > .provider-settings {
   grid-column: 2;
   grid-row: 1 / span 2;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .provider-settings {
@@ -794,6 +798,7 @@
   grid-column: 1;
   grid-row: 2;
   padding: 28px;
+  border-right: 1px solid var(--border-subtle);
   background: transparent;
 }
 
@@ -905,11 +910,23 @@
   margin-top: 7px;
 }
 
+.provider-key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-key-row > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .provider-key-actions {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 18px;
+  flex: 0 0 auto;
 }
 
 .page-footnote {
@@ -1456,14 +1473,27 @@
   .connection-layout > .empty-state {
     grid-column: 1;
     grid-row: auto;
+    align-self: stretch;
     border-right: 0;
     border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .library-page > .connection-layout {
+    overflow: visible;
   }
 
   .connection-layout > .provider-settings,
   .connection-layout > .capability-matrix {
     grid-column: 1;
     grid-row: auto;
+  }
+
+  .connection-layout > .provider-settings {
+    overflow-y: visible;
+  }
+
+  .connection-layout > .capability-matrix {
+    border-right: 0;
   }
 
   .designer-editor {
