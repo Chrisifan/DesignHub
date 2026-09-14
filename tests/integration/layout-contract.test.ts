@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 
@@ -147,4 +147,8 @@ it('hides the backing select input text so the custom label is rendered once', (
   expect(styles).toMatch(
     /\.ui-select__trigger\s*\{[\s\S]*color:\s*transparent\s*!important;[\s\S]*-webkit-text-fill-color:\s*transparent\s*!important;[\s\S]*text-indent:\s*-9999px;/,
   );
+});
+
+it('ships the save icon used by provider actions', () => {
+  expect(existsSync('public/icons/save.svg')).toBe(true);
 });

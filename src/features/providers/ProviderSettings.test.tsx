@@ -89,6 +89,30 @@ it('keeps the configuration save action after the key controls', () => {
   const saveConfig = screen.getByRole('button', { name: 'Save config' });
   const keyActions = screen.getByTestId('image-key-actions');
   expect(keyActions.compareDocumentPosition(saveConfig) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(saveConfig.querySelector('.ui-icon')).toBeInTheDocument();
+});
+
+it('places image generation testing beside the configuration save action', () => {
+  render(
+    <ProviderSettings
+      locale="en"
+      activeProfile="image"
+      connections={[{ ...connection, status: 'connected' }]}
+      configs={{ 'openai-compatible': {
+        conversation: { baseUrl: '', models: {} },
+        image: { baseUrl: 'https://image.example/v1', imageTransport: 'images', models: {} },
+      } }}
+      onSaveProviderConfig={vi.fn(async () => true)}
+      onTestImageGeneration={vi.fn(async () => ({ image: { base64: 'preview' }, cost: null }))}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  const testButton = screen.getByRole('button', { name: 'Test image generation' });
+  const saveConfig = screen.getByRole('button', { name: 'Save config' });
+  expect(testButton.parentElement?.parentElement).toHaveClass('provider-profile-actions-row');
+  expect(saveConfig.parentElement?.parentElement).toBe(testButton.parentElement?.parentElement);
 });
 
 it('saves nested profile configuration without mixing the two model groups', async () => {

@@ -871,6 +871,19 @@
   margin: -4px 0 18px;
 }
 
+.provider-profile-actions-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  margin: -2px 0 18px;
+}
+
+.provider-profile-actions-row .provider-test-actions,
+.provider-profile-actions-row .provider-config-actions {
+  margin: 0;
+}
+
 .provider-test-actions {
   display: grid;
   gap: 8px;
@@ -1535,6 +1548,10 @@
   .provider-profile-capabilities {
     max-width: none;
     text-align: left;
+  }
+
+  .provider-profile-actions-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .asset-toolbar .result-count {

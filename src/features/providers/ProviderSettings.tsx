@@ -276,17 +276,19 @@ export const ProviderSettings = ({
             </span>
           </Field>
         </form>
-        {isImage && onTestImageGeneration && <div className="provider-test-actions">
-          <Button type="button" variant="ai" icon="image" disabled={testBusy || !configured.image || !configDraft.image.baseUrl.trim()} onClick={() => { void testImageGeneration(); }}>
-            {testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}
-          </Button>
-          <small>{t(locale, '使用随机提示词生成一张临时预览，不会写入任务或素材库。', 'Generates one temporary preview with a random prompt; nothing is added to tasks or assets.')}</small>
-        </div>}
         {isImage && testResult && testImageSource(testResult.image) && <div className="provider-test-result">
           <img src={testImageSource(testResult.image)} alt={t(locale, '连接测试结果', 'Connection test result')} />
           <small>{t(locale, '临时预览', 'Temporary preview')}</small>
         </div>}
-        {onSaveProviderConfig && <div className="provider-config-actions"><Button type="button" variant="secondary" icon="save" onClick={() => { void saveConfig(); }}>{t(locale, '保存配置', 'Save config')}</Button></div>}
+        {(isImage && onTestImageGeneration) || onSaveProviderConfig ? <div className="provider-profile-actions-row">
+          {isImage && onTestImageGeneration && <div className="provider-test-actions">
+            <Button type="button" variant="ai" icon="image" disabled={testBusy || !configured.image || !configDraft.image.baseUrl.trim()} onClick={() => { void testImageGeneration(); }}>
+              {testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}
+            </Button>
+            <small>{t(locale, '使用随机提示词生成一张临时预览，不会写入任务或素材库。', 'Generates one temporary preview with a random prompt; nothing is added to tasks or assets.')}</small>
+          </div>}
+          {onSaveProviderConfig && <div className="provider-config-actions"><Button type="button" variant="secondary" icon="save" onClick={() => { void saveConfig(); }}>{t(locale, '保存配置', 'Save config')}</Button></div>}
+        </div> : null}
       </section>
     );
   };
