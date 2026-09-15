@@ -34,6 +34,16 @@ const makeProps = (
   ...overrides,
 });
 
+it('opens a workbench context drawer without narrowing the canvas', () => {
+  render(<Workbench {...makeProps()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  expect(screen.getByRole('dialog', { name: '工具' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+  expect(screen.queryByRole('dialog', { name: '工具' })).not.toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
+});
+
 it('exposes the design canvas and routes project and export actions', () => {
   const props = makeProps();
   render(<Workbench {...props} />);
@@ -153,7 +163,7 @@ it('uses the select tool to reopen properties and the compact layer selector', (
   fireEvent.click(screen.getByRole('button', { name: '选择工具' }));
 
   expect(
-    screen.getByRole('complementary', { name: '属性' }),
+    screen.getByRole('dialog', { name: '属性' }),
   ).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '图层' })).toHaveAttribute(
     'aria-pressed',
@@ -166,7 +176,7 @@ it('keeps one context panel open and preserves a prompt when connection setup is
   render(<Workbench {...props} />);
 
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
-  const panel = screen.getByRole('complementary', { name: '对话' });
+  const panel = screen.getByRole('dialog', { name: '对话' });
   const prompt = within(panel).getByRole('textbox', { name: '修改说明' });
   fireEvent.change(prompt, { target: { value: '保留标题，只调整背景层次' } });
   fireEvent.click(within(panel).getByRole('button', { name: '发送' }));
@@ -177,10 +187,10 @@ it('keeps one context panel open and preserves a prompt when connection setup is
 
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   expect(
-    screen.queryByRole('complementary', { name: '对话' }),
+    screen.queryByRole('dialog', { name: '对话' }),
   ).not.toBeInTheDocument();
   expect(
-    screen.getByRole('complementary', { name: '历史' }),
+    screen.getByRole('dialog', { name: '历史' }),
   ).toBeInTheDocument();
 });
 
@@ -188,7 +198,7 @@ it('submits a conversation through the active project service when provided', ()
   const onSubmitConversation = vi.fn();
   render(<Workbench {...makeProps({ onSubmitConversation })} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
-  const panel = screen.getByRole('complementary', { name: '对话' });
+  const panel = screen.getByRole('dialog', { name: '对话' });
   const prompt = within(panel).getByRole('textbox', { name: '修改说明' });
   fireEvent.change(prompt, { target: { value: '调整标题间距' } });
   fireEvent.click(within(panel).getByRole('button', { name: '发送' }));
@@ -200,7 +210,7 @@ it('submits a generation request through the active project service', async () =
   const onSubmitImageGeneration = vi.fn(async () => undefined);
   render(<Workbench {...makeProps({ onSubmitImageGeneration })} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
-  const panel = screen.getByRole('complementary', { name: '对话' });
+  const panel = screen.getByRole('dialog', { name: '对话' });
   fireEvent.change(within(panel).getByRole('textbox', { name: '修改说明' }), { target: { value: '生成春季市集主视觉' } });
   fireEvent.click(within(panel).getByRole('button', { name: '生成' }));
   await waitFor(() => expect(onSubmitImageGeneration).toHaveBeenCalledWith('生成春季市集主视觉', null));
@@ -241,7 +251,7 @@ it('exposes background editing tools with an explicit connection handoff', () =>
   expect(screen.getByText('去除背景')).toBeInTheDocument();
   expect(screen.getByText('替换背景')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '配置替换背景' }));
-  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '执行' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '替换背景' })).getByRole('button', { name: '执行' }));
   expect(onConnections).toHaveBeenCalled();
 });
 
@@ -250,7 +260,7 @@ it('submits provider-backed background tools through the active project callback
   render(<Workbench {...makeProps({ onSubmitImageTask })} />);
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
   fireEvent.click(screen.getByRole('button', { name: '配置去除背景' }));
-  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '执行' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '去除背景' })).getByRole('button', { name: '执行' }));
   await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'remove-background' })));
 });
 
@@ -260,7 +270,7 @@ it('does not submit an invalid configured image tool', () => {
   render(<Workbench {...makeProps({ onSubmitImageTask, notify })} />);
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
   fireEvent.click(screen.getByRole('button', { name: '配置替换背景' }));
-  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '执行' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '替换背景' })).getByRole('button', { name: '执行' }));
   expect(onSubmitImageTask).not.toHaveBeenCalled();
   expect(notify).toHaveBeenCalledWith('参数无效');
 });
@@ -270,7 +280,7 @@ it('configures smart crop parameters before submitting the image task', async ()
   render(<Workbench {...makeProps({ onSubmitImageTask })} />);
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
   fireEvent.click(screen.getByRole('button', { name: '配置智能裁切' }));
-  const dialog = screen.getByRole('dialog');
+  const dialog = screen.getByRole('dialog', { name: '智能裁切' });
   fireEvent.change(within(dialog).getByRole('spinbutton', { name: '宽度' }), { target: { value: '960' } });
   fireEvent.change(within(dialog).getByRole('spinbutton', { name: '高度' }), { target: { value: '640' } });
   fireEvent.change(within(dialog).getByRole('combobox', { name: '焦点' }), { target: { value: 'subject' } });
@@ -287,7 +297,7 @@ it('requires and applies a region before submitting a regional image tool', asyn
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
   fireEvent.click(screen.getByRole('button', { name: '配置移除对象' }));
   expect(onSubmitImageTask).not.toHaveBeenCalled();
-  const mask = within(screen.getByRole('dialog')).getByRole('form', { name: '遮罩编辑' });
+  const mask = within(screen.getByRole('dialog', { name: '移除对象' })).getByRole('form', { name: '遮罩编辑' });
   fireEvent.change(within(mask).getByRole('spinbutton', { name: '宽度' }), { target: { value: '200' } });
   fireEvent.change(within(mask).getByRole('spinbutton', { name: '高度' }), { target: { value: '200' } });
   fireEvent.click(within(mask).getByRole('button', { name: '应用遮罩' }));
@@ -351,7 +361,7 @@ it('renders the persisted canvas workspace for a real project document', () => {
 
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
   expect(screen.getByRole('complementary', { name: '图层' })).toBeInTheDocument();
-  expect(screen.getByRole('complementary', { name: '检查器' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: '检查器' })).not.toBeInTheDocument();
 });
 
 it('persists property edits into the active document scene', async () => {

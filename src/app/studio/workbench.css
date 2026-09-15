@@ -107,7 +107,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr) 320px;
+  grid-template-columns: 248px minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -521,6 +521,16 @@
 
 .workbench-context {
   border-left: 1px solid var(--border-subtle);
+}
+
+.ui-drawer .workbench-context {
+  min-height: 100%;
+  border-left: 0;
+}
+
+.ui-drawer .workbench-context__content {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .workbench-context__content {

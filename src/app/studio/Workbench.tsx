@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type CSSProperties, type FormEvent } from '
 
 import type { Locale } from '../i18n';
 import type { Project } from './types';
+import { Drawer } from './Drawer';
 import { CanvasWorkspace, type CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import type { Region } from '../../features/canvas/selection';
 import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
@@ -128,7 +129,6 @@ export const Workbench = ({
   onAssetActionHandled,
 }: WorkbenchProps) => {
   const layersTitleId = useId();
-  const contextTitleId = useId();
   const [selectedLayer, setSelectedLayer] = useState<LayerId>('text');
   const [visibility, setVisibility] = useState<LayerState>({
     text: true,
@@ -140,7 +140,8 @@ export const Workbench = ({
     shape: false,
     image: false,
   });
-  const [panel, setPanel] = useState<ContextPanel | null>('properties');
+  const [panel, setPanel] = useState<ContextPanel>('properties');
+  const [panelOpen, setPanelOpen] = useState(true);
   const [layersExpanded, setLayersExpanded] = useState(false);
   const [zoom, setZoom] = useState(68);
   const [gridVisible, setGridVisible] = useState(false);
@@ -365,8 +366,13 @@ export const Workbench = ({
       updateTextLayer({ [axis]: nextValue });
     }
   };
-  const togglePanel = (nextPanel: ContextPanel): void => {
-    setPanel((current) => (current === nextPanel ? null : nextPanel));
+  const showPanel = (nextPanel: ContextPanel): void => {
+    setPanel(nextPanel);
+    setPanelOpen(true);
+  };
+  const selectWorkbenchLayer = (layerId: LayerId): void => {
+    setSelectedLayer(layerId);
+    showPanel('properties');
   };
   const resetZoom = (): void => {
     setZoom(68);
@@ -498,8 +504,8 @@ export const Workbench = ({
                 key={panelId}
                 name={panelCopy[panelId].icon}
                 label={panelCopy[panelId].label}
-                aria-pressed={panel === panelId}
-                onClick={() => togglePanel(panelId)}
+                aria-pressed={panelOpen && panel === panelId}
+                onClick={() => showPanel(panelId)}
               />
             ))}
           </div>
@@ -509,9 +515,7 @@ export const Workbench = ({
         </div>
       </header>
 
-      <div
-        className={`workbench-body ${panel === null ? 'workbench-body--panel-closed' : ''}`}
-      >
+      <div className="workbench-body">
         <aside
           className="workbench-left"
           aria-label={t(locale, '画布工具与图层', 'Canvas tools and layers')}
@@ -526,26 +530,26 @@ export const Workbench = ({
               label={t(locale, '选择工具', 'Select tool')}
               aria-pressed="true"
               onClick={() => {
-                setPanel('properties');
+                showPanel('properties');
                 setLayersExpanded(true);
               }}
             />
             <IconButton
               name="type"
               label={t(locale, '文本工具', 'Text tool')}
-              onClick={() => setSelectedLayer('text')}
+              onClick={() => selectWorkbenchLayer('text')}
             />
             {hasShapeLayer && (
               <IconButton
                 name="square"
                 label={t(locale, '形状工具', 'Shape tool')}
-                onClick={() => setSelectedLayer('shape')}
+                onClick={() => selectWorkbenchLayer('shape')}
               />
             )}
             <IconButton
               name="image"
               label={t(locale, '图像工具', 'Image tool')}
-              onClick={() => setSelectedLayer('image')}
+              onClick={() => selectWorkbenchLayer('image')}
             />
             <span className="workbench-toolstrip__spacer" />
             <IconButton
@@ -588,10 +592,7 @@ export const Workbench = ({
                       className="workbench-layer-select"
                       aria-label={item.label}
                       aria-pressed={selectedLayer === layerId}
-                      onClick={() => {
-                        setSelectedLayer(layerId);
-                        setPanel('properties');
-                      }}
+                      onClick={() => selectWorkbenchLayer(layerId)}
                     >
                       <span className="workbench-layer-icon">
                         <Icon name={item.icon} size={15} />
@@ -692,18 +693,19 @@ export const Workbench = ({
           </div>
         </section>
 
-        {panel !== null && (
-          <aside className="workbench-context" aria-labelledby={contextTitleId}>
+      </div>
+      <Drawer
+        open={panelOpen}
+        title={panelCopy[panel].label}
+        locale={locale}
+        onClose={() => setPanelOpen(false)}
+      >
+          <div className="workbench-context">
             <div className="workbench-panel-heading workbench-context__heading">
               <div>
                 <p>{t(locale, '上下文', 'Context')}</p>
-                <h2 id={contextTitleId}>{panelCopy[panel].label}</h2>
+                <h2>{panelCopy[panel].label}</h2>
               </div>
-              <IconButton
-                name="x"
-                label={t(locale, '关闭面板', 'Close panel')}
-                onClick={() => setPanel(null)}
-              />
             </div>
 
             {panel === 'properties' && (
@@ -1060,9 +1062,8 @@ export const Workbench = ({
                 </div>
               </div>
             )}
-          </aside>
-        )}
-      </div>
+          </div>
+      </Drawer>
 
       <footer className="workbench-statusbar">
         <span>
