@@ -11,6 +11,7 @@ import {
 import type { Locale } from '../i18n';
 import type { PageProps, Project, Theme, View } from './types';
 import { DesignerLibrary } from './DesignerLibrary';
+import { Drawer } from './Drawer';
 import type { PersonaProfile } from './personas';
 import {
   ArtworkPreview,
@@ -208,6 +209,7 @@ const AssetsPage = ({
   const [assetsLoadFailed, setAssetsLoadFailed] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [importing, setImporting] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const inputId = 'asset-import-input';
   const readFile = async (file: File): Promise<ArrayBuffer> => {
     if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
@@ -348,7 +350,7 @@ const AssetsPage = ({
                 type="button"
                 className={`asset-card ${selected.id === item.id ? 'is-selected' : ''}`}
                 key={item.id}
-                onClick={() => onSelect(item.id)}
+                onClick={() => { onSelect(item.id); setDrawerOpen(true); }}
                 aria-pressed={selected.id === item.id}
                 aria-label={`${localize(locale, item.name)} · ${localize(locale, item.meta)}`}
               >
@@ -360,7 +362,7 @@ const AssetsPage = ({
                 <Badge>{localize(locale, item.typeName)}</Badge>
               </button>
             ))
-          ) : (
+          ) : displayAssets.length ? (
             <EmptyState
               icon="search"
               title={t(locale, '没有匹配素材', 'No matching assets')}
@@ -370,11 +372,21 @@ const AssetsPage = ({
                 'Change the name or type filter.',
               )}
             />
+          ) : (
+            <EmptyState
+              icon="image"
+              title={t(locale, '暂无素材', 'No assets yet')}
+              description={t(locale, '导入素材后会显示在这里。', 'Import assets to see them here.')}
+            />
           )}
         </div>
-        {assetsLoadFailed ? null : selected ? <aside
+        {assetsLoadFailed ? null : selected && <Drawer
+          open={drawerOpen}
+          title={t(locale, '素材详情', 'Asset details')}
+          locale={locale}
+          onClose={() => setDrawerOpen(false)}
+        ><div
           className="details-panel asset-details"
-          aria-label={t(locale, '素材详情', 'Asset details')}
         >
           <div className="asset-detail-visual">
             <AssetVisual item={selected} locale={locale} previewUrl={previewUrl} />
@@ -414,7 +426,7 @@ const AssetsPage = ({
               'This page only browses example metadata and does not read or write local files.',
             )}
           </p>}
-        </aside> : <div className="details-panel asset-details"><EmptyState icon="image" title={t(locale, '暂无素材', 'No assets yet')} description={t(locale, '导入素材后会显示在这里。', 'Import assets to see them here.')} /></div>}
+        </div></Drawer>}
       </div>
     </section>
   );
@@ -438,6 +450,7 @@ const BrandsPage = ({
   const [records, setRecords] = useState<Brand[]>(() => workspaceId || !preview ? [] : initialBrands);
   const [editor, setEditor] = useState<Brand | null>(null);
   const [deletePending, setDeletePending] = useState<Brand | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(Boolean(workspaceId));
   const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
@@ -500,7 +513,7 @@ const BrandsPage = ({
             <button
               type="button"
               key={brand.id}
-              onClick={() => onSelect(brand.id)}
+              onClick={() => { onSelect(brand.id); setDrawerOpen(true); }}
               aria-pressed={brand.id === selected.id}
               className={`brand-row ${brand.id === selected.id ? 'is-selected' : ''}`}
             >
@@ -526,9 +539,13 @@ const BrandsPage = ({
             </p>
           </div>
         </div>
-        <aside
+        <Drawer
+          open={drawerOpen}
+          title={t(locale, '品牌详情', 'Brand details')}
+          locale={locale}
+          onClose={() => setDrawerOpen(false)}
+        ><div
           className="details-panel brand-details"
-          aria-label={t(locale, '品牌详情', 'Brand details')}
         >
           <div className="brand-lockup">
             <span className="brand-wordmark">
@@ -580,7 +597,7 @@ const BrandsPage = ({
             <Button icon="pencil" onClick={() => { if (selectedRecord) setEditor(selectedRecord); }}>{t(locale, '编辑', 'Edit')}</Button>
             <Button icon="trash-2" onClick={() => { if (selectedRecord) setDeletePending(selectedRecord); }}>{t(locale, '删除', 'Delete')}</Button>
           </div>}
-        </aside>
+        </div></Drawer>
       </div>
       {workspaceId && <div className="brand-create-row"><Button variant="secondary" icon="plus" onClick={() => setEditor({ id: `brand-${crypto.randomUUID()}`, name: '', version: 'v1', logo: '', colorPalette: [], fonts: [], tone: '', fixedCopy: '', sizes: [] })}>{t(locale, '新建', 'New')}</Button></div>}
       {editor && <Modal title={editor.name ? t(locale, '编辑品牌', 'Edit brand') : t(locale, '新建品牌', 'New brand')} locale={locale} onClose={() => setEditor(null)}><BrandEditor brand={editor} locale={locale} onSave={(brand) => { void saveBrand(brand); }} /></Modal>}

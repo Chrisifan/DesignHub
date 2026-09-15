@@ -36,24 +36,28 @@
 
 .library-split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 308px;
+  grid-template-columns: minmax(0, 1fr);
   min-height: var(--content-panel-min-height);
   background: var(--content-card-background);
 }
 
 .library-split--wide {
-  grid-template-columns: minmax(440px, 1fr) minmax(320px, 0.72fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .library-split--brand {
-  grid-template-columns: minmax(320px, 0.8fr) minmax(360px, 1.2fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .details-panel {
   min-width: 0;
   padding: 24px;
-  border-left: 1px solid var(--border-subtle);
+  border-left: 0;
   background: transparent;
+}
+
+.ui-drawer .details-panel {
+  min-height: 100%;
 }
 
 .details-heading {

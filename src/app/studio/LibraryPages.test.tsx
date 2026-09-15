@@ -85,7 +85,7 @@ it('keeps a profile edit draft when the same profile is reopened', () => {
   ).toHaveValue('纸感排版编辑版');
 });
 
-it('filters assets and opens the selected asset details', () => {
+it('filters assets and opens the selected asset details in a drawer', () => {
   render(<Harness initialView="assets" />);
   fireEvent.change(screen.getByRole('combobox', { name: '类型' }), {
     target: { value: 'logo' },
@@ -95,10 +95,11 @@ it('filters assets and opens the selected asset details', () => {
     screen.queryByRole('button', { name: /市集原图/ }),
   ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /春间标志/ }));
+  expect(screen.getByRole('dialog', { name: '素材详情' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: '春间标志' })).toBeInTheDocument();
-  expect(
-    within(screen.getByLabelText('素材详情')).getByText('SVG · 640 × 240'),
-  ).toBeInTheDocument();
+  expect(within(screen.getByRole('dialog', { name: '素材详情' })).getByText('SVG · 640 × 240')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+  expect(screen.queryByRole('dialog', { name: '素材详情' })).not.toBeInTheDocument();
 });
 
 it('hydrates managed assets for the active workspace project', async () => {
@@ -138,7 +139,7 @@ it('keeps external asset references visibly unmanaged in project details', async
   render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
 
   fireEvent.click(await screen.findByRole('button', { name: /参考链接/ }));
-  const details = screen.getByLabelText('素材详情');
+  const details = screen.getByRole('dialog', { name: '素材详情' });
   expect(within(details).getAllByText('外部引用').length).toBeGreaterThan(0);
   expect(within(details).queryByText('受管副本')).not.toBeInTheDocument();
 });
@@ -149,7 +150,8 @@ it('exposes explicit asset placement actions from project details', async () => 
     id: 'asset-action', name: '可用原图', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true,
   }]) };
   render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" onAssetAction={onAssetAction} />);
-  const details = await screen.findByLabelText('素材详情');
+  fireEvent.click(await screen.findByRole('button', { name: /可用原图/ }));
+  const details = await screen.findByRole('dialog', { name: '素材详情' });
   fireEvent.click(within(details).getByRole('button', { name: '放入画布' }));
   expect(onAssetAction).toHaveBeenCalledWith({ assetId: 'asset-action', mode: 'place', projectId: 'project-1' });
   fireEvent.click(within(details).getByRole('button', { name: '作为参考' }));
@@ -248,7 +250,9 @@ it('hydrates a workspace brand library and persists create/edit/delete actions',
   const saveBrandState = vi.fn(async () => true);
   window.designhub = { chooseWorkspaceDirectory: async () => null, loadBrandState, saveBrandState };
   render(<Harness initialView="brands" workspaceId="workspace-1" />);
+  fireEvent.click(await screen.findByRole('button', { name: /本地品牌/ }));
   expect(await screen.findByRole('heading', { name: '本地品牌' })).toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: '品牌详情' })).toBeInTheDocument();
   expect(loadBrandState).toHaveBeenCalledWith('workspace-1');
   fireEvent.click(screen.getByRole('button', { name: '编辑' }));
   const edit = screen.getByRole('dialog', { name: '编辑品牌' });
