@@ -17,6 +17,15 @@ const editable = createScene({ id: 'scene-editable', width: 800, height: 600, la
   x: 10, y: 10, width: 200, height: 40, rotation: 0, opacity: 1, visible: true, locked: false,
 }] });
 
+it('opens the inspector drawer for a selected layer and closes it when selection clears', () => {
+  render(<CanvasWorkspace locale="zh-CN" scene={editable} />);
+
+  fireEvent.click(screen.getByText('标题'));
+  expect(screen.getByRole('dialog', { name: '检查器' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('region', { name: '画布' }));
+  expect(screen.queryByRole('dialog', { name: '检查器' })).not.toBeInTheDocument();
+});
+
 it('hydrates a workspace document scene through the desktop bridge', async () => {
   const loadDocumentScene = vi.fn(async () => stored);
   const onSceneChange = vi.fn();

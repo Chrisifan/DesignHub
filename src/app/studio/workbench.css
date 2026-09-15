@@ -332,7 +332,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr) 220px;
+  grid-template-columns: 180px minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -351,6 +351,12 @@
 
 .canvas-inspector {
   border-left: 1px solid var(--border-subtle);
+}
+
+.ui-drawer .canvas-inspector {
+  min-height: 100%;
+  padding: 20px;
+  border-left: 0;
 }
 
 .canvas-layer-list h2,

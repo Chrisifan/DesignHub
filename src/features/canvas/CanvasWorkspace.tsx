@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ellipse, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
 
 import { getMessages, type Locale } from '../../app/i18n';
+import { Drawer } from '../../app/studio/Drawer';
 import { Button } from '../../app/studio/ui';
 import { getDesktopApi } from '../../platform/runtime';
 import { Inspector } from './Inspector';
@@ -82,6 +83,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   const messages = getMessages(locale);
   const canvasReady = useMemo(canRenderCanvas, []);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [inspectorDismissed, setInspectorDismissed] = useState(false);
   const [viewport, setViewport] = useState<ViewportState>(initialViewport);
   const [assetImages, setAssetImages] = useState<Record<string, HTMLImageElement>>({});
   const [sceneHydrated, setSceneHydrated] = useState(!workspaceId || !projectId || !documentId);
@@ -122,7 +124,11 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [documentId, onSceneChange, projectId, workspaceId]);
-  const select = (ids: string[]) => setSelectedIds(selectLayerIds(scene, ids));
+  const select = (ids: string[]) => {
+    setSelectedIds(selectLayerIds(scene, ids));
+    setInspectorDismissed(false);
+  };
+  const inspectorOpen = selectedIds.length > 0 && !inspectorDismissed;
   const persist = (nextScene: DesignScene): void => {
     if (readOnly) return;
     onSceneChange?.(nextScene);
@@ -136,7 +142,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     const applied = applyAssetToScene(scene, { assetId: assetAction.assetId, mode: assetAction.mode, selectedIds });
     handledAssetAction.current = assetAction.id;
     persist(applied.scene);
-    setSelectedIds(applied.selectedIds);
+    select(applied.selectedIds);
     onAssetActionHandled?.(assetAction.id);
   }, [assetAction, onAssetActionHandled, scene, sceneHydrated, selectedIds]);
   const replace = (layer: SceneLayer): void => persist(replaceSceneLayer(scene, layer));
@@ -160,7 +166,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     const position = scene.layers.findIndex((entry) => entry.id === layerId);
     const layers = [...scene.layers.slice(0, position + 1), copy, ...scene.layers.slice(position + 1)];
     persist(createScene({ ...scene, layers }));
-    setSelectedIds([id]);
+    select([id]);
   };
   const remove = (layerId: string): void => {
     if (!scene.layers.some((layer) => layer.id === layerId)) return;
@@ -181,7 +187,14 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     persist(createScene({ ...scene, layers: scene.layers.map((layer) => byId.get(layer.id) ?? layer) }));
   };
   return (
-    <section className="canvas-workspace" aria-label={messages.canvasTitle} data-read-only={readOnly || undefined}>
+    <section
+      className="canvas-workspace"
+      aria-label={messages.canvasTitle}
+      data-read-only={readOnly || undefined}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) select([]);
+      }}
+    >
       <header>
         <h1>{messages.canvasTitle}</h1>
         <div>
@@ -199,8 +212,10 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
             </Layer>
           </Stage> : <div className="canvas-workspace__fallback" role="img" aria-label={messages.canvasTitle}>{messages.canvasUnavailable}</div>}
         </div>
-        <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} readOnly={readOnly} />
       </div>
+      <Drawer open={inspectorOpen} title={messages.canvasInspector} locale={locale} onClose={() => setInspectorDismissed(true)}>
+        <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} readOnly={readOnly} />
+      </Drawer>
     </section>
   );
 };
