@@ -85,6 +85,36 @@ it('orders project controls in the workspace toolbar', () => {
   expect(document.querySelector('.project-controls')).not.toBeInTheDocument();
 });
 
+it('orders asset controls in the workspace toolbar', () => {
+  enter();
+  fireEvent.click(
+    within(screen.getByRole('navigation', { name: '主导航' })).getByRole('button', {
+      name: '素材库',
+    }),
+  );
+  const toolbar = screen.getByRole('banner', { name: '工作区工具栏' });
+
+  expect(within(toolbar).getByRole('group', { name: '类型' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('searchbox', { name: '搜索素材' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('group', { name: '视图' })).toBeInTheDocument();
+  expect(document.querySelector('.asset-toolbar')).not.toBeInTheDocument();
+});
+
+it('places designer status before search without adding a view switch', () => {
+  enter();
+  fireEvent.click(
+    within(screen.getByRole('navigation', { name: '主导航' })).getByRole('button', {
+      name: '设计师',
+    }),
+  );
+  const toolbar = screen.getByRole('banner', { name: '工作区工具栏' });
+
+  expect(within(toolbar).getByRole('group', { name: '档案状态' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('searchbox', { name: '搜索档案' })).toBeInTheDocument();
+  expect(within(toolbar).queryByRole('group', { name: '视图' })).not.toBeInTheDocument();
+  expect(document.querySelector('.persona-repository__toolbar')).not.toBeInTheDocument();
+});
+
 it('shows the active persona and working principle when opening a project', () => {
   enter();
   fireEvent.click(screen.getByRole('button', { name: '春间市集' }));

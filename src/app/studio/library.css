@@ -418,9 +418,9 @@
   color: var(--on-surface-variant);
 }
 
-.asset-toolbar .result-count {
-  margin-left: auto;
-  padding-bottom: 7px;
+.asset-result-count {
+  margin: 0 0 10px;
+  text-align: right;
   color: var(--on-surface-variant);
   font:
     500 10px/14px 'JetBrains Mono',
@@ -1530,14 +1530,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .asset-toolbar {
-    flex-wrap: wrap;
-  }
-
-  .search-control {
-    width: 100%;
-  }
-
   .provider-profile-heading {
     display: grid;
     gap: 8px;
@@ -1552,8 +1544,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .asset-toolbar .result-count {
-    margin-left: 0;
+  .asset-result-count {
+    text-align: left;
   }
 
   .task-summary {

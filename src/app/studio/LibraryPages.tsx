@@ -12,6 +12,7 @@ import type { Locale } from '../i18n';
 import type { PageProps, Project, Theme, View } from './types';
 import { DesignerLibrary } from './DesignerLibrary';
 import { Drawer } from './Drawer';
+import { PageToolbarSlot } from './PageToolbar';
 import type { PersonaProfile } from './personas';
 import {
   ArtworkPreview,
@@ -60,6 +61,7 @@ type LibraryPagesProps = PageProps & {
   initialAssets?: AssetItem[];
   initialBrands?: Brand[];
   initialProfiles?: PersonaProfile[];
+  active?: boolean;
 };
 
 type Localized = { zh: string; en: string };
@@ -185,6 +187,7 @@ const AssetsPage = ({
   readOnly,
   notify,
   onAssetAction,
+  active,
   preview = false,
   initialAssets = [],
 }: {
@@ -202,6 +205,7 @@ const AssetsPage = ({
   readOnly?: boolean;
   notify?: (message: string) => void;
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
+  active: boolean;
   preview?: boolean;
   initialAssets?: AssetItem[];
 }) => {
@@ -269,6 +273,12 @@ const AssetsPage = ({
     [displayAssets, locale, query, type],
   );
   const selected = displayAssets.find((item) => item.id === selectedId) ?? displayAssets[0];
+  const assetTypes: readonly { value: AssetType; label: string }[] = [
+    { value: 'all', label: t(locale, '全部', 'All') },
+    { value: 'image', label: t(locale, '图像', 'Images') },
+    { value: 'logo', label: t(locale, '标志', 'Logos') },
+    { value: 'texture', label: t(locale, '纹理', 'Textures') },
+  ];
   useEffect(() => {
     let cancelled = false;
     setPreviewUrl(undefined);
@@ -291,14 +301,22 @@ const AssetsPage = ({
           workspaceId ? (usingManagedAssets ? '浏览当前项目素材的来源、格式、用途与受管状态。' : '选择项目后可浏览其受管素材。') : preview ? '浏览示例素材的来源、格式、用途与受管状态。' : '导入素材后会显示在这里。',
           workspaceId ? (usingManagedAssets ? 'Browse source, format, usage and managed state for this project.' : 'Select a project to browse its managed assets.') : preview ? 'Browse source, format, usage and managed state for example assets.' : 'Import assets to see them here.',
         )}
-      >
-        {usingManagedAssets && <>
-          <input id={inputId} type="file" multiple hidden onChange={(event) => { void importFiles(event.target.files); event.currentTarget.value = ''; }} />
-          <Button icon="upload" disabled={readOnly || importing} onClick={() => document.getElementById(inputId)?.click()}>{importing ? t(locale, '导入中', 'Importing') : t(locale, '导入', 'Import')}</Button>
-        </>}
-      </PageHeader>
-      <div className="asset-toolbar">
-        <label className="search-control">
+      />
+      <PageToolbarSlot active={active}>
+        <div className="toolbar-segmented" role="group" aria-label={t(locale, '类型', 'Type')}>
+          {assetTypes.map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              className={type === option.value ? 'is-active' : ''}
+              aria-pressed={type === option.value}
+              onClick={() => onTypeChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <label className="toolbar-search">
           <Icon name="search" size={16} />
           <span className="sr-only">
             {t(locale, '搜索素材', 'Search assets')}
@@ -310,9 +328,6 @@ const AssetsPage = ({
             placeholder={t(locale, '搜索名称', 'Search by name')}
           />
         </label>
-        <Field label={t(locale, '类型', 'Type')}>
-          <Select ariaLabel={t(locale, '类型', 'Type')} value={type} onChange={(value) => onTypeChange(value as AssetType)} options={[{ value: 'all', label: t(locale, '全部', 'All') }, { value: 'image', label: t(locale, '图像', 'Images') }, { value: 'logo', label: t(locale, '标志', 'Logos') }, { value: 'texture', label: t(locale, '纹理', 'Textures') }]} />
-        </Field>
         <div
           className="view-toggle"
           role="group"
@@ -331,10 +346,14 @@ const AssetsPage = ({
             onClick={() => onLayoutChange('list')}
           />
         </div>
-        <span className="result-count">
-          {filteredAssets.length} {t(locale, '项', 'items')}
-        </span>
-      </div>
+        {usingManagedAssets && <>
+          <input id={inputId} type="file" multiple hidden onChange={(event) => { void importFiles(event.target.files); event.currentTarget.value = ''; }} />
+          <IconButton name="upload" label={importing ? t(locale, '导入中', 'Importing') : t(locale, '导入', 'Import')} disabled={readOnly || importing} onClick={() => document.getElementById(inputId)?.click()} />
+        </>}
+      </PageToolbarSlot>
+      <p className="asset-result-count">
+        {filteredAssets.length} {t(locale, '项', 'items')}
+      </p>
       <div
         className="library-split"
         aria-label={t(locale, '素材导入区域', 'Asset import area')}
@@ -1632,6 +1651,7 @@ export const LibraryPages = ({
   initialAssets = [],
   initialBrands = [],
   initialProfiles = [],
+  active = true,
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
@@ -1643,7 +1663,7 @@ export const LibraryPages = ({
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
   const pages: Record<Exclude<View, 'projects'>, ReactNode> = {
     designers: (
-      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} workspaceId={workspaceId} preview={preview} initialProfiles={initialProfiles} readOnly={readOnly} />
+      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} workspaceId={workspaceId} preview={preview} initialProfiles={initialProfiles} readOnly={readOnly} toolbarActive={active} />
     ),
     assets: (
       <AssetsPage
@@ -1663,6 +1683,7 @@ export const LibraryPages = ({
         readOnly={readOnly}
         notify={notify}
         onAssetAction={onAssetAction}
+        active={active}
       />
     ),
     brands: (

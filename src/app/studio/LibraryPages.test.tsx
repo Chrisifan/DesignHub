@@ -88,9 +88,7 @@ it('keeps a profile edit draft when the same profile is reopened', () => {
 
 it('filters assets and opens the selected asset details in a drawer', () => {
   render(<Harness initialView="assets" />);
-  fireEvent.change(screen.getByRole('combobox', { name: '类型' }), {
-    target: { value: 'logo' },
-  });
+  fireEvent.click(screen.getByRole('button', { name: '标志' }));
   expect(screen.getByRole('button', { name: /春间标志/ })).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: /市集原图/ }),

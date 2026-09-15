@@ -4,7 +4,7 @@ import { WindowBar } from '../shell/WindowBar';
 import { LibraryPages } from './LibraryPages';
 import { DesignerHero } from './DesignerHero';
 import { NewDesignPage } from './NewDesignPage';
-import { PageToolbarHost } from './PageToolbar';
+import { PageToolbarHost, PageToolbarProvider } from './PageToolbar';
 import { PersonaArtwork } from './PersonaArtwork';
 import { localize, type PersonaProfile } from './personas';
 import { legacySeededDesignerIds } from '../../features/designers/persistence';
@@ -775,6 +775,7 @@ export const Studio = ({
         </div>
         </aside>
         <div className="studio-main">
+        <PageToolbarProvider>
         <header
           className="studio-toolbar"
           aria-label={t(locale, '工作区工具栏', 'Workspace toolbar')}
@@ -1108,10 +1109,12 @@ export const Studio = ({
                   initialAssets={initialAssets}
                   initialBrands={initialBrands}
                   initialProfiles={initialDesignerOptions}
+                  active={surface === item.view && view === item.view}
                 />
               </div>
             ))}
         </div>
+        </PageToolbarProvider>
         <footer className="studio-status">
           <span>
             <Icon name="hard-drive" size={12} />

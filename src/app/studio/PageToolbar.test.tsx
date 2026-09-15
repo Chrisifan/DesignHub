@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
 
-import { PageToolbarHost, PageToolbarSlot } from './PageToolbar';
+import { PageToolbarHost, PageToolbarProvider, PageToolbarSlot } from './PageToolbar';
 
 it('mounts active page controls inside the shared toolbar host', () => {
   render(
@@ -31,4 +31,21 @@ it('does not mount controls from an inactive destination', () => {
   );
 
   expect(screen.queryByRole('button', { name: '导入' })).not.toBeInTheDocument();
+});
+
+it('mounts a sibling page slot inside the shared toolbar host', () => {
+  render(
+    <PageToolbarProvider>
+      <header role="banner"><PageToolbarHost /></header>
+      <main>
+        <PageToolbarSlot active>
+          <input aria-label="搜索档案" type="search" />
+        </PageToolbarSlot>
+      </main>
+    </PageToolbarProvider>,
+  );
+
+  expect(screen.getByRole('banner')).toContainElement(
+    screen.getByRole('searchbox', { name: '搜索档案' }),
+  );
 });

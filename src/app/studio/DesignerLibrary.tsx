@@ -100,6 +100,7 @@ type DesignerLibraryProps = {
   preview?: boolean;
   initialProfiles?: PersonaProfile[];
   readOnly?: boolean;
+  toolbarActive?: boolean;
 };
 
 const mergeProfiles = (persisted: PersonaProfile[] | undefined): PersonaProfile[] =>
@@ -122,6 +123,7 @@ export const DesignerLibrary = ({
   preview = false,
   initialProfiles = emptyProfiles,
   readOnly = false,
+  toolbarActive = true,
 }: DesignerLibraryProps) => {
   const [profiles, setProfiles] = useState<PersonaProfile[]>(() => workspaceId || !preview ? [] : initialProfiles);
   const [selectedId, setSelectedId] = useState(() => workspaceId || !preview ? '' : initialProfiles[0]?.id ?? '');
@@ -778,6 +780,7 @@ export const DesignerLibrary = ({
           onStatusFilterChange={setStatusFilter}
           onSelect={selectProfile}
           onCreate={readOnly || loading || loadFailed ? undefined : openCreate}
+          toolbarActive={toolbarActive}
         />
       </div>
       <Drawer

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 
 import type { Locale } from '../i18n';
 import { PersonaArtwork } from './PersonaArtwork';
+import { PageToolbarSlot } from './PageToolbar';
 import { localize, type PersonaProfile } from './personas';
 import { Badge, EmptyState, Icon, t } from './ui';
 
@@ -20,6 +21,7 @@ type PersonaRepositoryProps = {
   onStatusFilterChange?: (value: PersonaStatusFilter) => void;
   onSelect: (id: string) => void;
   onCreate?: () => void;
+  toolbarActive?: boolean;
 };
 
 const statusLabel = (locale: Locale, status: PersonaProfile['status']): string =>
@@ -41,6 +43,7 @@ export const PersonaRepository = ({
   onStatusFilterChange,
   onSelect,
   onCreate,
+  toolbarActive = true,
 }: PersonaRepositoryProps) => {
   const [localQuery, setLocalQuery] = useState('');
   const [localStatusFilter, setLocalStatusFilter] = useState<PersonaStatusFilter>('all');
@@ -75,26 +78,9 @@ export const PersonaRepository = ({
             <span className="mono persona-repository__count">{filteredProfiles.length.toString().padStart(2, '0')}</span>
           </div>
         </div>
-        {onCreate && <button type="button" className="icon-button persona-repository__create" title={t(locale, '从作品集创建', 'Create from portfolio')} aria-label={t(locale, '从作品集创建', 'Create from portfolio')} onClick={onCreate}>
-          <Icon name="plus" size={17} />
-        </button>}
       </header>
-      <div className="persona-repository__toolbar">
-        <label className="search-control">
-          <Icon name="search" size={15} />
-          <span className="sr-only">{t(locale, '搜索档案', 'Search profiles')}</span>
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => {
-              if (onQueryChange) onQueryChange(event.target.value);
-              else setLocalQuery(event.target.value);
-            }}
-            placeholder={t(locale, '搜索档案', 'Search profiles')}
-            aria-label={t(locale, '搜索档案', 'Search profiles')}
-          />
-        </label>
-        <div className="tab-strip persona-status-tabs" role="group" aria-label={t(locale, '档案状态', 'Profile status')}>
+      <PageToolbarSlot active={toolbarActive}>
+        <div className="toolbar-segmented" role="group" aria-label={t(locale, '档案状态', 'Profile status')}>
           {(['all', 'published', 'draft', 'archived'] as const).map((value) => (
             <button
               type="button"
@@ -110,7 +96,24 @@ export const PersonaRepository = ({
             </button>
           ))}
         </div>
-      </div>
+        <label className="toolbar-search">
+          <Icon name="search" size={15} />
+          <span className="sr-only">{t(locale, '搜索档案', 'Search profiles')}</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              if (onQueryChange) onQueryChange(event.target.value);
+              else setLocalQuery(event.target.value);
+            }}
+            placeholder={t(locale, '搜索档案', 'Search profiles')}
+            aria-label={t(locale, '搜索档案', 'Search profiles')}
+          />
+        </label>
+        {onCreate && <button type="button" className="icon-button" title={t(locale, '从作品集创建', 'Create from portfolio')} aria-label={t(locale, '从作品集创建', 'Create from portfolio')} onClick={onCreate}>
+          <Icon name="plus" size={17} />
+        </button>}
+      </PageToolbarSlot>
       {filteredProfiles.length ? (
         <div className="persona-repository__list">
           {filteredProfiles.map((profile) => {
