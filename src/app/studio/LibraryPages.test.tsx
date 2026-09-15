@@ -67,6 +67,7 @@ it('exposes portfolio analysis as the only new-designer flow', () => {
 
 it('keeps a profile edit draft when the same profile is reopened', () => {
   render(<Harness />);
+  fireEvent.click(screen.getByRole('button', { name: /纸感排版/ }));
   fireEvent.click(screen.getByRole('button', { name: '编辑' }));
   fireEvent.change(
     within(screen.getByRole('dialog', { name: '编辑设计师' })).getByRole(

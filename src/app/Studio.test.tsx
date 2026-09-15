@@ -412,7 +412,8 @@ it('routes asset actions from the library into the selected project canvas', asy
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: '素材项目' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: '素材库' }));
-  const details = await screen.findByLabelText('素材详情');
+  fireEvent.click(await screen.findByRole('button', { name: /原图/ }));
+  const details = await screen.findByRole('dialog', { name: '素材详情' });
   fireEvent.click(within(details).getByRole('button', { name: '放入画布' }));
   await waitFor(() => expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument());
   await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-assets', documentId: 'doc-main', scene: expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ assetId: 'asset-action' })]) }) })));
