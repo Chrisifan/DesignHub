@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 
 import {
   createWorkspaceFromParentHandler,
@@ -23,7 +23,7 @@ import {
   credentialStatusChannel,
   credentialStoreChannel,
 } from './ipc/credentials';
-import { recreateWindowOnActivate } from './lifecycle';
+import { openWorkspaceForActivation, recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore, resolveProjectDirectory } from './storage/project-store';
 import { createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listTrashedProjectsHandler, moveProjectToTrashHandler, projectCreateChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, updateProjectMetadataHandler } from './ipc/projects';
 import { designerArtworkReadChannel, designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, readDesignerArtworkHandler, saveDesignerStateHandler } from './ipc/designers';
@@ -286,7 +286,13 @@ app.whenReady().then(async () => {
     return openWorkspaceHandler(
       activeWindow,
       activeTrustedUrl,
-      async (workspaceDirectory) => activateWorkspace(await openWorkspace(workspaceDirectory)),
+      (workspaceDirectory) => openWorkspaceForActivation(
+        workspaceDirectory,
+        activeWorkspaceHandle,
+        realpath,
+        openWorkspace,
+        activateWorkspace,
+      ),
     )(event, directory);
   });
   ipcMain.handle(projectListChannel, async (event, workspaceId) => {
