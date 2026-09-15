@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import type { Locale } from "../i18n";
+import { Drawer } from "./Drawer";
 import { PersonaArtwork } from "./PersonaArtwork";
 import { PersonaInspector } from "./PersonaInspector";
 import {
@@ -125,6 +126,7 @@ export const DesignerLibrary = ({
   const [profiles, setProfiles] = useState<PersonaProfile[]>(() => workspaceId || !preview ? [] : initialProfiles);
   const [selectedId, setSelectedId] = useState(() => workspaceId || !preview ? '' : initialProfiles[0]?.id ?? '');
   const [defaultId, setDefaultId] = useState(() => workspaceId || !preview ? '' : initialProfiles[0]?.id ?? '');
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const isHydrating = useRef(Boolean(workspaceId));
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<PersonaStatusFilter>("all");
@@ -244,6 +246,10 @@ export const DesignerLibrary = ({
       .catch(() => undefined);
   }, [defaultId, editDrafts, newDraft, profiles, readOnly, workspaceId]);
   const selected = profiles.find((profile) => profile.id === selectedId);
+  const selectProfile = (id: string): void => {
+    setSelectedId(id);
+    setInspectorOpen(true);
+  };
   const activeDraft =
     editor?.mode === "edit"
       ? (editDrafts[editor.profileId] ??
@@ -770,9 +776,16 @@ export const DesignerLibrary = ({
           defaultId={defaultId}
           onQueryChange={setQuery}
           onStatusFilterChange={setStatusFilter}
-          onSelect={setSelectedId}
+          onSelect={selectProfile}
           onCreate={readOnly || loading || loadFailed ? undefined : openCreate}
         />
+      </div>
+      <Drawer
+        open={inspectorOpen && Boolean(selected)}
+        title={t(locale, "设计师检查器", "Designer inspector")}
+        locale={locale}
+        onClose={() => setInspectorOpen(false)}
+      >
         <PersonaInspector
           locale={locale}
           profile={selected}
@@ -809,7 +822,7 @@ export const DesignerLibrary = ({
               );
           }}
         />
-      </div>
+      </Drawer>
       {(loadFailed || readOnly || (!workspaceId && preview)) && <p className="page-footnote">
         <Icon name="circle-help" size={14} />
         {loadFailed ? (

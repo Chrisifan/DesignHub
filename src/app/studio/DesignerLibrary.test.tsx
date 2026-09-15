@@ -20,8 +20,10 @@ const createDeferred = <T,>() => {
   return { promise, resolve };
 };
 
-it("filters personas and exposes structured style guidance in the inspector", () => {
+it("opens a selected persona in the inspector drawer and filters the repository", () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={personaProfiles} />);
+  fireEvent.click(screen.getByRole("button", { name: /纸感排版/ }));
+  expect(screen.getByRole("dialog", { name: "设计师检查器" })).toBeInTheDocument();
   expect(screen.getByText("Style DNA")).toBeInTheDocument();
   expect(screen.getByText("禁用规则")).toBeInTheDocument();
   expect(screen.getByText("精选作品")).toBeInTheDocument();
@@ -32,6 +34,8 @@ it("filters personas and exposes structured style guidance in the inspector", ()
   expect(
     screen.queryByRole("button", { name: /纸感排版/ }),
   ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+  expect(screen.queryByRole("dialog", { name: "设计师检查器" })).not.toBeInTheDocument();
 });
 
 it("opens new designer creation with portfolio analysis only", () => {
