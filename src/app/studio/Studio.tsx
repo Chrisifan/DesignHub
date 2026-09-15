@@ -4,6 +4,7 @@ import { WindowBar } from '../shell/WindowBar';
 import { LibraryPages } from './LibraryPages';
 import { DesignerHero } from './DesignerHero';
 import { NewDesignPage } from './NewDesignPage';
+import { PageToolbarHost } from './PageToolbar';
 import { PersonaArtwork } from './PersonaArtwork';
 import { localize, type PersonaProfile } from './personas';
 import { legacySeededDesignerIds } from '../../features/designers/persistence';
@@ -631,7 +632,7 @@ export const Studio = ({
     window.requestAnimationFrame(() => {
       const projectCreateButton = Array.from(
         document.querySelectorAll<HTMLButtonElement>('.studio-toolbar .toolbar-actions button'),
-      ).find((button) => button.textContent?.includes('新建项目') || button.textContent?.includes('New project'));
+      ).find((button) => button.getAttribute('aria-label') === t(locale, '新建项目', 'New project'));
       (projectCreateButton ?? newDesignReturnFocus.current)?.focus({ preventScroll: true });
     });
   };
@@ -644,13 +645,40 @@ export const Studio = ({
   const toolbarActions =
     surface === 'projects' && view === 'projects' && !documentOpen && !selected ? (
       <>
-        <Button
-          icon="plus"
-          variant="primary"
-          onClick={() => openNewDesign()}
-        >
-          {t(locale, '新建项目', 'New project')}
-        </Button>
+        <div className="toolbar-segmented" role="group" aria-label={t(locale, '项目状态', 'Project status')}>
+          {(['active', 'archived', 'all'] as const).map((value) => (
+            <button
+              type="button"
+              key={value}
+              className={filter === value ? 'is-active' : ''}
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
+            >
+              {value === 'active'
+                ? t(locale, '进行中', 'Active')
+                : value === 'archived'
+                  ? t(locale, '已归档', 'Archived')
+                  : t(locale, '全部项目', 'All projects')}
+              {value === 'active' && <span>{projects.filter((project) => !project.archived).length}</span>}
+            </button>
+          ))}
+        </div>
+        <label className="toolbar-search">
+          <Icon name="search" size={16} />
+          <span className="sr-only">{t(locale, '搜索项目', 'Search projects')}</span>
+          <input
+            type="search"
+            aria-label={t(locale, '搜索项目', 'Search projects')}
+            placeholder={t(locale, '搜索项目…', 'Search projects…')}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        <div className="view-toggle" role="group" aria-label={t(locale, '展示方式', 'Display mode')}>
+          <IconButton name="layout-grid" label={t(locale, '网格视图', 'Grid view')} aria-pressed={display === 'grid'} onClick={() => setDisplay('grid')} />
+          <IconButton name="list" label={t(locale, '列表视图', 'List view')} aria-pressed={display === 'list'} onClick={() => setDisplay('list')} />
+        </div>
+        <IconButton name="plus" label={t(locale, '新建项目', 'New project')} onClick={() => openNewDesign()} />
       </>
     ) : surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
       <>
@@ -665,13 +693,6 @@ export const Studio = ({
           {t(locale, '继续编辑', 'Open workbench')}
         </Button>
       </>
-    ) : view === 'assets' ? (
-      <span className="disabled-action">
-        <Button icon="upload" disabled>
-          {t(locale, '导入', 'Import')}
-        </Button>
-        <small>{t(locale, '需要桌面文件能力', 'Desktop file access required')}</small>
-      </span>
     ) : null;
   return (
     <>
@@ -780,7 +801,7 @@ export const Studio = ({
               {breadcrumbTitle}
             </span>
           </div>
-          <div className="toolbar-actions">{toolbarActions}</div>
+          <PageToolbarHost>{toolbarActions}</PageToolbarHost>
         </header>
         <div className="studio-body">
           {surface === 'new-design' && (
@@ -807,61 +828,6 @@ export const Studio = ({
               >
                 {workspace?.openMode === 'writable' && <Button aria-label={t(locale, '导入项目包', 'Import package')} icon="upload" onClick={() => { void importProjectPackage(); }}>{t(locale, '导入', 'Import')}</Button>}
               </PageHeader>
-              <div className="project-controls">
-                <div
-                  className="tab-strip"
-                  aria-label={t(locale, '项目状态', 'Project status')}
-                >
-                  {(['active', 'archived', 'all'] as const).map((value) => (
-                    <button
-                      key={value}
-                      className={filter === value ? 'is-active' : ''}
-                      aria-pressed={filter === value}
-                      onClick={() => setFilter(value)}
-                    >
-                      {value === 'active'
-                        ? t(locale, '进行中', 'Active')
-                        : value === 'archived'
-                          ? t(locale, '已归档', 'Archived')
-                          : t(locale, '全部项目', 'All projects')}
-                      {value === 'active' && (
-                        <span>
-                          {
-                            projects.filter((project) => !project.archived)
-                              .length
-                          }
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-                <div className="project-search-tools">
-                  <label className="search-input">
-                    <Icon name="search" size={16} />
-                    <input
-                      type="search"
-                      aria-label={t(locale, '搜索项目', 'Search projects')}
-                      placeholder={t(locale, '搜索项目…', 'Search projects…')}
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                    />
-                  </label>
-                  <div className="view-toggle">
-                    <IconButton
-                      name="layout-grid"
-                      label={t(locale, '网格视图', 'Grid view')}
-                      aria-pressed={display === 'grid'}
-                      onClick={() => setDisplay('grid')}
-                    />
-                    <IconButton
-                      name="list"
-                      label={t(locale, '列表视图', 'List view')}
-                      aria-pressed={display === 'list'}
-                      onClick={() => setDisplay('list')}
-                    />
-                  </div>
-                </div>
-              </div>
               {visibleProjects.length ? (
                 <div
                   className={`project-collection project-collection--${display}`}

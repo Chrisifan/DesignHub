@@ -74,6 +74,17 @@ it('keeps project actions in the breadcrumb toolbar instead of the page title', 
   expect(screen.getAllByRole('button', { name: '新建项目' })).toHaveLength(1);
 });
 
+it('orders project controls in the workspace toolbar', () => {
+  enter();
+  const toolbar = screen.getByRole('banner', { name: '工作区工具栏' });
+
+  expect(within(toolbar).getByRole('group', { name: '项目状态' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('searchbox', { name: '搜索项目' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('group', { name: '展示方式' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('button', { name: '新建项目' })).toBeInTheDocument();
+  expect(document.querySelector('.project-controls')).not.toBeInTheDocument();
+});
+
 it('shows the active persona and working principle when opening a project', () => {
   enter();
   fireEvent.click(screen.getByRole('button', { name: '春间市集' }));
