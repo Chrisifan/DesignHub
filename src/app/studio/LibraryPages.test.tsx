@@ -101,6 +101,17 @@ it('filters assets and opens the selected asset details in a drawer', () => {
   expect(screen.queryByRole('dialog', { name: '素材详情' })).not.toBeInTheDocument();
 });
 
+it('wraps an empty asset search result in the page-level empty-state region', () => {
+  render(<Harness initialView="assets" />);
+  fireEvent.change(screen.getByRole('searchbox', { name: '搜索素材' }), {
+    target: { value: '不存在的素材' },
+  });
+
+  expect(
+    screen.getByRole('heading', { name: '没有匹配素材' }).closest('.page-empty-state'),
+  ).not.toBeNull();
+});
+
 it('hydrates managed assets for the active workspace project', async () => {
   const listAssets = vi.fn(async () => [{
     id: 'asset-1234567890abcdef', name: '品牌原图', format: 'PNG' as const,

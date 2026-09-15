@@ -58,6 +58,22 @@ it('does not seed an unscoped studio with example projects or designers', async 
   await waitFor(() => expect(screen.queryByRole('button', { name: /纸感排版/ })).not.toBeInTheDocument());
 });
 
+it('wraps an empty project library in the page-level empty-state region', () => {
+  render(
+    <Studio
+      locale="zh-CN"
+      theme="system"
+      onLocaleChange={() => undefined}
+      onThemeChange={() => undefined}
+      onExit={() => undefined}
+    />,
+  );
+
+  expect(
+    screen.getByRole('heading', { name: '暂无项目' }).closest('.page-empty-state'),
+  ).not.toBeNull();
+});
+
 it('shows a design cover with its designer avatar, name, and version', () => {
   enter();
   const project = screen.getByRole('button', { name: '春间市集' });

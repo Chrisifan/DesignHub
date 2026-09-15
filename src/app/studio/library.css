@@ -523,6 +523,10 @@
 .asset-collection > .empty-state {
   grid-column: 1 / -1;
 }
+.asset-collection > .page-empty-state {
+  grid-column: 1 / -1;
+  min-block-size: var(--content-panel-min-height);
+}
 
 /* Brand kits */
 .brand-list {
@@ -685,11 +689,10 @@
   overflow: hidden;
 }
 
-.connection-layout > .empty-state {
+.connection-layout > .page-empty-state {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 1 / -1;
   align-self: stretch;
-  padding: 40px 24px 32px;
   border-right: 1px solid var(--border-subtle);
 }
 
@@ -1156,6 +1159,9 @@
 .storage-panel {
   min-height: 440px;
   border-bottom: 1px solid var(--border-subtle);
+}
+.storage-panel > .page-empty-state {
+  min-block-size: 440px;
 }
 
 .storage-loading {

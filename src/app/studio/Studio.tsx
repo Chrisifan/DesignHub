@@ -876,24 +876,26 @@ export const Studio = ({
                   ))}
                 </div>
               ) : (
-                <EmptyState
-                  icon={projectsLoadFailed ? 'alert-triangle' : projects.length === 0 ? 'folder-open' : 'search'}
-                  title={projectsLoadFailed ? t(locale, '项目读取失败', 'Could not load projects') : projects.length === 0 ? t(locale, '暂无项目', 'No projects yet') : t(locale, '没有匹配的项目', 'No matching projects')}
-                  description={t(
-                    locale,
-                    projectsLoadFailed ? '请重试或检查工作区权限。' : projects.length === 0 ? '创建项目后会显示在这里。' : '试试其他关键词，或查看全部项目。',
-                    projectsLoadFailed ? 'Retry or check workspace permissions.' : projects.length === 0 ? 'Create a project to see it here.' : 'Try another keyword or view all projects.',
-                  )}
-                >
-                  {(projectsLoadFailed || projects.length > 0) && <Button
-                    onClick={() => {
-                      if (projectsLoadFailed) setProjectsReloadKey((key) => key + 1);
-                      else { setQuery(''); setFilter('all'); }
-                    }}
+                <div className="page-empty-state">
+                  <EmptyState
+                    icon={projectsLoadFailed ? 'alert-triangle' : projects.length === 0 ? 'folder-open' : 'search'}
+                    title={projectsLoadFailed ? t(locale, '项目读取失败', 'Could not load projects') : projects.length === 0 ? t(locale, '暂无项目', 'No projects yet') : t(locale, '没有匹配的项目', 'No matching projects')}
+                    description={t(
+                      locale,
+                      projectsLoadFailed ? '请重试或检查工作区权限。' : projects.length === 0 ? '创建项目后会显示在这里。' : '试试其他关键词，或查看全部项目。',
+                      projectsLoadFailed ? 'Retry or check workspace permissions.' : projects.length === 0 ? 'Create a project to see it here.' : 'Try another keyword or view all projects.',
+                    )}
                   >
-                    {projectsLoadFailed ? t(locale, '重试', 'Retry') : t(locale, '清除搜索', 'Clear search')}
-                  </Button>}
-                </EmptyState>
+                    {(projectsLoadFailed || projects.length > 0) && <Button
+                      onClick={() => {
+                        if (projectsLoadFailed) setProjectsReloadKey((key) => key + 1);
+                        else { setQuery(''); setFilter('all'); }
+                      }}
+                    >
+                      {projectsLoadFailed ? t(locale, '重试', 'Retry') : t(locale, '清除搜索', 'Clear search')}
+                    </Button>}
+                  </EmptyState>
+                </div>
               )}
               <div className="creation-note">
                 <span className="creation-note-symbol">

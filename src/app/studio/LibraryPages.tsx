@@ -382,21 +382,25 @@ const AssetsPage = ({
               </button>
             ))
           ) : displayAssets.length ? (
-            <EmptyState
-              icon="search"
-              title={t(locale, '没有匹配素材', 'No matching assets')}
-              description={t(
-                locale,
-                '调整名称或类型筛选。',
-                'Change the name or type filter.',
-              )}
-            />
+            <div className="page-empty-state">
+              <EmptyState
+                icon="search"
+                title={t(locale, '没有匹配素材', 'No matching assets')}
+                description={t(
+                  locale,
+                  '调整名称或类型筛选。',
+                  'Change the name or type filter.',
+                )}
+              />
+            </div>
           ) : (
-            <EmptyState
-              icon="image"
-              title={t(locale, '暂无素材', 'No assets yet')}
-              description={t(locale, '导入素材后会显示在这里。', 'Import assets to see them here.')}
-            />
+            <div className="page-empty-state">
+              <EmptyState
+                icon="image"
+                title={t(locale, '暂无素材', 'No assets yet')}
+                description={t(locale, '导入素材后会显示在这里。', 'Import assets to see them here.')}
+              />
+            </div>
           )}
         </div>
         {assetsLoadFailed ? null : selected && <Drawer
@@ -509,9 +513,9 @@ const BrandsPage = ({
     try { await persist(records.filter((record) => record.id !== deletePending.id)); setDeletePending(null); }
     catch { /* keep confirmation open so the user can retry */ }
   };
-  if (loading) return <section className="page-content library-page"><EmptyState icon="palette" title={t(locale, '正在加载', 'Loading')} description={t(locale, '正在读取品牌包。', 'Loading brand kits.')} /></section>;
-  if (loadFailed) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /> <EmptyState icon="alert-triangle" title={t(locale, '品牌读取失败', 'Could not load brand kits')} description={t(locale, '请检查工作区权限后重新进入此页面。', 'Check workspace permissions and reopen this page.')} /></section>;
-  if (!selected) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /> <EmptyState icon="palette" title={t(locale, '暂无品牌包', 'No brand kits yet')} description={t(locale, '创建品牌包后会显示在这里。', 'Create a brand kit to see it here.')} /></section>;
+  if (loading) return <section className="page-content library-page"><div className="page-empty-state"><EmptyState icon="palette" title={t(locale, '正在加载', 'Loading')} description={t(locale, '正在读取品牌包。', 'Loading brand kits.')} /></div></section>;
+  if (loadFailed) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /><div className="page-empty-state"><EmptyState icon="alert-triangle" title={t(locale, '品牌读取失败', 'Could not load brand kits')} description={t(locale, '请检查工作区权限后重新进入此页面。', 'Check workspace permissions and reopen this page.')} /></div></section>;
+  if (!selected) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /><div className="page-empty-state"><EmptyState icon="palette" title={t(locale, '暂无品牌包', 'No brand kits yet')} description={t(locale, '创建品牌包后会显示在这里。', 'Create a brand kit to see it here.')} /></div></section>;
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -667,17 +671,19 @@ const ConnectionsPage = ({
       ) : ''}
     />
     <div className="connection-layout">
-      <EmptyState
-        icon="plug"
-        title={hasConnected ? t(locale, '模型已连接', 'Models connected') : t(locale, '尚未连接模型', 'No models connected')}
-        description={hasConnected
-          ? t(locale, '已检测到本机安全存储中的模型凭据。', 'Model credentials were found in local secure storage.')
-          : !workspaceId ? t(
-            locale,
-            '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
-            'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
-          ) : ''}
-      />
+      <div className="page-empty-state">
+        <EmptyState
+          icon="plug"
+          title={hasConnected ? t(locale, '模型已连接', 'Models connected') : t(locale, '尚未连接模型', 'No models connected')}
+          description={hasConnected
+            ? t(locale, '已检测到本机安全存储中的模型凭据。', 'Model credentials were found in local secure storage.')
+            : !workspaceId ? t(
+              locale,
+              '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
+              'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
+            ) : ''}
+        />
+      </div>
       <Drawer
         open={drawerOpen}
         title={t(locale, '连接配置', 'Connection configuration')}
@@ -831,11 +837,11 @@ const TasksPage = ({
           <strong>{tasks.length}</strong>
       </div>
     </div>
-    {loadFailed ? <EmptyState
+    {loadFailed ? <div className="page-empty-state"><EmptyState
       icon="circle-alert"
       title={t(locale, '任务读取失败', 'Could not load tasks')}
       description={t(locale, '请重试，原有任务不会被覆盖。', 'Retry without overwriting existing task records.')}
-    /> : tasks.length > 0 ? <div className="task-list" aria-label={t(locale, '任务列表', 'Task list')}>
+    /></div> : tasks.length > 0 ? <div className="task-list" aria-label={t(locale, '任务列表', 'Task list')}>
           {tasks.map((task) => {
             const failure = task.state === 'failed' ? failureDescription(task) : undefined;
             return <article className="task-row" key={task.id}>
@@ -856,7 +862,7 @@ const TasksPage = ({
         {(task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region)) && <Button variant="secondary" icon="rotate-ccw" onClick={() => { void retryTask(task.id); }}>{t(locale, '重试', 'Retry')}</Button>}
       </article>;
           })}
-    </div> : <EmptyState
+    </div> : <div className="page-empty-state"><EmptyState
       icon="clock"
       title={t(locale, '没有模型任务', 'No model tasks')}
       description={!workspaceId ? t(
@@ -872,7 +878,7 @@ const TasksPage = ({
       >
         {t(locale, '连接模型', 'Connect models')}
       </Button>
-    </EmptyState>}
+    </EmptyState></div>}
   </section>;
 };
 
@@ -1348,7 +1354,7 @@ const StoragePage = ({
     </div>
     {tab === 'trash' ? (
       <div className="storage-panel">
-        {!hasWorkspace || readOnly ? <EmptyState
+        {!hasWorkspace || readOnly ? <div className="page-empty-state"><EmptyState
           icon="trash-2"
           title={readOnly ? t(locale, '只读工作区', 'Read-only workspace') : t(locale, '废纸篓为空', 'Trash is empty')}
           description={t(
@@ -1356,11 +1362,11 @@ const StoragePage = ({
             readOnly ? '只读模式下不能修改废纸篓。' : '删除的项目、文档和素材会显示原位置、删除时间与引用限制。',
             readOnly ? 'Trash cannot be modified in read-only mode.' : 'Deleted projects, documents and assets show their original location, deletion time and reference limits.',
           )}
-        /> : loadingTrash ? <p className="storage-loading">{t(locale, '读取中', 'Loading')}</p> : trash.length === 0 ? <EmptyState
+        /></div> : loadingTrash ? <p className="storage-loading">{t(locale, '读取中', 'Loading')}</p> : trash.length === 0 ? <div className="page-empty-state"><EmptyState
           icon="trash-2"
           title={t(locale, '废纸篓为空', 'Trash is empty')}
           description={t(locale, '删除的项目不会自动过期。', 'Deleted projects do not expire automatically.')}
-        /> : <div className="trash-list" aria-label={t(locale, '废纸篓项目', 'Trash items')}>
+        /></div> : <div className="trash-list" aria-label={t(locale, '废纸篓项目', 'Trash items')}>
           {trash.map((entry) => <article className="trash-row" key={entry.projectId}>
             <div><strong>{entry.projectId}</strong><small>{entry.originalRelativePath}</small><small>{new Date(entry.deletedAt).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en')}</small></div>
             <div className="trash-actions"><Button variant="secondary" icon="rotate-ccw" disabled={busy} onClick={() => { void restore(entry.projectId); }}>{t(locale, '恢复', 'Restore')}</Button><Button variant="ghost" icon="trash-2" disabled={busy} onClick={() => { void purge(entry.projectId); }}>{t(locale, '删除', 'Delete')}</Button></div>
