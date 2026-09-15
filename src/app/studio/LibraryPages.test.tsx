@@ -188,17 +188,17 @@ it('imports an image pasted from the clipboard for a workspace project', async (
 it('shows honest unavailable states for connections and delivery', () => {
   const { unmount } = render(<Harness initialView="connections" />);
   expect(screen.getByText('尚未连接模型')).toBeInTheDocument();
+  expect(screen.queryByLabelText('对话与视觉 API 密钥')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '对话与视觉' }));
+  expect(screen.getByRole('dialog', { name: '连接配置' })).toBeInTheDocument();
   expect(screen.getByLabelText('对话与视觉 API 密钥')).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: /检测/ }),
   ).not.toBeInTheDocument();
   unmount();
   render(<Harness initialView="delivery" />);
-  fireEvent.click(screen.getByRole('button', { name: 'JPEG' }));
-  expect(
-    screen.getByText('JPEG 不支持透明背景，将使用当前背景色。'),
-  ).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '导出' })).toBeDisabled();
+  expect(screen.getByRole('heading', { name: '选择文档' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: '导出配置' })).not.toBeInTheDocument();
 });
 
 it('shows a connected state and lets the model groups switch profile configuration', async () => {
@@ -216,6 +216,8 @@ it('shows a connected state and lets the model groups switch profile configurati
   expect(screen.queryByText('尚未连接模型')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: '对话与视觉' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '图片生成与编辑' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '对话与视觉' }));
+  expect(screen.getByRole('dialog', { name: '连接配置' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: '对话与视觉' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '图片生成与编辑' }));
   expect(screen.getByRole('heading', { name: '图片生成与编辑' })).toBeInTheDocument();
@@ -233,6 +235,7 @@ it('hydrates and saves the non-secret provider connection configuration', async 
   window.designhub = { chooseWorkspaceDirectory: async () => null, loadProviderConfigs, saveProviderConfig };
   render(<Harness initialView="connections" />);
 
+  fireEvent.click(screen.getByRole('button', { name: '对话与视觉' }));
   await waitFor(() => expect(screen.getByLabelText('对话服务地址')).toHaveValue('https://text.example.test/v1'));
   fireEvent.change(screen.getByLabelText('对话模型'), { target: { value: 'chat-new' } });
   fireEvent.click(screen.getAllByRole('button', { name: '保存配置' })[0]!);
@@ -300,6 +303,7 @@ it('derives the delivery preview from the selected project', () => {
   expect(
     container.querySelector('.delivery-preview .artwork--objects'),
   ).toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: '导出配置' })).toBeInTheDocument();
   expect(screen.queryByText('定稿')).not.toBeInTheDocument();
 });
 

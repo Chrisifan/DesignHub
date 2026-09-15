@@ -613,6 +613,7 @@ const ConnectionsPage = ({
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
   const [activeProfile, setActiveProfile] = useState<ProviderProfile>('conversation');
+  const [drawerOpen, setDrawerOpen] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const checks = availableConnections.flatMap((connection) => providerProfiles.map(async (profile) => {
@@ -658,12 +659,17 @@ const ConnectionsPage = ({
             'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
           ) : ''}
       />
-      <ProviderSettings
+      <Drawer
+        open={drawerOpen}
+        title={t(locale, '连接配置', 'Connection configuration')}
+        locale={locale}
+        onClose={() => setDrawerOpen(false)}
+      ><ProviderSettings
         locale={locale}
         connections={connections}
         configs={providerConfigs}
         activeProfile={activeProfile}
-        onActiveProfileChange={setActiveProfile}
+        onActiveProfileChange={(profile) => { setActiveProfile(profile); setDrawerOpen(true); }}
         onSaveProviderConfig={async (connectionId, config) => {
           const saved = await (getDesktopApi().saveProviderConfig?.({ connectionId: connectionId as 'openai-compatible', config }) ?? false);
           if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
@@ -681,7 +687,7 @@ const ConnectionsPage = ({
           if (deleted) setConnectionState((current) => ({ ...current, [connectionId]: false }));
           return deleted;
         }}
-      />
+      /></Drawer>
       <div className="capability-matrix">
         <div className="matrix-heading">
           <span>{t(locale, '配置类别', 'Configuration group')}</span>
@@ -696,7 +702,7 @@ const ConnectionsPage = ({
               key={profile}
               aria-label={label}
               aria-pressed={activeProfile === profile}
-              onClick={() => setActiveProfile(profile)}
+              onClick={() => { setActiveProfile(profile); setDrawerOpen(true); }}
             >
               <span>
                 <Icon name={icon} size={17} />
@@ -874,6 +880,7 @@ const DeliveryPage = ({
   const [exportHistory, setExportHistory] = useState<ExportHistoryRecord[]>([]);
   const [source, setSource] = useState<'current' | 'final'>('current');
   const [documentId, setDocumentId] = useState(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
+  const [drawerOpen, setDrawerOpen] = useState(Boolean(project));
   const formatDescription =
     format === 'jpeg'
       ? t(
@@ -895,6 +902,7 @@ const DeliveryPage = ({
   const projectName = project ? t(locale, project.name, project.enName) : '';
   const persistedProject = Boolean(project?.workspaceId);
   useEffect(() => {
+    setDrawerOpen(Boolean(project));
     setDocumentId(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
     setSource('current');
     setExportHistory([]);
@@ -1029,7 +1037,12 @@ const DeliveryPage = ({
             </EmptyState>
           </div>
         )}
-        <div className="delivery-config">
+        {project && <Drawer
+          open={drawerOpen}
+          title={t(locale, '导出配置', 'Delivery configuration')}
+          locale={locale}
+          onClose={() => setDrawerOpen(false)}
+        ><div className="delivery-config">
           <div className="config-section">
             <p className="panel-label">
               {t(locale, '输出格式', 'Output format')}
@@ -1121,7 +1134,7 @@ const DeliveryPage = ({
               </div>
             ))}
           </div>}
-        </div>
+        </div></Drawer>}
       </div>
     </section>
   );

@@ -731,7 +731,7 @@
 /* Models */
 .connection-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 430px;
   background: var(--content-card-background);
@@ -748,14 +748,6 @@
   align-self: stretch;
   padding: 40px 24px 32px;
   border-right: 1px solid var(--border-subtle);
-}
-
-.connection-layout > .provider-settings {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 
 .provider-settings {
@@ -802,7 +794,7 @@
   grid-column: 1;
   grid-row: 2;
   padding: 28px 40px;
-  border-right: 1px solid var(--border-subtle);
+  border-right: 0;
   background: transparent;
 }
 
@@ -986,7 +978,7 @@
 /* Delivery */
 .delivery-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 530px;
   background: var(--content-card-background);
 }
@@ -1046,7 +1038,7 @@
 
 .delivery-config {
   padding: 28px;
-  border-left: 1px solid var(--border-subtle);
+  border-left: 0;
   background: transparent;
 }
 
