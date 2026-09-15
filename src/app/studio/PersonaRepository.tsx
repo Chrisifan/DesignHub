@@ -70,15 +70,6 @@ export const PersonaRepository = ({
 
   return (
     <div className="persona-repository" aria-label={t(locale, '设计师档案库', 'Designer repository')}>
-      <header className="persona-repository__head">
-        <div>
-          <p className="section-kicker">{t(locale, 'PERSONA REPOSITORY', 'PERSONA REPOSITORY')}</p>
-          <div className="persona-repository__title-line">
-            <h2>{t(locale, '设计师档案', 'Designer profiles')}</h2>
-            <span className="mono persona-repository__count">{filteredProfiles.length.toString().padStart(2, '0')}</span>
-          </div>
-        </div>
-      </header>
       <PageToolbarSlot active={toolbarActive}>
         <div className="toolbar-segmented" role="group" aria-label={t(locale, '档案状态', 'Profile status')}>
           {(['all', 'published', 'draft', 'archived'] as const).map((value) => (
@@ -149,11 +140,13 @@ export const PersonaRepository = ({
           })}
         </div>
       ) : (
-        <EmptyState
-          icon="search"
-          title={profiles.length === 0 ? t(locale, '暂无设计师档案', 'No designer profiles yet') : t(locale, '没有匹配档案', 'No matching profiles')}
-          description={profiles.length === 0 ? t(locale, '导入作品集并完成 AI 分析后会显示在这里。', 'Import a portfolio and complete AI analysis to see profiles here.') : t(locale, '调整搜索或状态筛选。', 'Adjust search or status filters.')}
-        />
+        <div className="page-empty-state">
+          <EmptyState
+            icon="search"
+            title={profiles.length === 0 ? t(locale, '暂无设计师档案', 'No designer profiles yet') : t(locale, '没有匹配档案', 'No matching profiles')}
+            description={profiles.length === 0 ? t(locale, '导入作品集并完成 AI 分析后会显示在这里。', 'Import a portfolio and complete AI analysis to see profiles here.') : t(locale, '调整搜索或状态筛选。', 'Adjust search or status filters.')}
+          />
+        </div>
       )}
     </div>
   );

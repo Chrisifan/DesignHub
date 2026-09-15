@@ -785,6 +785,8 @@
 
 /* P10/P12 reference: dense repository workstation. */
 .page-content.designer-library-page {
+  display: flex;
+  flex-direction: column;
   padding: 24px 28px 18px;
   background: var(--background);
   min-height: 0;
@@ -825,39 +827,13 @@
 .persona-repository {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
   padding: 17px 14px 12px;
   border-right: 0;
   background: transparent;
 }
 
-.persona-repository__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 2px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.persona-repository__head .section-kicker {
-  margin-bottom: 7px;
-  color: var(--on-surface-variant);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-}
-
-.persona-repository__title-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.persona-repository__title-line h2 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
 
 .persona-repository__count {
   color: var(--primary);

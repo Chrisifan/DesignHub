@@ -1097,6 +1097,15 @@ button:disabled {
   padding: 72px 24px;
   text-align: center;
 }
+.page-empty-state {
+  display: grid;
+  flex: 1 1 auto;
+  min-block-size: 100%;
+  place-items: center;
+}
+.page-empty-state > .empty-state {
+  width: min(100%, 480px);
+}
 .empty-state-icon {
   padding: 20px;
   border: 1px solid var(--border-subtle);
