@@ -3,7 +3,7 @@ import { constants, lstatSync, realpathSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
-import { isBrandLibraryState, type Brand, type BrandLibraryState } from '../../features/brands/constraints';
+import { isBrandLibraryState, normalizeBrandLibraryState, type Brand, type BrandLibraryState } from '../../features/brands/constraints';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
 
@@ -46,7 +46,15 @@ export const loadBrandState = async (handle: WorkspaceHandle, workspaceId: strin
     await access(path, constants.R_OK);
     const value: unknown = JSON.parse(await readFile(path, 'utf8'));
     if (!isBrandLibraryState(value)) throw new Error('INVALID_BRAND_STATE');
-    return structuredClone(value);
+    const normalized = normalizeBrandLibraryState(value);
+    if (handle.workspace.openMode === 'writable' && JSON.stringify(normalized) !== JSON.stringify(value)) {
+      try {
+        await saveBrandState(handle, workspaceId, normalized);
+      } catch {
+        // Loading remains read-safe even when a legacy workspace cannot be rewritten.
+      }
+    }
+    return normalized;
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return null;
     if (error instanceof SyntaxError) throw new Error('INVALID_BRAND_STATE');
@@ -57,11 +65,12 @@ export const loadBrandState = async (handle: WorkspaceHandle, workspaceId: strin
 export const saveBrandState = async (handle: WorkspaceHandle, workspaceId: string, state: BrandLibraryState): Promise<boolean> => {
   const directory = getWorkspaceDirectory(handle, workspaceId, true);
   if (!isBrandLibraryState(state)) throw new Error('INVALID_BRAND_STATE');
+  const normalized = normalizeBrandLibraryState(state);
   const destination = join(directory, brandsFileName);
   assertRegularBrandFile(destination, true);
   const temporary = join(directory, `.${brandsFileName}.tmp-${randomUUID()}`);
   try {
-    await writeFile(temporary, `${JSON.stringify(structuredClone(state), null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+    await writeFile(temporary, `${JSON.stringify(normalized, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
     await rename(temporary, destination);
   } catch (error) {
     await rm(temporary, { force: true });

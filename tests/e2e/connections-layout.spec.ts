@@ -1,8 +1,9 @@
 import { expect, test } from 'playwright/test';
+import { gotoTestWorkspace } from './test-workspace';
 
 test('model connection setup remains inside its panel without horizontal overflow', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1962, height: 1000 });
-  await page.goto('/?preview=1');
+  await gotoTestWorkspace(page);
   await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '模型连接', exact: true }).click();
   await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLElement>('.connection-layout'))
     .some((element) => element.getBoundingClientRect().width > 0));

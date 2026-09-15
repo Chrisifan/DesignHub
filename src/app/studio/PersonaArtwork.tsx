@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { getPersona, type PersonaCrop, type PersonaProfile } from './personas';
+import type { PersonaCrop, PersonaProfile } from './personas';
 
 type PersonaArtworkProps = {
   personaId: string;
@@ -8,8 +8,8 @@ type PersonaArtworkProps = {
   profile?: PersonaProfile;
 };
 
-export const PersonaArtwork = ({ personaId, crop, profile }: PersonaArtworkProps) => {
-  const persona = profile ?? getPersona(personaId);
+export const PersonaArtwork = ({ crop, profile }: PersonaArtworkProps) => {
+  const persona = profile;
   const [failed, setFailed] = useState(false);
   const onError = () => setFailed(true);
   if (!persona) {

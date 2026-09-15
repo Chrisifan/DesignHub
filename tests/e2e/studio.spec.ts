@@ -1,4 +1,5 @@
 import { expect, test } from 'playwright/test';
+import { gotoTestWorkspace } from './test-workspace';
 
 for (const width of [1280, 1024]) {
   for (const theme of ['dark', 'light']) {
@@ -17,7 +18,7 @@ for (const width of [1280, 1024]) {
           },
           { mode: theme, language: locale },
         );
-        await page.goto('/?preview=1');
+        await gotoTestWorkspace(page);
         const english = locale === 'en';
         await expect(
           page.getByRole('heading', {
@@ -51,8 +52,7 @@ for (const width of [1280, 1024]) {
         await expect(page.locator('.studio-sidebar .sidebar-create')).toHaveCount(0);
         await page
           .getByRole('button', {
-            name: english ? 'Spring in bloom' : '春间市集',
-            exact: true,
+            name: /Spring in bloom|春间市集/,
           })
           .click();
         await page
@@ -158,7 +158,7 @@ for (const [theme, expectedTint] of [
     await page.addInitScript((mode) => {
       localStorage.setItem('designhub.ui.theme', mode);
     }, theme);
-    await page.goto('/?preview=1');
+    await gotoTestWorkspace(page);
     await expect(
       page.getByRole('heading', { name: '项目库', exact: true }),
     ).toBeAttached();
@@ -195,7 +195,7 @@ for (const [theme, expectedTint] of [
     }
     expect(shell.backdrop).toContain('repeating-linear-gradient');
 
-    await page.getByRole('button', { name: '春间市集', exact: true }).click();
+    await page.getByRole('button', { name: /春间市集|Spring in bloom/ }).click();
     await page.getByRole('button', { name: '打开主海报', exact: true }).click();
     await expect(page.locator('.studio-sidebar')).toHaveCSS('width', '280px');
   });
@@ -212,7 +212,7 @@ test('reduced-transparency shell uses solid surfaces without blur', async ({
   await page.addInitScript(() => {
     localStorage.setItem('designhub.ui.theme', 'dark');
   });
-  await page.goto('/?preview=1');
+  await gotoTestWorkspace(page);
 
   const shell = await page.evaluate(() => {
     const inspect = (selector: string) => {
@@ -247,7 +247,7 @@ test('reduced-transparency shell uses solid surfaces without blur', async ({
 
 test('persona-led creation keeps the selected designer across pages', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 });
-  await page.goto('/?preview=1');
+  await gotoTestWorkspace(page);
   const navigation = page.getByRole('navigation', { name: '主导航' });
   await navigation.getByRole('button', { name: '设计师', exact: true }).click();
   await expect(page.getByRole('heading', { name: '设计师', exact: true })).toBeAttached();
@@ -277,7 +277,7 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
 test('native dialog restores focus and retains a cancelled draft', async ({
   page,
 }) => {
-  await page.goto('/?preview=1');
+  await gotoTestWorkspace(page);
   const trigger = page
     .getByRole('button', { name: '新建项目', exact: true })
     .first();
@@ -293,19 +293,19 @@ test('native dialog restores focus and retains a cancelled draft', async ({
   await expect(page.getByRole('textbox', { name: '项目名称' })).toHaveValue(
     '秋日漫游 / An unexpectedly long campaign title',
   );
-  await page.getByRole('button', { name: '创建预览', exact: true }).click();
+  await page.getByRole('button', { name: '创建项目', exact: true }).click();
   await expect(
     page.getByRole('heading', {
       name: '秋日漫游 / An unexpectedly long campaign title',
     }),
   ).toBeAttached();
-  await expect(page.getByText('预览草稿', { exact: true })).toBeVisible();
+  await expect(page.getByText('进行中', { exact: true })).toBeVisible();
 });
 
 test('preferences survive reload and empty search can be cleared', async ({
   page,
 }) => {
-  await page.goto('/?preview=1');
+  await gotoTestWorkspace(page);
   await page
     .getByRole('searchbox', { name: '搜索项目' })
     .fill('does-not-exist');

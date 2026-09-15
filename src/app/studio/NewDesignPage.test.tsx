@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest';
 import { NewDesignPage } from './NewDesignPage';
 import type { NewDesignDraft } from './types';
 import type { PersonaProfile } from './personas';
+import { personaProfiles } from '../../../tests/fixtures/personas';
 
 const initialDraft: NewDesignDraft = {
   name: '',
@@ -24,32 +25,24 @@ const NewDesignHarness = () => {
       onDraftChange={setDraft}
       onCreate={vi.fn()}
       onBack={vi.fn()}
+      profiles={personaProfiles}
     />
   );
 };
 
-it('keeps manual and conversation input in one session draft while the hero follows the selected designer', () => {
+it('shows only the manual project brief flow', () => {
   render(<NewDesignHarness />);
-  fireEvent.click(screen.getByRole('button', { name: '通过对话' }));
-  fireEvent.change(screen.getByRole('textbox', { name: '创作想法' }), {
+  expect(screen.queryByRole('button', { name: '通过对话' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: '创建方式' })).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: '设计目标' })).toBeInTheDocument();
+  expect(screen.queryByText('模型已整理简报')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole('textbox', { name: '设计目标' }), {
     target: { value: '春季市集宣传图' },
   });
   fireEvent.click(screen.getByRole('button', { name: '清晰商业' }));
   expect(screen.getByLabelText('新建设计的当前设计师')).toHaveTextContent(
     '清晰商业',
   );
-  expect(
-    screen.getByText('模型未连接，想法已保留在示例草稿中。'),
-  ).toBeInTheDocument();
-});
-
-it('shows a completed conversation brief for explicit review before project creation', () => {
-  const onConfirm = vi.fn();
-  render(<NewDesignPage locale="zh-CN" draft={{ ...initialDraft, mode: 'conversation', name: '春间市集' }} onDraftChange={vi.fn()} onCreate={vi.fn()} onBack={vi.fn()} conversationResult={{ taskId: 'task-1', text: '一张自然、克制的春季市集海报。' }} onConfirmConversation={onConfirm} />);
-  expect(screen.getByText('模型已整理简报')).toBeInTheDocument();
-  expect(screen.getByText('一张自然、克制的春季市集海报。')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '确认创建' }));
-  expect(onConfirm).toHaveBeenCalledWith('task-1');
 });
 
 it('uses a persisted custom persona in the new-design hero and selector', () => {

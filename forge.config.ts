@@ -1,5 +1,8 @@
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
+import MakerDMG from '@electron-forge/maker-dmg';
+import MakerSquirrel from '@electron-forge/maker-squirrel';
+import MakerZIP from '@electron-forge/maker-zip';
 
 const retainViteOutputAndNativeStorage = (file: string): boolean => Boolean(file)
   && file !== '/package.json'
@@ -15,7 +18,11 @@ const retainViteOutputAndNativeStorage = (file: string): boolean => Boolean(file
 const config = {
   packagerConfig: { asar: true, ignore: retainViteOutputAndNativeStorage },
   rebuildConfig: {},
-  makers: [],
+  makers: [
+    new MakerDMG({ name: 'DesignHub' }),
+    new MakerSquirrel({ name: 'designhub' }),
+    new MakerZIP({}),
+  ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({

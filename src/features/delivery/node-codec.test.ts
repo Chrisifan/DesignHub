@@ -16,6 +16,7 @@ it('converts a real transparent PNG to JPEG with an explicit background', async 
   expect(metadata.width).toBe(3);
   expect(metadata.height).toBe(2);
   expect(metadata.hasAlpha).toBe(false);
+  expect(metadata.colorSpace).toBe('srgb');
   expect(output[0]).toBe(0xff);
   expect(output[1]).toBe(0xd8);
 });

@@ -3,9 +3,10 @@ import { expect, it } from 'vitest';
 
 import { PersonaArtwork } from './PersonaArtwork';
 import type { PersonaProfile } from './personas';
+import { getPersona } from '../../../tests/fixtures/personas';
 
 it('renders an accessible fixed-ratio persona image and an honest unavailable fallback', () => {
-  const { rerender } = render(<PersonaArtwork personaId="paper-type" crop="full" />);
+  const { rerender } = render(<PersonaArtwork personaId="paper-type" profile={getPersona('paper-type')} crop="full" />);
   expect(screen.getByRole('img', { name: '纸感排版的人物形象' })).toHaveAttribute(
     'src',
     '/personas/paper-type.png',

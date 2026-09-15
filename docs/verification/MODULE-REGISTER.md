@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | M01 | 部分验证；基础外壳、bridge、规则、构建与 macOS 原生 smoke 已完成，双平台/发布门禁开放 | [M01 记录](M01.md) | M02–M08 |
 | M02 | 部分验证；工作区格式、单写者锁、项目/废纸篓/备份存储、Electron 入口与项目包导入导出已完成；Windows 与发布验证开放 | [M02 记录](M02.md) | M03、M04、M06、M07、M08 |
-| M03 | 部分验证；设计师发布/默认/归档、作品集候选审阅、工作区持久化、只读/内置/不可变回归与有界轮询已完成；真实分析、素材生成与历史集成仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
+| M03 | 部分验证；设计师发布/默认/归档、作品集候选审阅、工作区持久化、空状态/只读/不可变回归与有界轮询已完成；真实分析、素材生成与历史集成仍开放 | `docs/verification/M03.md` | M04、M06、M07、M08 |
 | M04 | 部分验证；简报确认、项目容器、项目元数据快照、品牌/设计师归属、修订与图像候选定稿已完成；跨设备包闭包、崩溃恢复与实时提供方仍开放 | `docs/verification/M04.md` | M02 的完整备份校验、M05、M06、M07、M08 |
 | M05 | 部分验证；画布 schema、Konva 编辑、中文文本、遮罩、撤销/恢复与工作区文档场景持久化已实现；大图、IME、跨平台原生与视觉性能开放 | `docs/verification/M05.md` | M06、M07、M08 |
 | M06 | 部分验证；连接边界、本机端点/模型配置、上下文隔离、任务状态/幂等、重试/取消、设计师交接、草稿任务与图像候选审阅已实现；真实提供方、系统钥匙串与远端取消语义开放 | `docs/verification/M06.md` | M03、M04、M07、M08 |
@@ -102,6 +102,8 @@
 2026-09-12：revision bridge native regression（变更 ID M01-20260912-02）。因新增项目包与修订 API 更新 Electron preload bridge 白名单测试；`pnpm test:native` 2 passed、1 skipped（未配置 packaged executable），lint/typecheck 通过。Windows 与 packaged path 仍开放。
 2026-09-12：真实工作区状态文案（变更 ID UI-20260912-04）。目标文件为 `src/app/studio/Studio.tsx`、`src/app/studio/Workbench.tsx`、`src/app/studio/LibraryPages.tsx`；影响 M04 项目/素材状态、M05 工作台历史、M07 交付相邻页面。持久项目显示 `Local`/`Saved`，示例预览保留 `Example`/`Unsaved preview`，并同步真实项目历史与素材说明。unit 77 files/245 tests、integration 22 files/97 tests、lint、typecheck、build、diff check 全部通过；无数据契约变化，直接消费者已完成回归。
 2026-09-12：真实项目交付/品牌/素材说明（变更 ID UI-20260912-05）。目标文件为 `src/app/studio/LibraryPages.tsx`；真实项目不再显示示例原稿/示例元数据说明，品牌快照、受管素材和导出状态按工作区语义展示；示例预览仍保留只读提示。LibraryPages focused 17 tests、lint、typecheck、diff check 通过。
+
+2026-09-15：真实工作区数据边界（变更 ID UI-20260915-01）。项目、设计师、素材和品牌页不再向真实工作区注入示例数据；空集合显示空状态，加载失败显示明确错误状态。移除用户可见的内置设计师筛选与隐式默认，空设计师库可持久化；旧状态在存储读取时规范化。unit 480/480、integration 115/115、E2E 25/25、native 2 passed/1 skipped、lint、typecheck、build、diff-check 与 release-check 本地命令全部通过；Windows、签名/公证、Keychain、真实 provider 与 packaged executable 仍为外部门禁。
 
 2026-09-12：M04 workspace-backed brand CRUD（变更 ID M04-20260912-05）。品牌状态新增 `.designhub/brands.json` 原子存储与受信 `brand:load-state`/`brand:save-state` bridge；品牌页在真实工作区支持加载、新建、编辑、删除，示例预览仍使用只读内置数据。先写 storage/IPC/UI Red，再 Green；focused 4 files/26 tests、lint、typecheck、diff check 通过。项目已有品牌快照不随品牌库编辑自动升级；字体二进制、M06 分析和 Windows/打包门禁仍开放。
 
@@ -265,6 +267,10 @@
 2026-09-13：M07 图像工具参数贯通（变更 ID M07-20260913-24）。Workbench 的每个模型图像工具通过现有 Modal/ToolInspector 配置明确 schema 参数；可信 image-edit IPC、任务状态存储、受管源素材重试以及 OpenAI-compatible multipart 请求共同保留并校验 `toolParams`。先观察 Workbench/IPC/task-store/task-service/provider adapter 9 项 Red，再补 managed-source retry 和 UI invalid-parameter Red；Green 为 8 个聚焦文件/80 测试以及最终 unit 96/407、integration 23/105、E2E 24/24、native source 2 passed/1 skipped、build/lint/typecheck/diff check。影响 M05 Workbench、M06 task/IPC/provider 直接消费者，已完成其聚焦回归；真实 provider 扩展、遮罩栅格化、原生 worker 和人工图像质量仍是外部发布门禁。
 
 2026-09-13：M03/M06 受管设计师形象生成（变更 ID M03-20260913-07）。设计师候选现在可显式提交 `designer-draft` 图像生成任务；主进程将生成位图原子保存到活动工作区 `.designhub/designer-artwork`，任务不绑定文档也不创建画布候选。候选预览和发布档案只保存 `artworkAssetId` 与 `designhub-artwork://<id>`，Electron 主进程以活动工作区为边界解析受控协议并返回位图响应，CSP 只新增该本地图片方案。先观察服务/存储/IPC/UI 缺失和 D19 data-URL/CSP/协议 404 Red，再 Green；focused 7 files/61 tests、unit 97/417、integration 23/105、E2E 24/24、package 后 native 3/3、lint、typecheck、build、diff check 通过。影响 M03 持久化、M06 图像生成/重试与 M01 native bridge，已全部重新验证；真实 provider 输出、远端下载、Windows 渲染和人工形象质量仍属外部门禁。
+
+2026-09-14：V1 release-ready closure（变更 ID REL-20260914-01）。新增离线 provider conformance harness（conversation/stream/vision/image generation/image editing）、显式 live smoke、图像颜色空间 fail-closed 校验、项目包闭包报告与路径/哈希边界、诊断敏感字段扫描、100 项目检索基准、安装升级手验入口及 Forge macOS/Windows makers。串行 `pnpm release:check` 通过：unit 101/477、integration 25/115、E2E 25/25、native source 2 passed/1 skipped、lint/typecheck/build/diff check 全部通过；新打包 macOS arm64 executable native 3/3 通过，SHA-256 `588478afc5f2bc73b6433d6e565a214dc830144be39a3d79805723292754ccd8`。`pnpm test:provider` 3/3 通过，live smoke 默认 blocked；Windows、签名/公证、Keychain、真实 provider、跨设备闭包、先进 codec、大图性能和人工视觉质量继续作为外部门禁。
+
+2026-09-15：创建入口 V1 收敛（变更 ID UI-20260915-02）。项目库仅保留手动新建项目；项目内 P07 对话仍以既有 `project` 来源运行。设计师仅能从检查后的作品集来源解析、审阅并发布，移除描述、直接保留及从现有档案派生的新建路径。侧栏移除“设置”，但本机操作者入口及直接 Settings 页面保留。聚焦 `DesignerLibrary`/`PersonaRepository` 20/20、`DesignerLibrary`/`PersonaInspector`/`PersonaRepository`/`LibraryPages` 62/62 与 Studio/LibraryPages/settings IPC 71/71 通过；全量 `pnpm test:unit` 101 files/481 tests、`pnpm test:integration` 25 files/115 tests、`pnpm lint`、`pnpm typecheck`、`pnpm build`、`git diff --check`、`pnpm test:e2e` 26 tests 和 `pnpm test:native` 2 passed/1 skipped 均通过。未配置 packaged executable 的原生用例按设计跳过；Windows、签名/公证、Keychain 与真实 provider 门禁未因此恢复为完成。
 
 ## 发布前检查
 

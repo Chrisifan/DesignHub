@@ -10,6 +10,7 @@ import { afterEach, expect, it } from 'vitest';
 import { createWorkspace, openWorkspace } from './workspace-store';
 import * as designerStore from './designer-store';
 import { designersFileName, loadDesignerState, saveDesignerState } from './designer-store';
+import { personaProfiles } from '../../../tests/fixtures/personas';
 
 const temporaryDirectories: string[] = [];
 
@@ -27,14 +28,15 @@ it('persists designer profiles, defaults and drafts across workspace reopen', as
   const workspace = await createTemporaryWorkspace();
   const state = { profiles: [], defaultId: 'builtin-v1', drafts: { newDraft: { name: '未完成档案' } } };
   await saveDesignerState(workspace, workspace.workspace.workspaceId, state);
+  const normalizedState = { ...state, defaultId: '' };
   const filePath = join(workspace.workspace.directory, '.designhub', designersFileName);
   expect(existsSync(filePath)).toBe(true);
-  expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual(state);
+  expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual(normalizedState);
   workspace.close();
 
   const reopened = await openWorkspace(workspace.workspace.directory);
   try {
-    await expect(loadDesignerState(reopened, reopened.workspace.workspaceId)).resolves.toEqual(state);
+    await expect(loadDesignerState(reopened, reopened.workspace.workspaceId)).resolves.toEqual(normalizedState);
   } finally {
     reopened.close();
   }
@@ -95,4 +97,22 @@ it('persists generated artwork bytes separately from designer profile metadata',
   } finally {
     reopened.close();
   }
+});
+
+it('rewrites removed preview seed profiles when a writable workspace is opened', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const filePath = join(workspace.workspace.directory, '.designhub', designersFileName);
+  const legacy = structuredClone(personaProfiles.find((profile) => profile.id === 'paper-type'));
+  const custom = legacy ? { ...legacy, id: 'custom-designer', status: 'draft' as const } : null;
+  if (!legacy || !custom) throw new Error('fixture missing');
+  await writeFile(filePath, JSON.stringify({ profiles: [legacy, custom], defaultId: legacy.id }), 'utf8');
+
+  await expect(loadDesignerState(workspace, workspace.workspace.workspaceId)).resolves.toMatchObject({
+    profiles: [expect.objectContaining({ id: 'custom-designer' })],
+    defaultId: '',
+  });
+  expect(JSON.parse(await readFile(filePath, 'utf8'))).toMatchObject({
+    profiles: [expect.objectContaining({ id: 'custom-designer' })],
+    defaultId: '',
+  });
 });

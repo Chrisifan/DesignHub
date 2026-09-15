@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { getPersona, personaCandidates } from './personas';
+import { getPersona, personaCandidates } from '../../../tests/fixtures/personas';
 
 it('keeps exactly three ready example candidates with localized identity data', () => {
   expect(personaCandidates).toHaveLength(3);

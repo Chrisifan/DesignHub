@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { getMessages, type Locale } from '../i18n';
 import { WindowBar } from '../shell/WindowBar';
-import { exampleProjects } from './examples';
 import { LibraryPages } from './LibraryPages';
 import { DesignerHero } from './DesignerHero';
 import { NewDesignPage } from './NewDesignPage';
 import { PersonaArtwork } from './PersonaArtwork';
-import { getPersona, localize, personaProfiles, type PersonaProfile } from './personas';
+import { localize, type PersonaProfile } from './personas';
+import { legacySeededDesignerIds } from '../../features/designers/persistence';
 import { Workbench } from './Workbench';
 import type { CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
@@ -42,32 +42,42 @@ const navigation: { view: View; icon: string; zh: string; en: string }[] = [
   { view: 'tasks', icon: 'clock', zh: '模型任务', en: 'Model tasks' },
   { view: 'delivery', icon: 'download', zh: '导出交付', en: 'Delivery' },
   { view: 'storage', icon: 'hard-drive', zh: '工作区管理', en: 'Workspace' },
+];
+
+const destinations: { view: View; icon: string; zh: string; en: string }[] = [
+  ...navigation,
   { view: 'settings', icon: 'settings', zh: '设置', en: 'Settings' },
 ];
+
+const emptyProjects: Project[] = [];
+const emptyDesignerOptions: PersonaProfile[] = [];
+const emptyAssets: NonNullable<Parameters<typeof LibraryPages>[0]['initialAssets']> = [];
+const emptyBrands: NonNullable<Parameters<typeof LibraryPages>[0]['initialBrands']> = [];
 
 const readOperatorName = (): string => {
   try { return localStorage.getItem('designhub.operator.name') ?? ''; } catch { return ''; }
 };
 
-const toStudioProject = (entry: ActiveProject, workspaceId: string, locale: Locale): Project => {
+const toStudioProject = (entry: ActiveProject, workspaceId: string): Project => {
   const snapshot = entry.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
-  const primaryDesigner = snapshot?.name?.zh ?? '纸感排版';
+  const primaryDesigner = snapshot?.name?.zh ?? snapshot?.name?.en;
+  const documentEntries = entry.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }));
   return {
     id: entry.projectId,
     workspaceId,
     documentId: entry.documents?.[0]?.id,
     name: entry.name,
     enName: entry.name,
-    description: entry.brief ?? t(locale, '本地项目', 'Local project'),
-    enDescription: entry.brief ?? 'Local project',
-    designers: [primaryDesigner],
+    description: entry.brief ?? '',
+    enDescription: entry.brief ?? '',
+    designers: primaryDesigner ? [primaryDesigner] : [],
     activeDesignerVersionId: entry.activeDesignerVersionId,
     contributorDesignerVersionIds: entry.contributorDesignerVersionIds,
     designerSnapshot: entry.designerSnapshot,
     brandSnapshot: entry.brandSnapshot,
     artwork: 'blank',
-    documents: entry.documents?.length ?? 1,
-    documentEntries: entry.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
+    documents: documentEntries?.length ?? 0,
+    documentEntries,
     archived: entry.archived,
   };
 };
@@ -82,6 +92,10 @@ type StudioProps = {
   onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
   recentWorkspaces?: WorkspaceDescriptor[];
   onOpenWorkspace?: (directory: string) => Promise<WorkspaceDescriptor | null>;
+  initialProjects?: Project[];
+  initialDesignerOptions?: PersonaProfile[];
+  initialAssets?: Parameters<typeof LibraryPages>[0]['initialAssets'];
+  initialBrands?: Parameters<typeof LibraryPages>[0]['initialBrands'];
 };
 
 export const Studio = ({
@@ -94,10 +108,16 @@ export const Studio = ({
   onWorkspaceChange,
   recentWorkspaces = [],
   onOpenWorkspace,
+  initialProjects = emptyProjects,
+  initialDesignerOptions = emptyDesignerOptions,
+  initialAssets = emptyAssets,
+  initialBrands = emptyBrands,
 }: StudioProps) => {
   const [view, setView] = useState<View>('projects');
   const [surface, setSurface] = useState<StudioSurface>('projects');
-  const [projects, setProjects] = useState(() => (workspace ? [] : exampleProjects));
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [projectsLoadFailed, setProjectsLoadFailed] = useState(false);
+  const [projectsReloadKey, setProjectsReloadKey] = useState(0);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'active' | 'archived' | 'all'>('active');
   const [display, setDisplay] = useState<'grid' | 'list'>('grid');
@@ -113,19 +133,17 @@ export const Studio = ({
     name: '',
     goal: '',
     brief: '',
-    personaId: 'paper-type',
+    personaId: '',
     size: '1080 × 1440',
     mode: 'manual',
   });
-  const [creationDraftId, setCreationDraftId] = useState<string | null>(null);
-  const [conversationResult, setConversationResult] = useState<{ taskId: string; text: string } | null>(null);
   const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
   const [relatedDialog, setRelatedDialog] = useState(false);
   const [relatedName, setRelatedName] = useState('');
   const [relatedWidth, setRelatedWidth] = useState('1080');
   const [relatedHeight, setRelatedHeight] = useState('1080');
   const [projectNameDraft, setProjectNameDraft] = useState('');
-  const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(personaProfiles);
+  const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(initialDesignerOptions);
   const [modelConnected, setModelConnected] = useState(false);
   const [operatorName, setOperatorName] = useState(readOperatorName);
   const [pendingAssetAction, setPendingAssetAction] = useState<(CanvasAssetAction & { projectId?: string }) | null>(null);
@@ -137,17 +155,26 @@ export const Studio = ({
   useEffect(() => {
     let cancelled = false;
     if (!workspace) {
-      setProjects(exampleProjects);
+      setProjects(initialProjects);
+      setProjectsLoadFailed(false);
+      setDesignerOptions(initialDesignerOptions);
+      setDraft((current) => ({ ...current, personaId: '' }));
     } else {
       setProjects([]);
+      setProjectsLoadFailed(false);
+      setDesignerOptions([]);
+      setDraft((current) => ({ ...current, personaId: '' }));
       const request = getDesktopApi().listActiveProjects?.(workspace.workspaceId);
       if (!request) {
         setProjects([]);
+        setProjectsLoadFailed(true);
       }
       void request?.then((entries) => {
-        if (cancelled || !entries) return;
-        setProjects(entries.map((entry) => toStudioProject(entry, workspace.workspaceId, locale)));
-      }).catch(() => undefined);
+        if (cancelled) return;
+        if (!entries) { setProjects([]); setProjectsLoadFailed(true); return; }
+        setProjectsLoadFailed(false);
+        setProjects(entries.map((entry) => toStudioProject(entry, workspace.workspaceId)));
+      }).catch(() => { if (!cancelled) { setProjects([]); setProjectsLoadFailed(true); } });
     }
     setSelected(null);
     setDocumentOpen(false);
@@ -155,7 +182,7 @@ export const Studio = ({
     setView('projects');
     setSurface('projects');
     return () => { cancelled = true; };
-  }, [workspace?.workspaceId, locale]);
+  }, [initialDesignerOptions, initialProjects, workspace?.workspaceId, locale, projectsReloadKey]);
   useEffect(() => {
     let cancelled = false;
     if (!workspace) { setModelConnected(false); return () => { cancelled = true; }; }
@@ -168,28 +195,25 @@ export const Studio = ({
   }, [workspace?.workspaceId]);
   useEffect(() => {
     let cancelled = false;
-    if (!workspace) { setDesignerOptions(personaProfiles); return () => { cancelled = true; }; }
+    if (!workspace) { setDesignerOptions(initialDesignerOptions); return () => { cancelled = true; }; }
     const request = getDesktopApi().loadDesignerState?.(workspace.workspaceId);
     void request?.then((state) => {
       if (cancelled) return;
-      const byId = new Map((state?.profiles ?? []).map((profile) => [profile.id, profile]));
-      setDesignerOptions([...personaProfiles.map((profile) => byId.get(profile.id) ?? profile), ...(state?.profiles ?? []).filter((profile) => !personaProfiles.some((builtin) => builtin.id === profile.id))]);
+      const profiles = (state?.profiles ?? [])
+        .filter((profile) => !legacySeededDesignerIds.has(profile.id))
+        .map((profile) => profile.status === 'built-in'
+        ? { ...profile, status: 'published' as const }
+        : profile);
+      setDesignerOptions(profiles);
+      setDraft((current) => ({
+        ...current,
+        personaId: profiles.some((profile) => profile.id === current.personaId)
+          ? current.personaId
+          : profiles[0]?.id ?? '',
+      }));
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [workspace]);
-  useEffect(() => {
-    if (!workspace || !creationDraftId) return undefined;
-    let cancelled = false;
-    const request = getDesktopApi().listTasks?.(workspace.workspaceId);
-    void request?.then((stored) => {
-      if (cancelled || !stored) return;
-      const completed = stored.find((task) => task.source?.kind === 'creation-draft' && task.source.id === creationDraftId && task.state === 'completed' && task.result?.text);
-      if (!completed?.result?.text) return;
-      setConversationResult({ taskId: completed.id, text: completed.result.text });
-      setDraft((current) => ({ ...current, brief: completed.result?.text ?? current.brief }));
-    }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [creationDraftId, workspace]);
+  }, [initialDesignerOptions, workspace]);
   const navigate = (next: View) => {
     setView(next);
     setSurface(next);
@@ -331,7 +355,7 @@ export const Studio = ({
       if (!result) return;
       const entries = await getDesktopApi().listActiveProjects?.(workspace.workspaceId);
       if (entries) {
-        setProjects(entries.map((entry) => toStudioProject(entry, workspace.workspaceId, locale)));
+        setProjects(entries.map((entry) => toStudioProject(entry, workspace.workspaceId)));
       }
       notify(t(locale, '项目包已导入', 'Project package imported'));
     } catch {
@@ -343,7 +367,7 @@ export const Studio = ({
     const timeout = window.setTimeout(() => setNotice(''), 6000);
     return () => window.clearTimeout(timeout);
   }, [notice]);
-  const title = navigation.find((item) => item.view === view)!;
+  const title = destinations.find((item) => item.view === view)!;
   const nativeControlSide = navigator.userAgent.includes('Mac')
     ? 'left'
     : 'right';
@@ -394,32 +418,6 @@ export const Studio = ({
   const createProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.name.trim()) return;
-    if (draft.mode === 'conversation') {
-      if (!draft.brief.trim()) return;
-      if (!workspace || workspace.openMode !== 'writable') {
-        notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
-        return;
-      }
-      const draftId = creationDraftId ?? `creation-${crypto.randomUUID()}`;
-      try {
-        const task = await getDesktopApi().submitConversation?.({
-          workspaceId: workspace.workspaceId,
-          source: { kind: 'creation-draft', id: draftId },
-          connectionId: 'openai-compatible',
-          message: draft.brief.trim(),
-        });
-        if (!task) {
-          notify(t(locale, '模型连接不可用，草稿未提交。', 'Model connection unavailable; draft was not submitted.'));
-          return;
-        }
-        setCreationDraftId(draftId);
-        setConversationResult(null);
-        notify(t(locale, '简报任务已排队，确认后创建项目。', 'Brief task queued; confirm it before creating the project.'));
-      } catch {
-        notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
-      }
-      return;
-    }
     const documentId = crypto.randomUUID();
     let documentSize;
     try {
@@ -429,13 +427,13 @@ export const Studio = ({
       return;
     }
     if (workspace?.openMode === 'writable') {
+      const selectedDesigner = designerOptions.find((profile) => profile.id === draft.personaId);
       const created = await getDesktopApi().createProjectContainer?.({
         workspaceId: workspace.workspaceId,
         operationId: crypto.randomUUID(),
         name: draft.name.trim(),
-        brief: draft.goal || draft.brief || undefined,
-        activeDesignerVersionId: draft.personaId,
-        designerSnapshot: getPersona(draft.personaId),
+        brief: draft.goal || undefined,
+        ...(selectedDesigner ? { activeDesignerVersionId: selectedDesigner.id, designerSnapshot: structuredClone(selectedDesigner) } : {}),
         documents: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
       });
       if (!created) {
@@ -448,11 +446,10 @@ export const Studio = ({
         documentId,
         name: draft.name.trim(),
         enName: draft.name.trim(),
-        description: draft.goal || draft.brief || t(locale, '本地项目', 'Local project'),
-        enDescription: draft.goal || draft.brief || 'Local project',
-        designers: [getPersona(draft.personaId)?.name.zh ?? '纸感排版'],
-        activeDesignerVersionId: draft.personaId,
-        designerSnapshot: getPersona(draft.personaId),
+        description: draft.goal,
+        enDescription: draft.goal,
+        designers: selectedDesigner ? [localize(locale, selectedDesigner.name)] : [],
+        ...(selectedDesigner ? { activeDesignerVersionId: selectedDesigner.id, designerSnapshot: structuredClone(selectedDesigner) } : {}),
         artwork: 'blank',
         documents: 1,
         documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
@@ -463,9 +460,7 @@ export const Studio = ({
       setView('projects');
       setQuery('');
       setFilter('active');
-      setDraft({ name: '', goal: '', brief: '', personaId: 'paper-type', size: '1080 × 1440', mode: 'manual' });
-      setCreationDraftId(null);
-      setConversationResult(null);
+      setDraft({ name: '', goal: '', brief: '', personaId: '', size: '1080 × 1440', mode: 'manual' });
       notify(t(locale, '项目已保存到本地工作区。', 'Project saved to the local workspace.'));
       return;
     }
@@ -478,10 +473,10 @@ export const Studio = ({
       name: draft.name.trim(),
       enName: draft.name.trim(),
       description:
-        draft.goal || draft.brief ||
+        draft.goal ||
         t(locale, '本次预览中的项目草稿', 'A project draft for this preview'),
-      enDescription: draft.goal || draft.brief || 'A project draft for this preview',
-      designers: [getPersona(draft.personaId)?.name.zh ?? '纸感排版'],
+      enDescription: draft.goal || 'A project draft for this preview',
+      designers: designerOptions.find((profile) => profile.id === draft.personaId) ? [localize(locale, designerOptions.find((profile) => profile.id === draft.personaId)!.name)] : [],
       artwork: 'blank',
       documents: 1,
       documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
@@ -496,12 +491,10 @@ export const Studio = ({
       name: '',
       goal: '',
       brief: '',
-      personaId: 'paper-type',
+      personaId: '',
       size: '1080 × 1440',
       mode: 'manual',
     });
-    setCreationDraftId(null);
-    setConversationResult(null);
     notify(
       t(
         locale,
@@ -512,39 +505,19 @@ export const Studio = ({
   };
   const projectName = (project: Project) =>
     t(locale, project.name, project.enName);
-  const designerName = (name: string) =>
-    locale === 'zh-CN'
-      ? name
-      : ((
-          {
-            纸感排版: 'Paper & type',
-            极简构成: 'Minimal form',
-            自然叙事: 'Natural stories',
-            清晰商业: 'Clear Commerce',
-          } as Record<string, string>
-        )[name] ?? name);
-  const projectPersonaId = (project: Project) => {
-    if (project.activeDesignerVersionId) return project.activeDesignerVersionId;
-    const name = project.designers[0];
-    return (
-      {
-        纸感排版: 'paper-type',
-        极简构成: 'paper-type',
-        自然叙事: 'natural-story',
-        清晰商业: 'clear-commerce',
-      } as Record<string, string>
-    )[name] ?? 'paper-type';
-  };
+  const projectPersonaId = (project: Project) => project.activeDesignerVersionId ?? '';
   const projectDesignerLabel = (project: Project): string => {
     const snapshot = project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
     const localizedName = snapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en'];
-    return localizedName ?? designerName(project.designers[0] ?? '纸感排版');
+    if (localizedName) return localizedName;
+    return project.designers[0] ?? t(locale, '未设置设计师', 'No designer selected');
   };
   const projectContributorIds = (project: Project): string[] => {
     const ids = [...new Set(project.contributorDesignerVersionIds?.length
       ? project.contributorDesignerVersionIds
       : (project.activeDesignerVersionId ? [project.activeDesignerVersionId] : []))];
-    return ids.length > 0 ? ids : [projectPersonaId(project)];
+    if (ids.length > 0) return ids;
+    return [];
   };
   const projectContributorLabel = (project: Project): string => projectContributorIds(project).map((id, index) => {
     if (index === 0) return projectDesignerLabel(project);
@@ -641,11 +614,11 @@ export const Studio = ({
       notify(t(locale, '生成任务提交失败，请检查连接。', 'Generation task submission failed. Check the connection.'));
     }
   };
-  const openNewDesign = (mode: NewDesignDraft['mode'], personaId?: string) => {
+  const openNewDesign = (personaId?: string) => {
     newDesignReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDraft((previous) => ({
       ...previous,
-      mode,
+      mode: 'manual',
       personaId: personaId ?? previous.personaId,
     }));
     setSurface('new-design');
@@ -672,16 +645,9 @@ export const Studio = ({
     surface === 'projects' && view === 'projects' && !documentOpen && !selected ? (
       <>
         <Button
-          icon="message-square"
-          variant="ai"
-          onClick={() => openNewDesign('conversation')}
-        >
-          {t(locale, '对话创建', 'Create with chat')}
-        </Button>
-        <Button
           icon="plus"
           variant="primary"
-          onClick={() => openNewDesign('manual')}
+          onClick={() => openNewDesign()}
         >
           {t(locale, '新建项目', 'New project')}
         </Button>
@@ -716,7 +682,6 @@ export const Studio = ({
         nativeControlSide={nativeControlSide}
         onLocaleChange={onLocaleChange}
         onThemeChange={onThemeChange}
-        previewLabel={workspace ? undefined : t(locale, '示例预览', 'Example preview')}
         themeLabel={t(locale, '切换主题', 'Switch theme')}
         workspace={{
           name: workspace?.name ?? t(locale, '我的设计空间', 'My design studio'),
@@ -724,7 +689,7 @@ export const Studio = ({
             ? workspace.openMode === 'read-only'
               ? t(locale, '只读工作区', 'Read-only workspace')
               : t(locale, '本地工作区', 'Local workspace')
-            : t(locale, '示例工作区', 'Example workspace'),
+            : t(locale, '未打开工作区', 'No workspace open'),
           label: t(locale, '切换工作区', 'Switch workspace'),
           onClick: () => setDialog('workspace'),
         }}
@@ -827,12 +792,6 @@ export const Studio = ({
               onBack={backFromNewDesign}
               profiles={designerOptions}
               persisted={workspace?.openMode === 'writable'}
-              conversationResult={conversationResult}
-              onConfirmConversation={(taskId) => {
-                if (!conversationResult || conversationResult.taskId !== taskId) return;
-                setDraft((current) => ({ ...current, mode: 'manual', goal: conversationResult.text }));
-                notify(t(locale, '简报已确认，请创建项目。', 'Brief confirmed. Create the project when ready.'));
-              }}
             />
           )}
           {surface === 'projects' && view === 'projects' && !selected && (
@@ -941,12 +900,12 @@ export const Studio = ({
                               {projectContributorIds(project).slice(0, 3).map((designerId) => <PersonaArtwork key={designerId} personaId={designerId} crop="avatar" profile={designerOptions.find((profile) => profile.id === designerId)} />)}
                             </span>
                             <strong>
-                              {projectDesignerLabel(project)} · {getPersona(projectPersonaId(project))?.version ?? (project.designerSnapshot as { version?: string } | undefined)?.version ?? 'v1.0'}
+                              {projectDesignerLabel(project)}{(project.designerSnapshot as { version?: string } | undefined)?.version ? ` · ${(project.designerSnapshot as { version?: string }).version}` : ''}
                             </strong>
                             {projectContributorIds(project).length > 1 && <span className="design-attribution-contributors" aria-label={t(locale, '版本署名', 'Revision credits')}>{projectContributorLabel(project)}</span>}
                           </span>
                           <span className="project-meta-end">
-                            {project.workspaceId ? t(locale, '本地', 'Local') : t(locale, '示例', 'Example')}
+                            {project.workspaceId ? t(locale, '本地', 'Local') : t(locale, '未保存', 'Unsaved')}
                           </span>
                         </div>
                       </div>
@@ -955,22 +914,22 @@ export const Studio = ({
                 </div>
               ) : (
                 <EmptyState
-                  icon="search"
-                  title={t(locale, '没有匹配的项目', 'No matching projects')}
+                  icon={projectsLoadFailed ? 'alert-triangle' : projects.length === 0 ? 'folder-open' : 'search'}
+                  title={projectsLoadFailed ? t(locale, '项目读取失败', 'Could not load projects') : projects.length === 0 ? t(locale, '暂无项目', 'No projects yet') : t(locale, '没有匹配的项目', 'No matching projects')}
                   description={t(
                     locale,
-                    '试试其他关键词，或查看全部项目。',
-                    'Try another keyword or view all projects.',
+                    projectsLoadFailed ? '请重试或检查工作区权限。' : projects.length === 0 ? '创建项目后会显示在这里。' : '试试其他关键词，或查看全部项目。',
+                    projectsLoadFailed ? 'Retry or check workspace permissions.' : projects.length === 0 ? 'Create a project to see it here.' : 'Try another keyword or view all projects.',
                   )}
                 >
-                  <Button
+                  {(projectsLoadFailed || projects.length > 0) && <Button
                     onClick={() => {
-                      setQuery('');
-                      setFilter('all');
+                      if (projectsLoadFailed) setProjectsReloadKey((key) => key + 1);
+                      else { setQuery(''); setFilter('all'); }
                     }}
                   >
-                    {t(locale, '清除搜索', 'Clear search')}
-                  </Button>
+                    {projectsLoadFailed ? t(locale, '重试', 'Retry') : t(locale, '清除搜索', 'Clear search')}
+                  </Button>}
                 </EmptyState>
               )}
               <div className="creation-note">
@@ -996,19 +955,11 @@ export const Studio = ({
                 <Button
                   variant="ghost"
                   icon="arrow-right"
-                  onClick={() => openNewDesign('manual')}
+                  onClick={() => openNewDesign()}
                 >
                   {t(locale, '开始创作', 'Start creating')}
                 </Button>
               </div>
-              {!workspace && <p className="example-footnote">
-                <Icon name="circle-help" size={14} />
-                {t(
-                  locale,
-                  '这些示例用于浏览界面。预览中的修改仅在本次会话保留。',
-                  'Explore with example content. Preview changes last for this session only.',
-                )}
-              </p>}
             </section>
           )}
           {surface === 'projects' && view === 'projects' && selected && !documentOpen && (
@@ -1022,8 +973,8 @@ export const Studio = ({
                 )}
                 eyebrow={t(
                   locale,
-                  selected.workspaceId ? '设计项目 / 本地' : '设计项目 / 示例',
-                  selected.workspaceId ? 'DESIGN PROJECT / LOCAL' : 'DESIGN PROJECT / EXAMPLE',
+                  selected.workspaceId ? '设计项目 / 本地' : '设计项目 / 未保存',
+                  selected.workspaceId ? 'DESIGN PROJECT / LOCAL' : 'DESIGN PROJECT / UNSAVED',
                 )}
               >
                 {workspace?.openMode === 'writable' && selected.workspaceId && <>
@@ -1061,11 +1012,11 @@ export const Studio = ({
               <div className="project-context">
                 <div>
                   <small>{t(locale, '活跃版本', 'ACTIVE VERSION')}</small>
-                  <strong>{getPersona(projectPersonaId(selected))?.version ?? 'v1.0'}</strong>
+                  <strong>{(selected.designerSnapshot as { version?: string } | undefined)?.version ?? t(locale, '未设置', 'Not set')}</strong>
                 </div>
                 <div>
                   <small>{t(locale, '项目状态', 'PROJECT STATUS')}</small>
-                    <strong>{selected.workspaceId ? t(locale, '进行中', 'Active') : t(locale, '预览草稿', 'Preview draft')}</strong>
+                    <strong>{selected.workspaceId ? t(locale, '进行中', 'Active') : t(locale, '未保存草稿', 'Unsaved draft')}</strong>
                 </div>
                 <div>
                   <small>{t(locale, '品牌上下文', 'BRAND CONTEXT')}</small>
@@ -1076,7 +1027,7 @@ export const Studio = ({
                 <div>
                   <small>{t(locale, '内容保留', 'RETENTION')}</small>
                   <strong>
-                    {selected.workspaceId ? t(locale, '本地保存', 'Saved locally') : t(locale, '仅本次预览', 'This preview only')}
+                    {selected.workspaceId ? t(locale, '本地保存', 'Saved locally') : t(locale, '仅当前会话', 'This session only')}
                   </strong>
                 </div>
               </div>
@@ -1094,10 +1045,7 @@ export const Studio = ({
                 </div>
               </div>
               <div className="document-collection">
-                {Array.from({ length: selected.documents }, (_, index) => {
-                  const entry = selected.documentEntries?.[index];
-                  const fallbackName = index === 0 ? t(locale, '主海报', 'Main poster') : index === 1 ? t(locale, '社媒方图', 'Social square') : t(locale, '活动横幅', 'Campaign banner');
-                  const fallbackSize = index === 0 ? '1080 × 1440' : index === 1 ? '1080 × 1080' : '1920 × 1080';
+                {selected.workspaceId && !selected.documentEntries?.length ? <EmptyState icon="file-image" title={t(locale, '暂无设计文档', 'No design documents yet')} description={t(locale, '创建文档后会显示在这里。', 'Create a document to see it here.')} /> : (selected.documentEntries ?? Array.from({ length: selected.documents }, () => undefined)).map((entry, index) => {
                   return <button
                     className="document-card"
                     key={entry?.id ?? index}
@@ -1113,10 +1061,10 @@ export const Studio = ({
                       <ArtworkPreview kind={selected.artwork} />
                     </div>
                     <div className="document-card-body">
-                      <h3>{entry?.name ?? fallbackName}</h3>
+                      <h3>{entry?.name ?? t(locale, '主海报', 'Main poster')}</h3>
                       <span>
-                        {entry ? `${entry.width} × ${entry.height}` : fallbackSize}{' '}
-                        px <Badge>{selected.workspaceId ? t(locale, '本地', 'Local') : t(locale, '示例', 'Example')}</Badge>
+                        {entry ? `${entry.width} × ${entry.height}` : '1080 × 1440'}{' '}
+                        px <Badge>{selected.workspaceId ? t(locale, '本地', 'Local') : t(locale, '未保存', 'Unsaved')}</Badge>
                       </span>
                     </div>
                   </button>
@@ -1166,7 +1114,7 @@ export const Studio = ({
               />
             </div>
           ))}
-          {navigation
+          {destinations
             .filter((item) => item.view !== 'projects')
             .map((item) => (
               <div
@@ -1183,7 +1131,7 @@ export const Studio = ({
                   readOnly={workspace?.openMode === 'read-only'}
                   notify={notify}
                   navigate={navigate}
-                  onUseForNew={(personaId) => openNewDesign('manual', personaId)}
+                  onUseForNew={(personaId) => openNewDesign(personaId)}
                   onAssetAction={routeAssetAction}
                   theme={theme}
                   onThemeChange={onThemeChange}
@@ -1191,6 +1139,9 @@ export const Studio = ({
                   onWorkspaceChange={onWorkspaceChange}
                   operatorName={operatorName}
                   onOperatorNameChange={updateOperatorName}
+                  initialAssets={initialAssets}
+                  initialBrands={initialBrands}
+                  initialProfiles={initialDesignerOptions}
                 />
               </div>
             ))}
@@ -1204,17 +1155,19 @@ export const Studio = ({
                 ? workspace.openMode === 'read-only'
                   ? '只读工作区'
                   : '本地工作区'
-                : '示例工作区 · 仅本次预览',
+                : '未打开工作区',
               workspace
                 ? workspace.openMode === 'read-only'
                   ? 'Read-only workspace'
                   : 'Local workspace'
-                : 'Example workspace · Session only',
+                : 'No workspace open',
             )}
           </span>
           <span>
             <Icon name="plug" size={12} />
-            {t(locale, '模型未连接', 'No model connected')}
+            {modelConnected
+              ? t(locale, '模型已连接', 'Model connected')
+              : t(locale, '模型未连接', 'No model connected')}
           </span>
           <span className="status-end">
             DesignHub <span className="mono">0.1</span>
@@ -1239,10 +1192,8 @@ export const Studio = ({
           onClose={() => setDialog(null)}
           locale={locale}
         >
-          {(!workspace || workspace.openMode === 'read-only') && <p className="muted">
-            {workspace?.openMode === 'read-only'
-              ? t(locale, '当前工作区为只读模式。', 'This workspace is read-only.')
-              : t(locale, '示例修改仅在本次预览中保留，离开示例后会清除。', 'Example edits stay in this preview and are cleared when you leave it.')}
+          {workspace?.openMode === 'read-only' && <p className="muted">
+            {t(locale, '当前工作区为只读模式。', 'This workspace is read-only.')}
           </p>}
           <button className="workspace-choice" onClick={() => setDialog(null)}>
             <span className="workspace-monogram">{workspace?.name.slice(0, 1).toUpperCase() ?? 'D'}</span>
@@ -1253,7 +1204,7 @@ export const Studio = ({
                   ? workspace.openMode === 'read-only'
                     ? t(locale, '只读工作区 · 当前', 'Read-only workspace · Current')
                     : t(locale, '本地工作区 · 当前', 'Local workspace · Current')
-                  : t(locale, '示例工作区 · 当前', 'Example workspace · Current')}
+                  : t(locale, '未打开工作区', 'No workspace open')}
               </small>
             </span>
             <Icon name="check" />

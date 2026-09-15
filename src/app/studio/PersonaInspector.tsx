@@ -12,9 +12,7 @@ type PersonaInspectorProps = {
   workspaceId?: string;
   onEdit?: () => void;
   onDelete?: () => void;
-  onDuplicate?: () => void;
   onSetDefault?: (personaId: string) => void;
-  onDeriveDraft?: (personaId: string) => void;
   onUseForNew?: () => void;
   onUseForNewDesign?: (personaId: string) => void;
   onRestore?: () => void;
@@ -38,9 +36,7 @@ export const PersonaInspector = ({
   workspaceId,
   onEdit,
   onDelete,
-  onDuplicate,
   onSetDefault,
-  onDeriveDraft,
   onUseForNew,
   onUseForNewDesign,
   onRestore,
@@ -55,7 +51,7 @@ export const PersonaInspector = ({
     );
   }
   const sessionDefault = isSessionDefault ?? isDefault;
-  const status = profile.status === 'published' ? t(locale, '已发布', 'Published') : profile.status === 'built-in' ? t(locale, '内置', 'Built-in') : profile.status === 'archived' ? t(locale, '已归档', 'Archived') : t(locale, '草稿', 'Draft');
+  const status = profile.status === 'published' || profile.status === 'built-in' ? t(locale, '已发布', 'Published') : profile.status === 'archived' ? t(locale, '已归档', 'Archived') : t(locale, '草稿', 'Draft');
   return (
     <aside className="details-panel persona-inspector" aria-label={t(locale, '设计师检查器', 'Designer inspector')}>
       <header className="persona-inspector__head">
@@ -78,9 +74,8 @@ export const PersonaInspector = ({
       <div className="persona-inspector__actions">
         {onEdit && <Button variant="primary" icon="settings" onClick={onEdit} disabled={readOnly}>{t(locale, '编辑', 'Edit')}</Button>}
         <Button icon="plus" onClick={() => (onUseForNewDesign ? onUseForNewDesign(profile.id) : onUseForNew?.())} disabled={!canUseForNew}>{t(locale, '用于新建', 'Use for new')}</Button>
-        <Button icon="copy" onClick={() => (onDeriveDraft ? onDeriveDraft(profile.id) : onDuplicate?.())} disabled={readOnly}>{t(locale, '派生', 'Derive')}</Button>
         <Button icon="star" onClick={() => onSetDefault?.(profile.id)} disabled={readOnly || sessionDefault || !canSetDefault}>{sessionDefault ? t(locale, '当前默认', 'Current default') : t(locale, '设默认', 'Set default')}</Button>
-        {profile.status === 'archived' && onRestore ? <Button icon="rotate-ccw" onClick={onRestore} disabled={readOnly}>{t(locale, '恢复', 'Restore')}</Button> : profile.status !== 'built-in' && onDelete && <Button icon="trash-2" onClick={onDelete} disabled={readOnly}>{t(locale, '删除', 'Delete')}</Button>}
+        {profile.status === 'archived' && onRestore ? <Button icon="rotate-ccw" onClick={onRestore} disabled={readOnly}>{t(locale, '恢复', 'Restore')}</Button> : onDelete && <Button icon="trash-2" onClick={onDelete} disabled={readOnly}>{t(locale, '删除', 'Delete')}</Button>}
       </div>
       <div className="persona-inspector__principle">
         <Icon name="sparkles" size={16} />

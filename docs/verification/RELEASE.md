@@ -30,6 +30,26 @@ Expected evidence: final PNG magic/dimensions/pixels, two final revision IDs, im
 - [ ] Signed/notarized artifacts and exact hashes recorded.
 - [ ] Real provider adapters, licensed image-tool samples, and 100-project/long-history performance sample.
 
+## 2026-09-14 release-closure implementation
+
+- Added an offline provider conformance harness covering conversation, streaming, vision, image generation and image editing. The harness returns per-capability results and redacted errors without making network requests.
+- Added `pnpm test:provider` and an opt-in `pnpm provider:live-smoke`. Live smoke requires `DESIGNHUB_LIVE_PROVIDER=1` plus explicit endpoint, key and model variables; without them it exits as `blocked`.
+- Added optional `ImageMetadata.colorSpace` reporting and fail-closed sRGB validation during image export.
+- Added `PackageClosureReport` to explain included and excluded package entries without changing the existing editable/read-only package policy.
+- Added `pnpm release:check`, Forge ZIP/DMG/Squirrel makers, and a macOS/Windows GitHub Actions matrix. The release check exits non-zero only for failed local gates and reports missing Windows, signing, live-provider or packaged-native prerequisites as blockers.
+- `release-check` runs local gates serially in this order: unit, integration, browser E2E, native Electron, lint, typecheck, build, optional package, then `git diff --check`. The final JSON report has `status`, per-command results, package content scan results, and explicit external blockers.
+- Package scanning checks both artifact paths and credential-shaped values in generated files. It never prints file contents or environment values.
+- Project package closure excludes credentials, conversations, fonts and unarchived `references/` material; the closure report records each exclusion reason.
+- `pnpm test:install-upgrade` is an explicit manual evidence entry point. It remains `blocked` until `DESIGNHUB_INSTALL_SMOKE=1` and a reviewed marker JSON confirms install, upgrade, uninstall, and workspace retention on a real macOS or Windows host.
+- Added temporary-workspace portfolio retention/discard integration coverage. Raw source bytes remain in memory only until the inspection is explicitly discarded.
+
+## 2026-09-14 final local gate evidence
+
+- `pnpm release:check` completed serially with unit 101 files / 477 tests, integration 25 files / 115 tests, browser E2E 25/25, source native 2 passed / 1 packaged-path skip, lint, typecheck, build and `git diff --check` all passed. Package scan covered 386 generated files with no credential-shaped paths or values.
+- A fresh `pnpm package` completed for macOS arm64. Running `DESIGNHUB_PACKAGED_APP_PATH=out/designhub-darwin-arm64/designhub.app/Contents/MacOS/designhub pnpm test:native` passed 3/3, including packaged storage. Executable SHA-256: `588478afc5f2bc73b6433d6e565a214dc830144be39a3d79805723292754ccd8`.
+- `pnpm test:provider` passed the offline fixture suite; `pnpm provider:live-smoke` returned `blocked` (exit 2) without explicit live-provider configuration, as required. `pnpm test:install-upgrade` remains an explicit blocked/manual evidence entry point until a reviewed marker is supplied.
+- External blockers remain honest and unchanged: Windows packaged behavior, signing/notarization credentials, explicit OS Keychain persistence evidence, real provider quality/cost/remote cancellation, cross-device package recovery, advanced codec fidelity, large-image performance and human visual QA.
+
 Browser preview tests are not evidence for the native gates above. No release artifact is uploaded by this plan.
 
 ## 2026-09-12 execution evidence
@@ -56,7 +76,7 @@ Browser preview tests are not evidence for the native gates above. No release ar
 
 - Multi-contributor attribution and related-scene conversion: project credits can include multiple designer versions, revisions preserve lead/direction roles, and related-size creation scales the finalized source scene into an independent document. Affected focused suite passed 53/53; semantic layout reflow and human visual QA remain release gates.
 
-- Custom persona artwork now remains visible on project detail pages for persisted non-built-in profiles, with an explicit unavailable fallback when no artwork is available. Focused `DesignerHero` regression passed 1/1; generated bitmap persistence remains an external gate.
+- Custom persona artwork now remains visible on project detail pages for persisted profiles, with an explicit unavailable fallback when no artwork is available. Focused `DesignerHero` regression passed 1/1; generated bitmap persistence remains an external gate.
 
 - New-design now carries persisted custom persona options into its selector and hero. Focused NewDesignPage regression passed 3/3; native generated bitmap persistence remains an external gate.
 

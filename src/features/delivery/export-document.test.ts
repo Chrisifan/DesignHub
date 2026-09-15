@@ -76,6 +76,19 @@ it('rejects an encoded image whose dimensions do not match the requested export'
   })).rejects.toThrow('INVALID_SIZE');
 });
 
+it('rejects an encoded image with a non-sRGB color space', async () => {
+  await expect(exportDocument({
+    revisionId: 'revision-color', format: 'png', targetPath: '/exports/color.png',
+    target: { exists: async () => false, write: async () => undefined },
+    render: async () => new Uint8Array([137, 80, 78, 71]),
+    codec: {
+      inspect: async () => ({ format: 'png', width: 1, height: 1, hasAlpha: false, colorSpace: 'display-p3' }),
+      encode: async () => new Uint8Array(),
+      toPdf: async () => new Uint8Array(),
+    },
+  })).rejects.toThrow('INVALID_COLOR_SPACE');
+});
+
 it('encodes a rendered PNG into the requested JPEG before writing', async () => {
   const source = new Uint8Array(await sharp({ create: { width: 2, height: 1, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } }).png().toBuffer());
   let written: number[] = [];

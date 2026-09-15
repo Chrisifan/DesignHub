@@ -8,7 +8,6 @@ it('uses the highest-priority configured designer that is available', () => {
     workspace: 'workspace-v1',
     global: 'global-v1',
     available: ['project-v1', 'workspace-v1', 'global-v1'],
-    builtin: 'builtin-v1',
   })).toBe('project-v1');
 
   expect(resolveDesigner({
@@ -16,7 +15,6 @@ it('uses the highest-priority configured designer that is available', () => {
     workspace: 'workspace-v1',
     global: 'global-v1',
     available: ['workspace-v1', 'global-v1'],
-    builtin: 'builtin-v1',
   })).toBe('workspace-v1');
 });
 
@@ -26,16 +24,7 @@ it('falls back through configured scopes when their snapshots are unavailable', 
     workspace: 'missing-workspace',
     global: 'global-v1',
     available: ['global-v1'],
-    builtin: 'builtin-v1',
   })).toBe('global-v1');
 
-  expect(resolveDesigner({
-    global: 'missing',
-    available: [],
-    builtin: 'builtin-v1',
-  })).toBe('builtin-v1');
-});
-
-it('uses the builtin fallback when no configured designer is present', () => {
-  expect(resolveDesigner({ available: ['other-v1'], builtin: 'builtin-v1' })).toBe('builtin-v1');
+  expect(resolveDesigner({ global: 'missing', available: [] })).toBe('');
 });

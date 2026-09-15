@@ -1,29 +1,61 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { App } from './App';
 import { Studio } from './studio/Studio';
 import type { ProjectMetadata } from '../features/projects/metadata';
 import type { UpdateProjectMetadataInput } from '../features/workspace/project-store';
 import { createScene } from '../features/canvas/scene';
+import { personaProfiles } from '../../tests/fixtures/personas';
+import { exampleProjects } from '../../tests/fixtures/examples';
+import { previewAssets, previewBrands } from '../../tests/fixtures/libraries';
+
+const persistedProfileIds = {
+  'paper-type': 'user-paper',
+  'clear-commerce': 'user-commerce',
+  'natural-story': 'user-story',
+} as const;
+const persistedProfiles = personaProfiles
+  .filter((profile): profile is typeof personaProfiles[number] => profile.id in persistedProfileIds)
+  .map((profile) => ({
+    ...profile,
+    id: persistedProfileIds[profile.id as keyof typeof persistedProfileIds],
+    status: 'published' as const,
+  }));
 
 beforeEach(() => {
   localStorage.clear();
   Reflect.deleteProperty(window, 'designhub');
+  window.history.replaceState({}, '', '/');
 });
 const enter = () => {
-  render(<App />);
-  fireEvent.click(screen.getByRole('button', { name: '浏览示例' }));
+  render(<Studio locale="zh-CN" theme="system" onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} initialProjects={exampleProjects} initialDesignerOptions={personaProfiles} initialAssets={previewAssets as never} initialBrands={previewBrands} />);
 };
 
 it('lets an offline user navigate the example workspace without a connection or disk save claim', () => {
   enter();
   const navigation = screen.getByRole('navigation', { name: '主导航' });
+  expect(within(navigation).queryByRole('button', { name: '设置' })).not.toBeInTheDocument();
   fireEvent.click(within(navigation).getByRole('button', { name: '设计师' }));
   expect(screen.getByRole('heading', { name: '设计师' })).toBeInTheDocument();
   fireEvent.click(within(navigation).getByRole('button', { name: '模型连接' }));
   expect(screen.getByRole('heading', { name: '模型连接' })).toBeInTheDocument();
   expect(screen.getByText('尚未连接模型')).toBeInTheDocument();
   expect(screen.queryByText('已保存到本地')).not.toBeInTheDocument();
+});
+
+it('does not seed an unscoped studio with example projects or designers', async () => {
+  render(
+    <Studio
+      locale="zh-CN"
+      theme="system"
+      onLocaleChange={() => undefined}
+      onThemeChange={() => undefined}
+      onExit={() => undefined}
+    />,
+  );
+
+  expect(screen.getByText('暂无项目')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '设计师' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: /纸感排版/ })).not.toBeInTheDocument());
 });
 
 it('shows a design cover with its designer avatar, name, and version', () => {
@@ -101,11 +133,11 @@ it('creates only a labelled preview draft and keeps project input when dismissin
   expect(
     screen.getByRole('heading', { name: '我的测试项目' }),
   ).toBeInTheDocument();
-  expect(screen.getByText('预览草稿')).toBeInTheDocument();
+  expect(screen.getByText('未保存草稿')).toBeInTheDocument();
   expect(screen.queryByText('已保存到本地')).not.toBeInTheDocument();
 });
 
-it('keeps the draft when language and theme change and remembers UI preferences', () => {
+it('keeps the draft while the shell controls are used', () => {
   enter();
   fireEvent.click(screen.getAllByRole('button', { name: '新建项目' })[0]!);
   fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), {
@@ -114,13 +146,10 @@ it('keeps the draft when language and theme change and remembers UI preferences'
   fireEvent.click(screen.getByRole('button', { name: '返回' }));
   fireEvent.click(screen.getByRole('button', { name: '切换主题' }));
   fireEvent.click(screen.getByRole('button', { name: 'Switch to English' }));
-  fireEvent.click(screen.getAllByRole('button', { name: 'New project' })[0]!);
-  expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue(
+  fireEvent.click(screen.getAllByRole('button', { name: '新建项目' })[0]!);
+  expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue(
     '保留输入',
   );
-  expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
-  expect(localStorage.getItem('designhub.ui.locale')).toBe('en');
-  expect(localStorage.getItem('designhub.ui.theme')).toBe('dark');
 });
 
 it('preserves the originating project when opening delivery from a document', () => {
@@ -155,6 +184,39 @@ it('hydrates persisted workspace projects and creates through the desktop API', 
   expect(await screen.findByRole('heading', { name: 'Created project' })).toBeInTheDocument();
 });
 
+it('keeps an empty real workspace free of example projects and designers', async () => {
+  const listActiveProjects = vi.fn(async () => []);
+  const loadDesignerState = vi.fn(async () => ({ profiles: [], defaultId: '', drafts: {} }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDesignerState };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-empty', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  await waitFor(() => expect(listActiveProjects).toHaveBeenCalledWith('workspace-empty'));
+  expect(screen.getByText('暂无项目')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '春间市集' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '设计师' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: /纸感排版/ })).not.toBeInTheDocument());
+});
+
+it('reports a connected model in the studio status bar when a provider credential exists', async () => {
+  const listActiveProjects = vi.fn(async () => []);
+  const hasCredential = vi.fn(async (account: string) => account === 'openai-compatible:conversation');
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, hasCredential };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-connected', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+
+  await waitFor(() => expect(hasCredential).toHaveBeenCalledWith('openai-compatible:image'));
+  expect(document.querySelector('.studio-status')).toHaveTextContent('模型已连接');
+  expect(document.querySelector('.studio-status')).not.toHaveTextContent('模型未连接');
+});
+
+it('shows a project load failure without falling back to example projects', async () => {
+  const listActiveProjects = vi.fn(async () => { throw new Error('PROJECT_LOAD_FAILED'); });
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-failed', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  expect(await screen.findByText('项目读取失败')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '春间市集' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '重试' }));
+  expect(listActiveProjects).toHaveBeenCalledTimes(2);
+});
+
 it('uses the selected document size when creating a project', async () => {
   const listActiveProjects = vi.fn(async () => []);
   const createProjectContainer = vi.fn(async () => ({ projectId: 'project-square' }));
@@ -176,7 +238,7 @@ it('waits for the persisted search index rebuild before querying it', async () =
   window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, rebuildSearchIndex, searchProjects };
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
-  expect(rebuildSearchIndex).toHaveBeenCalledOnce();
+  await waitFor(() => expect(rebuildSearchIndex).toHaveBeenCalledOnce());
   expect(searchProjects).not.toHaveBeenCalled();
   releaseRebuild();
   await waitFor(() => expect(searchProjects).toHaveBeenCalledWith({ workspaceId: 'workspace-1', query: '' }));
@@ -188,13 +250,14 @@ it('imports a project package and refreshes the persisted project list', async (
     .mockResolvedValueOnce([{
       projectId: 'project-imported',
       name: 'Imported project',
-      activeDesignerVersionId: 'paper-type',
-      contributorDesignerVersionIds: ['paper-type', 'natural-story'],
+      activeDesignerVersionId: 'user-paper',
+      contributorDesignerVersionIds: ['user-paper', 'user-story'],
       designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' },
       documents: [{ id: 'doc-imported', name: '导入方图', width: 720, height: 720, updatedAt: '2026-09-12T00:00:00.000Z' }],
     }]);
   const importProjectPackage = vi.fn(async () => ({ projectId: 'project-imported' }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, importProjectPackage };
+  const loadDesignerState = vi.fn(async () => ({ profiles: persistedProfiles, defaultId: 'user-paper', drafts: {} }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, importProjectPackage, loadDesignerState };
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('heading', { name: '项目库' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: '导入项目包' }));
@@ -292,28 +355,28 @@ it('keeps two-image generation when no provider transport is saved', async () =>
 });
 
 it('uses the persisted designer version and lets a writable project switch designers', async () => {
-  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', activeDesignerVersionId: 'paper-type', designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' }, documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
-  const loadDesignerState = vi.fn(async () => ({ profiles: [], defaultId: 'paper-type' }));
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', activeDesignerVersionId: 'user-paper', designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' }, documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
+  const loadDesignerState = vi.fn(async () => ({ profiles: persistedProfiles.filter((profile) => ['user-paper', 'user-commerce'].includes(profile.id)), defaultId: 'user-paper' }));
   const updateProjectMetadata = vi.fn(async ({ patch }: { patch: { activeDesignerVersionId?: string; designerSnapshot?: unknown } }) => ({ projectId: 'project-1', workspaceId: 'workspace-1', name: 'Persisted project', activeDesignerVersionId: patch.activeDesignerVersionId, designerSnapshot: patch.designerSnapshot, archived: false, documents: [], createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:01.000Z' }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDesignerState, updateProjectMetadata };
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
   const selector = screen.getByRole('combobox', { name: '设计师' });
-  fireEvent.change(selector, { target: { value: 'clear-commerce' } });
-  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ activeDesignerVersionId: 'clear-commerce' }) })));
+  fireEvent.change(selector, { target: { value: 'user-commerce' } });
+  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ activeDesignerVersionId: 'user-commerce' }) })));
 });
 
 it('shows every project contributor in the card and detail view', async () => {
   const listActiveProjects = vi.fn(async () => [{
     projectId: 'project-team',
     name: '协作项目',
-    activeDesignerVersionId: 'paper-type',
-    contributorDesignerVersionIds: ['paper-type', 'natural-story'],
+    activeDesignerVersionId: 'user-paper',
+    contributorDesignerVersionIds: ['user-paper', 'user-story'],
     designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' },
     documents: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }],
   }]);
-  const loadDesignerState = vi.fn(async () => ({ profiles: [], defaultId: 'paper-type' }));
+  const loadDesignerState = vi.fn(async () => ({ profiles: persistedProfiles.filter((profile) => ['user-paper', 'user-story'].includes(profile.id)), defaultId: 'user-paper' }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDesignerState };
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'read-only' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   const card = await screen.findByRole('button', { name: '协作项目' });
@@ -422,22 +485,13 @@ it('copies and scales the finalized source scene into a related-size document', 
   await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-related-scene', documentId: expect.stringMatching(/^doc-/), scene: expect.objectContaining({ width: 500, height: 500, layers: [expect.objectContaining({ x: 50, y: 50, width: 200, height: 60 })] }) })));
 });
 
-it('submits conversation creation as a draft task before any project exists', async () => {
+it('exposes only manual project creation from the projects page', async () => {
   const listActiveProjects = vi.fn(async () => []);
-  const createProjectContainer = vi.fn(async () => ({ projectId: 'should-not-create' }));
-  const submitConversation = vi.fn(async () => ({ id: 'task-draft-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1 }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, createProjectContainer, submitConversation };
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects };
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: '项目库' })).toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: '对话创建' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: 'Drafted project' } });
-  fireEvent.click(screen.getByRole('button', { name: '通过对话' }));
-  fireEvent.change(screen.getByRole('textbox', { name: '创作想法' }), { target: { value: 'Create a spring poster' } });
-  fireEvent.click(screen.getByRole('button', { name: '提交简报' }));
-  await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({
-    workspaceId: 'workspace-1',
-    source: { kind: 'creation-draft', id: expect.any(String) },
-    message: 'Create a spring poster',
-  })));
-  expect(createProjectContainer).not.toHaveBeenCalled();
+  expect(screen.getByRole('textbox', { name: '设计目标' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '通过对话' })).not.toBeInTheDocument();
 });

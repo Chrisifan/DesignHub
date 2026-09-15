@@ -246,6 +246,7 @@ const sseIterable = (response: Response, signal: AbortSignal | undefined, redact
       }
     } catch (cause) {
       if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
+      if (cause && typeof cause === 'object' && 'kind' in cause) throw cause as ProviderAdapterError;
       throw networkError(cause, redact);
     }
     if (pending.length > 0) return { done: false, value: pending.shift() as ChatStreamEvent };
@@ -320,6 +321,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
             return response;
           } catch (cause) {
             if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
+            if (cause && typeof cause === 'object' && 'kind' in cause) throw cause as ProviderAdapterError;
             throw networkError(cause, redact);
           }
         })();

@@ -29,6 +29,13 @@ export const isBrand = (value: unknown): value is Brand => {
 
 export type BrandLibraryState = { brands: Brand[] };
 
+/** IDs from the removed preview seed. Only these exact legacy records are migrated away. */
+export const legacySeededBrandIds = new Set(['spring', 'objects']);
+
+export const normalizeBrandLibraryState = (state: BrandLibraryState): BrandLibraryState => ({
+  brands: structuredClone(state.brands.filter((brand) => !legacySeededBrandIds.has(brand.id))),
+});
+
 export const isBrandLibraryState = (value: unknown): value is BrandLibraryState => isRecord(value)
   && Array.isArray(value.brands)
   && value.brands.every((brand) => isBrand(brand));

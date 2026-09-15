@@ -17,3 +17,12 @@ it('exports only a diagnostic preview through the trusted renderer boundary', as
   expect(write).toHaveBeenCalledWith(expect.objectContaining({ runtime: 'Electron' }));
   await expect(handler(context.event, { runtime: 'Electron', secret: 'nope' })).resolves.toBeNull();
 });
+
+it('fails closed when diagnostic values contain a path or oversized payload', async () => {
+  const context = fixture();
+  const write = vi.fn(async () => '/tmp/diagnostic.json');
+  const handler = exportDiagnosticsHandler(context.window, context.url, write);
+  await expect(handler(context.event, { runtime: 'Electron /Users/alice/DesignHub', errorCode: 'E01' })).resolves.toBeNull();
+  await expect(handler(context.event, { runtime: 'Electron', errorCode: 'x'.repeat(257) })).resolves.toBeNull();
+  expect(write).not.toHaveBeenCalled();
+});

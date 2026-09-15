@@ -66,8 +66,7 @@ export const isDesignerLibraryState = (value: unknown): value is DesignerLibrary
   if (!isRecord(value)
     || !Array.isArray(value.profiles)
     || !value.profiles.every((profile) => isPersonaProfile(profile))
-    || typeof value.defaultId !== 'string'
-    || value.defaultId.trim().length === 0) return false;
+    || typeof value.defaultId !== 'string') return false;
   if (value.drafts === undefined) return true;
   if (!isRecord(value.drafts)) return false;
   const drafts = value.drafts;
@@ -78,3 +77,33 @@ export const isDesignerLibraryState = (value: unknown): value is DesignerLibrary
 };
 
 export const cloneDesignerState = (state: DesignerLibraryState): DesignerLibraryState => structuredClone(state);
+
+/** IDs from the removed preview seed. Only these exact legacy records are migrated away. */
+export const legacySeededDesignerIds = new Set([
+  'paper-type',
+  'clear-commerce',
+  'natural-story',
+  'minimal-form',
+]);
+
+/**
+ * Migrates the pre-V1 `built-in` marker to the regular published state.
+ * New workspaces never create that marker, but accepting it here keeps older
+ * workspace files readable without exposing a separate built-in concept.
+ */
+export const normalizeDesignerState = (state: DesignerLibraryState): DesignerLibraryState => {
+  const cloned = cloneDesignerState(state);
+  const profiles = cloned.profiles
+    .filter((profile) => !legacySeededDesignerIds.has(profile.id))
+    .map((profile) => profile.status === 'built-in'
+      ? { ...profile, status: 'published' as const }
+      : profile);
+  const defaultId = profiles.some((profile) => profile.id === cloned.defaultId)
+    ? cloned.defaultId
+    : '';
+  return {
+    ...cloned,
+    profiles,
+    defaultId,
+  };
+};

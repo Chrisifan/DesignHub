@@ -3,7 +3,7 @@ import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises
 import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { cloneDesignerState, isDesignerLibraryState, type DesignerLibraryState } from '../../features/designers/persistence';
+import { isDesignerLibraryState, normalizeDesignerState, type DesignerLibraryState } from '../../features/designers/persistence';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
 
@@ -105,7 +105,15 @@ export const loadDesignerState = async (
     await access(filePath, constants.R_OK);
     const value: unknown = JSON.parse(await readFile(filePath, 'utf8'));
     if (!isDesignerLibraryState(value)) throw new Error('INVALID_DESIGNER_STATE');
-    return cloneDesignerState(value);
+    const normalized = normalizeDesignerState(value);
+    if (handle.workspace.openMode === 'writable' && JSON.stringify(normalized) !== JSON.stringify(value)) {
+      try {
+        await saveDesignerState(handle, workspaceId, normalized);
+      } catch {
+        // Loading remains read-safe even when a legacy workspace cannot be rewritten.
+      }
+    }
+    return normalized;
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return null;
     if (error instanceof SyntaxError) throw new Error('INVALID_DESIGNER_STATE');
@@ -124,7 +132,7 @@ export const saveDesignerState = async (
   assertRegularDesignerFile(destination, true);
   const temporary = join(directory, `.${designersFileName}.tmp-${randomUUID()}`);
   try {
-    await writeFile(temporary, `${JSON.stringify(cloneDesignerState(state), null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+    await writeFile(temporary, `${JSON.stringify(normalizeDesignerState(state), null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
     await rename(temporary, destination);
   } catch (error) {
     await rm(temporary, { force: true });

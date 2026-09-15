@@ -12,6 +12,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it('does not expose an example workspace or built-in designer entry', () => {
+  render(<App />);
+
+  expect(screen.queryByRole('button', { name: '浏览示例' })).not.toBeInTheDocument();
+  expect(screen.queryByText('纸感排版')).not.toBeInTheDocument();
+});
+
+it('does not enter an example workspace when a legacy preview URL is opened', () => {
+  window.history.replaceState({}, '', '/?preview=1');
+  render(<App />);
+  expect(screen.getByRole('button', { name: '新建工作区' })).toBeInTheDocument();
+  expect(screen.queryByText('纸感排版')).not.toBeInTheDocument();
+});
+
 it('未连接模型也能进入本地工作区入口', () => {
   render(<App />);
 

@@ -8,7 +8,7 @@ import { createWorkspace } from './workspace-store';
 import { loadBrandState, saveBrandState, brandsFileName } from './brand-store';
 
 const brand: Brand = {
-  id: 'spring', version: 'v1', name: 'Spring', logo: 'mark',
+  id: 'local-brand', version: 'v1', name: 'Spring', logo: 'mark',
   colorPalette: ['#fff'], fonts: ['Geist'], tone: 'Calm', fixedCopy: 'Hello', sizes: ['1080x1440'],
 };
 
@@ -60,4 +60,20 @@ it('keeps project snapshots independent from later persisted brand edits', () =>
   const snapshot = createBrandSnapshot(brand);
   brand.colorPalette.push('#000');
   expect(snapshot.colorPalette).toEqual(['#fff']);
+});
+
+it('hides removed preview seed brands during workspace migration', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'designhub-brand-'));
+  try {
+    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
+    const legacy = { ...brand, id: 'spring', name: '春间市集', logo: 'spring-mark' };
+    const custom = { ...brand, id: 'brand-custom', name: '我的品牌' };
+    const path = join(handle.workspace.directory, '.designhub', brandsFileName);
+    await writeFile(path, JSON.stringify({ brands: [legacy, custom] }), 'utf8');
+    await expect(loadBrandState(handle, handle.workspace.workspaceId)).resolves.toEqual({ brands: [custom] });
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ brands: [custom] });
+    handle.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

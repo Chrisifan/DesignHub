@@ -11,6 +11,7 @@ import {
 import type { Locale } from '../i18n';
 import type { PageProps, Project, Theme, View } from './types';
 import { DesignerLibrary } from './DesignerLibrary';
+import type { PersonaProfile } from './personas';
 import {
   ArtworkPreview,
   Badge,
@@ -54,6 +55,10 @@ type LibraryPagesProps = PageProps & {
   operatorName?: string;
   onOperatorNameChange?: (name: string) => void;
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
+  preview?: boolean;
+  initialAssets?: AssetItem[];
+  initialBrands?: Brand[];
+  initialProfiles?: PersonaProfile[];
 };
 
 type Localized = { zh: string; en: string };
@@ -113,49 +118,6 @@ const availableConnections: readonly ProviderConnection[] = [
   { id: 'openai-compatible', label: 'OpenAI compatible', status: 'not-configured', capabilities: ['conversation', 'vision-analysis', 'image-generation', 'image-editing'] },
 ];
 
-const assets: AssetItem[] = [
-  {
-    id: 'market-photo',
-    name: { zh: '市集原图', en: 'Market original' },
-    type: 'image',
-    typeName: { zh: '图像', en: 'Image' },
-    meta: { zh: 'JPEG · 4032 × 3024', en: 'JPEG · 4032 × 3024' },
-    source: { zh: '本机导入 · 受管副本', en: 'Local import · managed copy' },
-    usage: { zh: '春间市集 / 主海报', en: 'Spring in bloom / Main poster' },
-    artwork: 'market',
-  },
-  {
-    id: 'spring-logo',
-    name: { zh: '春间标志', en: 'Spring mark' },
-    type: 'logo',
-    typeName: { zh: '标志', en: 'Logo' },
-    meta: { zh: 'SVG · 640 × 240', en: 'SVG · 640 × 240' },
-    source: { zh: '品牌包 · 安全矢量', en: 'Brand kit · safe vector' },
-    usage: { zh: '春间市集 / 3 份文档', en: 'Spring in bloom / 3 documents' },
-    artwork: 'blank',
-  },
-  {
-    id: 'paper-texture',
-    name: { zh: '再生纸纹理', en: 'Recycled paper texture' },
-    type: 'texture',
-    typeName: { zh: '纹理', en: 'Texture' },
-    meta: { zh: 'PNG · 2048 × 2048', en: 'PNG · 2048 × 2048' },
-    source: { zh: '示例素材 · 受管副本', en: 'Example asset · managed copy' },
-    usage: { zh: '2 个项目', en: '2 projects' },
-    artwork: 'objects',
-  },
-  {
-    id: 'type-scan',
-    name: { zh: '字形扫描', en: 'Letterform scan' },
-    type: 'image',
-    typeName: { zh: '图像', en: 'Image' },
-    meta: { zh: 'WEBP · 1800 × 2400', en: 'WEBP · 1800 × 2400' },
-    source: { zh: '本机导入 · 受管副本', en: 'Local import · managed copy' },
-    usage: { zh: '字形之间 / 封面', en: 'Type & form / Cover' },
-    artwork: 'type',
-  },
-];
-
 const managedAssetToItem = (asset: ManagedAsset): AssetItem => {
   const dimensions = asset.decode?.width && asset.decode?.height ? ` · ${asset.decode.width} × ${asset.decode.height}` : '';
   return {
@@ -170,45 +132,6 @@ const managedAssetToItem = (asset: ManagedAsset): AssetItem => {
     managed: !asset.externalReference,
   };
 };
-
-const brands: BrandKit[] = [
-  {
-    id: 'spring',
-    name: { zh: '春间市集', en: 'Spring in bloom' },
-    description: {
-      zh: '活动视觉与社交媒体物料',
-      en: 'Campaign and social media materials',
-    },
-    version: 'v3',
-    tone: { zh: '轻松、自然、有城市感', en: 'Relaxed, natural and urban' },
-    font: { zh: '思源宋体 / Geist', en: 'Source Han Serif / Geist' },
-    copy: { zh: '把春天带回家', en: 'Bring spring home' },
-  },
-  {
-    id: 'objects',
-    name: { zh: '日常之物', en: 'Everyday objects' },
-    description: {
-      zh: '生活方式产品与目录',
-      en: 'Lifestyle products and catalogues',
-    },
-    version: 'v1',
-    tone: { zh: '清晰、平静、重视功能', en: 'Clear, calm and function-led' },
-    font: { zh: 'Geist / JetBrains Mono', en: 'Geist / JetBrains Mono' },
-    copy: { zh: '少即是多。', en: 'Less, but better.' },
-  },
-];
-
-const brandRecords: Brand[] = brands.map((brand) => ({
-  id: brand.id,
-  name: brand.name.zh,
-  version: brand.version,
-  logo: `${brand.id}-mark`,
-  colorPalette: brand.id === 'spring' ? ['#F4EFE7', '#24262B', '#8C7057'] : ['#D8F1ED', '#173B43', '#4AAE9B'],
-  fonts: brand.font.zh.split(' / '),
-  tone: brand.tone.zh,
-  fixedCopy: brand.copy.zh,
-  sizes: ['1080x1440', '1080x1080'],
-}));
 
 const recordToKit = (record: Brand): BrandKit => ({
   id: record.id,
@@ -261,6 +184,8 @@ const AssetsPage = ({
   readOnly,
   notify,
   onAssetAction,
+  preview = false,
+  initialAssets = [],
 }: {
   locale: Locale;
   query: string;
@@ -276,8 +201,11 @@ const AssetsPage = ({
   readOnly?: boolean;
   notify?: (message: string) => void;
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
+  preview?: boolean;
+  initialAssets?: AssetItem[];
 }) => {
   const [managedAssets, setManagedAssets] = useState<ManagedAsset[]>([]);
+  const [assetsLoadFailed, setAssetsLoadFailed] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string>();
   const [importing, setImporting] = useState(false);
   const inputId = 'asset-import-input';
@@ -286,10 +214,13 @@ const AssetsPage = ({
     return new Response(file).arrayBuffer();
   };
   useEffect(() => {
-    if (!workspaceId || !projectId) return undefined;
+    if (!workspaceId || !projectId) { setManagedAssets([]); setAssetsLoadFailed(false); return undefined; }
     let cancelled = false;
+    setManagedAssets([]);
+    setAssetsLoadFailed(false);
     const request = getDesktopApi().listAssets?.({ workspaceId, projectId });
-    void request?.then((result) => { if (!cancelled && result) setManagedAssets(result); }).catch(() => notify?.(t(locale, '素材读取失败', 'Could not load assets')));
+    if (!request) { setAssetsLoadFailed(true); return () => { cancelled = true; }; }
+    void request?.then((result) => { if (!cancelled && result) setManagedAssets(result); }).catch(() => { if (!cancelled) { setAssetsLoadFailed(true); notify?.(t(locale, '素材读取失败', 'Could not load assets')); } });
     return () => { cancelled = true; };
   }, [locale, notify, projectId, workspaceId]);
   const importFiles = async (files: FileList | File[] | null): Promise<void> => {
@@ -323,7 +254,7 @@ const AssetsPage = ({
     }));
   };
   const usingManagedAssets = Boolean(workspaceId && projectId);
-  const displayAssets = usingManagedAssets ? managedAssets.map(managedAssetToItem) : assets;
+  const displayAssets = workspaceId ? (usingManagedAssets ? managedAssets.map(managedAssetToItem) : []) : preview ? initialAssets : [];
   const filteredAssets = useMemo(
     () =>
       displayAssets.filter(
@@ -355,8 +286,8 @@ const AssetsPage = ({
         eyebrow={t(locale, '受管素材', 'Managed assets')}
         description={t(
           locale,
-          usingManagedAssets ? '浏览当前项目素材的来源、格式、用途与受管状态。' : '浏览示例素材的来源、格式、用途与受管状态。',
-          usingManagedAssets ? 'Browse source, format, usage and managed state for this project.' : 'Browse source, format, usage and managed state for example assets.',
+          workspaceId ? (usingManagedAssets ? '浏览当前项目素材的来源、格式、用途与受管状态。' : '选择项目后可浏览其受管素材。') : preview ? '浏览示例素材的来源、格式、用途与受管状态。' : '导入素材后会显示在这里。',
+          workspaceId ? (usingManagedAssets ? 'Browse source, format, usage and managed state for this project.' : 'Select a project to browse its managed assets.') : preview ? 'Browse source, format, usage and managed state for example assets.' : 'Import assets to see them here.',
         )}
       >
         {usingManagedAssets && <>
@@ -411,7 +342,7 @@ const AssetsPage = ({
         tabIndex={0}
       >
         <div className={`asset-collection asset-collection--${layout}`}>
-          {filteredAssets.length ? (
+      {assetsLoadFailed ? <div className="details-panel asset-details"><EmptyState icon="alert-triangle" title={t(locale, '素材读取失败', 'Could not load assets')} description={t(locale, '请检查工作区权限后重新进入此页面。', 'Check workspace permissions and reopen this page.')} /></div> : filteredAssets.length ? (
             filteredAssets.map((item) => (
               <button
                 type="button"
@@ -441,7 +372,7 @@ const AssetsPage = ({
             />
           )}
         </div>
-        {selected ? <aside
+        {assetsLoadFailed ? null : selected ? <aside
           className="details-panel asset-details"
           aria-label={t(locale, '素材详情', 'Asset details')}
         >
@@ -475,12 +406,12 @@ const AssetsPage = ({
               <Button icon="rotate-ccw" onClick={() => onAssetAction({ assetId: selected.id, mode: 'replace', projectId })}>{t(locale, '替换选中图像', 'Replace selected image')}</Button>
             </div>
           )}
-          {!usingManagedAssets && <p className="panel-note">
+          {!workspaceId && preview && <p className="panel-note">
             <Icon name="lock" size={15} />
             {t(
               locale,
-              usingManagedAssets ? '受管原图保留在当前工作区，外部引用不会自动下载。' : '此页只浏览示例元数据，不读取或写入本机文件。',
-              usingManagedAssets ? 'Managed originals stay in this workspace; external references are not downloaded automatically.' : 'This page only browses example metadata and does not read or write local files.',
+              '此页只浏览示例元数据，不读取或写入本机文件。',
+              'This page only browses example metadata and does not read or write local files.',
             )}
           </p>}
         </aside> : <div className="details-panel asset-details"><EmptyState icon="image" title={t(locale, '暂无素材', 'No assets yet')} description={t(locale, '导入素材后会显示在这里。', 'Import assets to see them here.')} /></div>}
@@ -494,28 +425,36 @@ const BrandsPage = ({
   selectedId,
   onSelect,
   workspaceId,
+  preview = false,
+  initialBrands = [],
 }: {
   locale: Locale;
   selectedId: string;
   onSelect: (id: string) => void;
   workspaceId?: string;
+  preview?: boolean;
+  initialBrands?: Brand[];
 }) => {
-  const [records, setRecords] = useState<Brand[]>(brandRecords);
+  const [records, setRecords] = useState<Brand[]>(() => workspaceId || !preview ? [] : initialBrands);
   const [editor, setEditor] = useState<Brand | null>(null);
   const [deletePending, setDeletePending] = useState<Brand | null>(null);
   const [loading, setLoading] = useState(Boolean(workspaceId));
+  const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    if (!workspaceId) { setRecords(brandRecords); setLoading(false); return () => { cancelled = true; }; }
+    if (!workspaceId) { setRecords(preview ? initialBrands : []); setLoading(false); setLoadFailed(false); return () => { cancelled = true; }; }
+    setRecords([]);
     setLoading(true);
+    setLoadFailed(false);
     const request = getDesktopApi().loadBrandState?.(workspaceId);
+    if (!request) { setLoading(false); setLoadFailed(true); return () => { cancelled = true; }; }
     void request?.then((state) => {
       if (cancelled) return;
-      setRecords(state?.brands?.length ? state.brands : brandRecords);
+      setRecords(state?.brands ?? []);
       setLoading(false);
-    }).catch(() => { if (!cancelled) setLoading(false); });
+    }).catch(() => { if (!cancelled) { setLoading(false); setLoadFailed(true); } });
     return () => { cancelled = true; };
-  }, [workspaceId]);
+  }, [initialBrands, preview, workspaceId]);
   const kits = records.map(recordToKit);
   const selected = kits.find((brand) => brand.id === selectedId) ?? kits[0];
   const selectedRecord = records.find((record) => record.id === selected?.id) ?? records[0];
@@ -538,7 +477,9 @@ const BrandsPage = ({
     try { await persist(records.filter((record) => record.id !== deletePending.id)); setDeletePending(null); }
     catch { /* keep confirmation open so the user can retry */ }
   };
-  if (!selected || loading) return <section className="page-content library-page"><EmptyState icon="palette" title={t(locale, '正在加载', 'Loading')} description={t(locale, '正在读取品牌包。', 'Loading brand kits.')} /></section>;
+  if (loading) return <section className="page-content library-page"><EmptyState icon="palette" title={t(locale, '正在加载', 'Loading')} description={t(locale, '正在读取品牌包。', 'Loading brand kits.')} /></section>;
+  if (loadFailed) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /> <EmptyState icon="alert-triangle" title={t(locale, '品牌读取失败', 'Could not load brand kits')} description={t(locale, '请检查工作区权限后重新进入此页面。', 'Check workspace permissions and reopen this page.')} /></section>;
+  if (!selected) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /> <EmptyState icon="palette" title={t(locale, '暂无品牌包', 'No brand kits yet')} description={t(locale, '创建品牌包后会显示在这里。', 'Create a brand kit to see it here.')} /></section>;
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -627,7 +568,7 @@ const BrandsPage = ({
                 : t(locale, '1 个项目 · 快照 v1', '1 project · snapshot v1')}
             </DetailRow>
           </dl>
-          {!workspaceId && <p className="panel-note">
+          {!workspaceId && preview && <p className="panel-note">
             <Icon name="history" size={15} />
             {t(
               locale,
@@ -1021,6 +962,7 @@ const DeliveryPage = ({
               <h2>{projectName}</h2>
               <p>
                 {(() => {
+                  if (!currentDocument && persistedProject) return t(locale, '未设置尺寸', 'Size not set');
                   const dimensions = `${currentDocument?.width ?? 1080} × ${currentDocument?.height ?? 1440}`;
                   return t(locale, `${dimensions} 像素 · sRGB`, `${dimensions} px · sRGB`);
                 })()}
@@ -1450,12 +1392,21 @@ const SettingsPage = ({
   onThemeChange,
   onLocaleChange,
   notify,
+  workspaceId,
   operatorName = '',
   onOperatorNameChange,
 }: Pick<
   LibraryPagesProps,
   'locale' | 'theme' | 'navigate' | 'onThemeChange' | 'onLocaleChange'
-> & { notify?: (message: string) => void; operatorName?: string; onOperatorNameChange?: (name: string) => void }) => {
+> & { notify?: (message: string) => void; workspaceId?: string; operatorName?: string; onOperatorNameChange?: (name: string) => void }) => {
+  const [hasConnectedModel, setHasConnectedModel] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(providerProfiles.map(async (profile) => getDesktopApi().hasCredential?.(providerCredentialAccount('openai-compatible', profile)) ?? false))
+      .then((entries) => { if (!cancelled) setHasConnectedModel(entries.some(Boolean)); })
+      .catch(() => { if (!cancelled) setHasConnectedModel(false); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
   const exportDiagnostics = async (): Promise<void> => {
     const path = await getDesktopApi().exportDiagnostics?.({ runtime: 'Electron', errorCode: null });
     if (path) notify?.(t(locale, `诊断包已导出到 ${path}`, `Diagnostics exported to ${path}`));
@@ -1582,8 +1533,8 @@ const SettingsPage = ({
               <small>
                 {t(
                   locale,
-                  '当前没有已配置连接',
-                  'No connections are configured',
+                  hasConnectedModel ? '已有已配置连接' : '当前没有已配置连接',
+                  hasConnectedModel ? 'A connection is configured' : 'No connections are configured',
                 )}
               </small>
             </span>
@@ -1622,24 +1573,28 @@ export const LibraryPages = ({
   deliveryProject,
   onUseForNew,
   workspaceId,
+  preview = false,
   readOnly = false,
   projectId,
   onWorkspaceChange,
   operatorName,
   onOperatorNameChange,
   onAssetAction,
+  initialAssets = [],
+  initialBrands = [],
+  initialProfiles = [],
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
   const [assetLayout, setAssetLayout] = useState<'grid' | 'list'>('grid');
-  const [selectedAsset, setSelectedAsset] = useState(assets[0].id);
-  const [selectedBrand, setSelectedBrand] = useState(brands[0].id);
+  const [selectedAsset, setSelectedAsset] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState('');
   const [deliveryFormat, setDeliveryFormat] = useState<DeliveryFormat>('png');
   const [archiveCopy, setArchiveCopy] = useState(false);
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
   const pages: Record<Exclude<View, 'projects'>, ReactNode> = {
     designers: (
-      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} workspaceId={workspaceId} readOnly={readOnly} />
+      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} workspaceId={workspaceId} preview={preview} initialProfiles={initialProfiles} readOnly={readOnly} />
     ),
     assets: (
       <AssetsPage
@@ -1653,6 +1608,8 @@ export const LibraryPages = ({
         onLayoutChange={setAssetLayout}
         onSelect={setSelectedAsset}
         workspaceId={workspaceId}
+        preview={preview}
+        initialAssets={initialAssets}
         projectId={projectId}
         readOnly={readOnly}
         notify={notify}
@@ -1665,6 +1622,8 @@ export const LibraryPages = ({
         selectedId={selectedBrand}
         onSelect={setSelectedBrand}
         workspaceId={workspaceId}
+        preview={preview}
+        initialBrands={initialBrands}
       />
     ),
     connections: <ConnectionsPage locale={locale} workspaceId={workspaceId} />,
@@ -1702,6 +1661,7 @@ export const LibraryPages = ({
         notify={notify}
         operatorName={operatorName}
         onOperatorNameChange={onOperatorNameChange}
+        workspaceId={workspaceId}
       />
     ),
   };

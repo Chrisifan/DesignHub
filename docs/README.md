@@ -2,7 +2,7 @@
 
 更新：2026-09-13。DesignHub V1 的 Q1–Q66 决策、应用说明、UI 基线、Electron 方向与八模块实施规划已经确认冻结；M01–M08 的本地优先功能路径已实现并回归，状态和外部发布门槛见[模块验证与回归登记](verification/MODULE-REGISTER.md)与[发布验证](verification/RELEASE.md)。
 
-最新进展：[Electron 选型报告](research/M01-electron-runtime-results.md)；macOS 打包 smoke、业务 E2E 和本地工作流均有记录。Windows、签名/公证、真实提供方与系统钥匙串、性能和人工视觉质量仍待验证。[Tauri 历史探针](research/M01-runtime-results.md)不计入 Electron 通过证据。
+最新进展：[实机功能进度检查（2026-09-15）](verification/UI-PROGRESS-2026-09-15.md)；[Electron 选型报告](research/M01-electron-runtime-results.md)；macOS 打包 smoke、业务 E2E 和本地工作流均有记录。Windows、签名/公证、真实提供方与系统钥匙串、性能和人工视觉质量仍待验证。[Tauri 历史探针](research/M01-runtime-results.md)不计入 Electron 通过证据。
 
 ## 给 UI 设计师
 

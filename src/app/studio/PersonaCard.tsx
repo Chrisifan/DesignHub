@@ -1,4 +1,4 @@
-import { getPersona, localize } from './personas';
+import { localize, type PersonaProfile } from './personas';
 import { PersonaArtwork } from './PersonaArtwork';
 import { Icon } from './ui';
 import type { Locale } from '../i18n';
@@ -6,6 +6,7 @@ import type { Locale } from '../i18n';
 type PersonaCardProps = {
   locale: Locale;
   personaId: string;
+  profile?: PersonaProfile;
   label: string;
   selected: boolean;
   onSelect: () => void;
@@ -14,11 +15,12 @@ type PersonaCardProps = {
 export const PersonaCard = ({
   locale,
   personaId,
+  profile,
   label,
   selected,
   onSelect,
 }: PersonaCardProps) => {
-  const persona = getPersona(personaId);
+  const persona = profile?.id === personaId ? profile : undefined;
   if (!persona) return null;
   return (
     <button
@@ -28,7 +30,7 @@ export const PersonaCard = ({
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <PersonaArtwork personaId={persona.id} crop="full" />
+      <PersonaArtwork personaId={persona.id} profile={persona} crop="full" />
       <span className="persona-card__body">
         <span className="persona-card__label">
           {selected && <Icon name="check" size={14} />}

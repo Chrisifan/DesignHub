@@ -11,9 +11,14 @@ const isInput = (value: unknown): value is DiagnosticInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
   return Object.keys(input).every((key) => key === 'runtime' || key === 'errorCode')
-    && typeof input.runtime === 'string' && input.runtime.length > 0
-    && (input.errorCode === undefined || input.errorCode === null || typeof input.errorCode === 'string');
+    && typeof input.runtime === 'string' && isSafeDiagnosticText(input.runtime)
+    && (input.errorCode === undefined || input.errorCode === null || (typeof input.errorCode === 'string' && isSafeDiagnosticText(input.errorCode)));
 };
+
+const isSafeDiagnosticText = (value: string): boolean => value.length > 0
+  && value.length <= 256
+  && !/[\\/]/u.test(value)
+  && !/[\u0000-\u001f]/u.test(value);
 
 export const exportDiagnosticsHandler = (
   window: DiagnosticWindow,

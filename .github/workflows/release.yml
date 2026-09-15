@@ -1,0 +1,34 @@
+name: release-check
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Release checks
+        run: pnpm release:check --package
+      - name: Upload unsigned artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: designhub-${{ matrix.os }}
+          path: out/**
+          if-no-files-found: ignore

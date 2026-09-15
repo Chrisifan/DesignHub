@@ -44,12 +44,14 @@ export const exportDocument = async (input: ExportDocumentInput): Promise<Export
       if (!matchesMagic('pdf', rendered)) bytes = await input.codec.toPdf(rendered);
     } else {
       const metadata = await input.codec.inspect(rendered);
+      if (metadata.colorSpace && metadata.colorSpace.toLowerCase() !== 'srgb') throw new Error('INVALID_COLOR_SPACE');
       if (metadata.format !== input.format) bytes = await input.codec.encode(rendered, { format: input.format, ...(input.background ? { background: input.background } : {}) });
     }
   }
   if (!matchesMagic(input.format, bytes)) throw new Error('INVALID_OUTPUT');
   if (input.codec && input.format !== 'pdf') {
     const metadata = await input.codec.inspect(bytes);
+    if (metadata.colorSpace && metadata.colorSpace.toLowerCase() !== 'srgb') throw new Error('INVALID_COLOR_SPACE');
     if (metadata.format !== input.format) throw new Error('INVALID_OUTPUT');
     if (input.expectedSize && (metadata.width !== input.expectedSize.width || metadata.height !== input.expectedSize.height)) throw new Error('INVALID_SIZE');
   }

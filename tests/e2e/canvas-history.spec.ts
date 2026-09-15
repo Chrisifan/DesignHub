@@ -1,9 +1,10 @@
 import { expect, test } from 'playwright/test';
+import { gotoTestWorkspace } from './test-workspace';
 
 test('canvas history entry point remains available without changing the saved example', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/?preview=1');
-  await page.getByRole('button', { name: '春间市集', exact: true }).click();
+  await gotoTestWorkspace(page);
+  await page.getByRole('button', { name: /春间市集|Spring in bloom/ }).click();
   await page.getByRole('button', { name: '打开主海报', exact: true }).click();
 
   const canvas = page.getByRole('region', { name: '设计画布', exact: true });

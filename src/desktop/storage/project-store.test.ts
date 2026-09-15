@@ -172,6 +172,34 @@ it('rejects an imported package whose content manifest omits managed asset bytes
   });
 });
 
+it('rejects an imported package when managed asset bytes drift from their declared hash', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const workspace = await openWorkspace(workspaceDirectory);
+    try {
+      const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43631';
+      const now = new Date().toISOString();
+      const declaredHash = 'a'.repeat(64);
+      const pack = await createProjectPackage({
+        packageId: 'pkg-drifted-asset',
+        projectId: sourceProjectId,
+        entries: [
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Drifted asset', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Drifted asset', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [{ id: 'asset-drifted', name: 'poster.png', format: 'PNG', mimeType: 'image/png', contentHash: declaredHash, managed: true, storagePath: `assets/${declaredHash}` }] })) },
+          { path: `assets/${declaredHash}`, kind: 'manifest', bytes: new Uint8Array([1, 2, 3]) },
+        ],
+      });
+      await expect(importProjectPackageToWorkspace(workspace, {
+        workspaceId: workspace.workspace.workspaceId,
+        operationId: 'import-drifted-asset',
+        archive: await encodeProjectPackage(pack),
+      })).rejects.toThrow('INVALID_PACKAGE');
+      await expect(createProjectStore(workspace).listActiveProjects()).resolves.toEqual([]);
+    } finally {
+      workspace.close();
+    }
+  });
+});
+
 it('preserves related document lineage when duplicating a project', async () => {
   await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
     const workspace = await openWorkspace(workspaceDirectory);

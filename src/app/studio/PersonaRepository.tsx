@@ -5,7 +5,8 @@ import { PersonaArtwork } from './PersonaArtwork';
 import { localize, type PersonaProfile } from './personas';
 import { Badge, EmptyState, Icon, t } from './ui';
 
-export type PersonaStatusFilter = 'all' | PersonaProfile['status'];
+/** User-facing filters intentionally omit the legacy status value. */
+export type PersonaStatusFilter = 'all' | Exclude<PersonaProfile['status'], 'built-in'>;
 
 type PersonaRepositoryProps = {
   locale: Locale;
@@ -22,11 +23,9 @@ type PersonaRepositoryProps = {
 };
 
 const statusLabel = (locale: Locale, status: PersonaProfile['status']): string =>
-  status === 'published'
+  status === 'published' || status === 'built-in'
     ? t(locale, '已发布', 'Published')
-    : status === 'built-in'
-      ? t(locale, '内置', 'Built-in')
-      : status === 'archived'
+    : status === 'archived'
         ? t(locale, '已归档', 'Archived')
       : t(locale, '草稿', 'Draft');
 
@@ -52,7 +51,8 @@ export const PersonaRepository = ({
     const normalized = query.trim().toLocaleLowerCase();
     return profiles.filter((profile) => {
       const matchesStatus =
-        statusFilter === 'all' || profile.status === statusFilter;
+        statusFilter === 'all'
+        || profile.status === statusFilter;
       const searchText = [
         localize(locale, profile.name),
         localize(locale, profile.signature),
@@ -75,7 +75,7 @@ export const PersonaRepository = ({
             <span className="mono persona-repository__count">{filteredProfiles.length.toString().padStart(2, '0')}</span>
           </div>
         </div>
-        {onCreate && <button type="button" className="icon-button persona-repository__create" title={t(locale, '创建', 'Create')} aria-label={t(locale, '创建', 'Create')} onClick={onCreate}>
+        {onCreate && <button type="button" className="icon-button persona-repository__create" title={t(locale, '从作品集创建', 'Create from portfolio')} aria-label={t(locale, '从作品集创建', 'Create from portfolio')} onClick={onCreate}>
           <Icon name="plus" size={17} />
         </button>}
       </header>
@@ -95,7 +95,7 @@ export const PersonaRepository = ({
           />
         </label>
         <div className="tab-strip persona-status-tabs" role="group" aria-label={t(locale, '档案状态', 'Profile status')}>
-          {(['all', 'published', 'built-in', 'draft', 'archived'] as const).map((value) => (
+          {(['all', 'published', 'draft', 'archived'] as const).map((value) => (
             <button
               type="button"
               key={value}
@@ -148,8 +148,8 @@ export const PersonaRepository = ({
       ) : (
         <EmptyState
           icon="search"
-          title={t(locale, '没有匹配档案', 'No matching profiles')}
-          description={t(locale, '调整搜索或状态筛选。', 'Adjust search or status filters.')}
+          title={profiles.length === 0 ? t(locale, '暂无设计师档案', 'No designer profiles yet') : t(locale, '没有匹配档案', 'No matching profiles')}
+          description={profiles.length === 0 ? t(locale, '导入作品集并完成 AI 分析后会显示在这里。', 'Import a portfolio and complete AI analysis to see profiles here.') : t(locale, '调整搜索或状态筛选。', 'Adjust search or status filters.')}
         />
       )}
     </div>

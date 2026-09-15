@@ -77,8 +77,14 @@ export type WorkbenchProps = {
 
 const createInitialScene = (project: Project, documentId?: string): DesignScene => {
   const document = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
+  if (project.workspaceId && !document) {
+    return createScene({ id: `${project.id}-scene`, width: 1, height: 1, layers: [] });
+  }
   const width = document?.width ?? 1080;
   const height = document?.height ?? 1440;
+  if (project.workspaceId) {
+    return createScene({ id: `${project.id}-scene`, width, height, layers: [] });
+  }
   const titleLayer = {
     id: 'title', type: 'text' as const, text: project.name, fontFamily: 'Inter', fontSize: 96,
     fontWeight: 'bold', align: 'center' as const, color: '#24262B', x: 120, y: 520,

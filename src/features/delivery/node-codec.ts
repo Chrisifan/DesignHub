@@ -17,6 +17,7 @@ const createNodeCodec = (): CodecAdapter => {
       width: metadata.width,
       height: metadata.height,
       hasAlpha: Boolean(metadata.hasAlpha),
+      ...(metadata.space ? { colorSpace: metadata.space } : {}),
     };
   };
 

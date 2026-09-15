@@ -74,6 +74,31 @@ describe('OpenAI-compatible provider adapter', () => {
     expect(deltas).toEqual(['he', 'llo']);
   });
 
+  it('preserves structured rate-limit errors for streaming requests', async () => {
+    const fetcher = vi.fn(async () => response({ error: { message: 'slow down', code: 'rate_limit_exceeded' } }, 429, { 'retry-after': '7' }));
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key', fetch: fetcher });
+
+    const iterator = adapter.streamChat({ messages: [{ role: 'user', content: 'hi' }] })[Symbol.asyncIterator]();
+    await expect(iterator.next()).rejects.toMatchObject({ kind: 'rate_limited', status: 429, retryAfterSeconds: 7 });
+  });
+
+  it('rejects malformed SSE frames as invalid provider responses', async () => {
+    const stream = new ReadableStream({
+      start: (controller) => {
+        controller.enqueue(new TextEncoder().encode('data: {not-json}\n\n'));
+        controller.close();
+      },
+    });
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://example.test/v1',
+      apiKey: 'secret-key',
+      fetch: vi.fn(async () => new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })),
+    });
+
+    const iterator = adapter.streamChat({ messages: [{ role: 'user', content: 'hi' }] })[Symbol.asyncIterator]();
+    await expect(iterator.next()).rejects.toMatchObject({ kind: 'invalid_response' });
+  });
+
   it('supports vision, image generation, and image editing endpoints', async () => {
     const fetcher = vi.fn(async (url: string) => {
       if (url.endsWith('/chat/completions')) return response({ choices: [{ message: { content: 'vision result' } }] });

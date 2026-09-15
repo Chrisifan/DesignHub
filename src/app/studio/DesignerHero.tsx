@@ -1,4 +1,4 @@
-import { getPersona, localize, type PersonaProfile } from './personas';
+import { localize, type PersonaProfile } from './personas';
 import { PersonaArtwork } from './PersonaArtwork';
 import { t } from './ui';
 import type { Locale } from '../i18n';
@@ -12,13 +12,26 @@ type DesignerHeroProps = {
 };
 
 export const DesignerHero = ({
-  personaId,
   locale,
   compact = false,
   label,
   profile,
 }: DesignerHeroProps) => {
-  const persona = profile ?? getPersona(personaId) ?? getPersona('paper-type')!;
+  const persona = profile;
+  if (!persona) {
+    return (
+      <section
+        className={`designer-hero ${compact ? 'designer-hero--compact' : ''}`}
+        aria-label={label ?? t(locale, '当前设计师', 'Active designer')}
+      >
+        <div className="designer-hero__copy">
+          <small>{t(locale, '当前设计师', 'ACTIVE DESIGNER')}</small>
+          <strong>{t(locale, '未设置设计师', 'No designer selected')}</strong>
+          <p>{t(locale, '创建或选择设计师档案后会显示创作原则。', 'Create or select a designer profile to show its creative principle.')}</p>
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       className={`designer-hero ${compact ? 'designer-hero--compact' : ''}`}

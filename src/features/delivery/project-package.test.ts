@@ -57,3 +57,15 @@ it('rejects duplicate paths in package manifests', async () => {
     ],
   })).rejects.toThrow('INVALID_PACKAGE');
 });
+
+it('rejects private and delivery entries that collide on one path', async () => {
+  await expect(createProjectPackage({
+    packageId: 'pkg-collision',
+    projectId: 'project-collision',
+    readOnly: true,
+    entries: [
+      { path: 'exports/result.png', kind: 'output', bytes: new Uint8Array([1]) },
+      { path: 'exports/result.png', kind: 'credential', bytes: new Uint8Array([9]) },
+    ],
+  })).rejects.toThrow('INVALID_PACKAGE');
+});

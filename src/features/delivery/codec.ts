@@ -5,6 +5,7 @@ export type ImageMetadata = {
   width: number;
   height: number;
   hasAlpha: boolean;
+  colorSpace?: string;
 };
 
 export type ImageEncodeOptions = {

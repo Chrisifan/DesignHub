@@ -25,9 +25,6 @@ const savePreference = (key: string, value: string): void => {
   }
 };
 
-const opensStudioOnLaunch = (): boolean =>
-  new URLSearchParams(window.location.search).get('preview') === '1';
-
 const recentWorkspacesKey = 'designhub.recent.workspaces';
 const isWorkspaceDescriptor = (value: unknown): value is WorkspaceDescriptor => {
   if (typeof value !== 'object' || value === null) return false;
@@ -55,7 +52,7 @@ export const App = () => {
     const value = readPreference('designhub.ui.theme');
     return value === 'dark' || value === 'light' ? value : 'system';
   });
-  const [entered, setEntered] = useState(opensStudioOnLaunch);
+  const [entered, setEntered] = useState(false);
   const [workspaceForm, setWorkspaceForm] = useState(false);
   const [workspaceName, setWorkspaceName] = useState('');
   const [directory, setDirectory] = useState('');
@@ -121,7 +118,7 @@ export const App = () => {
     }
   };
   useEffect(() => {
-    if (entered || opensStudioOnLaunch() || startupRestoreAttempted.current || recentWorkspaces.length === 0 || !window.designhub?.openWorkspace) return;
+    if (entered || startupRestoreAttempted.current || recentWorkspaces.length === 0 || !window.designhub?.openWorkspace) return;
     startupRestoreAttempted.current = true;
     void openWorkspaceDirectory(recentWorkspaces[0].directory);
   }, [entered, openWorkspaceDirectory, recentWorkspaces]);
@@ -131,8 +128,8 @@ export const App = () => {
       setWorkspaceError(
         t(
           locale,
-          '请在桌面应用中选择本地目录。当前可以浏览示例工作区。',
-          'Choose local folders in the desktop app. You can explore the example workspace here.',
+          '请在桌面应用中选择本地目录。',
+          'Choose local folders in the desktop app.',
         ),
       );
       return;
@@ -240,23 +237,6 @@ export const App = () => {
               {copy.openWorkspace}
             </button>
           </div>
-          <div className="welcome-preview">
-            <span className="welcome-preview-rule" />
-            <p>
-              {t(
-                locale,
-                '先看看 DesignHub 的创作空间',
-                'Take a look around your creative workspace',
-              )}
-            </p>
-            <Button
-              icon="arrow-right"
-              variant="ghost"
-              onClick={() => setEntered(true)}
-            >
-              {t(locale, '浏览示例', 'Explore example')}
-            </Button>
-          </div>
           {workspaceError && !workspaceForm && (
             <p role="status" className="inline-notice">
               {workspaceError}
@@ -308,17 +288,9 @@ export const App = () => {
             {workspaceError ||
               (getDesktopApi().createWorkspace
                 ? t(locale, '选择父目录并填写名称后创建。', 'Choose a parent folder and name to create the workspace.')
-                : t(locale, '工作区存储尚未接入，可以先浏览示例体验完整界面。', 'Workspace storage is not connected yet. Explore the example to preview the interface.'))}
+                : t(locale, '当前环境无法创建工作区，请使用桌面应用。', 'Workspace creation is unavailable in this environment. Use the desktop app.'))}
           </p>
           <div className="dialog-actions">
-            <Button
-              onClick={() => {
-                setWorkspaceForm(false);
-                setEntered(true);
-              }}
-            >
-              {t(locale, '浏览示例', 'Explore example')}
-            </Button>
             <Button
               variant="primary"
               disabled={!canCreateWorkspace}

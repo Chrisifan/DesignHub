@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 import { PersonaRepository } from './PersonaRepository';
-import { personaProfiles } from './personas';
+import { personaProfiles } from '../../../tests/fixtures/personas';
 
 it('filters compact profile rows and identifies the selected profile', () => {
   render(

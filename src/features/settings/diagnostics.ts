@@ -8,4 +8,15 @@ export const buildDiagnosticPreview = (input: DiagnosticInput): Pick<DiagnosticI
   ...(typeof input.errorCode === 'string' ? { errorCode: input.errorCode } : {}),
 });
 
-export const serializeDiagnosticPackage = (input: DiagnosticInput): string => JSON.stringify(buildDiagnosticPreview(input));
+const isSafeDiagnosticText = (value: string): boolean => value.length > 0
+  && value.length <= 256
+  && !/[\\/]/u.test(value)
+  && !/[\u0000-\u001f]/u.test(value);
+
+export const serializeDiagnosticPackage = (input: DiagnosticInput): string => {
+  const preview = buildDiagnosticPreview(input);
+  if ((preview.runtime && !isSafeDiagnosticText(preview.runtime)) || (preview.errorCode && !isSafeDiagnosticText(preview.errorCode))) {
+    throw new Error('DIAGNOSTIC_SENSITIVE_DATA');
+  }
+  return JSON.stringify(preview);
+};

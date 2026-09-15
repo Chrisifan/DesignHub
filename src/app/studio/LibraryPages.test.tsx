@@ -6,6 +6,8 @@ import type { Locale } from '../i18n';
 import { LibraryPages } from './LibraryPages';
 import type { Project, Theme, View } from './types';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
+import { previewAssets, previewBrands } from '../../../tests/fixtures/libraries';
+import { personaProfiles } from '../../../tests/fixtures/personas';
 
 const Harness = ({
   initialView = 'designers',
@@ -45,27 +47,22 @@ const Harness = ({
           workspaceId={workspaceId}
           projectId={projectId}
           onAssetAction={onAssetAction}
+          preview
+          initialAssets={previewAssets as never}
+          initialBrands={previewBrands}
+          initialProfiles={personaProfiles}
         />
       )}
     </>
   );
 };
 
-it('keeps an unfinished designer draft when its preview modal closes', () => {
+it('exposes portfolio analysis as the only new-designer flow', () => {
   render(<Harness />);
-  fireEvent.click(screen.getByRole('button', { name: '创建' }));
+  fireEvent.click(screen.getByRole('button', { name: '从作品集创建' }));
   const dialog = screen.getByRole('dialog', { name: '创建设计师' });
-  const name = within(dialog).getByRole('textbox', { name: '名称' });
-  fireEvent.change(name, { target: { value: '留白编辑' } });
-  expect(within(dialog).getByText('留白编辑')).toBeInTheDocument();
-  fireEvent.click(within(dialog).getAllByRole('button', { name: '关闭' })[0]);
-  fireEvent.click(screen.getByRole('button', { name: '创建' }));
-  expect(
-    within(screen.getByRole('dialog', { name: '创建设计师' })).getByRole(
-      'textbox',
-      { name: '名称' },
-    ),
-  ).toHaveValue('留白编辑');
+  expect(within(dialog).getByRole('textbox', { name: '作品集链接' })).toBeInTheDocument();
+  expect(within(dialog).queryByRole('textbox', { name: '名称' })).not.toBeInTheDocument();
 });
 
 it('keeps a profile edit draft when the same profile is reopened', () => {
@@ -86,35 +83,6 @@ it('keeps a profile edit draft when the same profile is reopened', () => {
       { name: '名称' },
     ),
   ).toHaveValue('纸感排版编辑版');
-});
-
-it('keeps create and profile edit drafts independent', () => {
-  render(<Harness />);
-  fireEvent.click(screen.getByRole('button', { name: '创建' }));
-  fireEvent.change(
-    within(screen.getByRole('dialog', { name: '创建设计师' })).getByRole(
-      'textbox',
-      { name: '名称' },
-    ),
-    { target: { value: '全新档案' } },
-  );
-  fireEvent.click(screen.getByRole('button', { name: '保留' }));
-  fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-  fireEvent.change(
-    within(screen.getByRole('dialog', { name: '编辑设计师' })).getByRole(
-      'textbox',
-      { name: '名称' },
-    ),
-    { target: { value: '现有档案编辑' } },
-  );
-  fireEvent.click(screen.getByRole('button', { name: '保留' }));
-  fireEvent.click(screen.getByRole('button', { name: '创建' }));
-  expect(
-    within(screen.getByRole('dialog', { name: '创建设计师' })).getByRole(
-      'textbox',
-      { name: '名称' },
-    ),
-  ).toHaveValue('全新档案');
 });
 
 it('filters assets and opens the selected asset details', () => {
@@ -143,6 +111,23 @@ it('hydrates managed assets for the active workspace project', async () => {
 
   expect(await screen.findByRole('button', { name: /品牌原图/ })).toBeInTheDocument();
   expect(listAssets).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1' });
+});
+
+it('shows an empty asset state instead of example assets for an empty workspace project', async () => {
+  const listAssets = vi.fn(async () => []);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets };
+  render(<Harness initialView="assets" workspaceId="workspace-empty" projectId="project-empty" />);
+  await waitFor(() => expect(listAssets).toHaveBeenCalledWith({ workspaceId: 'workspace-empty', projectId: 'project-empty' }));
+  expect(await screen.findByText('暂无素材')).toBeInTheDocument();
+  expect(screen.queryByText('市集原图')).not.toBeInTheDocument();
+});
+
+it('shows an asset load failure instead of an empty example state', async () => {
+  const listAssets = vi.fn(async () => { throw new Error('ASSET_LOAD_FAILED'); });
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets };
+  render(<Harness initialView="assets" workspaceId="workspace-failed" projectId="project-failed" />);
+  expect(await screen.findByRole('heading', { name: '素材读取失败' })).toBeInTheDocument();
+  expect(screen.queryByText('市集原图')).not.toBeInTheDocument();
 });
 
 it('keeps external asset references visibly unmanaged in project details', async () => {
@@ -273,6 +258,23 @@ it('hydrates a workspace brand library and persists create/edit/delete actions',
   fireEvent.click(screen.getByRole('button', { name: '删除' }));
   fireEvent.click(within(screen.getByRole('dialog', { name: '删除品牌' })).getByRole('button', { name: '删除' }));
   await waitFor(() => expect(saveBrandState).toHaveBeenCalledTimes(2));
+});
+
+it('does not inject built-in brands into an empty workspace', async () => {
+  const loadBrandState = vi.fn(async () => ({ brands: [] }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadBrandState };
+  render(<Harness initialView="brands" workspaceId="workspace-empty" />);
+  await waitFor(() => expect(loadBrandState).toHaveBeenCalledWith('workspace-empty'));
+  expect(await screen.findByText('暂无品牌包')).toBeInTheDocument();
+  expect(screen.queryByText('春间市集')).not.toBeInTheDocument();
+});
+
+it('shows a brand load failure instead of example brands', async () => {
+  const loadBrandState = vi.fn(async () => { throw new Error('BRAND_LOAD_FAILED'); });
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadBrandState };
+  render(<Harness initialView="brands" workspaceId="workspace-failed" />);
+  expect(await screen.findByText('品牌读取失败')).toBeInTheDocument();
+  expect(screen.queryByText('春间市集')).not.toBeInTheDocument();
 });
 
 it('derives the delivery preview from the selected project', () => {
@@ -437,6 +439,15 @@ it('changes theme and locale through the settings controls', () => {
   });
   expect(screen.getByLabelText('current-locale')).toHaveTextContent('en');
   expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+});
+
+it('reports configured models in settings when a provider credential exists', async () => {
+  const hasCredential = vi.fn(async (account: string) => account === 'openai-compatible:conversation');
+  window.designhub = { chooseWorkspaceDirectory: async () => null, hasCredential };
+  render(<Harness initialView="settings" />);
+
+  await waitFor(() => expect(hasCredential).toHaveBeenCalledWith('openai-compatible:image'));
+  expect(screen.getByRole('button', { name: /模型连接/ })).toHaveTextContent('已有已配置连接');
 });
 
 it('keeps model setup on the connections page without a redundant settings action', () => {

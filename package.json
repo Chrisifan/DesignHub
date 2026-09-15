@@ -15,6 +15,11 @@
     "test:integration": "vitest run --config vitest.config.ts tests/integration",
     "test:e2e": "playwright test --config playwright.config.ts",
     "test:native": "playwright test --config playwright.native.config.ts",
+    "test:install-upgrade": "node scripts/install-upgrade-smoke.mjs",
+    "test:provider": "vitest run --config vitest.config.ts tests/provider",
+    "provider:live-smoke": "node scripts/provider-live-smoke.mjs",
+    "release:check": "node scripts/release-check.mjs",
+    "diff": "git diff",
     "lint": "eslint src tests *.config.ts *.config.mjs forge.config.ts --max-warnings=0",
     "typecheck": "tsc --noEmit"
   },
@@ -31,6 +36,9 @@
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-dmg": "7.11.2",
+    "@electron-forge/maker-squirrel": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
     "@electron-forge/plugin-auto-unpack-natives": "7.11.2",
     "@electron-forge/plugin-vite": "7.11.2",
     "@testing-library/jest-dom": "6.9.1",

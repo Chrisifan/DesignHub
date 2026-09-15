@@ -11,7 +11,7 @@ export type View =
   | 'settings';
 export type Theme = 'system' | 'dark' | 'light';
 export type Artwork = 'market' | 'objects' | 'type' | 'blank';
-export type CreationMode = 'manual' | 'conversation';
+export type CreationMode = 'manual';
 export type StudioSurface = View | 'new-design';
 export type NewDesignDraft = {
   name: string;

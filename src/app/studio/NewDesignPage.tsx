@@ -1,7 +1,7 @@
 import { useEffect, useRef, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
-import { getPersona, localize, type PersonaProfile } from './personas';
+import { localize, type PersonaProfile } from './personas';
 import { DesignerHero } from './DesignerHero';
 import { Button, Field, Icon, Select, t } from './ui';
 import type { NewDesignDraft } from './types';
@@ -14,8 +14,6 @@ type NewDesignPageProps = {
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onBack: () => void;
   persisted?: boolean;
-  conversationResult?: { taskId: string; text: string } | null;
-  onConfirmConversation?: (taskId: string) => void;
   profiles?: PersonaProfile[];
 };
 
@@ -26,8 +24,6 @@ export const NewDesignPage = ({
   onCreate,
   onBack,
   persisted = false,
-  conversationResult = null,
-  onConfirmConversation,
   profiles,
 }: NewDesignPageProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -41,11 +37,9 @@ export const NewDesignPage = ({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
-  const setMode = (mode: NewDesignDraft['mode']) =>
-    onDraftChange({ ...draft, mode });
   const setPersona = (personaId: string) =>
     onDraftChange({ ...draft, personaId });
-  const personas = profiles ?? ['paper-type', 'clear-commerce', 'natural-story'].map((id) => getPersona(id)!).filter(Boolean);
+  const personas = profiles ?? [];
   return (
     <section className="page-content new-design-page" aria-labelledby="new-design-title">
       <header className="new-design-heading">
@@ -56,37 +50,12 @@ export const NewDesignPage = ({
       </header>
       <div className="new-design-layout">
         <form className="new-design-form" onSubmit={onCreate}>
-          <div className="tab-strip form-tabs" role="group" aria-label={t(locale, '创建方式', 'Creation mode')}>
-            <button type="button" className={draft.mode === 'manual' ? 'is-active' : ''} aria-pressed={draft.mode === 'manual'} onClick={() => setMode('manual')}>
-              {t(locale, '手动填写', 'Write a brief')}
-            </button>
-            <button type="button" className={draft.mode === 'conversation' ? 'is-active' : ''} aria-pressed={draft.mode === 'conversation'} onClick={() => setMode('conversation')}>
-              {t(locale, '通过对话', 'Start with chat')}
-            </button>
-          </div>
           <Field label={t(locale, '项目名称', 'Project name')}>
             <input ref={nameInputRef} required maxLength={120} value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
           </Field>
-          {draft.mode === 'conversation' ? (
-            <>
-              <div className="ai-intro ai-intro--left"><Icon name="sparkles" size={20} /><h2>{t(locale, '描述你想做的设计', 'Describe the design you want')}</h2></div>
-              <Field label={t(locale, '创作想法', 'Creative idea')}>
-                <textarea rows={6} value={draft.brief} onChange={(event) => onDraftChange({ ...draft, brief: event.target.value })} placeholder={t(locale, '例如：春季市集宣传图', 'For example: spring market campaign')} />
-              </Field>
-              {!persisted && <p className="inline-notice"><Icon name="plug" size={16} />{t(locale, '模型未连接，想法已保留在示例草稿中。', 'No model connected. Your idea stays in this example draft.')}</p>}
-              {conversationResult && (
-                <section className="conversation-review" aria-label={t(locale, '简报审阅', 'Brief review')}>
-                  <div className="conversation-review__heading"><Icon name="check" size={18} /><strong>{t(locale, '模型已整理简报', 'Model brief ready')}</strong></div>
-                  <p>{conversationResult.text}</p>
-                  <Button type="button" variant="primary" icon="check" onClick={() => onConfirmConversation?.(conversationResult.taskId)}>{t(locale, '确认创建', 'Confirm')}</Button>
-                </section>
-              )}
-            </>
-          ) : (
-            <Field label={t(locale, '设计目标', 'Creative brief')}>
-              <textarea rows={6} value={draft.goal} onChange={(event) => onDraftChange({ ...draft, goal: event.target.value })} placeholder={t(locale, '用途、受众、想要传达的感受…', 'Purpose, audience, and what you want to convey…')} />
-            </Field>
-          )}
+          <Field label={t(locale, '设计目标', 'Creative brief')}>
+            <textarea rows={6} value={draft.goal} onChange={(event) => onDraftChange({ ...draft, goal: event.target.value })} placeholder={t(locale, '用途、受众、想要传达的感受…', 'Purpose, audience, and what you want to convey…')} />
+          </Field>
           <Field label={t(locale, '设计师', 'Designer')}>
             <div className="persona-selector" role="group" aria-label={t(locale, '选择设计师', 'Choose a designer')}>
               {personas.map((persona) => {
@@ -99,7 +68,7 @@ export const NewDesignPage = ({
             <Select ariaLabel={t(locale, '文档尺寸', 'Document size')} value={draft.size} onChange={(value) => onDraftChange({ ...draft, size: value as NewDesignDraft['size'] })} options={documentSizePresets.map((size) => ({ value: size, label: size }))} />
           </Field>
           {!persisted && <p className="inline-notice"><Icon name="circle-help" size={16} />{t(locale, '此处创建预览草稿，仅本次会话可见，不写入磁盘。', 'Creates a session-only preview draft. Nothing is written to disk.')}</p>}
-          <div className="dialog-actions"><Button type="submit" variant="primary" icon={draft.mode === 'conversation' ? 'send' : 'plus'} disabled={!draft.name.trim() || (draft.mode === 'conversation' && !draft.brief.trim())}>{draft.mode === 'conversation' ? t(locale, '提交简报', 'Submit brief') : persisted ? t(locale, '创建项目', 'Create project') : t(locale, '创建预览', 'Create preview')}</Button></div>
+          <div className="dialog-actions"><Button type="submit" variant="primary" icon="plus" disabled={!draft.name.trim()}>{persisted ? t(locale, '创建项目', 'Create project') : t(locale, '创建预览', 'Create preview')}</Button></div>
         </form>
         <DesignerHero personaId={draft.personaId} profile={personas.find((persona) => persona.id === draft.personaId)} locale={locale} label={t(locale, '新建设计的当前设计师', 'New design active designer')} />
       </div>

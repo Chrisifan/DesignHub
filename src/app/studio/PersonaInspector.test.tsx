@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 import { PersonaInspector } from './PersonaInspector';
-import { getPersona } from './personas';
+import { getPersona } from '../../../tests/fixtures/personas';
 
 it('shows creative identity guidance and only emits session actions', () => {
   const onSetDefault = vi.fn();
@@ -13,7 +13,6 @@ it('shows creative identity guidance and only emits session actions', () => {
       profile={getPersona('paper-type')!}
       isSessionDefault={false}
       onSetDefault={onSetDefault}
-      onDeriveDraft={vi.fn()}
       onUseForNewDesign={onUseForNewDesign}
     />,
   );

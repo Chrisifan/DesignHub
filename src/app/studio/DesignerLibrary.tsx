@@ -16,7 +16,6 @@ import {
 } from "./PersonaRepository";
 import {
   localize,
-  personaProfiles,
   type LocalizedText,
   type PersonaProfile,
 } from "./personas";
@@ -24,6 +23,7 @@ import { Button, Field, Icon, Modal, PageHeader, t } from "./ui";
 import { getDesktopApi } from "../../platform/runtime";
 import type { PortfolioInspection, PortfolioInspectionRequest } from "../../platform/contracts";
 import type { DesignerDraftState } from "../../features/designers/persistence";
+import { legacySeededDesignerIds } from "../../features/designers/persistence";
 import {
   parsePortfolioCandidates,
 } from "../../features/agent/analyze-portfolio";
@@ -96,49 +96,41 @@ type DesignerLibraryProps = {
   notify: (message: string) => void;
   onUseForNew?: (personaId: string) => void;
   workspaceId?: string;
+  preview?: boolean;
+  initialProfiles?: PersonaProfile[];
   readOnly?: boolean;
 };
 
-const mergeProfiles = (
-  persisted: PersonaProfile[] | undefined,
-): PersonaProfile[] => {
-  const persistedById = new Map(
-    (persisted ?? []).map((profile) => [profile.id, profile]),
-  );
-  const builtins = personaProfiles.map((builtin) => {
-    const stored = persistedById.get(builtin.id);
-    return stored && stored.status === "archived"
-      ? { ...builtin, status: "archived" as const }
-      : builtin;
-  });
-  const custom = (persisted ?? []).filter(
-    (profile) => !personaProfiles.some((builtin) => builtin.id === profile.id),
-  );
-  return [...builtins, ...custom];
-};
+const mergeProfiles = (persisted: PersonaProfile[] | undefined): PersonaProfile[] =>
+  (persisted ?? [])
+    .filter((profile) => !legacySeededDesignerIds.has(profile.id))
+    .map((profile) => profile.status === "built-in"
+    ? { ...profile, status: "published" as const }
+    : profile);
 
 const canBeDefault = (profile: PersonaProfile | undefined): boolean =>
-  profile?.status === "built-in" || profile?.status === "published";
+  profile?.status === "published";
+
+const emptyProfiles: PersonaProfile[] = [];
 
 export const DesignerLibrary = ({
   locale,
   notify,
   onUseForNew,
   workspaceId,
+  preview = false,
+  initialProfiles = emptyProfiles,
   readOnly = false,
 }: DesignerLibraryProps) => {
-  const [profiles, setProfiles] = useState(personaProfiles);
-  const [selectedId, setSelectedId] = useState(personaProfiles[0].id);
-  const [defaultId, setDefaultId] = useState(personaProfiles[0].id);
+  const [profiles, setProfiles] = useState<PersonaProfile[]>(() => workspaceId || !preview ? [] : initialProfiles);
+  const [selectedId, setSelectedId] = useState(() => workspaceId || !preview ? '' : initialProfiles[0]?.id ?? '');
+  const [defaultId, setDefaultId] = useState(() => workspaceId || !preview ? '' : initialProfiles[0]?.id ?? '');
   const isHydrating = useRef(Boolean(workspaceId));
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<PersonaStatusFilter>("all");
   const [editor, setEditor] = useState<
     { mode: "new" } | { mode: "edit"; profileId: string } | null
   >(null);
-  const [creationSource, setCreationSource] = useState<
-    "description" | "portfolio"
-  >("description");
   const [candidatePhase, setCandidatePhase] = useState<"form" | "review">(
     "form",
   );
@@ -175,12 +167,19 @@ export const DesignerLibrary = ({
     isHydrating.current = Boolean(workspaceId);
     setLoading(Boolean(workspaceId));
     setLoadFailed(false);
+    if (workspaceId) {
+      setProfiles([]);
+      setSelectedId('');
+      setDefaultId('');
+      setNewDraft(emptyDraft);
+      setEditDrafts({});
+    }
     const hydrate = async () => {
       if (!workspaceId) {
         if (!cancelled) {
-          setProfiles(personaProfiles);
-          setSelectedId(personaProfiles[0].id);
-          setDefaultId(personaProfiles[0].id);
+          setProfiles(preview ? initialProfiles : []);
+          setSelectedId(preview ? initialProfiles[0]?.id ?? '' : '');
+          setDefaultId(preview ? initialProfiles[0]?.id ?? '' : '');
           setNewDraft(emptyDraft);
           setEditDrafts({});
           isHydrating.current = false;
@@ -200,12 +199,11 @@ export const DesignerLibrary = ({
       if (cancelled) return;
       const nextProfiles = mergeProfiles(next?.profiles);
       const nextDefaultId =
-        next?.defaultId &&
-        nextProfiles.some((profile) => profile.id === next.defaultId)
+        next?.defaultId && nextProfiles.some((profile) => profile.id === next.defaultId)
           ? next.defaultId
-          : personaProfiles[0].id;
+          : '';
       setProfiles(nextProfiles);
-      setSelectedId(nextProfiles[0]?.id ?? personaProfiles[0].id);
+      setSelectedId(nextProfiles[0]?.id ?? '');
       setDefaultId(nextDefaultId);
       setNewDraft(
         next?.drafts?.newDraft
@@ -227,7 +225,7 @@ export const DesignerLibrary = ({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId]);
+  }, [preview, workspaceId, initialProfiles]);
   useEffect(() => {
     if (!workspaceId || isHydrating.current || readOnly) return;
     const state = {
@@ -283,7 +281,6 @@ export const DesignerLibrary = ({
   );
   const openCreate = () => {
     if (readOnly || loading || loadFailed) return;
-    setCreationSource("description");
     setCandidatePhase("form");
     setRightsConfirmed(false);
     setPortfolioUrl("");
@@ -307,7 +304,7 @@ export const DesignerLibrary = ({
     setEditor({ mode: "edit", profileId: selected.id });
   };
   const saveDraft = () => {
-    if (!activeDraft.name.trim()) return;
+    if (editor?.mode !== "edit" || !activeDraft.name.trim()) return;
     const tags = activeDraft.tags
       .split(",")
       .map((tag) => tag.trim())
@@ -322,83 +319,41 @@ export const DesignerLibrary = ({
       .split(",")
       .map((color) => color.trim())
       .filter(Boolean);
-    if (editor?.mode === "edit") {
-      const edited = profiles.find(
-        (profile) => profile.id === editor.profileId,
-      );
-      if (!edited) return;
-      if (edited.status === "built-in") {
-        setEditDrafts((previous) => ({
-          ...previous,
-          [edited.id]: activeDraft,
-        }));
-        setEditor(null);
-        notify(t(locale, "已保留为草稿", "Kept as a draft"));
-        return;
-      }
-      const nextProfile: PersonaProfile = {
-        ...edited,
-        id:
-          edited.status === "published"
-            ? `custom-${crypto.randomUUID()}`
-            : edited.id,
-        name: localized(activeDraft.name),
-        signature: localized(activeDraft.signature),
-        summary: localized(activeDraft.summary),
-        principle: localized(activeDraft.principle),
-        personaCode: activeDraft.personaCode,
-        version: activeDraft.version,
-        status: edited.status === "published" ? "draft" : edited.status,
-        tags,
-        styleDna: {
-          palette,
-          typography: localized(activeDraft.typography),
-          composition: localized(activeDraft.composition),
-          texture: localized(activeDraft.texture),
-        },
-        negativeRules,
-      };
-      setProfiles((previous) =>
-        edited.status === "published"
-          ? [nextProfile, ...previous]
-          : previous.map((profile) =>
-              profile.id === editor.profileId ? nextProfile : profile,
-            ),
-      );
-      if (edited.status === "published") setSelectedId(nextProfile.id);
-      notify(t(locale, "档案草稿已更新", "Profile draft updated"));
-    } else {
-      const id = `custom-${crypto.randomUUID()}`;
-      const profile: PersonaProfile = {
-        id,
-        name: localized(activeDraft.name),
-        signature: localized(activeDraft.signature),
-        summary: localized(activeDraft.summary),
-        principle: localized(activeDraft.principle),
-        personaCode: activeDraft.personaCode || "CUSTOM-A",
-        version: activeDraft.version || "v0.1",
-        status: "draft",
-        artworkUrl: `/personas/${id}.png`,
-        artworkAlt: localized(activeDraft.name),
-        tags,
-        referenceCount: 0,
-        styleDna: {
-          palette,
-          typography: localized(activeDraft.typography),
-          composition: localized(activeDraft.composition),
-          texture: localized(activeDraft.texture),
-        },
-        negativeRules,
-        portfolioSheets: [],
-      };
-      setProfiles((previous) => [profile, ...previous]);
-      setSelectedId(id);
-      notify(t(locale, "新档案已保留", "New profile kept"));
-    }
+    const edited = profiles.find((profile) => profile.id === editor.profileId);
+    if (!edited) return;
+    const isPublished = edited.status === "published";
+    const nextProfile: PersonaProfile = {
+      ...edited,
+      id: isPublished ? `custom-${crypto.randomUUID()}` : edited.id,
+      name: localized(activeDraft.name),
+      signature: localized(activeDraft.signature),
+      summary: localized(activeDraft.summary),
+      principle: localized(activeDraft.principle),
+      personaCode: activeDraft.personaCode,
+      version: activeDraft.version,
+      status: isPublished ? "draft" : edited.status,
+      tags,
+      styleDna: {
+        palette,
+        typography: localized(activeDraft.typography),
+        composition: localized(activeDraft.composition),
+        texture: localized(activeDraft.texture),
+      },
+      negativeRules,
+    };
+    setProfiles((previous) =>
+      isPublished
+        ? [nextProfile, ...previous]
+        : previous.map((profile) =>
+            profile.id === editor.profileId ? nextProfile : profile,
+          ),
+    );
+    if (isPublished) setSelectedId(nextProfile.id);
+    notify(t(locale, "档案草稿已更新", "Profile draft updated"));
     setEditor(null);
   };
   const requestCandidates = async () => {
-    if (creationSource === "portfolio" && !rightsConfirmed) {
+    if (!rightsConfirmed) {
       setCreationError(
         t(
           locale,
@@ -408,7 +363,7 @@ export const DesignerLibrary = ({
       );
       return;
     }
-    if (creationSource === "portfolio" && (!portfolioInspection || selectedPortfolioSourceIds.length === 0)) {
+    if (!portfolioInspection || selectedPortfolioSourceIds.length === 0) {
       setCreationError(
         t(
           locale,
@@ -422,7 +377,7 @@ export const DesignerLibrary = ({
     setCandidateProfiles([]);
     setAnalysisTaskId(undefined);
     setCandidatePhase("review");
-    if (creationSource === "portfolio" && !workspaceId) {
+    if (!workspaceId) {
       setCandidatePhase("form");
       setCreationError(
         t(
@@ -433,29 +388,19 @@ export const DesignerLibrary = ({
       );
       return;
     }
-    if (workspaceId) {
-      const draftId = `designer-${crypto.randomUUID()}`;
-      const api = getDesktopApi();
-      let request: Promise<TaskRecord | null> | undefined;
-      try {
-        if (creationSource === "portfolio") {
-          request = api.submitPortfolioSelection?.({
-            workspaceId,
-            source: { kind: "designer-draft", id: draftId },
-            connectionId: "openai-compatible",
-            inspectionId: portfolioInspection!.id,
-            sourceIds: selectedPortfolioSourceIds,
-            rightsConfirmed: true,
-          });
-        } else {
-          request = api.submitConversation?.({
-            workspaceId,
-            source: { kind: "designer-draft", id: draftId },
-            connectionId: "openai-compatible",
-            message: `Create a designer persona from this style description.\nStyle summary: ${activeDraft.summary.trim()}\nCreative principle: ${activeDraft.principle.trim()}`,
-          });
-        }
-      } catch {
+    const draftId = `designer-${crypto.randomUUID()}`;
+    const api = getDesktopApi();
+    let request: Promise<TaskRecord | null> | undefined;
+    try {
+      request = api.submitPortfolioSelection?.({
+        workspaceId,
+        source: { kind: "designer-draft", id: draftId },
+        connectionId: "openai-compatible",
+        inspectionId: portfolioInspection.id,
+        sourceIds: selectedPortfolioSourceIds,
+        rightsConfirmed: true,
+      });
+    } catch {
         setCandidatePhase("form");
         setCreationError(
           t(
@@ -465,8 +410,8 @@ export const DesignerLibrary = ({
           ),
         );
         return;
-      }
-      if (!request) {
+    }
+    if (!request) {
         setCandidatePhase("form");
         setCreationError(
           t(
@@ -476,33 +421,27 @@ export const DesignerLibrary = ({
           ),
         );
         return;
-      }
-      const consumeCompletedTask = (candidateTask: TaskRecord): boolean => {
+    }
+    const consumeCompletedTask = (candidateTask: TaskRecord): boolean => {
         if (candidateTask.state === "completed" && candidateTask.result?.text) {
           setCandidateProfiles(parsePortfolioCandidates(candidateTask.result.text));
           setCreationError("");
           notify(
             t(
               locale,
-              creationSource === "portfolio"
-                ? "作品集分析已完成，请审核候选。"
-                : "风格描述分析已完成，请审核候选。",
-              creationSource === "portfolio"
-                ? "Portfolio analysis completed; review the candidates."
-                : "Style description analysis completed; review the candidates.",
+              "作品集分析已完成，请审核候选。",
+              "Portfolio analysis completed; review the candidates.",
             ),
           );
           return true;
         }
         return false;
-      };
-      void request
+    };
+    void request
         .then(async (task) => {
           if (!task) throw new Error("ANALYSIS_UNAVAILABLE");
-          if (creationSource === "portfolio") {
-            setPortfolioInspection(null);
-            setSelectedPortfolioSourceIds([]);
-          }
+          setPortfolioInspection(null);
+          setSelectedPortfolioSourceIds([]);
           if (consumeCompletedTask(task)) return;
           const tasks = (await api.listTasks?.(workspaceId)) ?? [];
           const completed = tasks.find((item) => item.id === task.id);
@@ -512,17 +451,13 @@ export const DesignerLibrary = ({
           setCreationError(
             t(
               locale,
-              creationSource === "portfolio"
-                ? "作品集分析任务仍在处理中，请稍后重试查看。"
-                : "风格描述任务仍在处理中，请稍后重试查看。",
-              creationSource === "portfolio"
-                ? "Portfolio analysis is still running; check again shortly."
-                : "Style description analysis is still running; check again shortly.",
+              "作品集分析任务仍在处理中，请稍后重试查看。",
+              "Portfolio analysis is still running; check again shortly.",
             ),
           );
         })
         .catch(() => {
-          if (creationSource === "portfolio") setCandidatePhase("form");
+          setCandidatePhase("form");
           setCandidateProfiles([]);
           setCreationError(
             t(
@@ -531,8 +466,7 @@ export const DesignerLibrary = ({
               "Portfolio analysis failed; no candidates were generated.",
             ),
           );
-        });
-    }
+      });
   };
   const inspectPortfolioSources = async (request: PortfolioInspectionRequest) => {
     if (!workspaceId) {
@@ -751,9 +685,9 @@ export const DesignerLibrary = ({
       );
       return;
     }
-    const candidate =
-      candidateProfiles.find((profile) => profile.id === selectedCandidateId) ??
-      personaProfiles.find((profile) => profile.id === selectedCandidateId);
+    const candidate = candidateProfiles.find(
+      (profile) => profile.id === selectedCandidateId,
+    );
     if (!candidate) {
       setCreationError(
         t(
@@ -793,7 +727,7 @@ export const DesignerLibrary = ({
   };
   const deleteSelected = () => {
     if (readOnly || loading || loadFailed) return;
-    if (!selected || selected.status === "built-in") return;
+    if (!selected) return;
     if (selected.referenceCount > 0) {
       setProfiles((previous) =>
         previous.map((profile) =>
@@ -814,28 +748,6 @@ export const DesignerLibrary = ({
         : selectedId,
     );
     notify(t(locale, "档案已移除", "Profile removed"));
-  };
-  const duplicateSelected = () => {
-    if (readOnly || loading || loadFailed) return;
-    if (!selected) return;
-    const id = `derived-${crypto.randomUUID()}`;
-    const profile: PersonaProfile = {
-      ...selected,
-      id,
-      name: localized(
-        `${localize(locale, selected.name)} ${t(locale, "派生版", "Derived")}`,
-      ),
-      status: "draft",
-      version: "v0.1",
-      referenceCount: 0,
-      artworkUrl: `/personas/${id}.png`,
-      artworkAlt: localized(
-        `${localize(locale, selected.name)} ${t(locale, "派生版", "Derived")}`,
-      ),
-    };
-    setProfiles((previous) => [profile, ...previous]);
-    setSelectedId(id);
-    notify(t(locale, "已创建派生档案", "Derived profile created"));
   };
   return (
     <section className="page-content library-page designer-library-page">
@@ -871,7 +783,6 @@ export const DesignerLibrary = ({
           canUseForNew={!loading && !loadFailed}
           onEdit={openEdit}
           onDelete={deleteSelected}
-          onDuplicate={duplicateSelected}
           onRestore={() => {
             if (!selected || readOnly || loading || loadFailed) return;
             setProfiles((previous) =>
@@ -899,7 +810,7 @@ export const DesignerLibrary = ({
           }}
         />
       </div>
-      {(loadFailed || readOnly || !workspaceId) && <p className="page-footnote">
+      {(loadFailed || readOnly || (!workspaceId && preview)) && <p className="page-footnote">
         <Icon name="circle-help" size={14} />
         {loadFailed ? (
           <>
@@ -920,7 +831,7 @@ export const DesignerLibrary = ({
             "当前工作区只读，设计师档案不可修改。",
             "This workspace is read-only; designer profiles cannot be changed.",
           )
-        ) : !workspaceId ? (
+        ) : !workspaceId && preview ? (
           t(
             locale,
             "人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。",
@@ -933,10 +844,8 @@ export const DesignerLibrary = ({
           locale={locale}
           draft={activeDraft}
           mode={editor.mode}
-          source={creationSource}
           candidates={candidateProfiles}
           candidatePhase={candidatePhase}
-          allowExampleCandidates={Boolean(!workspaceId)}
           rightsConfirmed={rightsConfirmed}
           portfolioUrl={portfolioUrl}
           portfolioInspection={portfolioInspection}
@@ -944,15 +853,10 @@ export const DesignerLibrary = ({
           selectedCandidateId={selectedCandidateId}
           publishedInSession={publishedInSession}
           error={creationError}
-          onSourceChange={(source) => {
-            if (source !== "portfolio") discardPortfolioInspection();
-            setCreationSource(source);
-          }}
           onRightsConfirmed={setRightsConfirmed}
           onPortfolioUrlChange={setPortfolioUrl}
           onInspectPortfolioSources={inspectPortfolioSources}
           onPortfolioSourceToggle={togglePortfolioSource}
-          onCandidatePhaseChange={setCandidatePhase}
           onCandidateSelect={setSelectedCandidateId}
           onRequestCandidates={requestCandidates}
           onGenerateArtwork={requestCandidateArtwork}
@@ -975,10 +879,8 @@ const DesignerEditorModal = ({
   locale,
   draft,
   mode,
-  source,
   candidates,
   candidatePhase,
-  allowExampleCandidates,
   rightsConfirmed,
   portfolioUrl,
   portfolioInspection,
@@ -986,12 +888,10 @@ const DesignerEditorModal = ({
   selectedCandidateId,
   publishedInSession,
   error,
-  onSourceChange,
   onRightsConfirmed,
   onPortfolioUrlChange,
   onInspectPortfolioSources,
   onPortfolioSourceToggle,
-  onCandidatePhaseChange,
   onCandidateSelect,
   onRequestCandidates,
   onGenerateArtwork,
@@ -1005,10 +905,8 @@ const DesignerEditorModal = ({
   locale: Locale;
   draft: DesignerDraft;
   mode: "new" | "edit";
-  source: "description" | "portfolio";
   candidates: PersonaProfile[];
   candidatePhase: "form" | "review";
-  allowExampleCandidates: boolean;
   rightsConfirmed: boolean;
   portfolioUrl: string;
   portfolioInspection: PortfolioInspection | null;
@@ -1016,12 +914,10 @@ const DesignerEditorModal = ({
   selectedCandidateId?: string;
   publishedInSession: boolean;
   error: string;
-  onSourceChange: (source: "description" | "portfolio") => void;
   onRightsConfirmed: (value: boolean) => void;
   onPortfolioUrlChange: (value: string) => void;
   onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
-  onCandidatePhaseChange: (phase: "form" | "review") => void;
   onCandidateSelect: (id: string) => void;
   onRequestCandidates: () => void;
   onGenerateArtwork: () => void;
@@ -1051,39 +947,10 @@ const DesignerEditorModal = ({
       onClose={onClose}
       wide
     >
-      <div
-        className="designer-source-tabs"
-        role="group"
-        aria-label={t(locale, "来源方式", "Source mode")}
-      >
-        <button
-          type="button"
-          aria-pressed={source === "description"}
-          className={source === "description" ? "is-active" : ""}
-          onClick={() => {
-            onSourceChange("description");
-            onCandidatePhaseChange("form");
-          }}
-        >
-          {t(locale, "描述", "Description")}
-        </button>
-        <button
-          type="button"
-          aria-pressed={source === "portfolio"}
-          className={source === "portfolio" ? "is-active" : ""}
-          onClick={() => {
-            onSourceChange("portfolio");
-            onCandidatePhaseChange("form");
-          }}
-        >
-          {t(locale, "作品集", "Portfolio")}
-        </button>
-      </div>
       {mode === "new" && candidatePhase === "review" ? (
         <CandidateReview
           locale={locale}
           candidates={candidates}
-          allowExamples={source === "description" && allowExampleCandidates}
           selectedCandidateId={selectedCandidateId}
           publishedInSession={publishedInSession}
           error={error}
@@ -1096,6 +963,7 @@ const DesignerEditorModal = ({
       ) : (
         <form className="designer-editor" onSubmit={submit}>
           <div className="designer-form">
+            {mode === "edit" && <>
             <p className="panel-label">
               {t(locale, "档案草稿", "Profile draft")}
             </p>
@@ -1105,13 +973,7 @@ const DesignerEditorModal = ({
             <Field label={t(locale, "署名", "Signature")}>
               <input value={draft.signature} onChange={setField("signature")} />
             </Field>
-            <Field
-              label={
-                mode === "new" && source === "description"
-                  ? t(locale, "风格描述", "Style description")
-                  : t(locale, "风格说明", "Style summary")
-              }
-            >
+            <Field label={t(locale, "风格说明", "Style summary")}>
               <textarea
                 rows={3}
                 value={draft.summary}
@@ -1125,7 +987,8 @@ const DesignerEditorModal = ({
                 onChange={setField("principle")}
               />
             </Field>
-            {mode === "new" && source === "portfolio" && (
+            </>}
+            {mode === "new" && (
               <>
                 <Field label={t(locale, "作品集链接", "Portfolio URL")}>
                   <textarea
@@ -1188,6 +1051,7 @@ const DesignerEditorModal = ({
               </>
             )}
           </div>
+          {mode === "edit" && <>
           <aside
             className="designer-draft-preview"
             aria-label={t(locale, "档案预览", "Profile preview")}
@@ -1227,6 +1091,7 @@ const DesignerEditorModal = ({
               {t(locale, "保留", "Keep")}
             </Button>
           </div>
+          </>}
         </form>
       )}
     </Modal>
@@ -1236,7 +1101,6 @@ const DesignerEditorModal = ({
 const CandidateReview = ({
   locale,
   candidates,
-  allowExamples,
   selectedCandidateId,
   publishedInSession,
   error,
@@ -1248,7 +1112,6 @@ const CandidateReview = ({
 }: {
   locale: Locale;
   candidates: PersonaProfile[];
-  allowExamples: boolean;
   selectedCandidateId?: string;
   publishedInSession: boolean;
   error: string;
@@ -1258,26 +1121,13 @@ const CandidateReview = ({
   canGenerateArtwork: boolean;
   onPublish: () => void;
 }) => {
-  const visibleCandidates =
-    candidates.length > 0
-      ? candidates
-      : allowExamples
-        ? personaProfiles.filter((profile) =>
-            ["paper-type", "clear-commerce", "natural-story"].includes(
-              profile.id,
-            ),
-          )
-        : [];
+  const visibleCandidates = candidates;
   return (
     <section
       className="candidate-review"
       aria-labelledby="candidate-review-title"
     >
-      <p className="section-kicker">
-        {allowExamples
-          ? t(locale, "示例候选", "Example candidates")
-          : t(locale, "分析候选", "Analysis candidates")}
-      </p>
+      <p className="section-kicker">{t(locale, "分析候选", "Analysis candidates")}</p>
       <h2 id="candidate-review-title">
         {t(locale, "选择人物形象", "Choose a persona")}
       </h2>

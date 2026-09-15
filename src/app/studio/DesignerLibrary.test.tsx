@@ -10,6 +10,7 @@ import { expect, it, vi } from "vitest";
 
 import type { DesignerLibraryState } from "../../features/designers/persistence";
 import { DesignerLibrary } from "./DesignerLibrary";
+import { personaProfiles } from "../../../tests/fixtures/personas";
 
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -20,7 +21,7 @@ const createDeferred = <T,>() => {
 };
 
 it("filters personas and exposes structured style guidance in the inspector", () => {
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={personaProfiles} />);
   expect(screen.getByText("Style DNA")).toBeInTheDocument();
   expect(screen.getByText("禁用规则")).toBeInTheDocument();
   expect(screen.getByText("精选作品")).toBeInTheDocument();
@@ -33,7 +34,19 @@ it("filters personas and exposes structured style guidance in the inspector", ()
   ).not.toBeInTheDocument();
 });
 
-it("supports create, derive, default and use-for-new actions in session state", () => {
+it("opens new designer creation with portfolio analysis only", () => {
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={personaProfiles} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "从作品集创建" }));
+
+  const dialog = screen.getByRole("dialog", { name: "创建设计师" });
+  expect(within(dialog).getByRole("textbox", { name: "作品集链接" })).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "检查页面" })).toBeInTheDocument();
+  expect(within(dialog).queryByRole("button", { name: "描述" })).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole("textbox", { name: "风格描述" })).not.toBeInTheDocument();
+});
+
+it("supports default and use-for-new actions without a direct derivative-creation path", () => {
   const notify = vi.fn();
   const onUseForNew = vi.fn();
   render(
@@ -41,6 +54,8 @@ it("supports create, derive, default and use-for-new actions in session state", 
       locale="zh-CN"
       notify={notify}
       onUseForNew={onUseForNew}
+      preview
+      initialProfiles={personaProfiles}
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: /清晰商业/ }));
@@ -48,25 +63,12 @@ it("supports create, derive, default and use-for-new actions in session state", 
   expect(screen.getByRole("button", { name: "当前默认" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "用于新建" }));
   expect(onUseForNew).toHaveBeenCalledWith("clear-commerce");
-  fireEvent.click(screen.getByRole("button", { name: "派生" }));
-  expect(
-    screen.getByRole("button", { name: /清晰商业 派生版/ }),
-  ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "删除" }));
-  expect(notify).toHaveBeenCalledWith("档案已移除");
-  fireEvent.click(screen.getByRole("button", { name: "创建" }));
-  const dialog = screen.getByRole("dialog", { name: "创建设计师" });
-  fireEvent.change(within(dialog).getByRole("textbox", { name: "名称" }), {
-    target: { value: "夜间叙事" },
-  });
-  fireEvent.click(within(dialog).getByRole("button", { name: "保留" }));
-  expect(screen.getByRole("button", { name: /夜间叙事/ })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "派生" })).not.toBeInTheDocument();
 });
 
 it("requires portfolio rights confirmation before entering candidate review", () => {
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
-  fireEvent.click(screen.getByRole("button", { name: "创建" }));
-  fireEvent.click(screen.getByRole("button", { name: "作品集" }));
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={personaProfiles} />);
+  fireEvent.click(screen.getByRole("button", { name: "从作品集创建" }));
   fireEvent.click(screen.getByRole("button", { name: "生成" }));
   expect(
     screen.getByText("请先确认拥有分析这些来源的权利。"),
@@ -87,8 +89,7 @@ it("inspects portfolio candidates and submits only the explicitly checked source
   window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources, submitPortfolioSelection };
   render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-selected" />);
 
-  fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-  fireEvent.click(screen.getByRole("button", { name: "Portfolio" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Portfolio URL" }), { target: { value: "https://public.test/portfolio" } });
   fireEvent.click(screen.getByRole("button", { name: "Inspect page" }));
   await screen.findByText("Cover");
@@ -111,8 +112,7 @@ it("keeps an inspected selection available for retry when portfolio submission r
   window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources, submitPortfolioSelection };
   render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-retry" />);
 
-  fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-  fireEvent.click(screen.getByRole("button", { name: "Portfolio" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Portfolio URL" }), { target: { value: "https://public.test/retry" } });
   fireEvent.click(screen.getByRole("button", { name: "Inspect page" }));
   await screen.findByText("Retry source");
@@ -149,8 +149,7 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
       workspaceId="workspace-1"
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
-  fireEvent.click(screen.getByRole("button", { name: "作品集" }));
+  fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
   fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
     target: { value: "https://example.com/portfolio.png" },
   });
@@ -186,8 +185,7 @@ it("inspects locally chosen portfolio images through the trusted main process", 
   }));
   window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources, submitPortfolioSelection };
   render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-files" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Create" }));
-  fireEvent.click(screen.getByRole("button", { name: "Portfolio" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Choose images" }));
   await screen.findByText("Reference");
   expect(within(screen.getByRole("group", { name: "Portfolio candidates" })).queryByRole("img")).not.toBeInTheDocument();
@@ -258,8 +256,7 @@ it("reviews a completed portfolio candidate and persists the published profile",
       workspaceId="workspace-1"
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
-  fireEvent.click(screen.getByRole("button", { name: "作品集" }));
+  fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
   fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
     target: { value: "https://example.com/portfolio.png" },
   });
@@ -330,7 +327,11 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   }));
   window.designhub = {
     chooseWorkspaceDirectory: async () => null,
-    submitConversation: vi.fn(async () => ({
+    inspectPortfolioSources: vi.fn(async () => ({
+      id: "inspection-artwork",
+      candidates: [{ id: "source-artwork", label: "作品集", description: "Artwork portfolio", origin: "page-image" as const, previewUrl: "" }],
+    })),
+    submitPortfolioSelection: vi.fn(async () => ({
       id: "task-candidate",
       requestId: "request-candidate",
       state: "completed" as const,
@@ -345,12 +346,16 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   } as typeof window.designhub;
 
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-1" />);
-  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
-    target: { value: "理性、明亮的数字排版" },
+  fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
+    target: { value: "https://example.com/artwork-portfolio" },
   });
+  fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+  await screen.findByText("作品集");
+  fireEvent.click(screen.getByRole("checkbox", { name: "作品集" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "生成" }));
-  fireEvent.click(await screen.findByRole("button", { name: /候选 1/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /未来编辑/ }));
   fireEvent.click(screen.getByRole("button", { name: "生成形象" }));
 
   await waitFor(() => expect(submitDesignerArtworkGeneration).toHaveBeenCalledWith(expect.objectContaining({
@@ -388,17 +393,6 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   expect(persistedProfiles[0]?.artworkUrl).not.toMatch(/^data:/u);
 });
 
-it("disables artwork generation for offline example candidates", async () => {
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
-  fireEvent.click(screen.getByRole("button", { name: "创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
-    target: { value: "克制的编辑风格" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "生成" }));
-  fireEvent.click(await screen.findByRole("button", { name: /候选 1/ }));
-  expect(screen.getByRole("button", { name: "生成形象" })).toBeDisabled();
-});
-
 it("does not show fabricated candidates when the completed portfolio task failed", async () => {
   window.designhub = {
     chooseWorkspaceDirectory: async () => null,
@@ -432,8 +426,7 @@ it("does not show fabricated candidates when the completed portfolio task failed
       workspaceId="workspace-1"
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
-  fireEvent.click(screen.getByRole("button", { name: "作品集" }));
+  fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
   fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
     target: { value: "https://example.com/portfolio.png" },
   });
@@ -533,10 +526,7 @@ it("polls a running portfolio task until completed candidates are available", as
       await Promise.resolve();
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "创建" }));
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "作品集" }));
+      fireEvent.click(screen.getByRole("button", { name: "从作品集创建" }));
     });
     fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
       target: { value: "https://example.com/poll.png" },
@@ -573,152 +563,11 @@ it("polls a running portfolio task until completed candidates are available", as
   }
 });
 
-it("submits a description analysis task and reviews completed candidates in a workspace", async () => {
-  const candidate = {
-    id: "description-candidate-1",
-    name: { zh: "描述候选", en: "Description candidate" },
-    signature: { zh: "风格草稿", en: "Style draft" },
-    summary: { zh: "克制排版", en: "Restrained type" },
-    principle: { zh: "保留呼吸感", en: "Keep breathing room" },
-    personaCode: "DESCRIPTION-1",
-    version: "v0.1",
-    status: "draft",
-    artworkUrl: "",
-    artworkAlt: { zh: "候选", en: "Candidate" },
-    tags: [],
-    referenceCount: 0,
-    styleDna: {
-      palette: [],
-      typography: { zh: "", en: "" },
-      composition: { zh: "", en: "" },
-      texture: { zh: "", en: "" },
-    },
-    negativeRules: [],
-    portfolioSheets: [],
-  };
-  const submitConversation = vi.fn(async () => ({
-    id: "task-description",
-    requestId: "request-description",
-    state: "running" as const,
-    cancelRequested: false,
-    attempt: 1,
-  }));
-  const listTasks = vi.fn(async () => [
-    {
-      id: "task-description",
-      requestId: "request-description",
-      state: "completed" as const,
-      cancelRequested: false,
-      attempt: 1,
-      source: { kind: "designer-draft" as const, id: "designer-draft-description" },
-      result: { text: JSON.stringify({ candidates: [candidate] }) },
-    },
-  ]);
-  window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
-    submitConversation,
-    listTasks,
-  };
-  render(
-    <DesignerLibrary
-      locale="zh-CN"
-      notify={vi.fn()}
-      workspaceId="workspace-description"
-    />,
-  );
-  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
-    target: { value: "克制、纸张和清晰层级" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "生成" }));
-  const candidateButton = await screen.findByRole("button", {
-    name: /描述候选/,
-  });
-  expect(submitConversation).toHaveBeenCalledWith(
-    expect.objectContaining({
-      workspaceId: "workspace-description",
-      source: expect.objectContaining({ kind: "designer-draft" }),
-      message: expect.stringContaining("克制、纸张和清晰层级"),
-    }),
-  );
-  expect(candidateButton).toBeInTheDocument();
-});
-
-it("reviews a description task that completes during submission without listing tasks", async () => {
-  const candidate = {
-    id: "description-immediate-candidate",
-    name: { zh: "即时候选", en: "Immediate candidate" },
-    signature: { zh: "即时草稿", en: "Immediate draft" },
-    summary: { zh: "清晰层级", en: "Clear hierarchy" },
-    principle: { zh: "克制", en: "Restrained" },
-    personaCode: "DESCRIPTION-IMMEDIATE",
-    version: "v0.1",
-    status: "draft",
-    artworkUrl: "",
-    artworkAlt: { zh: "候选", en: "Candidate" },
-    tags: [],
-    referenceCount: 0,
-    styleDna: {
-      palette: [],
-      typography: { zh: "", en: "" },
-      composition: { zh: "", en: "" },
-      texture: { zh: "", en: "" },
-    },
-    negativeRules: [],
-    portfolioSheets: [],
-  };
-  const submitConversation = vi.fn(async () => ({
-    id: "task-description-immediate",
-    requestId: "request-description-immediate",
-    state: "completed" as const,
-    cancelRequested: false,
-    attempt: 1,
-    result: { text: JSON.stringify({ candidates: [candidate] }) },
-  }));
-  window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
-    submitConversation,
-  };
-  render(
-    <DesignerLibrary
-      locale="zh-CN"
-      notify={vi.fn()}
-      workspaceId="workspace-description-immediate"
-    />,
-  );
-  fireEvent.click(await screen.findByRole("button", { name: "创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
-    target: { value: "即时、清晰、克制" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "生成" }));
-  expect(
-    await screen.findByRole("button", { name: /即时候选/ }),
-  ).toBeInTheDocument();
-  expect(submitConversation).toHaveBeenCalledOnce();
-});
-
-it("presents three example candidates and marks preview publish as session-only", () => {
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
-  fireEvent.click(screen.getByRole("button", { name: "创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "风格描述" }), {
-    target: { value: "纸张、城市与留白" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "生成" }));
-  const candidates = screen.getAllByRole("button", { name: /候选/ });
-  expect(candidates).toHaveLength(3);
-  fireEvent.click(candidates[1]!);
-  expect(candidates[1]).toHaveAttribute("aria-pressed", "true");
-  fireEvent.click(screen.getByRole("button", { name: "发布预览" }));
-  expect(
-    screen.getByText("已在本次示例会话中发布，不会写入磁盘。"),
-  ).toBeInTheDocument();
-});
-
 it("hydrates and persists designer state through the desktop workspace bridge", async () => {
+  const persistedProfile = { ...personaProfiles[0]!, id: "portfolio-persisted" };
   const loadDesignerState = vi.fn(async () => ({
-    profiles: [],
-    defaultId: "builtin-v1",
-    drafts: { newDraft: { name: "工作区草稿" } },
+    profiles: [persistedProfile],
+    defaultId: persistedProfile.id,
   }));
   const saveDesignerState = vi.fn(async () => true);
   window.designhub = {
@@ -736,28 +585,30 @@ it("hydrates and persists designer state through the desktop workspace bridge", 
   await waitFor(() =>
     expect(loadDesignerState).toHaveBeenCalledWith("workspace-1"),
   );
-  fireEvent.click(screen.getByRole("button", { name: "创建" }));
+  fireEvent.click(screen.getByRole("button", { name: /纸感排版/ }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑" }));
   await waitFor(() =>
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
-      "工作区草稿",
+      "纸感排版",
     ),
   );
   fireEvent.change(screen.getByRole("textbox", { name: "名称" }), {
-    target: { value: "已保存草稿" },
+    target: { value: "已保存档案" },
   });
+  fireEvent.click(screen.getByRole("button", { name: "保留" }));
   await waitFor(() =>
     expect(saveDesignerState).toHaveBeenCalledWith(
       "workspace-1",
       expect.objectContaining({
-        drafts: expect.objectContaining({
-          newDraft: expect.objectContaining({ name: "已保存草稿" }),
-        }),
+        profiles: expect.arrayContaining([
+          expect.objectContaining({ name: expect.objectContaining({ zh: "已保存档案" }) }),
+        ]),
       }),
     ),
   );
 });
 
-it("keeps builtin profiles available when persisted state has no profiles", async () => {
+it("does not inject built-in profiles into an empty workspace", async () => {
   window.designhub = {
     chooseWorkspaceDirectory: async () => null,
     loadDesignerState: vi.fn(async () => ({
@@ -774,11 +625,10 @@ it("keeps builtin profiles available when persisted state has no profiles", asyn
     />,
   );
   await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: /纸感排版/ }),
-    ).toBeInTheDocument(),
+    expect(screen.getByText("暂无设计师档案", { exact: false })).toBeInTheDocument(),
   );
-  expect(screen.getByRole("button", { name: "当前默认" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /纸感排版/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "当前默认" })).not.toBeInTheDocument();
 });
 
 it("disables mutation actions in a read-only workspace", async () => {
@@ -795,29 +645,33 @@ it("disables mutation actions in a read-only workspace", async () => {
       readOnly
     />,
   );
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: /纸感排版/ }),
-    ).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.getByText("暂无设计师档案")).toBeInTheDocument());
   expect(
-    screen.queryByRole("button", { name: "创建" }),
+    screen.queryByRole("button", { name: "从作品集创建" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "编辑" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
 });
 
-it("does not allow a draft profile to become the session default", () => {
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
-  fireEvent.click(screen.getByRole("button", { name: "创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "名称" }), {
-    target: { value: "草稿设计师" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "保留" }));
-  expect(screen.getByRole("button", { name: "设默认" })).toBeDisabled();
+it("hides legacy seeded profiles in a read-only workspace without inventing a default", async () => {
+  const profile = {
+    id: 'paper-type', name: { zh: '纸感排版', en: 'Paper & Type' }, signature: { zh: '春间工作室', en: 'Spring Studio' },
+    summary: { zh: '', en: '' }, principle: { zh: '', en: '' }, personaCode: 'INTP-A', version: 'v1.4', status: 'published' as const,
+    artworkUrl: '/personas/paper-type.png', artworkAlt: { zh: '', en: '' }, tags: [], referenceCount: 5,
+    styleDna: { palette: [], typography: { zh: '', en: '' }, composition: { zh: '', en: '' }, texture: { zh: '', en: '' } },
+    negativeRules: [], portfolioSheets: [],
+  };
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDesignerState: vi.fn(async () => ({ profiles: [profile], defaultId: profile.id })),
+  };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="legacy-read-only" readOnly />);
+  await waitFor(() => expect(screen.getByText('暂无设计师档案')).toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: /纸感排版/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '当前默认' })).not.toBeInTheDocument();
 });
 
 it("restores a referenced archived profile without changing its built-in or published status", () => {
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} />);
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={personaProfiles} />);
   fireEvent.click(screen.getByRole("button", { name: /清晰商业/ }));
   fireEvent.click(screen.getByRole("button", { name: "删除" }));
   expect(screen.getByRole("button", { name: "恢复" })).toBeInTheDocument();
@@ -827,9 +681,10 @@ it("restores a referenced archived profile without changing its built-in or publ
 
 it("does not invoke a later save until the previous save settles", async () => {
   const firstSave = createDeferred<boolean>();
+  const persistedProfile = { ...personaProfiles[0]!, id: "portfolio-queue" };
   const loadDesignerState = vi.fn(async () => ({
-    profiles: [],
-    defaultId: "builtin-v1",
+    profiles: [persistedProfile],
+    defaultId: persistedProfile.id,
   }));
   const saveDesignerState = vi.fn(async () => {
     if (saveDesignerState.mock.calls.length === 1) return firstSave.promise;
@@ -848,7 +703,8 @@ it("does not invoke a later save until the previous save settles", async () => {
     />,
   );
   await waitFor(() => expect(saveDesignerState).toHaveBeenCalledTimes(1));
-  fireEvent.click(screen.getByRole("button", { name: "创建" }));
+  fireEvent.click(screen.getByRole("button", { name: /纸感排版/ }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑" }));
   fireEvent.change(screen.getByRole("textbox", { name: "名称" }), {
     target: { value: "队列测试" },
   });
@@ -882,6 +738,6 @@ it("disables using a designer for new work while loading has failed", async () =
   await waitFor(() =>
     expect(screen.getByText("设计师档案读取失败。")).toBeInTheDocument(),
   );
-  expect(screen.getByRole("button", { name: "用于新建" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "用于新建" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
 });
