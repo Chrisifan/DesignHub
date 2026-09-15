@@ -45,15 +45,15 @@ export const PersonaInspector = ({
 }: PersonaInspectorProps) => {
   if (!profile) {
     return (
-      <aside className="details-panel persona-inspector" aria-label={t(locale, '设计师检查器', 'Designer inspector')}>
+      <div className="details-panel persona-inspector">
         <p className="muted">{t(locale, '选择一个设计师查看档案。', 'Select a designer to inspect the profile.')}</p>
-      </aside>
+      </div>
     );
   }
   const sessionDefault = isSessionDefault ?? isDefault;
   const status = profile.status === 'published' || profile.status === 'built-in' ? t(locale, '已发布', 'Published') : profile.status === 'archived' ? t(locale, '已归档', 'Archived') : t(locale, '草稿', 'Draft');
   return (
-    <aside className="details-panel persona-inspector" aria-label={t(locale, '设计师检查器', 'Designer inspector')}>
+    <div className="details-panel persona-inspector">
       <header className="persona-inspector__head">
         <div>
           <p className="section-kicker">{t(locale, 'PROFILE INSPECTOR', 'PROFILE INSPECTOR')}</p>
@@ -108,6 +108,6 @@ export const PersonaInspector = ({
         <div className="portfolio-strip">{profile.portfolioSheets.map((sheet) => <div className="portfolio-item" key={sheet.id}><ArtworkPreview kind={sheet.artwork} /><strong>{localize(locale, sheet.title)}</strong><small>{localize(locale, sheet.note)}</small></div>)}</div>
       </section>
       {(readOnly || !workspaceId) && <p className="panel-note"><Icon name="hard-drive" size={15} />{readOnly ? t(locale, '当前工作区只读。', 'Current workspace is read-only.') : t(locale, '档案保存到当前工作区。', 'Profiles are saved to the current workspace.')}</p>}
-    </aside>
+    </div>
   );
 };

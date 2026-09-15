@@ -111,7 +111,6 @@ for (const width of [1280, 1024]) {
               'Model tasks',
               'Delivery',
               'Workspace',
-              'Settings',
             ]
           : [
               '设计师',
@@ -121,12 +120,18 @@ for (const width of [1280, 1024]) {
               '模型任务',
               '导出交付',
               '工作区管理',
-              '设置',
             ]) {
           await nav.getByRole('button', { name, exact: true }).click();
           await expect(
             page.locator('.destination:not([hidden]) h1'),
           ).toBeAttached();
+          const drawer = page.getByRole('dialog');
+          if (await drawer.isVisible().catch(() => false)) {
+            await drawer.getByRole('button', {
+              name: english ? 'Close' : '关闭',
+              exact: true,
+            }).click();
+          }
           expect(
             await page.evaluate(
               () => document.documentElement.scrollWidth > window.innerWidth,

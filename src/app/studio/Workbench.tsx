@@ -141,7 +141,7 @@ export const Workbench = ({
     image: false,
   });
   const [panel, setPanel] = useState<ContextPanel>('properties');
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [layersExpanded, setLayersExpanded] = useState(false);
   const [zoom, setZoom] = useState(68);
   const [gridVisible, setGridVisible] = useState(false);

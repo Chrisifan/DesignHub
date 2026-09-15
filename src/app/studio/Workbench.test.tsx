@@ -44,6 +44,13 @@ it('opens a workbench context drawer without narrowing the canvas', () => {
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
 });
 
+it('keeps the workbench canvas clear until a context is selected', () => {
+  render(<Workbench {...makeProps()} />);
+
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
+});
+
 it('exposes the design canvas and routes project and export actions', () => {
   const props = makeProps();
   render(<Workbench {...props} />);
@@ -51,6 +58,7 @@ it('exposes the design canvas and routes project and export actions', () => {
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
   expect(screen.getByText('预览未保存')).toBeInTheDocument();
   expect(screen.getByText('1080 × 1440 px')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '属性' }));
   expect(screen.getByRole('textbox', { name: '标题文字' })).toHaveValue(
     '春间市集',
   );
@@ -108,6 +116,7 @@ it('makes layer visibility and text properties observable on the example preview
 
 it('does not expose title transforms as editable properties for non-text layers', () => {
   render(<Workbench {...makeProps()} />);
+  fireEvent.click(screen.getByRole('button', { name: '属性' }));
   fireEvent.change(screen.getByRole('textbox', { name: '标题文字' }), {
     target: { value: '保留标题' },
   });
@@ -135,6 +144,7 @@ it('prevents edits while the selected text layer is locked', () => {
   render(<Workbench {...makeProps()} />);
 
   fireEvent.click(screen.getByRole('button', { name: '锁定标题文字' }));
+  fireEvent.click(screen.getByRole('button', { name: '标题文字' }));
 
   expect(screen.getByRole('textbox', { name: '标题文字' })).toBeDisabled();
   expect(screen.getByRole('spinbutton', { name: 'X 坐标' })).toBeDisabled();
@@ -342,6 +352,7 @@ it('keeps a read-only workspace from persisting edits or submitting tasks', asyn
   window.designhub = { chooseWorkspaceDirectory: async () => null, saveDocumentScene };
   render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', readOnly: true, onSubmitConversation, onSubmitImageTask })} />);
 
+  fireEvent.click(screen.getByRole('button', { name: '属性' }));
   expect(screen.getByRole('textbox', { name: '标题文字' })).toBeDisabled();
   expect(saveDocumentScene).not.toHaveBeenCalled();
 
@@ -372,6 +383,7 @@ it('persists property edits into the active document scene', async () => {
     layers: [{ id: 'title', type: 'text', text: '春间市集', fontFamily: 'Inter', fontSize: 96, fontWeight: 'bold', align: 'center', color: '#24262B', x: 120, y: 520, width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false }],
   });
   render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  fireEvent.click(screen.getByRole('button', { name: '属性' }));
   fireEvent.change(screen.getByRole('textbox', { name: '标题文字' }), { target: { value: '新的标题' } });
   await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({
     workspaceId: 'workspace-1', projectId: 'spring-market', documentId: 'doc-1',
