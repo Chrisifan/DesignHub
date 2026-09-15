@@ -18,6 +18,32 @@ export type PortfolioTaskMetadata = {
   rightsConfirmed: boolean;
 };
 
+export type TaskProviderFailureKind = 'http' | 'rate_limited' | 'invalid_response' | 'cancelled';
+
+/** Safe, actionable provider metadata. Never include provider messages or request payloads here. */
+export type TaskProviderFailure = {
+  kind: TaskProviderFailureKind;
+  status?: number;
+  providerCode?: string;
+  retryAfterSeconds?: number;
+};
+
+const safeProviderCodes = new Set([
+  'content_policy_violation', 'context_length_exceeded', 'image_too_large', 'image_too_small',
+  'insufficient_quota', 'invalid_image_format', 'invalid_request_error', 'model_not_found',
+  'rate_limit_exceeded', 'server_error', 'service_unavailable', 'unsupported_image_format',
+  'unsupported_image_type',
+]);
+
+export const isSafeProviderCode = (value: unknown): value is string => typeof value === 'string' && safeProviderCodes.has(value);
+
+export const taskRecordKeys = new Set<keyof TaskRecord>([
+  'id', 'requestId', 'requestText', 'state', 'cancelRequested', 'attempt', 'source', 'documentId',
+  'sourceAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
+  'portfolio', 'model', 'size', 'count', 'tool', 'toolParams', 'region', 'createdAt', 'updatedAt',
+  'errorCode', 'providerFailure', 'result',
+]);
+
 export type TaskRecord = {
   id: string;
   requestId: string;
@@ -43,6 +69,7 @@ export type TaskRecord = {
   createdAt?: string;
   updatedAt?: string;
   errorCode?: string;
+  providerFailure?: TaskProviderFailure;
   result?: {
     text?: string;
     assetIds?: string[];
@@ -87,5 +114,5 @@ export const completeTask = (task: TaskRecord): TaskRecord => (
 
 export const retryTask = (task: TaskRecord, id: string): TaskRecord => {
   if (task.state !== 'failed' && task.state !== 'cancelled') throw new Error('TASK_NOT_RETRYABLE');
-  return { ...task, id, state: 'queued', cancelRequested: false, attempt: task.attempt + 1, errorCode: undefined };
+  return { ...task, id, state: 'queued', cancelRequested: false, attempt: task.attempt + 1, errorCode: undefined, providerFailure: undefined };
 };

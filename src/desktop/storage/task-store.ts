@@ -3,7 +3,7 @@ import { access, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { TaskRecord, TaskSource, TaskState } from '../../features/tasks/state';
+import { isSafeProviderCode, taskRecordKeys, type TaskProviderFailure, type TaskRecord, type TaskSource, type TaskState } from '../../features/tasks/state';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
@@ -28,6 +28,12 @@ const isPortfolioMetadata = (value: unknown): boolean => isRecord(value)
   && value.sourceIds.length <= 8
   && value.sourceIds.every(isPortfolioSourceId)
   && new Set(value.sourceIds).size === value.sourceIds.length;
+const isProviderFailure = (value: unknown): value is TaskProviderFailure => isRecord(value)
+  && Object.keys(value).every((key) => ['kind', 'status', 'providerCode', 'retryAfterSeconds'].includes(key))
+  && (value.kind === 'http' || value.kind === 'rate_limited' || value.kind === 'invalid_response' || value.kind === 'cancelled')
+  && (value.status === undefined || (Number.isInteger(value.status) && Number(value.status) >= 100 && Number(value.status) <= 599))
+  && (value.providerCode === undefined || isSafeProviderCode(value.providerCode))
+  && (value.retryAfterSeconds === undefined || (Number.isInteger(value.retryAfterSeconds) && Number(value.retryAfterSeconds) >= 0 && Number(value.retryAfterSeconds) <= 86_400));
 const isRegion = (value: unknown): boolean => isRecord(value)
   && ['x', 'y', 'width', 'height'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0)
   && Number(value.width) > 0 && Number(value.height) > 0;
@@ -48,6 +54,7 @@ const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> =>
     && candidateValid;
 };
 const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
+  && Object.keys(value).every((key) => taskRecordKeys.has(key as keyof TaskRecord))
   && typeof value.id === 'string' && value.id.trim().length > 0
   && typeof value.requestId === 'string' && value.requestId.trim().length > 0
   && (value.requestText === undefined || typeof value.requestText === 'string')
@@ -74,6 +81,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.createdAt === undefined || typeof value.createdAt === 'string')
   && (value.updatedAt === undefined || typeof value.updatedAt === 'string')
   && (value.errorCode === undefined || typeof value.errorCode === 'string')
+  && (value.providerFailure === undefined || isProviderFailure(value.providerFailure))
   && (value.result === undefined || isResult(value.result));
 
 const validateWorkspace = (handle: WorkspaceHandle, workspaceId: string, writable: boolean): string => {

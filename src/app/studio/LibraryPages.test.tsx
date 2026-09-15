@@ -568,13 +568,15 @@ it('does not offer an implicit retry for portfolio vision tasks without retained
   const listTasks = vi.fn(async () => [{
     id: 'task-portfolio', requestId: 'request-portfolio', state: 'failed' as const, cancelRequested: false, attempt: 1,
     source: { kind: 'designer-draft' as const, id: 'designer-draft-1' }, capability: 'vision-analysis',
-    requestText: 'Portfolio analysis: source-a', errorCode: 'PROVIDER_REQUEST_FAILED',
+    requestText: 'Portfolio analysis: source-a', errorCode: 'http',
+    providerFailure: { kind: 'http' as const, status: 400, providerCode: 'invalid_image_format' },
   }]);
   const retryTask = vi.fn(async () => null);
   window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask };
   render(<Harness initialView="tasks" workspaceId="workspace-1" />);
   await screen.findByText('失败');
   expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+  expect(screen.getByText('服务请求被拒绝（HTTP 400，invalid_image_format）')).toBeInTheDocument();
   expect(screen.getByText('请重新选择作品集来源')).toBeInTheDocument();
   expect(retryTask).not.toHaveBeenCalled();
 });

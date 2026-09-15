@@ -481,6 +481,60 @@ it('runs a dedicated portfolio vision task for each explicit source', async () =
   });
 });
 
+it('persists safe provider diagnostics for failed portfolio analysis without retaining portfolio data', async () => {
+  const sourceData = 'cHJpdmF0ZS1wb3J0Zm9saW8taW1hZ2U=';
+  const providerMessage = 'The supplied image cannot be processed: private portfolio image';
+  const persisted: TaskRecord[][] = [];
+  const runtime = createTaskRuntime({ persist: async (tasks) => { persisted.push([...tasks]); } });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      analyzeVision: async () => {
+        throw Object.assign(new Error(providerMessage), {
+          kind: 'http', status: 400, providerCode: 'invalid_image_format', retryAfterSeconds: 12,
+        });
+      },
+    }),
+  });
+
+  const task = await service.submitPortfolioAnalysis({
+    source: { kind: 'designer-draft', id: 'designer-draft-diagnostics' }, connectionId: 'provider-1', rightsConfirmed: true,
+    sources: [{ id: 'source-a', description: 'Private portfolio cover', image: { base64: sourceData, mimeType: 'image/png' } }],
+  });
+  await service.flush();
+
+  const serialized = JSON.stringify(persisted.at(-1));
+  expect(runtime.get(task.id)).toMatchObject({
+    state: 'failed', errorCode: 'http',
+    providerFailure: { kind: 'http', status: 400, providerCode: 'invalid_image_format', retryAfterSeconds: 12 },
+  });
+  expect(serialized).not.toContain(providerMessage);
+  expect(serialized).not.toContain(sourceData);
+  expect(serialized).not.toContain('Private portfolio cover');
+});
+
+it('does not persist provider codes that resemble credentials', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      analyzeVision: async () => {
+        throw Object.assign(new Error('request failed'), { kind: 'http', status: 400, providerCode: 'sk-private_provider_code_1234567890' });
+      },
+    }),
+  });
+
+  const task = await service.submitPortfolioAnalysis({
+    source: { kind: 'designer-draft', id: 'designer-draft-sensitive-code' }, connectionId: 'provider-1', rightsConfirmed: true,
+    sources: [{ id: 'source-a', description: 'Portfolio cover', image: { url: 'https://img.test/a.png' } }],
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)?.providerFailure).toEqual({ kind: 'http', status: 400 });
+});
+
 it('fails closed when a provider candidate echoes portfolio source data', async () => {
   const sourceDescription = 'Private portfolio cover composition';
   const sourceBytes = 'cHJpdmF0ZS1yYXctcG9ydGZvbGlvLWltYWdlLWJ5dGVz';

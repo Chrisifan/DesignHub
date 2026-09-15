@@ -29,6 +29,14 @@ it('rejects malformed task writes before storage is called', async () => {
   let writes = 0;
   const save = saveTasksHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async () => { writes += 1; return true; });
   await expect(save(fixture.event, { workspaceId: 'workspace-1', tasks: [{ ...task, attempt: 0 }] })).resolves.toBe(false);
+  await expect(save(fixture.event, { workspaceId: 'workspace-1', tasks: [{
+    ...task,
+    providerFailure: { kind: 'http', status: 400, message: 'private provider error' },
+  }] })).resolves.toBe(false);
+  await expect(save(fixture.event, { workspaceId: 'workspace-1', tasks: [{
+    ...task,
+    providerMessage: 'private provider error',
+  }] })).resolves.toBe(false);
   expect(writes).toBe(0);
   await expect(save(fixture.event, { workspaceId: 'workspace-1', tasks: [task] })).resolves.toBe(true);
   expect(writes).toBe(1);

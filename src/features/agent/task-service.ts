@@ -1,5 +1,5 @@
 import type { ChatRequest, ChatResponse, GeneratedImage } from '../providers/adapter';
-import type { TaskRecord } from '../tasks/state';
+import { isSafeProviderCode, type TaskProviderFailure, type TaskRecord } from '../tasks/state';
 import type { TaskSource } from '../tasks/state';
 import type { TaskRuntime } from '../tasks/runtime';
 import type { Region } from '../canvas/selection';
@@ -109,6 +109,29 @@ const errorCode = (error: unknown): string => {
   return 'PROVIDER_REQUEST_FAILED';
 };
 
+const providerFailure = (error: unknown): TaskProviderFailure | undefined => {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = error as Record<string, unknown>;
+  const kind = value.kind;
+  if (kind !== 'http' && kind !== 'rate_limited' && kind !== 'invalid_response' && kind !== 'cancelled') return undefined;
+  const status = typeof value.status === 'number' && Number.isInteger(value.status) && value.status >= 100 && value.status <= 599
+    ? value.status : undefined;
+  const providerCode = isSafeProviderCode(value.providerCode) ? value.providerCode : undefined;
+  const retryAfterSeconds = typeof value.retryAfterSeconds === 'number' && Number.isFinite(value.retryAfterSeconds)
+    && value.retryAfterSeconds >= 0 && value.retryAfterSeconds <= 86_400 ? Math.ceil(value.retryAfterSeconds) : undefined;
+  return {
+    kind,
+    ...(status === undefined ? {} : { status }),
+    ...(providerCode === undefined ? {} : { providerCode }),
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+  };
+};
+
+const failTask = async (runtime: TaskRuntime, taskIdValue: string, error: unknown): Promise<void> => {
+  const details = providerFailure(error);
+  await runtime.fail(taskIdValue, errorCode(error), details);
+};
+
 const sourceDataValues = (sources: readonly PortfolioImageSource[]): string[] => sources.flatMap((source) => [
   source.description,
   'base64' in source.image ? source.image.base64 : source.image.url,
@@ -135,7 +158,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         if (controller.signal.aborted) {
           await options.runtime.complete(task.id);
         } else {
-          await options.runtime.fail(task.id, errorCode(error));
+          await failTask(options.runtime, task.id, error);
         }
       } finally {
         controllers.delete(task.id);
@@ -164,7 +187,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         });
       } catch (error) {
         if (controller.signal.aborted) await options.runtime.complete(task.id);
-        else await options.runtime.fail(task.id, errorCode(error));
+        else await failTask(options.runtime, task.id, error);
       } finally {
         controllers.delete(task.id);
       }
@@ -240,7 +263,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         });
       } catch (error) {
         if (controller.signal.aborted) await options.runtime.complete(task.id);
-        else await options.runtime.fail(task.id, errorCode(error));
+        else await failTask(options.runtime, task.id, error);
       } finally { controllers.delete(task.id); }
     })();
     pending.add(execution);

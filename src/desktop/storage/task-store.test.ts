@@ -94,6 +94,27 @@ it('accepts only selected portfolio IDs and a rights acknowledgement in task sta
   workspace.close();
 });
 
+it('persists only validated safe provider failure diagnostics', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const failedTask: TaskRecord = {
+    ...task,
+    state: 'failed',
+    errorCode: 'http',
+    providerFailure: { kind: 'http', status: 400, providerCode: 'invalid_image_format', retryAfterSeconds: 12 },
+  };
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [failedTask])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).resolves.toEqual([failedTask]);
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+    ...failedTask,
+    providerFailure: { kind: 'http', status: 400, providerCode: 'invalid_image_format', message: 'private provider error' },
+  } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+    ...failedTask,
+    providerMessage: 'private provider error',
+  } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
+  workspace.close();
+});
+
 it('rejects invalid persisted image-tool parameters', async () => {
   const workspace = await createTemporaryWorkspace();
   const invalidTask = {

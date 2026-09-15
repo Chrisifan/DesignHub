@@ -750,6 +750,21 @@ const TasksPage = ({
     if (!retried) return;
     setTasks((current) => [...current, retried]);
   };
+  const failureDescription = (task: TaskRecord): string | undefined => {
+    const failure = task.providerFailure;
+    if (!failure) return undefined;
+    const details = [
+      failure.status === undefined ? undefined : `HTTP ${failure.status}`,
+      failure.providerCode,
+    ].filter((value): value is string => Boolean(value)).join('，');
+    const suffix = details ? `（${details}）` : '';
+    if (failure.kind === 'rate_limited') {
+      return t(locale, `服务请求受限${suffix}${failure.retryAfterSeconds === undefined ? '' : `，${failure.retryAfterSeconds} 秒后可重试`}`, `Provider rate limit${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}${failure.retryAfterSeconds === undefined ? '' : `; retry in ${failure.retryAfterSeconds}s`}`);
+    }
+    if (failure.kind === 'invalid_response') return t(locale, `服务返回了无法解析的结果${suffix}`, `Provider returned an unreadable result${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}`);
+    if (failure.kind === 'cancelled') return t(locale, '服务请求已取消', 'Provider request was cancelled');
+    return t(locale, `服务请求被拒绝${suffix}`, `Provider request was rejected${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}`);
+  };
   return <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型任务', 'Model tasks')}
@@ -779,11 +794,14 @@ const TasksPage = ({
       title={t(locale, '任务读取失败', 'Could not load tasks')}
       description={t(locale, '请重试，原有任务不会被覆盖。', 'Retry without overwriting existing task records.')}
     /> : tasks.length > 0 ? <div className="task-list" aria-label={t(locale, '任务列表', 'Task list')}>
-          {tasks.map((task) => <article className="task-row" key={task.id}>
+          {tasks.map((task) => {
+            const failure = task.state === 'failed' ? failureDescription(task) : undefined;
+            return <article className="task-row" key={task.id}>
             <div>
               <strong>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
               <small>{task.source?.id ?? task.requestId}</small>
               {task.requestText && <small>{task.requestText}</small>}
+              {failure && <small>{failure}</small>}
               {task.result?.imageCount !== undefined && <small>{t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`)}</small>}
               {task.result?.cost !== undefined && task.result.cost !== null && <small>{t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`)}</small>}
             </div>
@@ -794,7 +812,8 @@ const TasksPage = ({
         {(task.state === 'failed' || task.state === 'cancelled') && task.capability === 'vision-analysis' && <small>{t(locale, '请重新选择作品集来源', 'Select portfolio sources again')}</small>}
         {(task.state === 'failed' || task.state === 'cancelled') && task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region) && <small>{t(locale, '请重新选择原图', 'Select the source image again')}</small>}
         {(task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region)) && <Button variant="secondary" icon="rotate-ccw" onClick={() => { void retryTask(task.id); }}>{t(locale, '重试', 'Retry')}</Button>}
-      </article>)}
+      </article>;
+          })}
     </div> : <EmptyState
       icon="clock"
       title={t(locale, '没有模型任务', 'No model tasks')}
