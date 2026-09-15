@@ -885,6 +885,7 @@ const DeliveryPage = ({
   onFormatChange,
   onArchiveCopyChange,
   notify,
+  active,
 }: {
   locale: Locale;
   project?: Project | null;
@@ -894,6 +895,7 @@ const DeliveryPage = ({
   onFormatChange: (format: DeliveryFormat) => void;
   onArchiveCopyChange: (value: boolean) => void;
   notify?: (message: string) => void;
+  active: boolean;
 }) => {
   const [exporting, setExporting] = useState(false);
   const [exportHistory, setExportHistory] = useState<ExportHistoryRecord[]>([]);
@@ -1013,9 +1015,10 @@ const DeliveryPage = ({
                 'Select a project document to configure its output format.',
               )
         }
-      >
-        {project?.workspaceId && <IconButton name="download" label={t(locale, '导出项目包', 'Export project package')} onClick={() => { void exportPackage(); }} />}
-      </PageHeader>
+      />
+      {project?.workspaceId && <PageToolbarSlot active={active}>
+        <IconButton name="download" label={t(locale, '导出项目包', 'Export project package')} onClick={() => { void exportPackage(); }} />
+      </PageToolbarSlot>}
       <div className="delivery-layout">
         {project ? (
           <div className="delivery-preview">
@@ -1708,6 +1711,7 @@ export const LibraryPages = ({
         onFormatChange={setDeliveryFormat}
         onArchiveCopyChange={setArchiveCopy}
         notify={notify}
+        active={active}
       />
     ),
     storage: (

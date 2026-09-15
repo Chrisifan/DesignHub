@@ -358,36 +358,6 @@
   background: var(--background);
 }
 
-.persona-repository__toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  margin-bottom: 14px;
-}
-
-.persona-repository__toolbar .search-control {
-  width: min(250px, 34%);
-  flex: 1 1 180px;
-}
-
-.persona-status-tabs {
-  display: flex;
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.persona-status-tabs button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-.persona-repository__toolbar .ui-button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
 .persona-repository__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -762,20 +732,6 @@
 }
 
 @media (max-width: 620px) {
-  .persona-repository__toolbar {
-    align-items: stretch;
-    flex-wrap: wrap;
-  }
-
-  .persona-repository__toolbar .search-control {
-    width: 100%;
-    flex-basis: 100%;
-  }
-
-  .persona-status-tabs {
-    flex: 1 1 auto;
-  }
-
   .persona-repository__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -914,43 +870,6 @@
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   color: var(--primary);
-}
-
-.persona-repository__toolbar {
-  display: grid;
-  gap: 9px;
-  margin: 12px 0 10px;
-}
-
-.persona-repository__toolbar .search-control {
-  width: 100%;
-  height: 30px;
-  border-radius: 3px;
-}
-
-.persona-repository__toolbar .search-control input {
-  font-size: 11px;
-}
-
-.persona-status-tabs {
-  display: flex;
-  width: 100%;
-  gap: 0;
-  overflow: hidden;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.persona-status-tabs button {
-  flex: 1 1 0;
-  min-height: 26px;
-  padding: 0 3px;
-  font-size: 10px;
-  text-align: center;
-}
-
-.persona-status-tabs button.is-active::after {
-  bottom: -1px;
-  height: 1px;
 }
 
 .persona-repository__list {

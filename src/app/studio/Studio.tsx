@@ -678,20 +678,18 @@ export const Studio = ({
           <IconButton name="layout-grid" label={t(locale, '网格视图', 'Grid view')} aria-pressed={display === 'grid'} onClick={() => setDisplay('grid')} />
           <IconButton name="list" label={t(locale, '列表视图', 'List view')} aria-pressed={display === 'list'} onClick={() => setDisplay('list')} />
         </div>
+        {workspace?.openMode === 'writable' && <IconButton name="upload" label={t(locale, '导入项目包', 'Import package')} onClick={() => { void importProjectPackage(); }} />}
         <IconButton name="plus" label={t(locale, '新建项目', 'New project')} onClick={() => openNewDesign()} />
       </>
     ) : surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
       <>
-        <Button icon="download" onClick={() => openDelivery(selected)}>
-          {t(locale, '导出交付', 'Delivery')}
-        </Button>
-        <Button
-          variant="primary"
-          icon="file-image"
-          onClick={() => setDocumentOpen(true)}
-        >
-          {t(locale, '继续编辑', 'Open workbench')}
-        </Button>
+        <IconButton name="download" label={t(locale, '导出交付', 'Delivery')} onClick={() => openDelivery(selected)} />
+        <IconButton name="file-image" label={t(locale, '继续编辑', 'Open workbench')} onClick={() => setDocumentOpen(true)} />
+        {workspace?.openMode === 'writable' && selected.workspaceId && <>
+          <IconButton name="settings" label={t(locale, '重命名', 'Rename')} onClick={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }} />
+          <IconButton name="copy" label={t(locale, '复制', 'Duplicate')} onClick={() => { void duplicateSelected(); }} />
+          {!selected.archived && <IconButton name="folder" label={t(locale, '归档', 'Archive')} onClick={() => { void updateProject({ archived: true }); }} />}
+        </>}
       </>
     ) : null;
   return (
@@ -826,9 +824,7 @@ export const Studio = ({
                   'From the first idea to a complete collection.',
                 )}
                 eyebrow={t(locale, '工作区 / 创作', 'WORKSPACE / CREATE')}
-              >
-                {workspace?.openMode === 'writable' && <Button aria-label={t(locale, '导入项目包', 'Import package')} icon="upload" onClick={() => { void importProjectPackage(); }}>{t(locale, '导入', 'Import')}</Button>}
-              </PageHeader>
+              />
               {visibleProjects.length ? (
                 <div
                   className={`project-collection project-collection--${display}`}
@@ -943,13 +939,7 @@ export const Studio = ({
                   selected.workspaceId ? '设计项目 / 本地' : '设计项目 / 未保存',
                   selected.workspaceId ? 'DESIGN PROJECT / LOCAL' : 'DESIGN PROJECT / UNSAVED',
                 )}
-              >
-                {workspace?.openMode === 'writable' && selected.workspaceId && <>
-                  <Button icon="settings" onClick={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}>{t(locale, '重命名', 'Rename')}</Button>
-                  <Button icon="copy" onClick={() => { void duplicateSelected(); }}>{t(locale, '复制', 'Duplicate')}</Button>
-                  {!selected.archived && <Button icon="folder" onClick={() => { void updateProject({ archived: true }); }}>{t(locale, '归档', 'Archive')}</Button>}
-                </>}
-              </PageHeader>
+              />
               <DesignerHero
                 personaId={projectPersonaId(selected)}
                 profile={designerOptions.find((profile) => profile.id === projectPersonaId(selected))}

@@ -202,12 +202,10 @@ export const Select = ({
 export const PageHeader = ({
   title,
   description,
-  children,
   eyebrow,
 }: {
   title: string;
   description?: string;
-  children?: ReactNode;
   eyebrow?: string;
 }) => (
   <header className="page-heading">
@@ -216,7 +214,6 @@ export const PageHeader = ({
       <h1>{title}</h1>
       {description && <p>{description}</p>}
     </div>
-    <div className="heading-actions page-heading__actions">{children}</div>
   </header>
 );
 export const EmptyState = ({

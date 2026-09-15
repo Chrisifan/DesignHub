@@ -401,18 +401,6 @@ button:disabled {
   letter-spacing: 0.08em;
   margin: 0 0 6px;
 }
-.heading-actions {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  flex-shrink: 0;
-}
-.heading-actions .ui-button {
-  white-space: nowrap;
-}
-.heading-actions:empty {
-  display: none;
-}
 .ui-button {
   display: inline-flex;
   align-items: center;
@@ -1548,27 +1536,38 @@ button:disabled {
   }
 }
 @media (max-width: 720px) {
+  .studio-main {
+    grid-template-rows: auto minmax(0, 1fr) 28px;
+  }
   .studio-toolbar {
-    gap: 8px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    padding-block: 6px;
     padding-inline: 12px;
   }
   .toolbar-location {
     gap: 8px;
+    flex: 1 1 100%;
   }
   .toolbar-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
     gap: 6px;
   }
-  .toolbar-actions .ui-button {
-    padding-inline: 8px;
+  .toolbar-search {
+    flex: 1 1 150px;
+    width: auto;
+  }
+  .toolbar-segmented {
+    flex-wrap: wrap;
+    min-height: 0;
   }
   .page-heading {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     margin-bottom: 14px;
-  }
-  .heading-actions {
-    width: 100%;
-    flex-wrap: wrap;
   }
 }
 @media (max-width: 560px) {
@@ -1661,7 +1660,6 @@ button:disabled {
   white-space: nowrap;
   border: 0;
 }
-.page-heading .heading-actions,
 .new-design-heading > .ui-button {
   display: none;
 }
