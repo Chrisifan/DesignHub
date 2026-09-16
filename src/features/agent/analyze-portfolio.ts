@@ -60,13 +60,96 @@ const localized = (value: unknown, fallback = ''): LocalizedText => {
   }
   return { zh: fallback, en: fallback };
 };
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const isNonEmptyLocalized = (value: unknown): boolean => {
+  const text = localized(value);
+  return Boolean(text.zh.trim() || text.en.trim());
+};
+const isCompletePortfolioCandidate = (value: unknown): boolean => {
+  if (!isRecord(value) || !isNonEmptyLocalized(value.name) || !isNonEmptyLocalized(value.signature)
+    || !isNonEmptyLocalized(value.summary ?? value.styleSummary) || !isNonEmptyLocalized(value.principle)
+    || !Array.isArray(value.tags) || value.tags.length === 0 || !value.tags.every(isNonEmptyLocalized)
+    || !Array.isArray(value.negativeRules) || value.negativeRules.length === 0 || !value.negativeRules.every(isNonEmptyLocalized)
+    || !isRecord(value.styleDna)) return false;
+  const styleDna = value.styleDna;
+  return Array.isArray(styleDna.palette) && styleDna.palette.length > 0
+    && styleDna.palette.every((color) => typeof color === 'string' && color.trim().length > 0)
+    && isNonEmptyLocalized(styleDna.typography)
+    && isNonEmptyLocalized(styleDna.composition)
+    && isNonEmptyLocalized(styleDna.texture);
+};
 const parsePayload = (text: string): unknown => {
   const trimmed = text.trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? trimmed;
-  try { return JSON.parse(fenced); } catch { throw new Error('VISION_ANALYSIS_INVALID_RESPONSE'); }
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+  const candidates = fenced ? [fenced, trimmed] : [trimmed];
+  const opening = new Map<string, string>([['{', '}'], ['[', ']']]);
+  for (const candidate of candidates) {
+    try { return JSON.parse(candidate); } catch { /* Try extracting a JSON value from surrounding prose. */ }
+    for (let start = 0; start < candidate.length; start += 1) {
+      const closing = opening.get(candidate[start] ?? '');
+      if (!closing) continue;
+      const stack = [closing];
+      let quoted = false;
+      let escaped = false;
+      for (let index = start + 1; index < candidate.length; index += 1) {
+        const character = candidate[index];
+        if (quoted) {
+          if (escaped) escaped = false;
+          else if (character === '\\') escaped = true;
+          else if (character === '"') quoted = false;
+          continue;
+        }
+        if (character === '"') { quoted = true; continue; }
+        const nestedClosing = opening.get(character ?? '');
+        if (nestedClosing) stack.push(nestedClosing);
+        else if (character === stack.at(-1)) {
+          stack.pop();
+          if (stack.length === 0) {
+            try { return JSON.parse(candidate.slice(start, index + 1)); } catch { break; }
+          }
+        }
+      }
+    }
+  }
+  throw new Error('VISION_ANALYSIS_INVALID_RESPONSE');
+};
+
+const isTransientVisionError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const status = 'status' in error && typeof error.status === 'number' ? error.status : undefined;
+  return status === 408 || status === 425 || status === 429 || (status !== undefined && status >= 500 && status <= 599);
+};
+
+const abortableDelay = async (milliseconds: number, signal?: AbortSignal): Promise<void> => {
+  if (signal?.aborted) throw Object.assign(new Error('Provider request cancelled locally.'), { kind: 'cancelled' });
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error('Provider request cancelled locally.'), { kind: 'cancelled' }));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+};
+
+const analyzeVisionWithRetry = async (
+  adapter: VisionAnalysisAdapter,
+  request: VisionRequest,
+  signal?: AbortSignal,
+): Promise<{ text: string; cost: number | null }> => {
+  try {
+    return signal ? await adapter.analyzeVision(request, signal) : await adapter.analyzeVision(request);
+  } catch (error) {
+    if (!isTransientVisionError(error) || signal?.aborted) throw error;
+    await abortableDelay(250, signal);
+    return signal ? adapter.analyzeVision(request, signal) : adapter.analyzeVision(request);
+  }
 };
 const profileFromCandidate = (value: unknown, index: number): PersonaProfile => {
-  if (!value || typeof value !== 'object') throw new Error('VISION_ANALYSIS_INVALID_RESPONSE');
+  if (!isCompletePortfolioCandidate(value)) throw new Error('VISION_ANALYSIS_INVALID_RESPONSE');
   const item = value as Record<string, unknown>;
   const name = localized(item.name, `Portfolio candidate ${index + 1}`);
   const styleDna = item.styleDna && typeof item.styleDna === 'object' ? item.styleDna as Record<string, unknown> : {};
@@ -101,8 +184,11 @@ export const analyzePortfolio = async (input: AnalyzePortfolioInput): Promise<An
   let cost = 0;
   let costKnown = true;
   for (const source of input.sources) {
-    const request = { prompt: `Analyse portfolio source ${source.id}. Source description: ${source.description}. Return JSON with a candidates array of reviewable designer profile drafts. Do not invent provenance or claim identity.`, image: source.image };
-    const response = input.signal ? await input.adapter.analyzeVision(request, input.signal) : await input.adapter.analyzeVision(request);
+    const request = {
+      prompt: `Analyse portfolio source ${source.id}. Source description: ${source.description}. Return JSON only, without Markdown or explanatory text. Return {"candidates":[{"name":{"zh":"","en":""},"signature":{"zh":"","en":""},"summary":{"zh":"","en":""},"principle":{"zh":"","en":""},"tags":[{"zh":"","en":""}],"styleDna":{"palette":["#000000"],"typography":{"zh":"","en":""},"composition":{"zh":"","en":""},"texture":{"zh":"","en":""}},"negativeRules":[{"zh":"","en":""}]}]}. Every candidate must supply non-empty values for every field, at least one tag, palette color, and negative rule. Do not invent provenance or claim identity.`,
+      image: source.image,
+    };
+    const response = await analyzeVisionWithRetry(input.adapter, request, input.signal);
     if (response.cost === null || response.cost === undefined) costKnown = false;
     else cost += response.cost;
     candidates.push(...candidatesFromResponse(response.text, candidates.length));

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { readFile } from 'node:fs/promises';
+import sharp from 'sharp';
 
 import { Unzip, UnzipInflate } from 'fflate';
 
@@ -38,6 +39,7 @@ export type PortfolioSourceInspectorOptions = {
   readFile?: (path: string) => Promise<Uint8Array>;
   resolvePublicAddresses?: (hostname: string) => Promise<string[]>;
   fetch?: FetchRequest;
+  normalizeImage?: (input: { bytes: Uint8Array; mimeType: string }) => Promise<{ bytes: Uint8Array; mimeType: string }>;
 };
 
 export type PortfolioSourceInspector = {
@@ -125,6 +127,20 @@ const assertImageBytes = (bytes: Uint8Array, mimeType: string): void => {
 };
 
 const dataUrl = (bytes: Uint8Array, mimeType: string): string => `data:${mimeType};base64,${Buffer.from(bytes).toString('base64')}`;
+
+const normalizePortfolioImage = async (input: { bytes: Uint8Array; mimeType: string }): Promise<{ bytes: Uint8Array; mimeType: string }> => {
+  try {
+    const bytes = new Uint8Array(await sharp(Buffer.from(input.bytes), { animated: false })
+      .rotate()
+      .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 85, chromaSubsampling: '4:2:0' })
+      .toBuffer());
+    return { bytes, mimeType: 'image/jpeg' };
+  } catch {
+    throw new Error('PORTFOLIO_IMAGE_NORMALIZATION_FAILED');
+  }
+};
 
 const sourceFromBytes = (input: {
   label: string;
@@ -240,6 +256,12 @@ export const createPortfolioSourceInspector = (options: PortfolioSourceInspector
   const read = options.readFile ?? (async (path: string) => new Uint8Array(await readFile(path)));
   const resolvePublicAddresses = options.resolvePublicAddresses ?? (async (hostname: string) => (await lookup(hostname, { all: true })).map((item) => item.address));
   const remoteFetch = options.fetch ?? ((url, request) => fetch(url, request) as Promise<FetchResponse>);
+  const normalizeImage = options.normalizeImage ?? normalizePortfolioImage;
+  const visionImage = async (bytes: Uint8Array, mimeType: string): Promise<PortfolioImageSource['image']> => {
+    const normalized = await normalizeImage({ bytes, mimeType });
+    assertImageBytes(normalized.bytes, normalized.mimeType);
+    return { base64: Buffer.from(normalized.bytes).toString('base64'), mimeType: normalized.mimeType };
+  };
   const saveInspection = (sources: InspectionSource[]): PortfolioInspection => {
     if (sources.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
     if (sources.length > maxPortfolioSources) throw new Error('PORTFOLIO_SOURCE_LIMIT');
@@ -354,13 +376,20 @@ export const createPortfolioSourceInspector = (options: PortfolioSourceInspector
     const selected = sourceIds.map((id) => sources.find((source) => source.id === id)).filter((source): source is InspectionSource => Boolean(source));
     if (selected.length !== sourceIds.length) throw new Error('PORTFOLIO_SOURCE_SELECTION_INVALID');
     return Promise.all(selected.map(async (source) => {
-      if ('image' in source) return { id: source.id, description: source.description, image: source.image };
+      if ('image' in source) {
+        if ('url' in source.image) return { id: source.id, description: source.description, image: source.image };
+        return {
+          id: source.id,
+          description: source.description,
+          image: await visionImage(new Uint8Array(Buffer.from(source.image.base64, 'base64')), source.image.mimeType ?? 'image/png'),
+        };
+      }
       const downloaded = await download(source.remoteImageUrl, 'image');
       assertImageBytes(downloaded.bytes, downloaded.mimeType);
       return {
         id: source.id,
         description: source.description,
-        image: { base64: Buffer.from(downloaded.bytes).toString('base64'), mimeType: downloaded.mimeType },
+        image: await visionImage(downloaded.bytes, downloaded.mimeType),
       };
     }));
   };

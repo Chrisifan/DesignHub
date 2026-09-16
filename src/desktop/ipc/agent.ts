@@ -1,12 +1,13 @@
 import type { TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import type { AgentTaskService, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
+import type { AgentTaskService, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const conversationSubmitChannel = 'agent:conversation-submit';
+export const conversationTestChannel = 'agent:conversation-test';
 export const taskCancelChannel = 'agent:task-cancel';
 export const taskRetryChannel = 'agent:task-retry';
 export const imageGenerationSubmitChannel = 'agent:image-generation-submit';
@@ -29,6 +30,7 @@ export type ConversationInput = {
   message: string;
 };
 export type ConversationBridgeInput = ConversationInput & { workspaceId: string };
+export type ConversationTestBridgeInput = ConversationTestInput & { workspaceId: string };
 export type ImageGenerationBridgeInput = ImageGenerationInput & { workspaceId: string };
 export type ImageGenerationTestBridgeInput = ImageGenerationTestInput & { workspaceId: string };
 export type DesignerArtworkGenerationBridgeInput = DesignerArtworkGenerationInput & { workspaceId: string };
@@ -52,6 +54,12 @@ const isConversationInput = (value: unknown): value is ConversationBridgeInput =
     && (input.documentId === undefined || isNonEmpty(input.documentId))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId));
+};
+const isConversationTestInput = (value: unknown): value is ConversationTestBridgeInput => {
+  if (!value || typeof value !== 'object') return false;
+  const input = value as Record<string, unknown>;
+  return isNonEmpty(input.workspaceId) && isNonEmpty(input.connectionId)
+    && (input.model === undefined || isNonEmpty(input.model));
 };
 const isPortfolioImage = (value: unknown): value is PortfolioImageSource['image'] => {
   if (!value || typeof value !== 'object') return false;
@@ -144,6 +152,18 @@ export const createConversationHandler = (
   submit: (workspace: WorkspaceHandle, input: ConversationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isConversationInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return submit(workspace, input);
+};
+
+export const createConversationTestHandler = (
+  window: AgentWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  submit: (workspace: WorkspaceHandle, input: ConversationTestBridgeInput) => Promise<ConversationTestResult>,
+) => async (event: AgentRequest, input: unknown): Promise<ConversationTestResult | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isConversationTestInput(input)) return null;
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
   return submit(workspace, input);

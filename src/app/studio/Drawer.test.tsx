@@ -54,6 +54,11 @@ it('does not render an empty footer when no actions are provided', () => {
   expect(screen.getByRole('dialog', { name: '素材详情' }).querySelector('.ui-drawer__footer')).not.toBeInTheDocument();
 });
 
+it('applies a content width class to the drawer panel', () => {
+  render(<Drawer open title="作品集分析" className="ui-drawer--wide" onClose={() => undefined}><p>内容</p></Drawer>);
+  expect(screen.getByRole('dialog', { name: '作品集分析' })).toHaveClass('ui-drawer--wide');
+});
+
 it('restores focus to the trigger after close', () => {
   const { rerender } = render(<button>春间标志</button>);
   const trigger = screen.getByRole('button', { name: '春间标志' });

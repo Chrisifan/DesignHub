@@ -504,11 +504,9 @@ export const DesignerLibrary = ({
   useEffect(() => {
     if (!analysisTaskId || !workspaceId || !editor) return;
     let cancelled = false;
-    let attempts = 0;
     let timer: number | undefined;
     const poll = async (): Promise<void> => {
       if (cancelled) return;
-      attempts += 1;
       try {
         const listTasks = getDesktopApi().listTasks;
         if (!listTasks) throw new Error("TASK_LIST_UNAVAILABLE");
@@ -521,7 +519,7 @@ export const DesignerLibrary = ({
           setCreationError("");
           return;
         }
-        if (task?.state === "failed" || attempts >= 12) {
+        if (task?.state === "failed") {
           setAnalysisTaskId(undefined);
           setCandidateProfiles([]);
           setCreationError(
@@ -856,6 +854,7 @@ export const DesignerLibrary = ({
           mode={editor.mode}
           candidates={candidateProfiles}
           candidatePhase={candidatePhase}
+          analysisBusy={Boolean(analysisTaskId)}
           rightsConfirmed={rightsConfirmed}
           portfolioUrl={portfolioUrl}
           portfolioInspection={portfolioInspection}
@@ -891,6 +890,7 @@ const DesignerEditorModal = ({
   mode,
   candidates,
   candidatePhase,
+  analysisBusy,
   rightsConfirmed,
   portfolioUrl,
   portfolioInspection,
@@ -917,6 +917,7 @@ const DesignerEditorModal = ({
   mode: "new" | "edit";
   candidates: PersonaProfile[];
   candidatePhase: "form" | "review";
+  analysisBusy: boolean;
   rightsConfirmed: boolean;
   portfolioUrl: string;
   portfolioInspection: PortfolioInspection | null;
@@ -946,32 +947,75 @@ const DesignerEditorModal = ({
     event.preventDefault();
     onSubmit();
   };
+  if (mode === "new") {
+    const isAnalysing = candidatePhase === "review" && candidates.length === 0 && (!error || analysisBusy);
+    const hasReviewCandidates = candidatePhase === "review" && candidates.length > 0;
+    return (
+      <Drawer
+        open
+        title={t(locale, "导入作品集分析 · 生成 AI 设计师档案", "Portfolio analysis · Create AI designer profile")}
+        className={hasReviewCandidates ? "ui-drawer--wide" : "ui-drawer--compact"}
+        locale={locale}
+        onClose={onClose}
+        footer={candidatePhase === "form" ? (
+          <div className="portfolio-drawer-actions">
+            <Button variant="ghost" onClick={onClose}>{t(locale, "取消", "Cancel")}</Button>
+            <Button type="button" variant="ai" icon="sparkles" onClick={onRequestCandidates}>
+              {t(locale, "开始分析", "Start analysis")}
+            </Button>
+          </div>
+        ) : !isAnalysing ? (
+          <div className="portfolio-drawer-actions">
+            <Button
+              type="button"
+              variant="ai"
+              icon="sparkles"
+              disabled={!canGenerateArtwork || !selectedCandidateId || artworkBusy || candidates.length === 0}
+              onClick={onGenerateArtwork}
+            >
+              {t(locale, "生成形象", "Generate art")}
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              icon="check"
+              disabled={!selectedCandidateId || publishedInSession || candidates.length === 0}
+              onClick={onPublish}
+            >
+              {t(locale, "发布预览", "Publish preview")}
+            </Button>
+          </div>
+        ) : undefined}
+      >
+        <PortfolioCreationDrawer
+          locale={locale}
+          phase={candidatePhase}
+          analysing={isAnalysing}
+          candidates={candidates}
+          selectedCandidateId={selectedCandidateId}
+          publishedInSession={publishedInSession}
+          rightsConfirmed={rightsConfirmed}
+          portfolioUrl={portfolioUrl}
+          portfolioInspection={portfolioInspection}
+          selectedPortfolioSourceIds={selectedPortfolioSourceIds}
+          error={error}
+          onRightsConfirmed={onRightsConfirmed}
+          onPortfolioUrlChange={onPortfolioUrlChange}
+          onInspectPortfolioSources={onInspectPortfolioSources}
+          onPortfolioSourceToggle={onPortfolioSourceToggle}
+          onCandidateSelect={onCandidateSelect}
+        />
+      </Drawer>
+    );
+  }
   return (
     <Modal
-      title={
-        mode === "new"
-          ? t(locale, "创建设计师", "Create designer")
-          : t(locale, "编辑设计师", "Edit designer")
-      }
+      title={t(locale, "编辑设计师", "Edit designer")}
       locale={locale}
       onClose={onClose}
       wide
     >
-      {mode === "new" && candidatePhase === "review" ? (
-        <CandidateReview
-          locale={locale}
-          candidates={candidates}
-          selectedCandidateId={selectedCandidateId}
-          publishedInSession={publishedInSession}
-          error={error}
-          onSelect={onCandidateSelect}
-          onGenerateArtwork={onGenerateArtwork}
-          artworkBusy={artworkBusy}
-          canGenerateArtwork={canGenerateArtwork}
-          onPublish={onPublish}
-        />
-      ) : (
-        <form className="designer-editor" onSubmit={submit}>
+      <form className="designer-editor" onSubmit={submit}>
           <div className="designer-form">
             {mode === "edit" && <>
             <p className="panel-label">
@@ -998,70 +1042,8 @@ const DesignerEditorModal = ({
               />
             </Field>
             </>}
-            {mode === "new" && (
-              <>
-                <Field label={t(locale, "作品集链接", "Portfolio URL")}>
-                  <textarea
-                    rows={3}
-                    value={portfolioUrl}
-                    onChange={(event) => onPortfolioUrlChange(event.target.value)}
-                  />
-                </Field>
-                <div className="designer-portfolio-actions" role="group" aria-label={t(locale, "检查作品集来源", "Inspect portfolio sources")}>
-                  <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "remote-page", url: portfolioUrl })}>{t(locale, "检查页面", "Inspect page")}</Button>
-                  <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "remote-image", url: portfolioUrl })}>{t(locale, "检查图片", "Inspect image")}</Button>
-                  <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "local-images" })}>{t(locale, "选择图片", "Choose images")}</Button>
-                  <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "local-zip" })}>{t(locale, "选择 ZIP", "Choose ZIP")}</Button>
-                </div>
-                {portfolioInspection && (
-                  <div className="designer-portfolio-candidates" role="group" aria-label={t(locale, "作品集候选", "Portfolio candidates")}>
-                    {portfolioInspection.candidates.map((candidate) => (
-                      <label key={candidate.id} className="designer-portfolio-candidate">
-                        <input
-                          type="checkbox"
-                          aria-label={candidate.label}
-                          checked={selectedPortfolioSourceIds.includes(candidate.id)}
-                          onChange={(event) => onPortfolioSourceToggle(candidate.id, event.target.checked)}
-                        />
-                        {candidate.previewUrl && <img src={candidate.previewUrl} alt="" />}
-                        <span>{candidate.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-                <label className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={rightsConfirmed}
-                    onChange={(event) =>
-                      onRightsConfirmed(event.target.checked)
-                    }
-                  />
-                  {t(
-                    locale,
-                    "我确认拥有分析这些来源的权利",
-                    "I confirm I have rights to analyse these sources",
-                  )}
-                </label>
-              </>
-            )}
-            {mode === "new" && (
-              <>
-                <p className="form-error" role="alert">
-                  {error}
-                </p>
-                <Button
-                  type="button"
-                  variant="ai"
-                  icon="sparkles"
-                  onClick={onRequestCandidates}
-                >
-                  {t(locale, "生成", "Generate")}
-                </Button>
-              </>
-            )}
           </div>
-          {mode === "edit" && <>
+          <>
           <aside
             className="designer-draft-preview"
             aria-label={t(locale, "档案预览", "Profile preview")}
@@ -1101,12 +1083,81 @@ const DesignerEditorModal = ({
               {t(locale, "保留", "Keep")}
             </Button>
           </div>
-          </>}
+          </>
         </form>
-      )}
     </Modal>
   );
 };
+
+const PortfolioCreationDrawer = ({
+  locale, phase, analysing, candidates, selectedCandidateId, publishedInSession,
+  rightsConfirmed, portfolioUrl, portfolioInspection, selectedPortfolioSourceIds,
+  error, onRightsConfirmed, onPortfolioUrlChange,
+  onInspectPortfolioSources, onPortfolioSourceToggle, onCandidateSelect,
+}: {
+  locale: Locale;
+  phase: "form" | "review";
+  analysing: boolean;
+  candidates: PersonaProfile[];
+  selectedCandidateId?: string;
+  publishedInSession: boolean;
+  rightsConfirmed: boolean;
+  portfolioUrl: string;
+  portfolioInspection: PortfolioInspection | null;
+  selectedPortfolioSourceIds: string[];
+  error: string;
+  onRightsConfirmed: (value: boolean) => void;
+  onPortfolioUrlChange: (value: string) => void;
+  onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
+  onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
+  onCandidateSelect: (id: string) => void;
+}) => {
+  const activeStep = phase === "form" ? 0 : analysing ? 1 : 3;
+  return <section className="portfolio-drawer">
+    <ol className="portfolio-steps" aria-label={t(locale, "生成流程", "Creation steps")}>
+      {[t(locale, "导入作品", "Import"), t(locale, "特征解构", "Analyse"), t(locale, "角色拟合", "Fit"), t(locale, "审阅发布", "Review")].map((label, index) => (
+        <li key={label} className={index === activeStep ? "is-active" : index < activeStep ? "is-complete" : ""}>
+          <span>{index + 1}</span>{label}
+        </li>
+      ))}
+    </ol>
+    {phase === "form" ? (
+      <div className="portfolio-import">
+        <p className="section-kicker">{t(locale, "作品集来源", "Portfolio sources")}</p>
+        <h3>{t(locale, "选择用于提炼风格的作品", "Choose work to extract style")}</h3>
+        <Field label={t(locale, "作品集链接", "Portfolio URL")}>
+          <textarea rows={3} value={portfolioUrl} onChange={(event) => onPortfolioUrlChange(event.target.value)} />
+        </Field>
+        <div className="portfolio-source-actions" role="group" aria-label={t(locale, "检查作品集来源", "Inspect portfolio sources")}>
+          <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "remote-page", url: portfolioUrl })}>{t(locale, "检查页面", "Inspect page")}</Button>
+          <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "remote-image", url: portfolioUrl })}>{t(locale, "检查图片", "Inspect image")}</Button>
+          <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "local-images" })}>{t(locale, "选择图片", "Choose images")}</Button>
+          <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "local-zip" })}>{t(locale, "选择 ZIP", "Choose ZIP")}</Button>
+        </div>
+        {portfolioInspection && <div className="designer-portfolio-candidates" role="group" aria-label={t(locale, "作品集候选", "Portfolio candidates")}>
+          {portfolioInspection.candidates.map((candidate) => <label key={candidate.id} className="designer-portfolio-candidate">
+            <input type="checkbox" aria-label={candidate.label} checked={selectedPortfolioSourceIds.includes(candidate.id)} onChange={(event) => onPortfolioSourceToggle(candidate.id, event.target.checked)} />
+            {candidate.previewUrl && <img src={candidate.previewUrl} alt="" />}<span>{candidate.label}</span>
+          </label>)}
+        </div>}
+        <label className="check-row"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => onRightsConfirmed(event.target.checked)} />{t(locale, "我确认拥有分析这些来源的权利", "I confirm I have rights to analyse these sources")}</label>
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </div>
+    ) : analysing ? <PortfolioAnalysisLoading locale={locale} /> : <CandidateReview locale={locale} candidates={candidates} selectedCandidateId={selectedCandidateId} publishedInSession={publishedInSession} error={error} onSelect={onCandidateSelect} />}
+  </section>;
+};
+
+const PortfolioAnalysisLoading = ({ locale }: { locale: Locale }) => (
+  <section className="portfolio-analysis-loading" aria-live="polite">
+    <p className="section-kicker">{t(locale, "视觉 DNA 提取", "Visual DNA extraction")}</p>
+    <h3>{t(locale, "正在提炼视觉 DNA", "Extracting visual DNA")}</h3>
+    <p>{t(locale, "正在分析色彩、排版、材质与构图特征。", "Analysing colour, typography, texture and composition.")}</p>
+    <div className="portfolio-analysis-progress"><span /><small>{t(locale, "特征解构中", "Deconstructing features")}</small></div>
+    <div className="portfolio-analysis-skeleton" data-testid="portfolio-analysis-skeleton" aria-hidden="true">
+      <i /><i /><i /><i /><i /><i />
+    </div>
+  </section>
+);
 
 const CandidateReview = ({
   locale,
@@ -1115,10 +1166,6 @@ const CandidateReview = ({
   publishedInSession,
   error,
   onSelect,
-  onGenerateArtwork,
-  artworkBusy,
-  canGenerateArtwork,
-  onPublish,
 }: {
   locale: Locale;
   candidates: PersonaProfile[];
@@ -1126,10 +1173,6 @@ const CandidateReview = ({
   publishedInSession: boolean;
   error: string;
   onSelect: (candidateId: string) => void;
-  onGenerateArtwork: () => void;
-  artworkBusy: boolean;
-  canGenerateArtwork: boolean;
-  onPublish: () => void;
 }) => {
   const visibleCandidates = candidates;
   return (
@@ -1184,28 +1227,6 @@ const CandidateReview = ({
           {error}
         </p>
       )}
-      <Button
-        type="button"
-        variant="ai"
-        icon="sparkles"
-        disabled={!canGenerateArtwork || !selectedCandidateId || artworkBusy || visibleCandidates.length === 0}
-        onClick={onGenerateArtwork}
-      >
-        {t(locale, "生成形象", "Generate art")}
-      </Button>
-      <Button
-        type="button"
-        variant="primary"
-        icon="check"
-        disabled={
-          !selectedCandidateId ||
-          publishedInSession ||
-          visibleCandidates.length === 0
-        }
-        onClick={onPublish}
-      >
-        {t(locale, "发布预览", "Publish preview")}
-      </Button>
       {publishedInSession && (
         <p className="panel-note">
           {t(

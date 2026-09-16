@@ -16,6 +16,7 @@ const focusableSelector = [
 export type DrawerProps = {
   open: boolean;
   title: string;
+  className?: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -25,6 +26,7 @@ export type DrawerProps = {
 export const Drawer = ({
   open,
   title,
+  className = '',
   onClose,
   children,
   footer,
@@ -98,7 +100,7 @@ export const Drawer = ({
       />
       <aside
         ref={panelRef}
-        className="ui-drawer"
+        className={`ui-drawer ${className}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

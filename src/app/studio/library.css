@@ -361,6 +361,232 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+/* Portfolio designer drawer */
+.portfolio-drawer {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-height: 100%;
+  padding: 20px;
+}
+
+.portfolio-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portfolio-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.portfolio-steps li > span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  border-radius: 5px;
+  background: var(--surface-container-high);
+  font: 600 10px/1 'JetBrains Mono', monospace;
+}
+
+.portfolio-steps li.is-active {
+  border-color: color-mix(in srgb, var(--primary) 72%, var(--outline-variant));
+  color: var(--on-surface);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface-container-low));
+}
+
+.portfolio-steps li.is-active > span {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.portfolio-steps li.is-complete > span {
+  color: var(--on-tertiary);
+  background: var(--tertiary);
+}
+
+.portfolio-import,
+.portfolio-analysis-loading {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.portfolio-import h3,
+.portfolio-analysis-loading h3 {
+  margin: -6px 0 2px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.portfolio-import .ui-field {
+  margin: 0;
+}
+
+.portfolio-source-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portfolio-source-actions .ui-button {
+  justify-content: center;
+}
+
+.designer-portfolio-candidates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.designer-portfolio-candidate {
+  display: grid;
+  grid-template-columns: auto 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-container-lowest);
+  font-size: 11px;
+}
+
+.designer-portfolio-candidate:has(input:checked) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface-container-lowest));
+}
+
+.designer-portfolio-candidate img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+.portfolio-drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
+
+.portfolio-analysis-loading {
+  min-height: 410px;
+  padding: 8px 4px;
+}
+
+.portfolio-analysis-loading > p:not(.section-kicker) {
+  max-width: 520px;
+  margin: -4px 0 4px;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.portfolio-analysis-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin: 6px 0 8px;
+}
+
+.portfolio-analysis-progress > span {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-container-high);
+}
+
+.portfolio-analysis-progress > span::after {
+  display: block;
+  width: 45%;
+  height: 100%;
+  content: '';
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  animation: portfolio-progress 1.3s ease-in-out infinite alternate;
+}
+
+.portfolio-analysis-progress small {
+  color: var(--primary);
+  font: 500 10px/14px 'JetBrains Mono', monospace;
+}
+
+.portfolio-analysis-skeleton {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.portfolio-analysis-skeleton i {
+  display: block;
+  min-height: 126px;
+  border-radius: 7px;
+  background: linear-gradient(105deg, var(--surface-container) 20%, var(--surface-container-high) 38%, var(--surface-container) 56%);
+  background-size: 220% 100%;
+  animation: portfolio-skeleton 1.5s linear infinite;
+}
+
+.portfolio-analysis-skeleton i:nth-child(4),
+.portfolio-analysis-skeleton i:nth-child(5),
+.portfolio-analysis-skeleton i:nth-child(6) {
+  min-height: 58px;
+}
+
+@keyframes portfolio-skeleton {
+  to { background-position: -120% 0; }
+}
+
+@keyframes portfolio-progress {
+  to { transform: translateX(120%); }
+}
+
+@media (max-width: 720px) {
+  .portfolio-drawer {
+    padding: 16px;
+  }
+
+  .portfolio-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .designer-portfolio-candidates,
+  .portfolio-analysis-skeleton {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portfolio-analysis-progress > span::after,
+  .portfolio-analysis-skeleton i {
+    animation: none;
+  }
+
+  .portfolio-analysis-progress > span::after {
+    width: 58%;
+    transform: none;
+  }
+}
+
 .asset-result-count {
   margin: 0 0 10px;
   text-align: right;
@@ -720,7 +946,8 @@
 }
 
 .provider-profile-section:first-of-type {
-  margin-top: 18px;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .provider-profile-heading {
@@ -737,8 +964,11 @@
   line-height: 20px;
 }
 
-.provider-profile-heading p {
-  margin: 8px 0 0;
+.provider-profile-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .provider-profile-capabilities {
@@ -767,7 +997,7 @@
 }
 
 .matrix-heading {
-  padding-bottom: 12px;
+  padding: 0 12px 12px;
   color: var(--on-surface-variant);
   font:
     500 10px/14px 'JetBrains Mono',
@@ -777,8 +1007,7 @@
 
 .matrix-row {
   min-height: 58px;
-  margin-inline: 8px;
-  padding-inline: 12px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 12px;
 }
@@ -795,7 +1024,6 @@
 
 .matrix-profile-button {
   width: 100%;
-  padding: 0;
   color: inherit;
   text-align: left;
   border: 0;
@@ -837,6 +1065,12 @@
   margin: -2px 0 18px;
 }
 
+.provider-profile-actions-row--compact {
+  grid-template-columns: repeat(2, max-content);
+  justify-content: end;
+  align-items: center;
+}
+
 .provider-profile-actions-row .provider-test-actions,
 .provider-profile-actions-row .provider-config-actions {
   margin: 0;
@@ -876,9 +1110,10 @@
   font-size: 10px;
 }
 
-.provider-key-status {
-  display: block;
-  margin-top: 7px;
+.provider-key-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .provider-key-row {

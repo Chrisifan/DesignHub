@@ -78,7 +78,7 @@ const TaskHarness = ({ workspaceId = 'workspace-1' }: { workspaceId?: string }) 
 it('exposes portfolio analysis as the only new-designer flow', () => {
   render(<Harness />);
   fireEvent.click(screen.getByRole('button', { name: '从作品集创建' }));
-  const dialog = screen.getByRole('dialog', { name: '创建设计师' });
+  const dialog = screen.getByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' });
   expect(within(dialog).getByRole('textbox', { name: '作品集链接' })).toBeInTheDocument();
   expect(within(dialog).queryByRole('textbox', { name: '名称' })).not.toBeInTheDocument();
 });
@@ -269,6 +269,33 @@ it('shows a connected state and lets the model groups switch profile configurati
   fireEvent.click(screen.getByRole('button', { name: '图片生成与编辑' }));
   expect(screen.getByRole('heading', { name: '图片生成与编辑' })).toBeInTheDocument();
   expect(screen.getByLabelText('Image base URL')).toHaveValue('https://image.example/v1');
+});
+
+it('keeps a saved image credential stable after publishing drawer actions', async () => {
+  const hasCredential = vi.fn(async (account: string) => account === 'openai-compatible:image');
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    hasCredential,
+    loadProviderConfigs: async () => ({
+      'openai-compatible': {
+        conversation: { baseUrl: '', models: {} },
+        image: { baseUrl: 'https://image.example/v1', imageTransport: 'images' as const, models: { 'image-generation': 'image-model' } },
+      },
+    }),
+    testImageGeneration: async () => null,
+  };
+  render(<Harness initialView="connections" workspaceId="workspace-1" />);
+
+  await waitFor(() => expect(screen.getByRole('button', { name: '图片生成与编辑' })).toHaveTextContent('已连接'));
+  fireEvent.click(screen.getByRole('button', { name: '图片生成与编辑' }));
+  const dialog = screen.getByRole('dialog', { name: '连接配置' });
+
+  const keyStatus = await within(dialog).findByText('密钥已保存');
+  expect(keyStatus.parentElement).toHaveClass('provider-key-label');
+  expect(keyStatus.parentElement).toHaveTextContent('API 密钥');
+  expect(within(dialog).getByText('已连接')).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: '测试生成' }).closest('.provider-profile-actions-row')).toHaveClass('provider-profile-actions-row--compact');
+  expect(hasCredential).toHaveBeenCalledTimes(4);
 });
 
 it('hydrates and saves the non-secret provider connection configuration', async () => {

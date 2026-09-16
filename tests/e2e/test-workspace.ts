@@ -43,6 +43,8 @@ export const gotoTestWorkspace = async (page: Page): Promise<void> => {
       listActiveProjects: async () => [project],
       createProjectContainer: async () => ({ projectId: 'project-created' }),
       loadDesignerState: async () => ({ profiles: [paper, commerce], defaultId: 'e2e-paper', drafts: {} }),
+      inspectPortfolioSources: async () => ({ id: 'inspection-e2e', candidates: [{ id: 'source-e2e', label: '作品集封面', description: '作品集封面', origin: 'page-image', previewUrl: '' }] }),
+      submitPortfolioSelection: async () => ({ id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'running', cancelRequested: false, attempt: 1 }),
       loadBrandState: async () => ({ brands: [] }),
       listAssets: async () => [],
       listTasks: async () => [],

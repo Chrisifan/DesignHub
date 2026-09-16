@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { Locale } from '../../app/i18n';
-import { Badge, Button, Field, Icon, IconButton, Select, t } from '../../app/studio/ui';
+import { Badge, Button, Field, IconButton, Select, t } from '../../app/studio/ui';
 import { normalizeProviderConfig, providerCredentialAccount, type ImageTransport, type ProviderCapability, type ProviderConfig, type ProviderConfigMap, type ProviderProfile } from './config';
 import type { GeneratedImage } from './adapter';
-import type { ImageGenerationTestResult } from '../agent/task-service';
+import type { ConversationTestResult, ImageGenerationTestResult } from '../agent/task-service';
 import type { ProviderConnection } from './connection';
 
 export type ProviderSettingsProps = {
@@ -15,6 +15,7 @@ export type ProviderSettingsProps = {
   onCheckCredential?: (connectionId: string) => Promise<boolean>;
   configs?: ProviderConfigMap;
   onSaveProviderConfig?: (connectionId: string, config: ProviderConfig) => Promise<boolean>;
+  onTestConversation?: (connectionId: string, input: { model?: string }) => Promise<ConversationTestResult | null>;
   onTestImageGeneration?: (connectionId: string, input: { prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
   activeProfile?: ProviderProfile;
   onActiveProfileChange?: (profile: ProviderProfile) => void;
@@ -24,6 +25,9 @@ export type ProviderSettingsProps = {
 export type ProviderSettingsActions = {
   saveConfig: () => void;
   canSaveConfig: boolean;
+  testConversation: () => void;
+  showTestConversation: boolean;
+  canTestConversation: boolean;
   testImageGeneration: () => void;
   testBusy: boolean;
   showTestImage: boolean;
@@ -100,6 +104,7 @@ export const ProviderSettings = ({
   onCheckCredential,
   configs = emptyProviderConfigs,
   onSaveProviderConfig,
+  onTestConversation,
   onTestImageGeneration,
   activeProfile,
   onActionsChange,
@@ -200,6 +205,21 @@ export const ProviderSettings = ({
     );
   };
 
+  const testConversation = async (): Promise<void> => {
+    if (!selected || !onTestConversation || !configured.conversation || !configDraft.conversation.baseUrl.trim()) return;
+    setTestBusy(true);
+    try {
+      const model = configDraft.conversation.models.conversation.trim();
+      const result = await onTestConversation(selected.id, model ? { model } : {});
+      if (!result) throw new Error('CONVERSATION_TEST_FAILED');
+      setMessage(t(locale, '对话连接测试成功。', 'Conversation connection test succeeded.'));
+    } catch {
+      setMessage(t(locale, '对话连接测试失败，请检查地址、密钥和模型。', 'Conversation connection test failed. Check the URL, key and model.'));
+    } finally {
+      setTestBusy(false);
+    }
+  };
+
   const testImageGeneration = async (): Promise<void> => {
     if (!selected || !onTestImageGeneration || !configured.image || !configDraft.image.baseUrl.trim()) return;
     setTestBusy(true);
@@ -222,10 +242,14 @@ export const ProviderSettings = ({
   };
 
   const saveConfigRef = useRef(saveConfig);
+  const testConversationRef = useRef(testConversation);
   const testImageGenerationRef = useRef(testImageGeneration);
   saveConfigRef.current = saveConfig;
+  testConversationRef.current = testConversation;
   testImageGenerationRef.current = testImageGeneration;
   const canSaveConfig = Boolean(onSaveProviderConfig);
+  const showTestConversation = activeProfile === 'conversation' && Boolean(onTestConversation);
+  const canTestConversation = Boolean(showTestConversation && configured.conversation && configDraft.conversation.baseUrl.trim());
   const showTestImage = activeProfile === 'image' && Boolean(onTestImageGeneration);
   const canTestImage = Boolean(showTestImage && configured.image && configDraft.image.baseUrl.trim());
 
@@ -233,12 +257,15 @@ export const ProviderSettings = ({
     onActionsChange?.({
       saveConfig: () => { void saveConfigRef.current(); },
       canSaveConfig,
+      testConversation: () => { void testConversationRef.current(); },
+      showTestConversation,
+      canTestConversation,
       testImageGeneration: () => { void testImageGenerationRef.current(); },
       testBusy,
       showTestImage,
       canTestImage,
     });
-  }, [canSaveConfig, canTestImage, onActionsChange, showTestImage, testBusy]);
+  }, [canSaveConfig, canTestConversation, canTestImage, onActionsChange, showTestConversation, showTestImage, testBusy]);
   useEffect(() => () => onActionsChange?.(null), [onActionsChange]);
 
   const testImageSource = (image: GeneratedImage): string | undefined => {
@@ -253,9 +280,9 @@ export const ProviderSettings = ({
     return (
       <section key={profile} className="provider-profile-section" aria-labelledby={`provider-${profile}-title`}>
         <div className="provider-profile-heading">
-          <div>
+          <div className="provider-profile-title-row">
             <h3 id={`provider-${profile}-title`}>{profileTitle(locale, profile)}</h3>
-            <p><Badge tone={configured[profile] ? 'success' : ''}>{configured[profile] ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge></p>
+            <Badge tone={configured[profile] ? 'success' : ''}>{configured[profile] ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge>
           </div>
           <span className="provider-profile-capabilities">{isImage ? t(locale, '图片生成、图片编辑', 'Image generation and editing') : t(locale, '对话、视觉分析', 'Conversation and vision analysis')}</span>
         </div>
@@ -285,7 +312,10 @@ export const ProviderSettings = ({
           })}
         </div>
         <form onSubmit={(event) => { event.preventDefault(); void submitCredential(profile); }}>
-          <Field label={t(locale, 'API 密钥', 'API key')} hint={t(locale, '输入后仅发送到桌面主进程并立即清空。', 'Sent to the desktop host and cleared immediately after saving.')}>
+          <Field label={<span className="provider-key-label">
+            {t(locale, 'API 密钥', 'API key')}
+            <Badge tone={configured[profile] ? 'success' : ''}>{configured[profile] ? t(locale, '密钥已保存', 'Key saved') : t(locale, '未保存密钥', 'No key saved')}</Badge>
+          </span>} hint={t(locale, '输入后仅发送到桌面主进程并立即清空。', 'Sent to the desktop host and cleared immediately after saving.')}>
             <div className="provider-key-row">
               <input
                 aria-label={`${profileTitle(locale, profile)} ${t(locale, 'API 密钥', 'API key')}`}
@@ -302,19 +332,19 @@ export const ProviderSettings = ({
                 <IconButton type="button" name="trash-2" label={t(locale, '删除密钥', 'Delete key')} onClick={() => { void removeCredential(profile); }} />
               </div>
             </div>
-            <span className="provider-key-status">
-              <Badge tone={configured[profile] ? 'success' : ''}>{configured[profile] ? t(locale, '密钥已保存', 'Key saved') : t(locale, '未保存密钥', 'No key saved')}</Badge>
-            </span>
           </Field>
         </form>
         {isImage && testResult && testImageSource(testResult.image) && <div className="provider-test-result">
           <img src={testImageSource(testResult.image)} alt={t(locale, '连接测试结果', 'Connection test result')} />
           <small>{t(locale, '临时预览', 'Temporary preview')}</small>
         </div>}
-        {(!onActionsChange && ((isImage && onTestImageGeneration) || onSaveProviderConfig)) ? <div className="provider-profile-actions-row">
+        {(!onActionsChange && ((!isImage && onTestConversation) || (isImage && onTestImageGeneration) || onSaveProviderConfig)) ? <div className="provider-profile-actions-row">
+          {!isImage && onTestConversation && <Button type="button" variant="ai" icon="plug" disabled={testBusy || !configured.conversation || !configDraft.conversation.baseUrl.trim()} onClick={() => { void testConversation(); }}>
+            {testBusy ? t(locale, '测试中…', 'Testing…') : t(locale, '测试连接', 'Test connection')}
+          </Button>}
           {isImage && onTestImageGeneration && <div className="provider-test-actions">
             <Button type="button" variant="ai" icon="image" disabled={testBusy || !configured.image || !configDraft.image.baseUrl.trim()} onClick={() => { void testImageGeneration(); }}>
-              {testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}
+              {testBusy ? t(locale, '测试中…', 'Testing…') : t(locale, '测试生成', 'Test generation')}
             </Button>
             <small>{t(locale, '使用随机提示词生成一张临时预览，不会写入任务或素材库。', 'Generates one temporary preview with a random prompt; nothing is added to tasks or assets.')}</small>
           </div>}
@@ -325,26 +355,18 @@ export const ProviderSettings = ({
   };
 
   return (
-    <section aria-labelledby="provider-settings-title" className="provider-settings">
-      <div className="settings-section-heading">
-        <span className="settings-icon"><Icon name="plug" size={19} /></span>
-        <div>
-          <h2 id="provider-settings-title">{t(locale, '连接配置', 'Connection setup')}</h2>
-          <p>{t(locale, '服务地址和模型保存在本机；密钥仅写入系统安全存储。', 'Endpoint and models stay on this device; keys are written only to system secure storage.')}</p>
-        </div>
-      </div>
+    <section className="provider-settings">
       {connections.length === 0 ? (
         <p>{t(locale, '暂无可用连接适配器。', 'No connection adapters are available.')}</p>
       ) : (
         <>
-          <Field label={t(locale, '连接', 'Connection')}>
+          {connections.length > 1 && <Field label={t(locale, '连接', 'Connection')}>
             <Select ariaLabel={t(locale, '连接', 'Connection')} value={selectedId} onChange={setSelectedId} options={connections.map((connection) => ({ value: connection.id, label: connection.label }))} />
-          </Field>
-          {selected && <div>
-            <p>{t(locale, '能力', 'Capabilities')}: {selected.capabilities.join(', ')}</p>
+          </Field>}
+          {selected && <>
             {visibleProfiles.map(renderProfile)}
             {message && <p role="status">{message}</p>}
-          </div>}
+          </>}
         </>
       )}
     </section>

@@ -10,6 +10,22 @@ const connection = {
   capabilities: ['conversation', 'vision-analysis', 'image-generation', 'image-editing'] as const,
 };
 
+it('omits redundant connection chrome when only one provider is available', () => {
+  render(
+    <ProviderSettings
+      locale="en"
+      connections={[connection]}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  expect(screen.queryByRole('heading', { name: 'Connection setup' })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Connection')).not.toBeInTheDocument();
+  expect(screen.queryByText(/^Capabilities:/)).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Image generation and editing' })).toBeInTheDocument();
+});
+
 it('clears the conversation secret after a successful save and exposes both profiles', async () => {
   const save = vi.fn(async () => true);
   render(
@@ -66,12 +82,32 @@ it('makes a saved key visible as a status without exposing its value', async () 
     />,
   );
 
-  expect(await screen.findByText('Key saved')).toBeInTheDocument();
+  const keyStatus = await screen.findByText('Key saved');
+  expect(keyStatus.parentElement).toHaveClass('provider-key-label');
+  expect(keyStatus.parentElement).toHaveTextContent('API key');
   expect(screen.getByLabelText('Conversation and vision API key')).toHaveAttribute('placeholder', 'Enter a new key to replace the saved key');
   expect(screen.getByLabelText('Conversation and vision API key')).toHaveValue('********');
   expect(screen.getByTestId('conversation-key-actions')).toHaveClass('provider-key-actions');
   expect(screen.getByLabelText('Conversation and vision API key').parentElement).toHaveClass('provider-key-row');
   expect(screen.queryByText('secret-value')).not.toBeInTheDocument();
+});
+
+it('places each connection status beside its profile title', async () => {
+  render(
+    <ProviderSettings
+      locale="en"
+      connections={[{ ...connection, status: 'connected' }]}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  const conversationTitle = screen.getByRole('heading', { name: 'Conversation and vision' });
+  const imageTitle = screen.getByRole('heading', { name: 'Image generation and editing' });
+  await waitFor(() => expect(conversationTitle.parentElement).toHaveTextContent('Connected'));
+  expect(imageTitle.parentElement).toHaveTextContent('Connected');
+  expect(conversationTitle.parentElement).toHaveClass('provider-profile-title-row');
+  expect(imageTitle.parentElement).toHaveClass('provider-profile-title-row');
 });
 
 it('keeps the configuration save action after the key controls', () => {
@@ -109,7 +145,7 @@ it('places image generation testing beside the configuration save action', () =>
     />,
   );
 
-  const testButton = screen.getByRole('button', { name: 'Test image generation' });
+  const testButton = screen.getByRole('button', { name: 'Test generation' });
   const saveConfig = screen.getByRole('button', { name: 'Save config' });
   expect(testButton.parentElement?.parentElement).toHaveClass('provider-profile-actions-row');
   expect(saveConfig.parentElement?.parentElement).toBe(testButton.parentElement?.parentElement);
@@ -179,9 +215,32 @@ it('runs the image connection test with the image profile model', async () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole('button', { name: 'Test image generation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Test generation' }));
 
   expect(await screen.findByRole('img', { name: 'Connection test result' })).toHaveAttribute('src', 'data:image/png;base64,preview-bytes');
   expect(testImageGeneration).toHaveBeenCalledWith('openai-compatible', expect.objectContaining({ prompt: expect.any(String), model: 'image-model', size: '1024x1024' }));
   expect(screen.getByRole('status')).toHaveTextContent('Image generation connection test succeeded');
+});
+
+it('tests the conversation connection with its configured model', async () => {
+  const testConversation = vi.fn(async () => ({ cost: null }));
+  render(
+    <ProviderSettings
+      locale="en"
+      activeProfile="conversation"
+      connections={[{ ...connection, status: 'connected' }]}
+      configs={{ 'openai-compatible': {
+        conversation: { baseUrl: 'https://text.example/v1', models: { conversation: 'chat-model' } },
+        image: { baseUrl: '', imageTransport: 'images', models: {} },
+      } }}
+      onTestConversation={testConversation}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Test connection' }));
+
+  await waitFor(() => expect(testConversation).toHaveBeenCalledWith('openai-compatible', { model: 'chat-model' }));
+  expect(screen.getByRole('status')).toHaveTextContent('Conversation connection test succeeded');
 });

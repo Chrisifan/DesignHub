@@ -792,11 +792,18 @@ button:disabled {
   display: flex;
   flex-direction: column;
   inline-size: min(520px, 92vw);
+  max-inline-size: 100%;
   max-block-size: 100%;
   border-left: 1px solid var(--outline-variant);
   background: var(--surface-container-low);
   box-shadow: var(--shadow-overlay);
   animation: drawer-appear 180ms ease-out;
+}
+.ui-drawer--compact {
+  inline-size: min(460px, 92vw);
+}
+.ui-drawer--wide {
+  inline-size: min(840px, 92vw);
 }
 .ui-drawer__heading {
   display: flex;
@@ -815,6 +822,7 @@ button:disabled {
     sans-serif;
 }
 .ui-drawer__content {
+  flex: 1 1 auto;
   min-block-size: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;

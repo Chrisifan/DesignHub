@@ -23,6 +23,34 @@ it('accepts a conversation only from the active trusted workspace', async () => 
   await expect(submit(fixture.event, { workspaceId: 'workspace-2', projectId: 'project-1', connectionId: 'provider-1', message: 'hello' })).resolves.toBeNull();
 });
 
+it('accepts conversation connection tests only from the active trusted workspace', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1' } };
+  const conversationTestIpc = agentIpc as typeof agentIpc & {
+    conversationTestChannel: string;
+    createConversationTestHandler: (
+      window: never,
+      trustedUrl: string,
+      getWorkspace: () => never,
+      submit: (workspace: never, input: { connectionId: string; model?: string }) => Promise<{ cost: number | null }>,
+    ) => (event: never, input: unknown) => Promise<{ cost: number | null } | null>;
+  };
+  expect(conversationTestIpc.conversationTestChannel).toBe('agent:conversation-test');
+  expect(conversationTestIpc.createConversationTestHandler).toBeTypeOf('function');
+  const submit = conversationTestIpc.createConversationTestHandler(
+    fixture.window as never,
+    'http://localhost:5173/?preview=1',
+    () => workspace as never,
+    async (_workspace, input) => {
+      expect(input).toEqual({ workspaceId: 'workspace-1', connectionId: 'provider-1', model: 'chat-model' });
+      return { cost: null };
+    },
+  );
+  await expect(submit(fixture.event as never, { workspaceId: 'workspace-1', connectionId: 'provider-1', model: 'chat-model' })).resolves.toEqual({ cost: null });
+  await expect(submit(fixture.event as never, { workspaceId: 'workspace-2', connectionId: 'provider-1', model: 'chat-model' })).resolves.toBeNull();
+  await expect(submit(fixture.event as never, { workspaceId: 'workspace-1', connectionId: ' ', model: 'chat-model' })).resolves.toBeNull();
+});
+
 it('rejects blank conversation input and forwards explicit cancellation', async () => {
   const fixture = makeFixture('http://localhost:5173/?preview=1');
   const workspace = { workspace: { workspaceId: 'workspace-1' } };

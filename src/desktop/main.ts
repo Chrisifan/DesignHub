@@ -48,7 +48,7 @@ import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import type { GeneratedImage } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel, conversationSubmitChannel } from './ipc/agent';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createConversationTestHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, conversationSubmitChannel, conversationTestChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { createPortfolioDiscardHandler, createPortfolioInspectionHandler, createPortfolioSelectionHandler, portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
 import { createPortfolioSourceInspector } from './portfolio-source-inspector';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
@@ -438,6 +438,13 @@ app.whenReady().then(async () => {
     return createConversationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, conversation) => {
       const service = await getAgentTaskService();
       return service.submitConversation(conversation);
+    })(event, input);
+  });
+  ipcMain.handle(conversationTestChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createConversationTestHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, testInput) => {
+      const service = await getAgentTaskService();
+      return service.testConversation(testInput);
     })(event, input);
   });
   ipcMain.handle(portfolioInspectChannel, async (event, input) => {

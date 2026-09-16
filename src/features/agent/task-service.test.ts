@@ -4,6 +4,22 @@ import { createTaskRuntime } from '../tasks/runtime';
 import type { TaskRecord } from '../tasks/state';
 import { createAgentTaskService } from './task-service';
 
+const completePortfolioCandidate = (name: { zh: string; en: string }, overrides: Record<string, unknown> = {}) => ({
+  name,
+  signature: { zh: '视觉分析草稿', en: 'Visual analysis draft' },
+  summary: { zh: '克制且有层次的版式', en: 'Restrained, layered layout' },
+  principle: { zh: '保留清晰的信息层级', en: 'Keep a clear information hierarchy' },
+  tags: [{ zh: '编辑感', en: 'Editorial' }],
+  styleDna: {
+    palette: ['#F5F0E6', '#242424'],
+    typography: { zh: '高对比衬线体', en: 'High-contrast serif' },
+    composition: { zh: '对称网格', en: 'Symmetrical grid' },
+    texture: { zh: '粗粝纸张', en: 'Rough paper' },
+  },
+  negativeRules: [{ zh: '避免霓虹渐变', en: 'Avoid neon gradients' }],
+  ...overrides,
+});
+
 it('runs a conversation task and stores the assistant result', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({
@@ -39,6 +55,24 @@ it('tests image generation through the resolved adapter without creating a task'
 
   expect(result).toEqual({ image: { base64: 'preview-bytes' }, cost: 0.01 });
   expect(generateImage).toHaveBeenCalledWith({ prompt: 'A random connection test image', model: 'image-model', size: '1024x1024', count: 1 });
+  expect(runtime.list()).toEqual([]);
+});
+
+it('tests conversation through the resolved adapter without creating a task', async () => {
+  const runtime = createTaskRuntime();
+  const chat = vi.fn(async () => ({ text: 'OK', cost: null }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat }),
+  });
+
+  const result = await service.testConversation({ connectionId: 'provider-1', model: 'chat-model' });
+
+  expect(result).toEqual({ cost: null });
+  expect(chat).toHaveBeenCalledWith({
+    messages: [{ role: 'user', content: 'Reply with OK.' }],
+    model: 'chat-model',
+  });
   expect(runtime.list()).toEqual([]);
 });
 
@@ -444,7 +478,7 @@ it('runs a dedicated portfolio vision task for each explicit source', async () =
   const runtime = createTaskRuntime();
   let analysisCount = 0;
   const analyzeVision = vi.fn(async () => ({
-    text: JSON.stringify({ candidates: [{ name: { zh: `Candidate ${++analysisCount}`, en: `Candidate ${analysisCount}` } }] }),
+    text: JSON.stringify({ candidates: [completePortfolioCandidate({ zh: `Candidate ${++analysisCount}`, en: `Candidate ${analysisCount}` })] }),
     cost: null,
   }));
   const service = createAgentTaskService({
@@ -546,11 +580,10 @@ it('fails closed when a provider candidate echoes portfolio source data', async 
     resolveAdapter: async () => ({
       chat: async () => ({ text: '', cost: null }),
       analyzeVision: async () => ({ text: JSON.stringify({
-        candidates: [{
-          name: { zh: sourceDescription, en: sourceDescription },
-          summary: { zh: sourceBytes, en: sourceBytes },
-          artworkUrl: sourceUrl,
-        }],
+        candidates: [completePortfolioCandidate(
+          { zh: sourceDescription, en: sourceDescription },
+          { summary: { zh: sourceBytes, en: sourceBytes }, artworkUrl: sourceUrl },
+        )],
       }), cost: null }),
     }),
   });

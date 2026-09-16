@@ -68,6 +68,15 @@ export type ImageGenerationTestInput = {
   size?: string;
 };
 
+export type ConversationTestInput = {
+  connectionId: string;
+  model?: string;
+};
+
+export type ConversationTestResult = {
+  cost: number | null;
+};
+
 export type ImageGenerationTestResult = {
   image: GeneratedImage;
   cost: number | null;
@@ -86,6 +95,7 @@ export type AgentTaskService = {
   submitImageGeneration: (input: ImageGenerationInput) => Promise<TaskRecord>;
   submitDesignerArtworkGeneration: (input: DesignerArtworkGenerationInput) => Promise<TaskRecord>;
   submitImageEdit: (input: ImageEditInput) => Promise<TaskRecord>;
+  testConversation: (input: ConversationTestInput) => Promise<ConversationTestResult>;
   testImageGeneration: (input: ImageGenerationTestInput) => Promise<ImageGenerationTestResult>;
   retry: (taskId: string) => Promise<TaskRecord | undefined>;
   cancel: (taskId: string) => TaskRecord | undefined;
@@ -321,6 +331,16 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await executeImageTask(task, input, 'edit');
     return task;
   };
+  const testConversation = async (input: ConversationTestInput): Promise<ConversationTestResult> => {
+    if (!input.connectionId.trim()) throw new Error('CONVERSATION_TEST_BINDING_REQUIRED');
+    const adapter = await options.resolveAdapter(input.connectionId);
+    const response = await adapter.chat({
+      messages: [{ role: 'user', content: 'Reply with OK.' }],
+      ...(input.model?.trim() ? { model: input.model.trim() } : {}),
+    });
+    if (!response.text.trim()) throw new Error('CONVERSATION_TEST_RESULT_EMPTY');
+    return { cost: response.cost };
+  };
   const testImageGeneration = async (input: ImageGenerationTestInput): Promise<ImageGenerationTestResult> => {
     if (!input.connectionId.trim() || !input.prompt.trim()) throw new Error('IMAGE_TEST_BINDING_REQUIRED');
     const adapter = await options.resolveAdapter(input.connectionId);
@@ -415,5 +435,5 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await Promise.all([...pending]);
     await options.runtime.flush();
   };
-  return { submitConversation, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testImageGeneration, retry, cancel, flush };
+  return { submitConversation, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testConversation, testImageGeneration, retry, cancel, flush };
 };

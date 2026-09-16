@@ -641,6 +641,10 @@ const ConnectionsPage = ({
   const [providerActions, setProviderActions] = useState<ProviderSettingsActions | null>(null);
   const [activeProfile, setActiveProfile] = useState<ProviderProfile>('conversation');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const checkCredential = useCallback(
+    async (connectionId: string) => getDesktopApi().hasCredential?.(connectionId) ?? false,
+    [],
+  );
   useEffect(() => {
     let cancelled = false;
     const checks = availableConnections.flatMap((connection) => providerProfiles.map(async (profile) => {
@@ -694,8 +698,9 @@ const ConnectionsPage = ({
         locale={locale}
         onClose={() => setDrawerOpen(false)}
         footer={providerActions ? (
-          <div className="provider-profile-actions-row">
-            {providerActions.showTestImage && <Button type="button" variant="ai" icon="image" disabled={providerActions.testBusy || !providerActions.canTestImage} onClick={providerActions.testImageGeneration}>{providerActions.testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}</Button>}
+          <div className="provider-profile-actions-row provider-profile-actions-row--compact">
+            {providerActions.showTestConversation && <Button type="button" variant="ai" icon="plug" disabled={providerActions.testBusy || !providerActions.canTestConversation} onClick={providerActions.testConversation}>{providerActions.testBusy ? t(locale, '测试中…', 'Testing…') : t(locale, '测试连接', 'Test connection')}</Button>}
+            {providerActions.showTestImage && <Button type="button" variant="ai" icon="image" disabled={providerActions.testBusy || !providerActions.canTestImage} onClick={providerActions.testImageGeneration}>{providerActions.testBusy ? t(locale, '测试中…', 'Testing…') : t(locale, '测试生成', 'Test generation')}</Button>}
             {providerActions.canSaveConfig && <Button type="button" variant="secondary" icon="save" onClick={providerActions.saveConfig}>{t(locale, '保存配置', 'Save config')}</Button>}
           </div>
         ) : undefined}
@@ -711,8 +716,9 @@ const ConnectionsPage = ({
           if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
           return saved;
         }}
+        onTestConversation={workspaceId ? async (connectionId, input) => getDesktopApi().testConversation?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
         onTestImageGeneration={workspaceId ? async (connectionId, input) => getDesktopApi().testImageGeneration?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
-        onCheckCredential={async (connectionId) => getDesktopApi().hasCredential?.(connectionId) ?? false}
+        onCheckCredential={checkCredential}
         onStoreCredential={async (connectionId, secret) => {
           const stored = await (getDesktopApi().storeCredential?.(connectionId, secret) ?? false);
           if (stored) setConnectionState((current) => ({ ...current, [connectionId]: true }));
