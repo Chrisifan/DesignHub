@@ -362,7 +362,7 @@ const AssetsPage = ({
         onPaste={handlePaste}
         tabIndex={0}
       >
-        <div className={`asset-collection asset-collection--${layout}`}>
+        <div className={`asset-collection asset-collection--${layout} ${!assetsLoadFailed && filteredAssets.length === 0 ? 'asset-collection--empty' : ''}`}>
       {assetsLoadFailed ? <div className="details-panel asset-details"><EmptyState icon="alert-triangle" title={t(locale, '素材读取失败', 'Could not load assets')} description={t(locale, '请检查工作区权限后重新进入此页面。', 'Check workspace permissions and reopen this page.')} /></div> : filteredAssets.length ? (
             filteredAssets.map((item) => (
               <button

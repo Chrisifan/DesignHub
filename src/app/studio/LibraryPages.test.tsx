@@ -110,6 +110,9 @@ it('wraps an empty asset search result in the page-level empty-state region', ()
   expect(
     screen.getByRole('heading', { name: '没有匹配素材' }).closest('.page-empty-state'),
   ).not.toBeNull();
+  expect(
+    screen.getByRole('heading', { name: '没有匹配素材' }).closest('.asset-collection'),
+  ).toHaveClass('asset-collection--empty');
 });
 
 it('hydrates managed assets for the active workspace project', async () => {

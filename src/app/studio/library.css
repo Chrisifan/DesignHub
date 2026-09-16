@@ -383,6 +383,14 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
+.asset-collection--empty {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-content: stretch;
+  min-height: 100%;
+  height: 100%;
+}
 
 .asset-card {
   position: relative;
@@ -525,7 +533,8 @@
 }
 .asset-collection > .page-empty-state {
   grid-column: 1 / -1;
-  min-block-size: var(--content-panel-min-height);
+  min-block-size: 0;
+  height: 100%;
 }
 
 /* Brand kits */
