@@ -88,7 +88,7 @@ it("keeps portfolio analysis in the drawer and shows a loading skeleton", async 
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
 
   const drawer = screen.getByRole("dialog", { name: "导入作品集分析 · 生成 AI 设计师档案" });
-  expect(drawer).toHaveClass("ui-drawer--compact");
+  expect(drawer).toHaveClass("ui-drawer--wide");
   expect(within(drawer).getByText("正在提炼视觉 DNA")).toBeInTheDocument();
   expect(within(drawer).getByTestId("portfolio-analysis-skeleton")).toBeInTheDocument();
 });
@@ -145,7 +145,7 @@ it("inspects portfolio candidates and submits only the explicitly checked source
   fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
 
   await waitFor(() => expect(submitPortfolioSelection).toHaveBeenCalledWith(expect.objectContaining({
-    workspaceId: "workspace-selected", inspectionId: "inspection-1", sourceIds: ["candidate-a"], rightsConfirmed: true,
+    workspaceId: "workspace-selected", selections: [{ inspectionId: "inspection-1", sourceIds: ["candidate-a"] }], rightsConfirmed: true,
   })));
   expect(inspectPortfolioSources).toHaveBeenCalledWith({ workspaceId: "workspace-selected", request: { kind: "remote-page", url: "https://public.test/portfolio" } });
 });
@@ -210,8 +210,7 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
       expect.objectContaining({
         workspaceId: "workspace-1",
         source: expect.objectContaining({ kind: "designer-draft" }),
-        inspectionId: "inspection-submit",
-        sourceIds: ["source-submit"],
+        selections: [{ inspectionId: "inspection-submit", sourceIds: ["source-submit"] }],
         rightsConfirmed: true,
       }),
     ),
@@ -240,7 +239,7 @@ it("inspects locally chosen portfolio images through the trusted main process", 
   fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
   fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
   await waitFor(() => expect(submitPortfolioSelection).toHaveBeenCalledWith(expect.objectContaining({
-    inspectionId: "inspection-local", sourceIds: ["source-local"], rightsConfirmed: true,
+    selections: [{ inspectionId: "inspection-local", sourceIds: ["source-local"] }], rightsConfirmed: true,
   })));
   expect(inspectPortfolioSources).toHaveBeenCalledWith({ workspaceId: "workspace-files", request: { kind: "local-images" } });
 });
@@ -312,29 +311,11 @@ it("reviews a completed portfolio candidate and persists the published profile",
   fireEvent.click(screen.getByRole("checkbox", { name: "Portfolio" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
-  const candidateButton = await screen.findByRole("button", {
-    name: /作品集候选/,
-  });
+  await screen.findByRole("heading", { name: "作品集候选" });
   const drawer = screen.getByRole("dialog", { name: "导入作品集分析 · 生成 AI 设计师档案" });
   expect(drawer).toHaveClass("ui-drawer--wide");
-  expect(screen.getByRole("button", { name: "生成形象" }).closest(".ui-drawer__footer")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "发布预览" }).closest(".ui-drawer__footer")).toBeInTheDocument();
-  fireEvent.click(candidateButton);
-  fireEvent.click(screen.getByRole("button", { name: "发布预览" }));
-  await waitFor(() =>
-    expect(saveDesignerState).toHaveBeenCalledWith(
-      "workspace-1",
-      expect.objectContaining({
-        profiles: expect.arrayContaining([
-          expect.objectContaining({
-            status: "published",
-            artworkAssetId: "asset-portrait",
-            artworkUrl: "asset://asset-portrait",
-          }),
-        ]),
-      }),
-    ),
-  );
+  expect(screen.getByRole("button", { name: "下一步：生成形象" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "发布预览" })).not.toBeInTheDocument();
 });
 
 it("requests artwork for a selected candidate and adopts the managed image before publishing", async () => {
@@ -406,22 +387,21 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   fireEvent.click(screen.getByRole("checkbox", { name: "作品集" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
-  fireEvent.click(await screen.findByRole("button", { name: /未来编辑/ }));
-  fireEvent.click(screen.getByRole("button", { name: "生成形象" }));
+  await screen.findByRole("heading", { name: "未来编辑" });
+  fireEvent.click(screen.getByRole("button", { name: "下一步：生成形象" }));
 
   await waitFor(() => expect(submitDesignerArtworkGeneration).toHaveBeenCalledWith(expect.objectContaining({
     workspaceId: "workspace-1",
     source: { kind: "designer-draft", id: candidate.id },
-    prompt: expect.stringContaining("Future editor"),
+    prompt: expect.stringContaining("未来编辑"),
+    count: 3,
   })));
   await waitFor(() => expect(readDesignerArtwork).toHaveBeenCalledWith({
     workspaceId: "workspace-1",
     artworkId: "artwork-portrait-1",
   }));
-  expect(screen.getByRole("img", { name: "未来编辑形象的人物形象" })).toHaveAttribute(
-    "src",
-    "designhub-artwork://artwork-portrait-1",
-  );
+  fireEvent.click(screen.getByRole("button", { name: "形象 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "下一步：预览发布" }));
   fireEvent.click(screen.getByRole("button", { name: "发布预览" }));
   await waitFor(() =>
     expect(saveDesignerState).toHaveBeenCalledWith(
@@ -598,7 +578,7 @@ it("keeps polling a portfolio task that completes after the initial six-second w
     });
     expect(listTasks).toHaveBeenCalledTimes(14);
     expect(
-      screen.getByRole("button", { name: /轮询候选/ }),
+      screen.getByRole("heading", { name: "轮询候选" }),
     ).toBeInTheDocument();
   } finally {
     vi.useRealTimers();

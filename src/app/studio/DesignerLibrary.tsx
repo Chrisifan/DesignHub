@@ -9,7 +9,6 @@ import {
 
 import type { Locale } from "../i18n";
 import { Drawer } from "./Drawer";
-import { PersonaArtwork } from "./PersonaArtwork";
 import { PersonaInspector } from "./PersonaInspector";
 import {
   PersonaRepository,
@@ -44,6 +43,10 @@ type DesignerDraft = {
   texture: string;
   negativeRules: string;
 };
+
+type PortfolioWizardPhase = "import" | "analyse" | "avatar" | "review";
+type PortfolioSelectionBatch = { inspectionId: string; sourceIds: string[] };
+type ArtworkOption = { assetId: string; artworkUrl: string };
 
 const emptyDraft: DesignerDraft = {
   name: "",
@@ -81,6 +84,26 @@ const profileToDraft = (
 });
 
 const localized = (value: string): LocalizedText => ({ zh: value, en: value });
+
+const profileFromDraft = (draft: DesignerDraft, base: PersonaProfile): PersonaProfile => ({
+  ...base,
+  name: localized(draft.name.trim()),
+  signature: localized(draft.signature.trim()),
+  summary: localized(draft.summary.trim()),
+  principle: localized(draft.principle.trim()),
+  personaCode: draft.personaCode.trim(),
+  version: draft.version.trim(),
+  tags: draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean).map(localized),
+  styleDna: {
+    palette: draft.palette.split(",").map((color) => color.trim()).filter(Boolean),
+    typography: localized(draft.typography.trim()),
+    composition: localized(draft.composition.trim()),
+    texture: localized(draft.texture.trim()),
+  },
+  negativeRules: draft.negativeRules.split("\n").map((rule) => rule.trim()).filter(Boolean).map(localized),
+  artworkAssetId: undefined,
+  artworkUrl: "",
+});
 
 const designerArtworkPrompt = (profile: PersonaProfile): string => [
   "Create one original, stylized character portrait for a graphic designer profile.",
@@ -135,21 +158,18 @@ export const DesignerLibrary = ({
   const [editor, setEditor] = useState<
     { mode: "new" } | { mode: "edit"; profileId: string } | null
   >(null);
-  const [candidatePhase, setCandidatePhase] = useState<"form" | "review">(
-    "form",
-  );
+  const [wizardPhase, setWizardPhase] = useState<PortfolioWizardPhase>("import");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [portfolioUrl, setPortfolioUrl] = useState("");
   const [portfolioInspection, setPortfolioInspection] = useState<PortfolioInspection | null>(null);
   const [selectedPortfolioSourceIds, setSelectedPortfolioSourceIds] = useState<string[]>([]);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>();
-  const [candidateProfiles, setCandidateProfiles] = useState<PersonaProfile[]>(
-    [],
-  );
+  const [selectionBatches, setSelectionBatches] = useState<PortfolioSelectionBatch[]>([]);
+  const [analysisProfile, setAnalysisProfile] = useState<PersonaProfile>();
+  const [analysisDraft, setAnalysisDraft] = useState<DesignerDraft>();
   const [analysisTaskId, setAnalysisTaskId] = useState<string>();
-  const [artworkTask, setArtworkTask] = useState<
-    { taskId: string; candidateId: string } | undefined
-  >();
+  const [artworkOptions, setArtworkOptions] = useState<ArtworkOption[]>([]);
+  const [selectedArtworkAssetId, setSelectedArtworkAssetId] = useState<string>();
+  const [artworkTaskId, setArtworkTaskId] = useState<string>();
   const [publishedInSession, setPublishedInSession] = useState(false);
   const [creationError, setCreationError] = useState("");
   const [newDraft, setNewDraft] = useState<DesignerDraft>(emptyDraft);
@@ -160,12 +180,14 @@ export const DesignerLibrary = ({
   const [loadFailed, setLoadFailed] = useState(false);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const discardPortfolioInspection = useCallback(() => {
-    if (workspaceId && portfolioInspection) {
-      void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
-    }
+    const inspectionIds = new Set([...selectionBatches.map((batch) => batch.inspectionId), portfolioInspection?.id].filter((id): id is string => Boolean(id)));
+    if (workspaceId) inspectionIds.forEach((inspectionId) => {
+      void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId });
+    });
     setPortfolioInspection(null);
     setSelectedPortfolioSourceIds([]);
-  }, [portfolioInspection, workspaceId]);
+    setSelectionBatches([]);
+  }, [portfolioInspection, selectionBatches, workspaceId]);
   useEffect(() => {
     let cancelled = false;
     isHydrating.current = Boolean(workspaceId);
@@ -262,41 +284,18 @@ export const DesignerLibrary = ({
       setEditDrafts((previous) => ({ ...previous, [editor.profileId]: draft }));
     else setNewDraft(draft);
   };
-  const adoptArtworkTask = useCallback(
-    async (candidateId: string, task: TaskRecord): Promise<boolean> => {
-      if (!workspaceId || task.state !== "completed") return false;
-      const artworkId = task.result?.assetIds?.[0];
-      if (!artworkId) return false;
-      const artwork = await getDesktopApi().readDesignerArtwork?.({
-        workspaceId,
-        artworkId,
-      });
-      if (!artwork) return false;
-      setCandidateProfiles((previous) =>
-        previous.map((profile) =>
-          profile.id === candidateId
-            ? {
-                ...profile,
-                artworkAssetId: artwork.artworkId,
-                artworkUrl: `designhub-artwork://${artwork.artworkId}`,
-              }
-            : profile,
-        ),
-      );
-      return true;
-    },
-    [workspaceId],
-  );
   const openCreate = () => {
     if (readOnly || loading || loadFailed) return;
-    setCandidatePhase("form");
+    setWizardPhase("import");
     setRightsConfirmed(false);
     setPortfolioUrl("");
     discardPortfolioInspection();
-    setSelectedCandidateId(undefined);
-    setCandidateProfiles([]);
+    setAnalysisProfile(undefined);
+    setAnalysisDraft(undefined);
     setAnalysisTaskId(undefined);
-    setArtworkTask(undefined);
+    setArtworkOptions([]);
+    setSelectedArtworkAssetId(undefined);
+    setArtworkTaskId(undefined);
     setPublishedInSession(false);
     setCreationError("");
     setEditor({ mode: "new" });
@@ -360,120 +359,70 @@ export const DesignerLibrary = ({
     notify(t(locale, "档案草稿已更新", "Profile draft updated"));
     setEditor(null);
   };
+  const acceptAnalysis = (task: TaskRecord): boolean => {
+    if (task.state !== "completed" || !task.result?.text) return false;
+    const [profile] = parsePortfolioCandidates(task.result.text);
+    if (!profile) throw new Error("ANALYSIS_RESULT_EMPTY");
+    setAnalysisProfile(profile);
+    setAnalysisDraft(profileToDraft(profile, locale));
+    setAnalysisTaskId(undefined);
+    setWizardPhase("analyse");
+    setCreationError("");
+    notify(t(locale, "作品集分析已完成，可以编辑特征。", "Portfolio analysis completed; edit the extracted features."));
+    return true;
+  };
+  const analysisFailure = (returnPhase: PortfolioWizardPhase) => {
+    setAnalysisTaskId(undefined);
+    setWizardPhase(returnPhase);
+    setCreationError(t(locale, "作品集分析失败，请重试。", "Portfolio analysis failed; try again."));
+  };
   const requestCandidates = async () => {
     if (!rightsConfirmed) {
-      setCreationError(
-        t(
-          locale,
-          "请先确认拥有分析这些来源的权利。",
-          "Confirm rights before analysing these sources.",
-        ),
-      );
+      setCreationError(t(locale, "请先确认拥有分析这些来源的权利。", "Confirm rights before analysing these sources."));
       return;
     }
-    if (!portfolioInspection || selectedPortfolioSourceIds.length === 0) {
-      setCreationError(
-        t(
-          locale,
-          "请先检查并勾选至少一个作品集来源。",
-          "Inspect and select at least one portfolio source first.",
-        ),
-      );
+    if ((!portfolioInspection || selectedPortfolioSourceIds.length === 0) && selectionBatches.length === 0) {
+      setCreationError(t(locale, "请先检查并勾选至少一个作品集来源。", "Inspect and select at least one portfolio source first."));
       return;
     }
-    setCreationError("");
-    setCandidateProfiles([]);
-    setAnalysisTaskId(undefined);
-    setCandidatePhase("review");
     if (!workspaceId) {
-      setCandidatePhase("form");
-      setCreationError(
-        t(
-          locale,
-          "当前工作区未连接模型，无法分析作品集。",
-          "No connected model is available for portfolio analysis.",
-        ),
-      );
+      setCreationError(t(locale, "当前工作区未连接模型，无法分析作品集。", "No connected model is available for portfolio analysis."));
       return;
     }
-    const draftId = `designer-${crypto.randomUUID()}`;
-    const api = getDesktopApi();
-    let request: Promise<TaskRecord | null> | undefined;
+    const current = portfolioInspection && selectedPortfolioSourceIds.length > 0
+      ? { inspectionId: portfolioInspection.id, sourceIds: selectedPortfolioSourceIds }
+      : undefined;
+    const selections = current
+      ? [...selectionBatches.filter((batch) => batch.inspectionId !== current.inspectionId), current]
+      : selectionBatches;
+    if (selections.reduce((total, batch) => total + batch.sourceIds.length, 0) > 8) {
+      setCreationError(t(locale, "最多可同时分析 8 个作品集来源。", "Analyse at most eight portfolio sources at once."));
+      return;
+    }
+    const returnPhase = analysisProfile ? "analyse" : "import";
+    setCreationError("");
+    setWizardPhase("analyse");
     try {
-      request = api.submitPortfolioSelection?.({
+      const task = await getDesktopApi().submitPortfolioSelection?.({
         workspaceId,
-        source: { kind: "designer-draft", id: draftId },
+        source: { kind: "designer-draft", id: `designer-${crypto.randomUUID()}` },
         connectionId: "openai-compatible",
-        selections: [{ inspectionId: portfolioInspection.id, sourceIds: selectedPortfolioSourceIds }],
+        selections,
         rightsConfirmed: true,
       });
+      if (!task) throw new Error("ANALYSIS_UNAVAILABLE");
+      setSelectionBatches(selections);
+      setPortfolioInspection(null);
+      setSelectedPortfolioSourceIds([]);
+      if (acceptAnalysis(task)) return;
+      if (task.state === "failed" || task.state === "cancelled") throw new Error("ANALYSIS_FAILED");
+      const completed = ((await getDesktopApi().listTasks?.(workspaceId)) ?? []).find((item) => item.id === task.id);
+      if (completed && acceptAnalysis(completed)) return;
+      if (completed?.state === "failed" || completed?.state === "cancelled") throw new Error("ANALYSIS_FAILED");
+      setAnalysisTaskId(task.id);
     } catch {
-        setCandidatePhase("form");
-        setCreationError(
-          t(
-            locale,
-            "作品集来源提交失败，请重新检查来源。",
-            "Portfolio sources could not be submitted; inspect them again.",
-          ),
-        );
-        return;
+      analysisFailure(returnPhase);
     }
-    if (!request) {
-        setCandidatePhase("form");
-        setCreationError(
-          t(
-            locale,
-            "当前工作区未连接模型，无法分析作品集。",
-            "No connected model is available for portfolio analysis.",
-          ),
-        );
-        return;
-    }
-    const consumeCompletedTask = (candidateTask: TaskRecord): boolean => {
-        if (candidateTask.state === "completed" && candidateTask.result?.text) {
-          setCandidateProfiles(parsePortfolioCandidates(candidateTask.result.text));
-          setCreationError("");
-          notify(
-            t(
-              locale,
-              "作品集分析已完成，请审核候选。",
-              "Portfolio analysis completed; review the candidates.",
-            ),
-          );
-          return true;
-        }
-        return false;
-    };
-    void request
-        .then(async (task) => {
-          if (!task) throw new Error("ANALYSIS_UNAVAILABLE");
-          setPortfolioInspection(null);
-          setSelectedPortfolioSourceIds([]);
-          if (consumeCompletedTask(task)) return;
-          const tasks = (await api.listTasks?.(workspaceId)) ?? [];
-          const completed = tasks.find((item) => item.id === task.id);
-          if (completed && consumeCompletedTask(completed)) return;
-          if (completed?.state === "failed") throw new Error("ANALYSIS_FAILED");
-          setAnalysisTaskId(task.id);
-          setCreationError(
-            t(
-              locale,
-              "作品集分析任务仍在处理中，请稍后重试查看。",
-              "Portfolio analysis is still running; check again shortly.",
-            ),
-          );
-        })
-        .catch(() => {
-          setCandidatePhase("form");
-          setCandidateProfiles([]);
-          setCreationError(
-            t(
-              locale,
-              "作品集分析失败，未生成候选。",
-              "Portfolio analysis failed; no candidates were generated.",
-            ),
-          );
-      });
   };
   const inspectPortfolioSources = async (request: PortfolioInspectionRequest) => {
     if (!workspaceId) {
@@ -488,7 +437,7 @@ export const DesignerLibrary = ({
     try {
       const next = await getDesktopApi().inspectPortfolioSources?.({ workspaceId, request });
       if (!next) throw new Error("PORTFOLIO_INSPECTION_UNAVAILABLE");
-      discardPortfolioInspection();
+      if (portfolioInspection && workspaceId) void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
       setPortfolioInspection(next);
       setSelectedPortfolioSourceIds([]);
     } catch {
@@ -497,7 +446,7 @@ export const DesignerLibrary = ({
   };
   const togglePortfolioSource = (sourceId: string, selected: boolean) => {
     setSelectedPortfolioSourceIds((previous) => selected
-      ? [...previous, sourceId].slice(0, 8)
+      ? [...previous, sourceId].slice(0, Math.max(0, 8 - selectionBatches.reduce((total, batch) => total + batch.sourceIds.length, 0)))
       : previous.filter((id) => id !== sourceId));
   };
   useEffect(() => {
@@ -512,22 +461,9 @@ export const DesignerLibrary = ({
         const tasks = (await listTasks(workspaceId)) ?? [];
         if (cancelled) return;
         const task = tasks.find((item) => item.id === analysisTaskId);
-        if (task?.state === "completed" && task.result?.text) {
-          setCandidateProfiles(parsePortfolioCandidates(task.result.text));
-          setAnalysisTaskId(undefined);
-          setCreationError("");
-          return;
-        }
+        if (task?.state === "completed" && acceptAnalysis(task)) return;
         if (task?.state === "failed") {
-          setAnalysisTaskId(undefined);
-          setCandidateProfiles([]);
-          setCreationError(
-            t(
-              locale,
-              "分析失败，未生成候选。",
-              "Analysis failed; no candidates were generated.",
-            ),
-          );
+          analysisFailure(analysisProfile ? "analyse" : "import");
           return;
         }
         timer = window.setTimeout(() => {
@@ -535,15 +471,7 @@ export const DesignerLibrary = ({
         }, 500);
       } catch {
         if (cancelled) return;
-        setAnalysisTaskId(undefined);
-        setCandidateProfiles([]);
-        setCreationError(
-          t(
-            locale,
-            "分析失败，未生成候选。",
-            "Analysis failed; no candidates were generated.",
-          ),
-        );
+        analysisFailure(analysisProfile ? "analyse" : "import");
       }
     };
     timer = window.setTimeout(() => {
@@ -553,20 +481,25 @@ export const DesignerLibrary = ({
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [analysisTaskId, editor, locale, workspaceId]);
+  }, [analysisProfile, analysisTaskId, editor, locale, workspaceId]);
+  const readArtworkOptions = async (task: TaskRecord): Promise<boolean> => {
+    if (!workspaceId || task.state !== "completed") return false;
+    const assetIds = task.result?.assetIds ?? [];
+    if (!assetIds.length) return false;
+    const assets = await Promise.all(assetIds.map((artworkId) => getDesktopApi().readDesignerArtwork?.({ workspaceId, artworkId })));
+    const options = assets.filter((asset): asset is { artworkId: string; dataUrl: string } => Boolean(asset)).map((asset) => ({ assetId: asset.artworkId, artworkUrl: `designhub-artwork://${asset.artworkId}` }));
+    if (!options.length) return false;
+    setArtworkOptions(options);
+    setArtworkTaskId(undefined);
+    setWizardPhase("avatar");
+    setCreationError("");
+    return true;
+  };
   const requestCandidateArtwork = async () => {
-    if (!workspaceId || readOnly || !selectedCandidateId) return;
-    const candidate = candidateProfiles.find(
-      (profile) => profile.id === selectedCandidateId,
-    );
-    if (!candidate) {
-      setCreationError(
-        t(
-          locale,
-          "候选结果已不可用，请重新分析。",
-          "This candidate is no longer available; analyse again.",
-        ),
-      );
+    if (!workspaceId || readOnly || !analysisProfile || !analysisDraft) return;
+    const profile = profileFromDraft(analysisDraft, analysisProfile);
+    if (!profile.name.en) {
+      setCreationError(t(locale, "请先填写设计师名称。", "Enter a designer name first."));
       return;
     }
     const submit = getDesktopApi().submitDesignerArtworkGeneration;
@@ -584,21 +517,21 @@ export const DesignerLibrary = ({
     try {
       const task = await submit({
         workspaceId,
-        source: { kind: "designer-draft", id: candidate.id },
+        source: { kind: "designer-draft", id: profile.id },
         connectionId: "openai-compatible",
-        prompt: designerArtworkPrompt(candidate),
+        prompt: designerArtworkPrompt(profile),
         size: "1024x1024",
-        count: 1,
+        count: 3,
       });
       if (!task) throw new Error("DESIGNER_ARTWORK_UNAVAILABLE");
-      if (await adoptArtworkTask(candidate.id, task)) {
+      if (await readArtworkOptions(task)) {
         notify(t(locale, "人物形象已生成", "Character artwork generated"));
         return;
       }
       if (task.state === "failed" || task.state === "cancelled") {
         throw new Error("DESIGNER_ARTWORK_FAILED");
       }
-      setArtworkTask({ taskId: task.id, candidateId: candidate.id });
+      setArtworkTaskId(task.id);
       setCreationError(
         t(
           locale,
@@ -607,7 +540,7 @@ export const DesignerLibrary = ({
         ),
       );
     } catch {
-      setArtworkTask(undefined);
+      setArtworkTaskId(undefined);
       setCreationError(
         t(
           locale,
@@ -618,7 +551,7 @@ export const DesignerLibrary = ({
     }
   };
   useEffect(() => {
-    if (!artworkTask || !workspaceId || !editor) return;
+    if (!artworkTaskId || !workspaceId || !editor) return;
     let cancelled = false;
     let attempts = 0;
     let timer: number | undefined;
@@ -630,11 +563,11 @@ export const DesignerLibrary = ({
         if (!listTasks) throw new Error("TASK_LIST_UNAVAILABLE");
         const tasks = (await listTasks(workspaceId)) ?? [];
         if (cancelled) return;
-        const task = tasks.find((item) => item.id === artworkTask.taskId);
+        const task = tasks.find((item) => item.id === artworkTaskId);
         if (task?.state === "completed") {
-          const adopted = await adoptArtworkTask(artworkTask.candidateId, task);
+          const adopted = await readArtworkOptions(task);
           if (cancelled) return;
-          setArtworkTask(undefined);
+          setArtworkTaskId(undefined);
           if (adopted) {
             setCreationError("");
             notify(t(locale, "人物形象已生成", "Character artwork generated"));
@@ -650,7 +583,7 @@ export const DesignerLibrary = ({
           return;
         }
         if (task?.state === "failed" || task?.state === "cancelled" || attempts >= 12) {
-          setArtworkTask(undefined);
+          setArtworkTaskId(undefined);
           setCreationError(
             t(
               locale,
@@ -665,7 +598,7 @@ export const DesignerLibrary = ({
         }, 500);
       } catch {
         if (cancelled) return;
-        setArtworkTask(undefined);
+        setArtworkTaskId(undefined);
         setCreationError(
           t(
             locale,
@@ -682,36 +615,22 @@ export const DesignerLibrary = ({
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [adoptArtworkTask, artworkTask, editor, locale, notify, workspaceId]);
+  }, [artworkTaskId, editor, locale, notify, workspaceId]);
   const publishPreview = () => {
-    if (!selectedCandidateId) {
-      setCreationError(
-        t(locale, "请先选用一个候选。", "Select a candidate first."),
-      );
-      return;
-    }
-    const candidate = candidateProfiles.find(
-      (profile) => profile.id === selectedCandidateId,
-    );
-    if (!candidate) {
-      setCreationError(
-        t(
-          locale,
-          "候选结果已不可用，请重新分析。",
-          "This candidate is no longer available; analyse again.",
-        ),
-      );
-      return;
-    }
+    if (!analysisProfile || !analysisDraft || !selectedArtworkAssetId) return;
+    const option = artworkOptions.find((item) => item.assetId === selectedArtworkAssetId);
+    if (!option) return;
     const published: PersonaProfile = {
-      ...candidate,
+      ...profileFromDraft(analysisDraft, analysisProfile),
       id: `custom-${crypto.randomUUID()}`,
       status: "published",
       referenceCount: 0,
+      artworkAssetId: option.assetId,
+      artworkUrl: option.artworkUrl,
     };
     setProfiles((previous) => [
       published,
-      ...previous.filter((profile) => profile.id !== candidate.id),
+      ...previous,
     ]);
     setSelectedId(published.id);
     setCreationError("");
@@ -851,27 +770,33 @@ export const DesignerLibrary = ({
           locale={locale}
           draft={activeDraft}
           mode={editor.mode}
-          candidates={candidateProfiles}
-          candidatePhase={candidatePhase}
+          wizardPhase={wizardPhase}
           analysisBusy={Boolean(analysisTaskId)}
+          analysisDraft={analysisDraft}
           rightsConfirmed={rightsConfirmed}
           portfolioUrl={portfolioUrl}
           portfolioInspection={portfolioInspection}
           selectedPortfolioSourceIds={selectedPortfolioSourceIds}
-          selectedCandidateId={selectedCandidateId}
+          selectionCount={selectionBatches.reduce((total, batch) => total + batch.sourceIds.length, 0)}
+          artworkOptions={artworkOptions}
+          selectedArtworkAssetId={selectedArtworkAssetId}
           publishedInSession={publishedInSession}
           error={creationError}
           onRightsConfirmed={setRightsConfirmed}
           onPortfolioUrlChange={setPortfolioUrl}
           onInspectPortfolioSources={inspectPortfolioSources}
           onPortfolioSourceToggle={togglePortfolioSource}
-          onCandidateSelect={setSelectedCandidateId}
+          onArtworkSelect={setSelectedArtworkAssetId}
           onRequestCandidates={requestCandidates}
           onGenerateArtwork={requestCandidateArtwork}
-          artworkBusy={Boolean(artworkTask)}
+          artworkBusy={Boolean(artworkTaskId)}
           canGenerateArtwork={Boolean(workspaceId) && !readOnly}
           onPublish={publishPreview}
           onDraftChange={setActiveDraft}
+          onAnalysisDraftChange={setAnalysisDraft}
+          onBackToImport={() => setWizardPhase("import")}
+          onAddPortfolio={() => setWizardPhase("import")}
+          onContinueToReview={() => selectedArtworkAssetId && setWizardPhase("review")}
           onClose={() => {
             discardPortfolioInspection();
             setEditor(null);
@@ -887,54 +812,68 @@ const DesignerEditorModal = ({
   locale,
   draft,
   mode,
-  candidates,
-  candidatePhase,
+  wizardPhase,
   analysisBusy,
+  analysisDraft,
+  analysisProfile,
   rightsConfirmed,
   portfolioUrl,
   portfolioInspection,
   selectedPortfolioSourceIds,
-  selectedCandidateId,
+  selectionCount,
+  artworkOptions,
+  selectedArtworkAssetId,
   publishedInSession,
   error,
   onRightsConfirmed,
   onPortfolioUrlChange,
   onInspectPortfolioSources,
   onPortfolioSourceToggle,
-  onCandidateSelect,
+  onArtworkSelect,
   onRequestCandidates,
   onGenerateArtwork,
   artworkBusy,
   canGenerateArtwork,
   onPublish,
   onDraftChange,
+  onAnalysisDraftChange,
+  onBackToImport,
+  onAddPortfolio,
+  onContinueToReview,
   onClose,
   onSubmit,
 }: {
   locale: Locale;
   draft: DesignerDraft;
   mode: "new" | "edit";
-  candidates: PersonaProfile[];
-  candidatePhase: "form" | "review";
+  wizardPhase: PortfolioWizardPhase;
   analysisBusy: boolean;
+  analysisDraft?: DesignerDraft;
+  analysisProfile?: PersonaProfile;
   rightsConfirmed: boolean;
   portfolioUrl: string;
   portfolioInspection: PortfolioInspection | null;
   selectedPortfolioSourceIds: string[];
-  selectedCandidateId?: string;
+  selectionCount: number;
+  artworkOptions: ArtworkOption[];
+  selectedArtworkAssetId?: string;
   publishedInSession: boolean;
   error: string;
   onRightsConfirmed: (value: boolean) => void;
   onPortfolioUrlChange: (value: string) => void;
   onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
-  onCandidateSelect: (id: string) => void;
+  onArtworkSelect: (assetId: string) => void;
   onRequestCandidates: () => void;
   onGenerateArtwork: () => void;
   artworkBusy: boolean;
   canGenerateArtwork: boolean;
   onPublish: () => void;
   onDraftChange: (draft: DesignerDraft) => void;
+  onAnalysisDraftChange: (draft: DesignerDraft) => void;
+  onBackToImport: () => void;
+  onAddPortfolio: () => void;
+  onContinueToReview: () => void;
   onClose: () => void;
   onSubmit: () => void;
 }) => {
@@ -947,51 +886,39 @@ const DesignerEditorModal = ({
     onSubmit();
   };
   if (mode === "new") {
-    const isAnalysing = candidatePhase === "review" && candidates.length === 0 && (!error || analysisBusy);
-    const hasReviewCandidates = candidatePhase === "review" && candidates.length > 0;
+    const footer = wizardPhase === "import" ? <div className="portfolio-drawer-actions">
+      <Button variant="ghost" onClick={onClose}>{t(locale, "取消", "Cancel")}</Button>
+      <Button type="button" variant="ai" icon="sparkles" onClick={onRequestCandidates}>{t(locale, "开始分析", "Start analysis")}</Button>
+    </div> : wizardPhase === "analyse" && !analysisBusy ? <div className="portfolio-drawer-actions">
+      <Button variant="ghost" onClick={onBackToImport}>{t(locale, "返回导入", "Back to import")}</Button>
+      <Button variant="secondary" onClick={onAddPortfolio}>{t(locale, "追加作品集", "Add portfolio")}</Button>
+      <Button variant="secondary" icon="refresh-cw" onClick={onRequestCandidates}>{t(locale, "重新解析", "Reanalyse")}</Button>
+      <Button variant="ai" icon="sparkles" disabled={!analysisDraft?.name.trim() || !canGenerateArtwork || artworkBusy} onClick={onGenerateArtwork}>{t(locale, "下一步：生成形象", "Next: generate artwork")}</Button>
+    </div> : wizardPhase === "avatar" ? <div className="portfolio-drawer-actions">
+      <Button variant="ghost" onClick={onBackToImport}>{t(locale, "返回分析", "Back to analysis")}</Button>
+      <Button variant="primary" icon="arrow-right" disabled={!selectedArtworkAssetId} onClick={onContinueToReview}>{t(locale, "下一步：预览发布", "Next: preview and publish")}</Button>
+    </div> : wizardPhase === "review" ? <div className="portfolio-drawer-actions">
+      <Button variant="ghost" onClick={onBackToImport}>{t(locale, "返回分析", "Back to analysis")}</Button>
+      <Button variant="primary" icon="check" disabled={publishedInSession} onClick={onPublish}>{t(locale, "发布预览", "Publish preview")}</Button>
+    </div> : undefined;
     return (
       <Drawer
         open
         title={t(locale, "导入作品集分析 · 生成 AI 设计师档案", "Portfolio analysis · Create AI designer profile")}
-        className={hasReviewCandidates ? "ui-drawer--wide" : "ui-drawer--compact"}
+        className={wizardPhase === "import" ? "ui-drawer--compact" : "ui-drawer--wide"}
         locale={locale}
         onClose={onClose}
-        footer={candidatePhase === "form" ? (
-          <div className="portfolio-drawer-actions">
-            <Button variant="ghost" onClick={onClose}>{t(locale, "取消", "Cancel")}</Button>
-            <Button type="button" variant="ai" icon="sparkles" onClick={onRequestCandidates}>
-              {t(locale, "开始分析", "Start analysis")}
-            </Button>
-          </div>
-        ) : !isAnalysing ? (
-          <div className="portfolio-drawer-actions">
-            <Button
-              type="button"
-              variant="ai"
-              icon="sparkles"
-              disabled={!canGenerateArtwork || !selectedCandidateId || artworkBusy || candidates.length === 0}
-              onClick={onGenerateArtwork}
-            >
-              {t(locale, "生成形象", "Generate art")}
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              icon="check"
-              disabled={!selectedCandidateId || publishedInSession || candidates.length === 0}
-              onClick={onPublish}
-            >
-              {t(locale, "发布预览", "Publish preview")}
-            </Button>
-          </div>
-        ) : undefined}
+        footer={footer}
       >
         <PortfolioCreationDrawer
           locale={locale}
-          phase={candidatePhase}
-          analysing={isAnalysing}
-          candidates={candidates}
-          selectedCandidateId={selectedCandidateId}
+          phase={wizardPhase}
+          analysing={analysisBusy}
+          analysisDraft={analysisDraft}
+          analysisProfile={analysisProfile}
+          artworkOptions={artworkOptions}
+          selectedArtworkAssetId={selectedArtworkAssetId}
+          selectionCount={selectionCount}
           publishedInSession={publishedInSession}
           rightsConfirmed={rightsConfirmed}
           portfolioUrl={portfolioUrl}
@@ -1002,7 +929,8 @@ const DesignerEditorModal = ({
           onPortfolioUrlChange={onPortfolioUrlChange}
           onInspectPortfolioSources={onInspectPortfolioSources}
           onPortfolioSourceToggle={onPortfolioSourceToggle}
-          onCandidateSelect={onCandidateSelect}
+          onArtworkSelect={onArtworkSelect}
+          onAnalysisDraftChange={onAnalysisDraftChange}
         />
       </Drawer>
     );
@@ -1089,16 +1017,19 @@ const DesignerEditorModal = ({
 };
 
 const PortfolioCreationDrawer = ({
-  locale, phase, analysing, candidates, selectedCandidateId, publishedInSession,
+  locale, phase, analysing, analysisDraft, analysisProfile, artworkOptions, selectedArtworkAssetId, selectionCount, publishedInSession,
   rightsConfirmed, portfolioUrl, portfolioInspection, selectedPortfolioSourceIds,
   error, onRightsConfirmed, onPortfolioUrlChange,
-  onInspectPortfolioSources, onPortfolioSourceToggle, onCandidateSelect,
+  onInspectPortfolioSources, onPortfolioSourceToggle, onArtworkSelect, onAnalysisDraftChange,
 }: {
   locale: Locale;
-  phase: "form" | "review";
+  phase: PortfolioWizardPhase;
   analysing: boolean;
-  candidates: PersonaProfile[];
-  selectedCandidateId?: string;
+  analysisDraft?: DesignerDraft;
+  analysisProfile?: PersonaProfile;
+  artworkOptions: ArtworkOption[];
+  selectedArtworkAssetId?: string;
+  selectionCount: number;
   publishedInSession: boolean;
   rightsConfirmed: boolean;
   portfolioUrl: string;
@@ -1109,9 +1040,13 @@ const PortfolioCreationDrawer = ({
   onPortfolioUrlChange: (value: string) => void;
   onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
-  onCandidateSelect: (id: string) => void;
+  onArtworkSelect: (assetId: string) => void;
+  onAnalysisDraftChange: (draft: DesignerDraft) => void;
 }) => {
-  const activeStep = phase === "form" ? 0 : analysing ? 1 : 3;
+  const activeStep = phase === "import" ? 0 : phase === "analyse" ? 1 : phase === "avatar" ? 2 : 3;
+  const setAnalysisField = (field: keyof DesignerDraft) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (analysisDraft) onAnalysisDraftChange({ ...analysisDraft, [field]: event.target.value });
+  };
   return <section className="portfolio-drawer">
     <ol className="portfolio-steps" aria-label={t(locale, "生成流程", "Creation steps")}>
       {[t(locale, "导入作品", "Import"), t(locale, "特征解构", "Analyse"), t(locale, "角色拟合", "Fit"), t(locale, "审阅发布", "Review")].map((label, index) => (
@@ -1120,7 +1055,7 @@ const PortfolioCreationDrawer = ({
         </li>
       ))}
     </ol>
-    {phase === "form" ? (
+    {phase === "import" ? (
       <div className="portfolio-import">
         <p className="section-kicker">{t(locale, "作品集来源", "Portfolio sources")}</p>
         <h3>{t(locale, "选择用于提炼风格的作品", "Choose work to extract style")}</h3>
@@ -1142,7 +1077,24 @@ const PortfolioCreationDrawer = ({
         <label className="check-row"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => onRightsConfirmed(event.target.checked)} />{t(locale, "我确认拥有分析这些来源的权利", "I confirm I have rights to analyse these sources")}</label>
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-    ) : analysing ? <PortfolioAnalysisLoading locale={locale} /> : <CandidateReview locale={locale} candidates={candidates} selectedCandidateId={selectedCandidateId} publishedInSession={publishedInSession} error={error} onSelect={onCandidateSelect} />}
+    ) : (analysing || (phase === "analyse" && !analysisDraft)) ? <PortfolioAnalysisLoading locale={locale} /> : phase === "analyse" && analysisDraft && analysisProfile ? <section className="portfolio-analysis-editor" aria-labelledby="portfolio-analysis-title">
+      <p className="section-kicker">{t(locale, "特征解构", "Feature analysis")}</p>
+      <h2 id="portfolio-analysis-title">{analysisDraft.name}</h2>
+      <p className="panel-note">{t(locale, `已汇总 ${selectionCount} 个作品来源。`, `${selectionCount} portfolio sources are included.`)}</p>
+      <div className="portfolio-analysis-editor__grid">
+        <Field label={t(locale, "设计师名称", "Designer name")}><input value={analysisDraft.name} onChange={setAnalysisField("name")} /></Field>
+        <Field label={t(locale, "署名", "Signature")}><input value={analysisDraft.signature} onChange={setAnalysisField("signature")} /></Field>
+        <Field label={t(locale, "风格说明", "Style summary")}><textarea rows={3} value={analysisDraft.summary} onChange={setAnalysisField("summary")} /></Field>
+        <Field label={t(locale, "创作原则", "Creative principle")}><textarea rows={3} value={analysisDraft.principle} onChange={setAnalysisField("principle")} /></Field>
+        <Field label={t(locale, "标签", "Tags")}><input value={analysisDraft.tags} onChange={setAnalysisField("tags")} /></Field>
+        <Field label={t(locale, "色板", "Palette")}><div className="portfolio-palette-input"><input value={analysisDraft.palette} onChange={setAnalysisField("palette")} /><span>{analysisDraft.palette.split(",").map((color) => <i key={color} style={{ backgroundColor: color.trim() }} />)}</span></div></Field>
+        <Field label={t(locale, "排版", "Typography")}><input value={analysisDraft.typography} onChange={setAnalysisField("typography")} /></Field>
+        <Field label={t(locale, "构图", "Composition")}><input value={analysisDraft.composition} onChange={setAnalysisField("composition")} /></Field>
+        <Field label={t(locale, "材质", "Texture")}><input value={analysisDraft.texture} onChange={setAnalysisField("texture")} /></Field>
+        <Field label={t(locale, "禁用规则", "Negative rules")}><textarea rows={3} value={analysisDraft.negativeRules} onChange={setAnalysisField("negativeRules")} /></Field>
+      </div>
+      {error && <p className="form-error" role="alert">{error}</p>}
+    </section> : phase === "avatar" ? <section className="candidate-review"><p className="section-kicker">{t(locale, "形象生成", "Artwork generation")}</p><h2>{t(locale, "选择设计师形象", "Choose designer artwork")}</h2><div className="persona-candidate-grid" role="group" aria-label={t(locale, "形象选项", "Artwork options")}>{artworkOptions.map((option, index) => <button type="button" key={option.assetId} className={`persona-candidate ${selectedArtworkAssetId === option.assetId ? "is-selected" : ""}`} aria-pressed={selectedArtworkAssetId === option.assetId} aria-label={`${t(locale, "形象", "Artwork")} ${index + 1}`} onClick={() => onArtworkSelect(option.assetId)}><img src={option.artworkUrl} alt="" /><strong>{t(locale, `形象 ${index + 1}`, `Artwork ${index + 1}`)}</strong></button>)}</div>{error && <p className="form-error" role="alert">{error}</p>}</section> : <section className="candidate-review"><p className="section-kicker">{t(locale, "预览发布", "Preview and publish")}</p><h2>{analysisDraft?.name}</h2><p>{analysisDraft?.summary}</p>{selectedArtworkAssetId && <img src={`designhub-artwork://${selectedArtworkAssetId}`} alt="" />}{publishedInSession && <p className="panel-note">{t(locale, "已发布。", "Published.")}</p>}{error && <p className="form-error" role="alert">{error}</p>}</section>}
   </section>;
 };
 
@@ -1157,84 +1109,3 @@ const PortfolioAnalysisLoading = ({ locale }: { locale: Locale }) => (
     </div>
   </section>
 );
-
-const CandidateReview = ({
-  locale,
-  candidates,
-  selectedCandidateId,
-  publishedInSession,
-  error,
-  onSelect,
-}: {
-  locale: Locale;
-  candidates: PersonaProfile[];
-  selectedCandidateId?: string;
-  publishedInSession: boolean;
-  error: string;
-  onSelect: (candidateId: string) => void;
-}) => {
-  const visibleCandidates = candidates;
-  return (
-    <section
-      className="candidate-review"
-      aria-labelledby="candidate-review-title"
-    >
-      <p className="section-kicker">{t(locale, "分析候选", "Analysis candidates")}</p>
-      <h2 id="candidate-review-title">
-        {t(locale, "选择人物形象", "Choose a persona")}
-      </h2>
-      {visibleCandidates.length > 0 ? (
-        <div
-          className="persona-candidate-grid"
-          role="group"
-          aria-label={t(locale, "人物候选", "Persona candidates")}
-        >
-          {visibleCandidates.map((profile, index) => (
-            <button
-              type="button"
-              key={profile.id}
-              className={`persona-candidate ${selectedCandidateId === profile.id ? "is-selected" : ""}`}
-              aria-label={`${t(locale, "候选", "Candidate")} ${index + 1} · ${localize(locale, profile.name)}`}
-              aria-pressed={selectedCandidateId === profile.id}
-              onClick={() => onSelect(profile.id)}
-            >
-              <span className="persona-candidate__art">
-                <PersonaArtwork
-                  personaId={profile.id}
-                  profile={profile}
-                  crop="full"
-                />
-              </span>
-              <strong>
-                {t(locale, `候选 ${index + 1}`, `Candidate ${index + 1}`)}
-              </strong>
-              <span>{localize(locale, profile.name)}</span>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className="panel-note">
-          {t(
-            locale,
-            "没有可审核的分析候选。",
-            "No analysis candidates are available to review.",
-          )}
-        </p>
-      )}
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      {publishedInSession && (
-        <p className="panel-note">
-          {t(
-            locale,
-            "已在本次示例会话中发布，不会写入磁盘。",
-            "Published in this example session only; nothing is written to disk.",
-          )}
-        </p>
-      )}
-    </section>
-  );
-};

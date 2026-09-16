@@ -488,6 +488,47 @@
   width: 100%;
 }
 
+.portfolio-analysis-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.portfolio-analysis-editor > h2 {
+  margin: -8px 0 0;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.portfolio-analysis-editor__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.portfolio-analysis-editor__grid .ui-field:last-child {
+  grid-column: 1 / -1;
+}
+
+.portfolio-palette-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.portfolio-palette-input > span {
+  display: flex;
+  gap: 4px;
+}
+
+.portfolio-palette-input i {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+}
+
 .portfolio-analysis-loading {
   min-height: 410px;
   padding: 8px 4px;
@@ -570,8 +611,13 @@
   }
 
   .designer-portfolio-candidates,
-  .portfolio-analysis-skeleton {
+  .portfolio-analysis-skeleton,
+  .portfolio-analysis-editor__grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portfolio-analysis-editor__grid .ui-field:last-child {
+    grid-column: auto;
   }
 }
 
