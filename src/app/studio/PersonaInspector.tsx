@@ -18,6 +18,7 @@ type PersonaInspectorProps = {
   onRestore?: () => void;
   canSetDefault?: boolean;
   canUseForNew?: boolean;
+  showActions?: boolean;
 };
 
 const DetailRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -42,6 +43,7 @@ export const PersonaInspector = ({
   onRestore,
   canSetDefault = true,
   canUseForNew = true,
+  showActions = true,
 }: PersonaInspectorProps) => {
   if (!profile) {
     return (
@@ -52,6 +54,14 @@ export const PersonaInspector = ({
   }
   const sessionDefault = isSessionDefault ?? isDefault;
   const status = profile.status === 'published' || profile.status === 'built-in' ? t(locale, '已发布', 'Published') : profile.status === 'archived' ? t(locale, '已归档', 'Archived') : t(locale, '草稿', 'Draft');
+  const actions = (
+    <div className="persona-inspector__actions">
+      {onEdit && <Button variant="primary" icon="settings" onClick={onEdit} disabled={readOnly}>{t(locale, '编辑', 'Edit')}</Button>}
+      <Button icon="plus" onClick={() => (onUseForNewDesign ? onUseForNewDesign(profile.id) : onUseForNew?.())} disabled={!canUseForNew}>{t(locale, '用于新建', 'Use for new')}</Button>
+      <Button icon="star" onClick={() => onSetDefault?.(profile.id)} disabled={readOnly || sessionDefault || !canSetDefault}>{sessionDefault ? t(locale, '当前默认', 'Current default') : t(locale, '设默认', 'Set default')}</Button>
+      {profile.status === 'archived' && onRestore ? <Button icon="rotate-ccw" onClick={onRestore} disabled={readOnly}>{t(locale, '恢复', 'Restore')}</Button> : onDelete && <Button icon="trash-2" onClick={onDelete} disabled={readOnly}>{t(locale, '删除', 'Delete')}</Button>}
+    </div>
+  );
   return (
     <div className="details-panel persona-inspector">
       <header className="persona-inspector__head">
@@ -71,12 +81,7 @@ export const PersonaInspector = ({
           <p className="persona-inspector__summary">{localize(locale, profile.summary)}</p>
         </div>
       </div>
-      <div className="persona-inspector__actions">
-        {onEdit && <Button variant="primary" icon="settings" onClick={onEdit} disabled={readOnly}>{t(locale, '编辑', 'Edit')}</Button>}
-        <Button icon="plus" onClick={() => (onUseForNewDesign ? onUseForNewDesign(profile.id) : onUseForNew?.())} disabled={!canUseForNew}>{t(locale, '用于新建', 'Use for new')}</Button>
-        <Button icon="star" onClick={() => onSetDefault?.(profile.id)} disabled={readOnly || sessionDefault || !canSetDefault}>{sessionDefault ? t(locale, '当前默认', 'Current default') : t(locale, '设默认', 'Set default')}</Button>
-        {profile.status === 'archived' && onRestore ? <Button icon="rotate-ccw" onClick={onRestore} disabled={readOnly}>{t(locale, '恢复', 'Restore')}</Button> : onDelete && <Button icon="trash-2" onClick={onDelete} disabled={readOnly}>{t(locale, '删除', 'Delete')}</Button>}
-      </div>
+      {showActions ? actions : null}
       <div className="persona-inspector__principle">
         <Icon name="sparkles" size={16} />
         <span><strong>{t(locale, '创作原则', 'Creative principle')}</strong>{localize(locale, profile.principle)}</span>

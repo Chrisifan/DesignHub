@@ -788,6 +788,26 @@ export const DesignerLibrary = ({
         title={t(locale, "设计师检查器", "Designer inspector")}
         locale={locale}
         onClose={() => setInspectorOpen(false)}
+        footer={selected ? (
+          <div className="persona-inspector__actions">
+            <Button variant="primary" icon="settings" onClick={openEdit} disabled={readOnly || loading || loadFailed}>{t(locale, "编辑", "Edit")}</Button>
+            <Button icon="plus" onClick={() => {
+              if (loading || loadFailed) return;
+              if (onUseForNew) onUseForNew(selected.id);
+              else notify(t(locale, "请从项目库新建", "Start a new design from Projects"));
+            }} disabled={loading || loadFailed}>{t(locale, "用于新建", "Use for new")}</Button>
+            <Button icon="star" onClick={() => {
+              if (readOnly || loading || loadFailed || !canBeDefault(selected)) return;
+              setDefaultId(selectedId);
+              notify(t(locale, "已设为会话默认", "Set as session default"));
+            }} disabled={readOnly || loading || loadFailed || selectedId === defaultId || !canBeDefault(selected)}>{selectedId === defaultId ? t(locale, "当前默认", "Current default") : t(locale, "设默认", "Set default")}</Button>
+            {selected.status === "archived" ? <Button icon="rotate-ccw" onClick={() => {
+              if (readOnly || loading || loadFailed) return;
+              setProfiles((previous) => previous.map((profile) => profile.id === selected.id ? { ...profile, status: "published" } : profile));
+              notify(t(locale, "档案已恢复", "Profile restored"));
+            }} disabled={readOnly || loading || loadFailed}>{t(locale, "恢复", "Restore")}</Button> : <Button icon="trash-2" onClick={deleteSelected} disabled={readOnly || loading || loadFailed}>{t(locale, "删除", "Delete")}</Button>}
+          </div>
+        ) : undefined}
       >
         <PersonaInspector
           locale={locale}
@@ -797,33 +817,7 @@ export const DesignerLibrary = ({
           readOnly={readOnly || loading || loadFailed}
           canSetDefault={canBeDefault(selected)}
           canUseForNew={!loading && !loadFailed}
-          onEdit={openEdit}
-          onDelete={deleteSelected}
-          onRestore={() => {
-            if (!selected || readOnly || loading || loadFailed) return;
-            setProfiles((previous) =>
-              previous.map((profile) =>
-                profile.id === selected.id
-                  ? { ...profile, status: "published" }
-                  : profile,
-              ),
-            );
-            notify(t(locale, "档案已恢复", "Profile restored"));
-          }}
-          onSetDefault={() => {
-            if (readOnly || loading || loadFailed || !canBeDefault(selected))
-              return;
-            setDefaultId(selectedId);
-            notify(t(locale, "已设为会话默认", "Set as session default"));
-          }}
-          onUseForNew={() => {
-            if (loading || loadFailed) return;
-            if (onUseForNew && selected) onUseForNew(selected.id);
-            else
-              notify(
-                t(locale, "请从项目库新建", "Start a new design from Projects"),
-              );
-          }}
+          showActions={false}
         />
       </Drawer>
       {(loadFailed || readOnly || (!workspaceId && preview)) && <p className="page-footnote">

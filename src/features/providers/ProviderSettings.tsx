@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { Locale } from '../../app/i18n';
 import { Badge, Button, Field, Icon, IconButton, Select, t } from '../../app/studio/ui';
@@ -18,6 +18,16 @@ export type ProviderSettingsProps = {
   onTestImageGeneration?: (connectionId: string, input: { prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
   activeProfile?: ProviderProfile;
   onActiveProfileChange?: (profile: ProviderProfile) => void;
+  onActionsChange?: (actions: ProviderSettingsActions | null) => void;
+};
+
+export type ProviderSettingsActions = {
+  saveConfig: () => void;
+  canSaveConfig: boolean;
+  testImageGeneration: () => void;
+  testBusy: boolean;
+  showTestImage: boolean;
+  canTestImage: boolean;
 };
 
 type ConversationDraft = {
@@ -92,6 +102,7 @@ export const ProviderSettings = ({
   onSaveProviderConfig,
   onTestImageGeneration,
   activeProfile,
+  onActionsChange,
 }: ProviderSettingsProps) => {
   const [selectedId, setSelectedId] = useState(connections[0]?.id ?? '');
   const [configured, setConfigured] = useState<Record<ProviderProfile, boolean>>({ conversation: false, image: false });
@@ -210,6 +221,26 @@ export const ProviderSettings = ({
     }
   };
 
+  const saveConfigRef = useRef(saveConfig);
+  const testImageGenerationRef = useRef(testImageGeneration);
+  saveConfigRef.current = saveConfig;
+  testImageGenerationRef.current = testImageGeneration;
+  const canSaveConfig = Boolean(onSaveProviderConfig);
+  const showTestImage = activeProfile === 'image' && Boolean(onTestImageGeneration);
+  const canTestImage = Boolean(showTestImage && configured.image && configDraft.image.baseUrl.trim());
+
+  useEffect(() => {
+    onActionsChange?.({
+      saveConfig: () => { void saveConfigRef.current(); },
+      canSaveConfig,
+      testImageGeneration: () => { void testImageGenerationRef.current(); },
+      testBusy,
+      showTestImage,
+      canTestImage,
+    });
+  }, [canSaveConfig, canTestImage, onActionsChange, showTestImage, testBusy]);
+  useEffect(() => () => onActionsChange?.(null), [onActionsChange]);
+
   const testImageSource = (image: GeneratedImage): string | undefined => {
     if (image.base64) return image.base64.startsWith('data:') ? image.base64 : `data:${image.mimeType ?? 'image/png'};base64,${image.base64}`;
     return image.url;
@@ -280,7 +311,7 @@ export const ProviderSettings = ({
           <img src={testImageSource(testResult.image)} alt={t(locale, '连接测试结果', 'Connection test result')} />
           <small>{t(locale, '临时预览', 'Temporary preview')}</small>
         </div>}
-        {(isImage && onTestImageGeneration) || onSaveProviderConfig ? <div className="provider-profile-actions-row">
+        {(!onActionsChange && ((isImage && onTestImageGeneration) || onSaveProviderConfig)) ? <div className="provider-profile-actions-row">
           {isImage && onTestImageGeneration && <div className="provider-test-actions">
             <Button type="button" variant="ai" icon="image" disabled={testBusy || !configured.image || !configDraft.image.baseUrl.trim()} onClick={() => { void testImageGeneration(); }}>
               {testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}

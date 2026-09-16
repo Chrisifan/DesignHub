@@ -380,6 +380,9 @@ export const Workbench = ({
   };
   const submitPrompt = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
+    submitPromptRequest();
+  };
+  const submitPromptRequest = (): void => {
     if (readOnly) return;
     if (!prompt.trim()) {
       notify(t(locale, '请输入修改说明', 'Enter an edit request'));
@@ -699,6 +702,17 @@ export const Workbench = ({
         title={panelCopy[panel].label}
         locale={locale}
         onClose={() => setPanelOpen(false)}
+        footer={panel === 'conversation' ? (
+          <div className="workbench-compose__actions">
+            <Button variant="secondary" icon="plug" onClick={onConnections} disabled={readOnly}>{t(locale, '连接', 'Connect')}</Button>
+            <Button variant="ai" icon="arrow-up-right" onClick={submitPromptRequest} disabled={readOnly}>{t(locale, '发送', 'Send')}</Button>
+            <Button variant="ai" icon="sparkles" onClick={submitGeneration} disabled={readOnly}>{t(locale, '生成', 'Generate')}</Button>
+          </div>
+        ) : panel === 'history' && workspaceId ? (
+          <div className="workbench-compose__actions">
+            <Button variant="secondary" icon="save" disabled={readOnly || revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>
+          </div>
+        ) : undefined}
       >
           <div className="workbench-context">
             <div className="workbench-panel-heading workbench-context__heading">
@@ -859,22 +873,6 @@ export const Workbench = ({
                       onChange={(event) => setPrompt(event.target.value)}
                     />
                   </Field>
-                  <div className="workbench-compose__actions">
-                    <Button
-                      variant="secondary"
-                      icon="plug"
-                      onClick={onConnections}
-                      disabled={readOnly}
-                    >
-                      {t(locale, '连接', 'Connect')}
-                    </Button>
-                    <Button variant="ai" icon="arrow-up-right" type="submit" disabled={readOnly}>
-                      {t(locale, '发送', 'Send')}
-                    </Button>
-                    <Button variant="ai" icon="sparkles" type="button" onClick={submitGeneration} disabled={readOnly}>
-                      {t(locale, '生成', 'Generate')}
-                    </Button>
-                  </div>
                 </form>
               </div>
             )}
@@ -888,7 +886,6 @@ export const Workbench = ({
                     workspaceId ? 'The current document scene is saved to the workspace. Revision events appear after a version is committed.' : 'This example session contains only its baseline. Preview edits are not saved as a version.',
                   )}
                 </p>
-                {workspaceId && <Button variant="secondary" icon="save" disabled={readOnly || revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>}
                 <ol className="workbench-history-list">
                 {tasks.filter((task) => task.state === 'completed' && task.result?.candidate).map((task) => {
                   const candidate = task.result!.candidate!;

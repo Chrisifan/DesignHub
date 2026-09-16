@@ -18,6 +18,7 @@ export type DrawerProps = {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  footer?: ReactNode;
   locale?: Locale;
 };
 
@@ -26,6 +27,7 @@ export const Drawer = ({
   title,
   onClose,
   children,
+  footer,
   locale = 'zh-CN',
 }: DrawerProps) => {
   const titleId = useId();
@@ -106,6 +108,7 @@ export const Drawer = ({
           <IconButton name="x" label={t(locale, '关闭', 'Close')} onClick={onClose} />
         </header>
         <div className="ui-drawer__content">{children}</div>
+        {footer ? <div className="ui-drawer__footer">{footer}</div> : null}
       </aside>
     </div>,
     portalTarget,

@@ -20,6 +20,7 @@ The footer has its own background and top divider. It is outside `.ui-drawer__co
 - Brand details: edit and delete actions move to the footer.
 - Provider settings: save configuration and test image generation move to the footer; per-profile credential save/delete remain beside the API key they modify because they are field-level actions.
 - Designer inspector: edit, use for new, set default, delete, and restore move to the footer.
+- Delivery configuration: the primary export action and destination status move to the footer; per-history re-export actions remain beside their export record.
 - Workbench: panel-level send, generate, and save-version actions move to the footer. History-item and tool-entry actions remain next to their associated item.
 - Canvas inspector has no action buttons and only gains the shared footer structure when a future footer is supplied.
 - The drawer close button remains in the header as an overlay-level control.

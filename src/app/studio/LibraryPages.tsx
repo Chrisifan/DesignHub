@@ -30,7 +30,7 @@ import {
 import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
 import { createScene } from '../../features/canvas/scene';
-import { ProviderSettings } from '../../features/providers/ProviderSettings';
+import { ProviderSettings, type ProviderSettingsActions } from '../../features/providers/ProviderSettings';
 import { BrandEditor } from '../../features/brands/BrandEditor';
 import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
@@ -409,6 +409,13 @@ const AssetsPage = ({
           title={t(locale, '素材详情', 'Asset details')}
           locale={locale}
           onClose={() => setDrawerOpen(false)}
+          footer={usingManagedAssets && selected.managed !== false && onAssetAction ? (
+            <div className="asset-detail-actions" role="group" aria-label={t(locale, '素材操作', 'Asset actions')}>
+              <Button icon="image" onClick={() => onAssetAction({ assetId: selected.id, mode: 'place', projectId })}>{t(locale, '放入画布', 'Place on canvas')}</Button>
+              <Button icon="eye" onClick={() => onAssetAction({ assetId: selected.id, mode: 'reference', projectId })}>{t(locale, '作为参考', 'Use as reference')}</Button>
+              <Button icon="rotate-ccw" onClick={() => onAssetAction({ assetId: selected.id, mode: 'replace', projectId })}>{t(locale, '替换选中图像', 'Replace selected image')}</Button>
+            </div>
+          ) : undefined}
         ><div
           className="details-panel asset-details"
         >
@@ -435,13 +442,6 @@ const AssetsPage = ({
               </Badge>
             </DetailRow>
           </dl>
-          {usingManagedAssets && selected.managed !== false && onAssetAction && (
-            <div className="asset-detail-actions" role="group" aria-label={t(locale, '素材操作', 'Asset actions')}>
-              <Button icon="image" onClick={() => onAssetAction({ assetId: selected.id, mode: 'place', projectId })}>{t(locale, '放入画布', 'Place on canvas')}</Button>
-              <Button icon="eye" onClick={() => onAssetAction({ assetId: selected.id, mode: 'reference', projectId })}>{t(locale, '作为参考', 'Use as reference')}</Button>
-              <Button icon="rotate-ccw" onClick={() => onAssetAction({ assetId: selected.id, mode: 'replace', projectId })}>{t(locale, '替换选中图像', 'Replace selected image')}</Button>
-            </div>
-          )}
           {!workspaceId && preview && <p className="panel-note">
             <Icon name="lock" size={15} />
             {t(
@@ -568,6 +568,12 @@ const BrandsPage = ({
           title={t(locale, '品牌详情', 'Brand details')}
           locale={locale}
           onClose={() => setDrawerOpen(false)}
+          footer={workspaceId ? (
+            <div className="dialog-actions brand-actions">
+              <Button icon="pencil" onClick={() => { if (selectedRecord) setEditor(selectedRecord); }}>{t(locale, '编辑', 'Edit')}</Button>
+              <Button icon="trash-2" onClick={() => { if (selectedRecord) setDeletePending(selectedRecord); }}>{t(locale, '删除', 'Delete')}</Button>
+            </div>
+          ) : undefined}
         ><div
           className="details-panel brand-details"
         >
@@ -617,10 +623,6 @@ const BrandsPage = ({
               workspaceId ? 'Projects continue using their creation-time brand snapshot.' : 'Example projects are not automatically upgraded to the current brand version.',
             )}
           </p>}
-          {workspaceId && <div className="dialog-actions brand-actions">
-            <Button icon="pencil" onClick={() => { if (selectedRecord) setEditor(selectedRecord); }}>{t(locale, '编辑', 'Edit')}</Button>
-            <Button icon="trash-2" onClick={() => { if (selectedRecord) setDeletePending(selectedRecord); }}>{t(locale, '删除', 'Delete')}</Button>
-          </div>}
         </div></Drawer>
       </div>
       {workspaceId && <div className="brand-create-row"><Button variant="secondary" icon="plus" onClick={() => setEditor({ id: `brand-${crypto.randomUUID()}`, name: '', version: 'v1', logo: '', colorPalette: [], fonts: [], tone: '', fixedCopy: '', sizes: [] })}>{t(locale, '新建', 'New')}</Button></div>}
@@ -636,6 +638,7 @@ const ConnectionsPage = ({
 }: Pick<PageProps, 'locale'> & { workspaceId?: string }) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
+  const [providerActions, setProviderActions] = useState<ProviderSettingsActions | null>(null);
   const [activeProfile, setActiveProfile] = useState<ProviderProfile>('conversation');
   const [drawerOpen, setDrawerOpen] = useState(false);
   useEffect(() => {
@@ -690,11 +693,18 @@ const ConnectionsPage = ({
         title={t(locale, '连接配置', 'Connection configuration')}
         locale={locale}
         onClose={() => setDrawerOpen(false)}
+        footer={providerActions ? (
+          <div className="provider-profile-actions-row">
+            {providerActions.showTestImage && <Button type="button" variant="ai" icon="image" disabled={providerActions.testBusy || !providerActions.canTestImage} onClick={providerActions.testImageGeneration}>{providerActions.testBusy ? t(locale, '生成测试图…', 'Generating test image…') : t(locale, '测试图片生成', 'Test image generation')}</Button>}
+            {providerActions.canSaveConfig && <Button type="button" variant="secondary" icon="save" onClick={providerActions.saveConfig}>{t(locale, '保存配置', 'Save config')}</Button>}
+          </div>
+        ) : undefined}
       ><ProviderSettings
         locale={locale}
         connections={connections}
         configs={providerConfigs}
         activeProfile={activeProfile}
+        onActionsChange={setProviderActions}
         onActiveProfileChange={(profile) => { setActiveProfile(profile); setDrawerOpen(true); }}
         onSaveProviderConfig={async (connectionId, config) => {
           const saved = await (getDesktopApi().saveProviderConfig?.({ connectionId: connectionId as 'openai-compatible', config }) ?? false);
@@ -1119,6 +1129,17 @@ const DeliveryPage = ({
           title={t(locale, '导出配置', 'Delivery configuration')}
           locale={locale}
           onClose={() => setDrawerOpen(false)}
+          footer={(
+            <div className="export-bar">
+              <div>
+                <strong>{t(locale, '尚未选择目标目录', 'No destination selected')}</strong>
+                <span>{t(locale, persistedProject ? '使用桌面保存对话框写出并校验文件。' : '桌面导出能力接入后才可执行。', persistedProject ? 'Use the desktop save dialog to write and validate the file.' : 'Available after desktop export support is connected.')}</span>
+              </div>
+              <Button variant="primary" icon="download" disabled={!project?.workspaceId || !activeDocumentId || exporting} onClick={() => { void exportCurrent(); }}>
+                {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
+              </Button>
+            </div>
+          )}
         ><div className="delivery-config">
           <div className="config-section">
             <p className="panel-label">
@@ -1180,23 +1201,6 @@ const DeliveryPage = ({
               </small>
             </span>
           </label>
-          <div className="export-bar">
-            <div>
-              <strong>
-                {t(locale, '尚未选择目标目录', 'No destination selected')}
-              </strong>
-              <span>
-                {t(
-                  locale,
-                  persistedProject ? '使用桌面保存对话框写出并校验文件。' : '桌面导出能力接入后才可执行。',
-                  persistedProject ? 'Use the desktop save dialog to write and validate the file.' : 'Available after desktop export support is connected.',
-                )}
-              </span>
-            </div>
-            <Button variant="primary" icon="download" disabled={!project?.workspaceId || !activeDocumentId || exporting} onClick={() => { void exportCurrent(); }}>
-              {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
-            </Button>
-          </div>
           {persistedProject && <div className="export-history" aria-label={t(locale, '导出历史', 'Export history')}>
             <p className="panel-label">{t(locale, '导出历史', 'Export history')}</p>
             {exportHistory.length === 0 ? <small>{t(locale, '暂无导出记录。', 'No export records yet.')}</small> : exportHistory.slice(0, 5).map((record) => (

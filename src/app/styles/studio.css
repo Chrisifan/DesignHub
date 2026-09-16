@@ -819,6 +819,27 @@ button:disabled {
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
+.ui-drawer__footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-container-low);
+}
+.ui-drawer__footer .dialog-actions,
+.ui-drawer__footer .asset-detail-actions,
+.ui-drawer__footer .persona-inspector__actions,
+.ui-drawer__footer .provider-profile-actions-row,
+.ui-drawer__footer .workbench-compose__actions,
+.ui-drawer__footer .export-bar {
+  margin: 0;
+}
+.ui-drawer__footer > :where(.dialog-actions, .asset-detail-actions, .persona-inspector__actions, .provider-profile-actions-row, .workbench-compose__actions, .export-bar) {
+  width: 100%;
+}
 .dialog-heading {
   display: flex;
   align-items: center;

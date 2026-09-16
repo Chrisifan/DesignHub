@@ -44,6 +44,13 @@ it('opens a workbench context drawer without narrowing the canvas', () => {
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
 });
 
+it('keeps conversation actions in the fixed drawer footer', () => {
+  render(<Workbench {...makeProps()} />);
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  const dialog = screen.getByRole('dialog', { name: '对话' });
+  expect(dialog.querySelector('.workbench-compose__actions')?.closest('.ui-drawer__footer')).toBeInTheDocument();
+});
+
 it('keeps the workbench canvas clear until a context is selected', () => {
   render(<Workbench {...makeProps()} />);
 

@@ -124,7 +124,7 @@ Add equivalent assertions for `.brand-actions` and `.persona-inspector__actions`
 
 - [ ] **Step 2: Move asset, brand, and persona action groups**
 
-Remove each action group from its content child and pass it through the corresponding `Drawer footer={...}` prop, preserving every existing callback, label, icon, and disabled condition. Keep informational notes in the scrolling content.
+Remove each action group from its content child and pass it through the corresponding `Drawer footer={...}` prop, preserving every existing callback, label, icon, and disabled condition. Keep informational notes in the scrolling content. Apply the same structure to delivery configuration: move `.export-bar` into the footer and keep export-history re-export controls on their records.
 
 - [ ] **Step 3: Run focused tests**
 

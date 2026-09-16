@@ -23,7 +23,9 @@ const createDeferred = <T,>() => {
 it("opens a selected persona in the inspector drawer and filters the repository", () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={personaProfiles} />);
   fireEvent.click(screen.getByRole("button", { name: /纸感排版/ }));
-  expect(screen.getByRole("dialog", { name: "设计师检查器" })).toBeInTheDocument();
+  const dialog = screen.getByRole("dialog", { name: "设计师检查器" });
+  expect(dialog).toBeInTheDocument();
+  expect(dialog.querySelector('.persona-inspector__actions')?.closest('.ui-drawer__footer')).toBeInTheDocument();
   expect(screen.getByText("Style DNA")).toBeInTheDocument();
   expect(screen.getByText("禁用规则")).toBeInTheDocument();
   expect(screen.getByText("精选作品")).toBeInTheDocument();

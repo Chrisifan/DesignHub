@@ -112,11 +112,24 @@ it('filters assets and opens the selected asset details in a drawer', () => {
     screen.queryByRole('button', { name: /市集原图/ }),
   ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /春间标志/ }));
-  expect(screen.getByRole('dialog', { name: '素材详情' })).toBeInTheDocument();
+  const details = screen.getByRole('dialog', { name: '素材详情' });
+  expect(details).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: '春间标志' })).toBeInTheDocument();
-  expect(within(screen.getByRole('dialog', { name: '素材详情' })).getByText('SVG · 640 × 240')).toBeInTheDocument();
+  expect(within(details).getByText('SVG · 640 × 240')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '关闭' }));
   expect(screen.queryByRole('dialog', { name: '素材详情' })).not.toBeInTheDocument();
+});
+
+it('places brand detail actions in the drawer footer', async () => {
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadBrandState: vi.fn(async () => ({ brands: previewBrands as never })),
+  };
+  render(<Harness initialView="brands" workspaceId="workspace-1" />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /春间/ })).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: /春间/ }));
+  const dialog = screen.getByRole('dialog', { name: '品牌详情' });
+  expect(dialog.querySelector('.brand-actions')?.closest('.ui-drawer__footer')).toBeInTheDocument();
 });
 
 it('wraps an empty asset search result in the page-level empty-state region', () => {
@@ -183,6 +196,7 @@ it('exposes explicit asset placement actions from project details', async () => 
   render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" onAssetAction={onAssetAction} />);
   fireEvent.click(await screen.findByRole('button', { name: /可用原图/ }));
   const details = await screen.findByRole('dialog', { name: '素材详情' });
+  expect(details.querySelector('.asset-detail-actions')?.closest('.ui-drawer__footer')).toBeInTheDocument();
   fireEvent.click(within(details).getByRole('button', { name: '放入画布' }));
   expect(onAssetAction).toHaveBeenCalledWith({ assetId: 'asset-action', mode: 'place', projectId: 'project-1' });
   fireEvent.click(within(details).getByRole('button', { name: '作为参考' }));
@@ -221,7 +235,9 @@ it('shows honest unavailable states for connections and delivery', () => {
   expect(screen.getByText('尚未连接模型')).toBeInTheDocument();
   expect(screen.queryByLabelText('对话与视觉 API 密钥')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '对话与视觉' }));
-  expect(screen.getByRole('dialog', { name: '连接配置' })).toBeInTheDocument();
+  const dialog = screen.getByRole('dialog', { name: '连接配置' });
+  expect(dialog).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: '保存配置' }).closest('.ui-drawer__footer')).toBeInTheDocument();
   expect(screen.getByLabelText('对话与视觉 API 密钥')).toBeInTheDocument();
   expect(
     screen.queryByRole('button', { name: /检测/ }),
@@ -334,7 +350,9 @@ it('derives the delivery preview from the selected project', () => {
   expect(
     container.querySelector('.delivery-preview .artwork--objects'),
   ).toBeInTheDocument();
-  expect(screen.getByRole('dialog', { name: '导出配置' })).toBeInTheDocument();
+  const dialog = screen.getByRole('dialog', { name: '导出配置' });
+  expect(dialog).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: '导出' }).closest('.ui-drawer__footer')).toBeInTheDocument();
   expect(screen.queryByText('定稿')).not.toBeInTheDocument();
 });
 
