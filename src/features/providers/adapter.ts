@@ -19,7 +19,8 @@ export type ChatRequest = { messages: ChatMessage[]; model?: string; temperature
 export type ChatUsage = { promptTokens?: number; completionTokens?: number; totalTokens?: number };
 export type ChatResponse = { text: string; usage?: ChatUsage; cost: number | null };
 export type ChatStreamEvent = { text: string; finishReason?: string | null };
-export type VisionRequest = { prompt: string; image: { url: string } | { base64: string; mimeType?: string } };
+export type VisionImage = { url: string } | { base64: string; mimeType?: string };
+export type VisionRequest = { prompt: string; images: VisionImage[] };
 export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number };
 export type ImageEditRequest = { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: string; toolParams?: ToolParams; region?: { x: number; y: number; width: number; height: number } };
 export type GeneratedImage = { url?: string; base64?: string; mimeType?: string };
@@ -338,8 +339,14 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     return { [Symbol.asyncIterator]: (): AsyncIterator<ChatStreamEvent> => ({ next }) };
   };
   const analyzeVision = async (request: VisionRequest, signal?: AbortSignal): Promise<ChatResponse> => {
-    const imageUrl = 'url' in request.image ? request.image.url : `data:${request.image.mimeType ?? 'image/png'};base64,${request.image.base64}`;
-    return chatFor('vision-analysis', { messages: [{ role: 'user', content: [{ type: 'text', text: request.prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }] }, signal);
+    if (request.images.length === 0) throw toError('Vision analysis requires at least one image.', 'invalid_response');
+    const images: ChatContentPart[] = request.images.map((image) => ({
+      type: 'image_url',
+      image_url: {
+        url: 'url' in image ? image.url : `data:${image.mimeType ?? 'image/png'};base64,${image.base64}`,
+      },
+    }));
+    return chatFor('vision-analysis', { messages: [{ role: 'user', content: [{ type: 'text', text: request.prompt }, ...images] }] }, signal);
   };
   const generateImage = async (request: ImageRequest, signal?: AbortSignal): Promise<ImageResponse> => {
     if (imageTransport === 'responses') {

@@ -17,16 +17,24 @@ const completeCandidate = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-it('turns explicit image sources and a vision response into reviewable profile drafts', async () => {
+it('synthesizes all explicit image sources into one named reviewable profile draft', async () => {
   const analyzeVision = vi.fn(async () => ({
     text: JSON.stringify({ candidates: [completeCandidate({ artworkUrl: 'https://cdn.test/paper.png' })] }), cost: null,
   }));
   const result = await analyzePortfolio({
     designerDraftId: 'draft-1', connectionId: 'provider-1', adapter: { analyzeVision },
-    sources: [{ id: 'source-1', description: 'A poster with paper texture', image: { url: 'https://img.test/a.png' } }],
+    sources: [
+      { id: 'source-1', description: 'A poster with paper texture', image: { url: 'https://img.test/a.png' } },
+      { id: 'source-2', description: 'A matching editorial detail', image: { url: 'https://img.test/b.png' } },
+    ],
   });
-  expect(analyzeVision).toHaveBeenCalledWith(expect.objectContaining({ image: { url: 'https://img.test/a.png' }, prompt: expect.stringContaining('styleDna') }));
-  expect(result).toMatchObject({ taskId: expect.any(String), designerDraftId: 'draft-1', sourceIds: ['source-1'] });
+  expect(analyzeVision).toHaveBeenCalledTimes(1);
+  expect(analyzeVision).toHaveBeenCalledWith(expect.objectContaining({
+    images: [{ url: 'https://img.test/a.png' }, { url: 'https://img.test/b.png' }],
+    prompt: expect.stringContaining('original designer name'),
+  }));
+  expect(result).toMatchObject({ taskId: expect.any(String), designerDraftId: 'draft-1', sourceIds: ['source-1', 'source-2'] });
+  expect(result.candidates).toHaveLength(1);
   expect(result.candidates[0]).toMatchObject({ status: 'draft', name: { zh: '纸感' }, artworkUrl: 'https://cdn.test/paper.png' });
 });
 

@@ -51,7 +51,7 @@ describe('OpenAI-compatible provider adapter', () => {
     });
 
     await adapter.chat({ messages: [{ role: 'user', content: 'hi' }] });
-    await adapter.analyzeVision({ prompt: 'describe', image: { url: 'https://img.test/a.png' } });
+    await adapter.analyzeVision({ prompt: 'describe', images: [{ url: 'https://img.test/a.png' }] });
     await adapter.generateImage({ prompt: 'a poster' });
 
     expect(bodies.map((body) => body.model)).toEqual(['chat-model', 'vision-model', 'image-model']);
@@ -99,15 +99,28 @@ describe('OpenAI-compatible provider adapter', () => {
     await expect(iterator.next()).rejects.toMatchObject({ kind: 'invalid_response' });
   });
 
-  it('supports vision, image generation, and image editing endpoints', async () => {
-    const fetcher = vi.fn(async (url: string) => {
+  it('sends all portfolio images in one vision request', async () => {
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(init).toBeDefined();
       if (url.endsWith('/chat/completions')) return response({ choices: [{ message: { content: 'vision result' } }] });
       if (url.endsWith('/images/generations')) return response({ data: [{ b64_json: 'generated' }] });
       return response({ data: [{ url: 'https://cdn.test/edited.png' }] });
     });
     const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key', fetch: fetcher });
 
-    await expect(adapter.analyzeVision({ prompt: 'describe', image: { url: 'https://img.test/a.png' } })).resolves.toMatchObject({ text: 'vision result' });
+    await expect(adapter.analyzeVision({
+      prompt: 'describe selected work',
+      images: [
+        { url: 'https://img.test/a.png' },
+        { base64: pngBase64, mimeType: 'image/png' },
+      ],
+    })).resolves.toMatchObject({ text: 'vision result' });
+    const body = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as { messages: Array<{ content: Array<{ type: string; image_url?: { url: string } }> }> };
+    expect(body.messages[0]?.content).toEqual([
+      { type: 'text', text: 'describe selected work' },
+      { type: 'image_url', image_url: { url: 'https://img.test/a.png' } },
+      { type: 'image_url', image_url: { url: `data:image/png;base64,${pngBase64}` } },
+    ]);
     await expect(adapter.generateImage({ prompt: 'a poster' })).resolves.toMatchObject({ images: [{ base64: 'generated' }], cost: null });
     await expect(adapter.editImage({ prompt: 'remove logo', image: new Blob(['image']) })).resolves.toMatchObject({ images: [{ url: 'https://cdn.test/edited.png' }] });
   });

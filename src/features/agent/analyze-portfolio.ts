@@ -1,7 +1,7 @@
-import type { VisionRequest } from '../providers/adapter';
+import type { VisionImage, VisionRequest } from '../providers/adapter';
 import type { LocalizedText, PersonaProfile } from '../../app/studio/personas';
 
-export type PortfolioImageSource = { id: string; description: string; image: VisionRequest['image'] };
+export type PortfolioImageSource = { id: string; description: string; image: VisionImage };
 export type VisionAnalysisAdapter = { analyzeVision: (request: VisionRequest, signal?: AbortSignal) => Promise<{ text: string; cost: number | null }> };
 export type AnalyzePortfolioInput = {
   sourceIds?: string[];
@@ -19,7 +19,7 @@ const maxSourceDescriptionLength = 4000;
 
 const normalizeSourceIds = (ids: readonly string[]): string[] => ids.map((id) => id.trim()).filter(Boolean);
 
-const isValidVisionImage = (image: unknown): image is VisionRequest['image'] => {
+const isValidVisionImage = (image: unknown): image is VisionImage => {
   if (!image || typeof image !== 'object') return false;
   const value = image as Record<string, unknown>;
   if (typeof value.url === 'string') {
@@ -148,6 +148,10 @@ const analyzeVisionWithRetry = async (
     return signal ? adapter.analyzeVision(request, signal) : adapter.analyzeVision(request);
   }
 };
+const portfolioSynthesisPrompt = (sources: readonly PortfolioImageSource[]): string => {
+  const descriptions = sources.map((source, index) => `${index + 1}. ${source.description}`).join('\n');
+  return `Analyse all selected portfolio sources as one coherent visual system. Source descriptions:\n${descriptions}\nReturn JSON only, without Markdown or explanatory text. Return exactly one candidate in {"candidates":[{"name":{"zh":"","en":""},"signature":{"zh":"","en":""},"summary":{"zh":"","en":""},"principle":{"zh":"","en":""},"tags":[{"zh":"","en":""}],"styleDna":{"palette":["#000000"],"typography":{"zh":"","en":""},"composition":{"zh":"","en":""},"texture":{"zh":"","en":""}},"negativeRules":[{"zh":"","en":""}]}]}. Create an original designer name derived from the combined visual style; do not use placeholders such as Portfolio candidate. Supply non-empty values for every field, at least one tag, palette color, and negative rule. Do not invent provenance or claim identity.`;
+};
 const profileFromCandidate = (value: unknown, index: number): PersonaProfile => {
   if (!isCompletePortfolioCandidate(value)) throw new Error('VISION_ANALYSIS_INVALID_RESPONSE');
   const item = value as Record<string, unknown>;
@@ -180,20 +184,13 @@ export const analyzePortfolio = async (input: AnalyzePortfolioInput): Promise<An
   const sourceIds = input.sources ? validatePortfolioSources(input.sources, declaredIds) : [...new Set(declaredIds)];
   if (sourceIds.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
   if (!input.adapter || !input.sources?.length) throw new Error('VISION_ANALYSIS_UNAVAILABLE');
-  const candidates: PersonaProfile[] = [];
-  let cost = 0;
-  let costKnown = true;
-  for (const source of input.sources) {
-    const request = {
-      prompt: `Analyse portfolio source ${source.id}. Source description: ${source.description}. Return JSON only, without Markdown or explanatory text. Return {"candidates":[{"name":{"zh":"","en":""},"signature":{"zh":"","en":""},"summary":{"zh":"","en":""},"principle":{"zh":"","en":""},"tags":[{"zh":"","en":""}],"styleDna":{"palette":["#000000"],"typography":{"zh":"","en":""},"composition":{"zh":"","en":""},"texture":{"zh":"","en":""}},"negativeRules":[{"zh":"","en":""}]}]}. Every candidate must supply non-empty values for every field, at least one tag, palette color, and negative rule. Do not invent provenance or claim identity.`,
-      image: source.image,
-    };
-    const response = await analyzeVisionWithRetry(input.adapter, request, input.signal);
-    if (response.cost === null || response.cost === undefined) costKnown = false;
-    else cost += response.cost;
-    candidates.push(...candidatesFromResponse(response.text, candidates.length));
-  }
-  return { taskId: createTaskId('portfolio-analysis'), designerDraftId: input.designerDraftId, sourceIds, candidates: candidates.slice(0, 4), cost: costKnown ? cost : null };
+  const response = await analyzeVisionWithRetry(input.adapter, {
+    prompt: portfolioSynthesisPrompt(input.sources),
+    images: input.sources.map((source) => source.image),
+  }, input.signal);
+  const candidates = candidatesFromResponse(response.text, 0);
+  if (candidates.length !== 1) throw new Error('VISION_ANALYSIS_INVALID_RESPONSE');
+  return { taskId: createTaskId('portfolio-analysis'), designerDraftId: input.designerDraftId, sourceIds, candidates, cost: response.cost ?? null };
 };
 
 export const parsePortfolioCandidates = (text: string): PersonaProfile[] => candidatesFromResponse(text, 0);

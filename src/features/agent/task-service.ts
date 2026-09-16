@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResponse, GeneratedImage } from '../providers/adapter';
+import type { ChatRequest, ChatResponse, GeneratedImage, VisionRequest } from '../providers/adapter';
 import { isSafeProviderCode, type TaskProviderFailure, type TaskRecord } from '../tasks/state';
 import type { TaskSource } from '../tasks/state';
 import type { TaskRuntime } from '../tasks/runtime';
@@ -84,7 +84,7 @@ export type ImageGenerationTestResult = {
 
 type ConversationAdapter = {
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
-  analyzeVision?: (request: { prompt: string; image: { url: string } | { base64: string; mimeType?: string } }, signal?: AbortSignal) => Promise<ChatResponse>;
+  analyzeVision?: (request: VisionRequest, signal?: AbortSignal) => Promise<ChatResponse>;
   generateImage?: (request: { prompt: string; model?: string; size?: string; count?: number }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
   editImage?: (request: { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: ImageTool; toolParams?: ToolParams; region?: Region }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
 };

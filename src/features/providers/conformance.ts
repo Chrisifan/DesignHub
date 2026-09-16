@@ -53,7 +53,7 @@ const createProviderConformanceHarness = (
         if (!text.trim()) throw new Error('EMPTY_STREAM_RESULT');
       }),
       runCheck('vision-analysis', async () => {
-        const result = await adapter.analyzeVision({ prompt: 'Describe this conformance image.', image: { base64: 'aW1hZ2U=', mimeType: 'image/png' } });
+        const result = await adapter.analyzeVision({ prompt: 'Describe this conformance image.', images: [{ base64: 'aW1hZ2U=', mimeType: 'image/png' }] });
         if (!result.text.trim()) throw new Error('EMPTY_VISION_RESULT');
       }),
       runCheck('image-generation', async () => {

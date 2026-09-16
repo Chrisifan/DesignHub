@@ -474,11 +474,10 @@ it('fails image tasks that return no generated images', async () => {
   expect(runtime.get(task.id)).toMatchObject({ state: 'failed', errorCode: 'IMAGE_RESULT_EMPTY' });
 });
 
-it('runs a dedicated portfolio vision task for each explicit source', async () => {
+it('runs one portfolio vision task that synthesizes every explicit source', async () => {
   const runtime = createTaskRuntime();
-  let analysisCount = 0;
   const analyzeVision = vi.fn(async () => ({
-    text: JSON.stringify({ candidates: [completePortfolioCandidate({ zh: `Candidate ${++analysisCount}`, en: `Candidate ${analysisCount}` })] }),
+    text: JSON.stringify({ candidates: [completePortfolioCandidate({ zh: 'Synthesized candidate', en: 'Synthesized candidate' })] }),
     cost: null,
   }));
   const service = createAgentTaskService({
@@ -498,20 +497,16 @@ it('runs a dedicated portfolio vision task for each explicit source', async () =
     ],
   });
   await service.flush();
-  expect(analyzeVision).toHaveBeenCalledTimes(2);
-  expect(analyzeVision).toHaveBeenNthCalledWith(1, expect.objectContaining({
-    prompt: expect.stringContaining('source-a'),
-    image: { url: 'https://img.test/a.png' },
-  }), expect.any(AbortSignal));
-  expect(analyzeVision).toHaveBeenNthCalledWith(2, expect.objectContaining({
-    prompt: expect.stringContaining('source-b'),
-    image: { url: 'https://img.test/b.png' },
+  expect(analyzeVision).toHaveBeenCalledTimes(1);
+  expect(analyzeVision).toHaveBeenCalledWith(expect.objectContaining({
+    prompt: expect.stringContaining('1. first'),
+    images: [{ url: 'https://img.test/a.png' }, { url: 'https://img.test/b.png' }],
   }), expect.any(AbortSignal));
   expect(runtime.get(task.id)).toMatchObject({
     state: 'completed',
     capability: 'vision-analysis',
     source: { kind: 'designer-draft', id: 'designer-draft-vision' },
-    result: { text: expect.stringContaining('Candidate 1') },
+    result: { text: expect.stringContaining('Synthesized candidate') },
   });
 });
 
