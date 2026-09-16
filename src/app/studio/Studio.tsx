@@ -772,7 +772,7 @@ export const Studio = ({
           </button>
         </div>
         </aside>
-        <div className="studio-main">
+        <div className="studio-main" data-drawer-host>
         <PageToolbarProvider>
         <header
           className="studio-toolbar"

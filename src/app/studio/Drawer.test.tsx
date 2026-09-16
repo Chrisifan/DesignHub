@@ -15,6 +15,21 @@ it('closes a labelled drawer by button, backdrop, and Escape', () => {
   expect(onClose).toHaveBeenCalledTimes(3);
 });
 
+it('mounts the open drawer inside the studio work-area host', () => {
+  const { container } = render(
+    <div data-drawer-host>
+      <Drawer open title="连接配置" onClose={() => undefined}>
+        <p>内容</p>
+      </Drawer>
+    </div>,
+  );
+
+  const host = container.firstElementChild;
+  expect(host).toHaveAttribute('data-drawer-host');
+  expect(host?.querySelector('.ui-drawer-root')).toBeInTheDocument();
+  expect(document.body.querySelector(':scope > .ui-drawer-root')).not.toBeInTheDocument();
+});
+
 it('restores focus to the trigger after close', () => {
   const { rerender } = render(<button>春间标志</button>);
   const trigger = screen.getByRole('button', { name: '春间标志' });

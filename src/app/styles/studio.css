@@ -207,6 +207,7 @@ button:disabled {
     sans-serif;
 }
 .studio-main {
+  position: relative;
   display: grid;
   grid-template-rows: 44px minmax(0, 1fr) 28px;
   min-width: 0;
@@ -769,7 +770,7 @@ button:disabled {
   backdrop-filter: blur(4px);
 }
 .ui-drawer-root {
-  position: fixed;
+  position: absolute;
   z-index: 100;
   inset: 0;
   display: flex;
@@ -791,7 +792,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   inline-size: min(520px, 92vw);
-  max-block-size: 100dvh;
+  max-block-size: 100%;
   border-left: 1px solid var(--outline-variant);
   background: var(--surface-container-low);
   box-shadow: var(--shadow-overlay);

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { Locale } from '../i18n';
@@ -31,6 +31,9 @@ export const Drawer = ({
   const titleId = useId();
   const panelRef = useRef<HTMLElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(() => (
+    document.querySelector<HTMLElement>('[data-drawer-host]') ?? document.body
+  ));
 
   useEffect(() => {
     if (!open) {
@@ -73,7 +76,14 @@ export const Drawer = ({
     };
   }, [onClose, open]);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    const nextTarget = document.querySelector<HTMLElement>('[data-drawer-host]') ?? document.body;
+    setPortalTarget((currentTarget) => currentTarget === nextTarget ? currentTarget : nextTarget);
+  }, [open, portalTarget]);
+
   if (!open) return null;
+  if (!portalTarget) return null;
 
   return createPortal(
     <div className="ui-drawer-root">
@@ -98,6 +108,6 @@ export const Drawer = ({
         <div className="ui-drawer__content">{children}</div>
       </aside>
     </div>,
-    document.body,
+    portalTarget,
   );
 };
