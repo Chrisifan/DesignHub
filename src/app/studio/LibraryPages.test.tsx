@@ -6,8 +6,10 @@ import type { Locale } from '../i18n';
 import { LibraryPages } from './LibraryPages';
 import type { Project, Theme, View } from './types';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
+import type { TaskRecord } from '../../features/tasks/state';
 import { previewAssets, previewBrands } from '../../../tests/fixtures/libraries';
 import { personaProfiles } from '../../../tests/fixtures/personas';
+import { PageToolbarHost, PageToolbarProvider } from './PageToolbar';
 
 const Harness = ({
   initialView = 'designers',
@@ -56,6 +58,22 @@ const Harness = ({
     </>
   );
 };
+
+const taskRecord = (overrides: Partial<TaskRecord> = {}): TaskRecord => ({
+  id: 'task-1',
+  requestId: 'request-1',
+  state: 'completed',
+  cancelRequested: false,
+  attempt: 1,
+  ...overrides,
+});
+
+const TaskHarness = ({ workspaceId = 'workspace-1' }: { workspaceId?: string }) => (
+  <PageToolbarProvider>
+    <PageToolbarHost />
+    <Harness initialView="tasks" workspaceId={workspaceId} />
+  </PageToolbarProvider>
+);
 
 it('exposes portfolio analysis as the only new-designer flow', () => {
   render(<Harness />);
@@ -550,7 +568,49 @@ it('hydrates persisted model tasks in the task view', async () => {
   expect((await screen.findAllByText('处理中')).length).toBeGreaterThan(0);
   expect(screen.getAllByText('1')).toHaveLength(2);
   expect(listTasks).toHaveBeenCalledWith('workspace-1');
-  expect(screen.getByText('2 张图')).toBeInTheDocument();
+  expect(screen.getByTitle('2 张图 · 费用 0.04')).toBeInTheDocument();
+});
+
+it('filters model tasks from the breadcrumb toolbar and keeps rows compact', async () => {
+  const longRequest = '这是一段很长的模型任务请求，用于验证任务列表不会因为内容过长而换行显示';
+  const listTasks = vi.fn(async () => [
+    taskRecord({ id: 'task-queued', state: 'queued' }),
+    taskRecord({ id: 'task-running', state: 'running' }),
+    taskRecord({ id: 'task-completed', requestText: longRequest, result: { imageCount: 2, cost: 0.04 } }),
+    taskRecord({ id: 'task-failed', state: 'failed', requestText: '失败请求', errorCode: 'PROVIDER_UNAVAILABLE' }),
+    taskRecord({ id: 'task-cancelled', state: 'cancelled' }),
+  ]);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks };
+  render(<TaskHarness />);
+
+  const toolbar = await screen.findByRole('group', { name: '任务状态' });
+  expect(within(toolbar).getByRole('button', { name: '全部5' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('button', { name: '排队1' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('button', { name: '处理中1' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('button', { name: '已完成1' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('button', { name: '失败2' })).toBeInTheDocument();
+  expect(document.querySelector('.task-summary')).toBeNull();
+  expect(screen.queryByText('本次会话')).not.toBeInTheDocument();
+
+  fireEvent.click(within(toolbar).getByRole('button', { name: '失败2' }));
+  expect(screen.getByRole('article', { name: 'task-failed' })).toBeInTheDocument();
+  expect(screen.getByRole('article', { name: 'task-cancelled' })).toBeInTheDocument();
+  expect(screen.queryByRole('article', { name: 'task-completed' })).not.toBeInTheDocument();
+  expect(screen.getByText('失败请求')).toHaveClass('task-row__summary');
+
+  fireEvent.click(within(toolbar).getByRole('button', { name: '全部5' }));
+  expect(screen.getByText(longRequest)).toHaveClass('task-row__summary');
+  expect(screen.getByText(longRequest)).toHaveAttribute('title', longRequest);
+});
+
+it('shows an empty state when a task category has no matches', async () => {
+  const listTasks = vi.fn(async () => [taskRecord({ id: 'task-completed', state: 'completed' })]);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks };
+  render(<TaskHarness />);
+  const toolbar = await screen.findByRole('group', { name: '任务状态' });
+  fireEvent.click(within(toolbar).getByRole('button', { name: '排队0' }));
+  expect(screen.getByRole('heading', { name: '没有匹配任务' })).toBeInTheDocument();
+  expect(within(toolbar).getByRole('button', { name: '排队0' })).toHaveAttribute('aria-pressed', 'true');
 });
 
 it('lets a running task be stopped through the desktop bridge', async () => {
@@ -597,8 +657,7 @@ it('does not offer an implicit retry for portfolio vision tasks without retained
   render(<Harness initialView="tasks" workspaceId="workspace-1" />);
   await screen.findByText('失败');
   expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
-  expect(screen.getByText('服务请求被拒绝（HTTP 400，invalid_image_format）')).toBeInTheDocument();
-  expect(screen.getByText('请重新选择作品集来源')).toBeInTheDocument();
+  expect(screen.getByTitle('Portfolio analysis: source-a · 服务请求被拒绝（HTTP 400，invalid_image_format） · 请重新选择作品集来源')).toBeInTheDocument();
   expect(retryTask).not.toHaveBeenCalled();
 });
 
@@ -613,6 +672,6 @@ it('does not offer an implicit retry for image edits without a recoverable sourc
   render(<Harness initialView="tasks" workspaceId="workspace-1" />);
   await screen.findByText('失败');
   expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
-  expect(screen.getByText('请重新选择原图')).toBeInTheDocument();
+  expect(screen.getByTitle('去除背景 · 请重新选择原图')).toBeInTheDocument();
   expect(retryTask).not.toHaveBeenCalled();
 });

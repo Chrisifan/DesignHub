@@ -88,6 +88,7 @@ type BrandKit = {
 };
 type DeliveryFormat = 'png' | 'jpeg' | 'webp' | 'pdf';
 type StorageTab = 'trash' | 'backup';
+type TaskCategory = 'all' | 'queued' | 'running' | 'completed' | 'failed';
 type BackupPreferences = { destinationParentDirectory: string | null; schedule: BackupSchedule; lastRunAt: string | null; lastArtifactPath: string | null };
 
 const backupPreferencesKey = (workspaceId: string): string => `designhub.backup.${workspaceId}`;
@@ -755,9 +756,11 @@ const TasksPage = ({
   locale,
   navigate,
   workspaceId,
-}: Pick<PageProps, 'locale' | 'navigate'> & { workspaceId?: string }) => {
+  active,
+}: Pick<PageProps, 'locale' | 'navigate'> & { workspaceId?: string; active: boolean }) => {
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [category, setCategory] = useState<TaskCategory>('all');
   useEffect(() => {
     let cancelled = false;
     setLoadFailed(false);
@@ -782,8 +785,23 @@ const TasksPage = ({
     });
     return () => { cancelled = true; };
   }, [workspaceId]);
-  const queued = tasks.filter((task) => task.state === 'queued').length;
-  const running = tasks.filter((task) => task.state === 'running').length;
+  const matchesCategory = (task: TaskRecord, value: TaskCategory): boolean => {
+    if (value === 'all') return true;
+    if (value === 'failed') return task.state === 'failed' || task.state === 'cancelled' || task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART';
+    return task.state === value;
+  };
+  const taskCategories: Array<{ value: TaskCategory; label: string }> = [
+    { value: 'all', label: t(locale, '全部', 'All') },
+    { value: 'queued', label: t(locale, '排队', 'Queued') },
+    { value: 'running', label: t(locale, '处理中', 'Running') },
+    { value: 'completed', label: t(locale, '已完成', 'Completed') },
+    { value: 'failed', label: t(locale, '失败', 'Failed') },
+  ];
+  const taskCounts = taskCategories.reduce<Record<TaskCategory, number>>((counts, option) => {
+    counts[option.value] = tasks.filter((task) => matchesCategory(task, option.value)).length;
+    return counts;
+  }, { all: 0, queued: 0, running: 0, completed: 0, failed: 0 });
+  const visibleTasks = tasks.filter((task) => matchesCategory(task, category));
   const stopTask = async (taskId: string): Promise<void> => {
     if (!workspaceId) return;
     const stopped = await getDesktopApi().cancelTask?.(workspaceId, taskId);
@@ -813,6 +831,36 @@ const TasksPage = ({
     if (failure.kind === 'cancelled') return t(locale, '服务请求已取消', 'Provider request was cancelled');
     return t(locale, `服务请求被拒绝${suffix}`, `Provider request was rejected${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}`);
   };
+  const taskStateLabel = (task: TaskRecord): string => task.state === 'queued'
+    ? t(locale, '排队', 'Queued')
+    : task.state === 'running'
+      ? t(locale, '处理中', 'Running')
+      : task.state === 'completed'
+        ? t(locale, '已完成', 'Completed')
+        : task.state === 'cancelled'
+          ? t(locale, '已取消', 'Cancelled')
+          : task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART'
+            ? t(locale, '结果未知', 'Result unknown')
+            : t(locale, '失败', 'Failed');
+  const taskTone = (task: TaskRecord): string => task.state === 'failed' || task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART' ? 'warning' : task.state === 'completed' ? 'success' : '';
+  const taskSummary = (task: TaskRecord): string => {
+    const guidance = task.state === 'failed' || task.state === 'cancelled'
+      ? task.capability === 'vision-analysis'
+        ? t(locale, '请重新选择作品集来源', 'Select portfolio sources again')
+        : task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region)
+          ? t(locale, '请重新选择原图', 'Select the source image again')
+          : undefined
+      : undefined;
+    return [task.requestText, failureDescription(task), guidance].filter(Boolean).join(' · ')
+      || task.source?.id
+      || task.requestId
+      || t(locale, '模型任务', 'Model task');
+  };
+  const taskMetadata = (task: TaskRecord): string => [
+    task.updatedAt ?? task.createdAt,
+    task.result?.imageCount === undefined ? undefined : t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`),
+    task.result?.cost === undefined || task.result.cost === null ? undefined : t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`),
+  ].filter(Boolean).join(' · ') || '—';
   return <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型任务', 'Model tasks')}
@@ -823,46 +871,40 @@ const TasksPage = ({
         'Review model compute tasks submitted by projects or drafts.',
       )}
     />
-    <div className="task-summary">
-      <div>
-        <span>{t(locale, '排队', 'Queued')}</span>
-          <strong>{queued}</strong>
+    <PageToolbarSlot active={active}>
+      <div className="toolbar-segmented" role="group" aria-label={t(locale, '任务状态', 'Task status')}>
+        {taskCategories.map((option) => (
+          <button type="button" key={option.value} className={category === option.value ? 'is-active' : ''} aria-pressed={category === option.value} onClick={() => setCategory(option.value)}>
+            {option.label}<span>{taskCounts[option.value]}</span>
+          </button>
+        ))}
       </div>
-      <div>
-        <span>{t(locale, '处理中', 'Running')}</span>
-          <strong>{running}</strong>
-      </div>
-      <div>
-        <span>{t(locale, '本次会话', 'This session')}</span>
-          <strong>{tasks.length}</strong>
-      </div>
-    </div>
+    </PageToolbarSlot>
     {loadFailed ? <div className="page-empty-state"><EmptyState
       icon="circle-alert"
       title={t(locale, '任务读取失败', 'Could not load tasks')}
       description={t(locale, '请重试，原有任务不会被覆盖。', 'Retry without overwriting existing task records.')}
-    /></div> : tasks.length > 0 ? <div className="task-list" aria-label={t(locale, '任务列表', 'Task list')}>
-          {tasks.map((task) => {
-            const failure = task.state === 'failed' ? failureDescription(task) : undefined;
-            return <article className="task-row" key={task.id}>
-            <div>
-              <strong>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
-              <small>{task.source?.id ?? task.requestId}</small>
-              {task.requestText && <small>{task.requestText}</small>}
-              {failure && <small>{failure}</small>}
-              {task.result?.imageCount !== undefined && <small>{t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`)}</small>}
-              {task.result?.cost !== undefined && task.result.cost !== null && <small>{t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`)}</small>}
-            </div>
-        <Badge tone={task.state === 'failed' ? 'warning' : task.state === 'completed' ? 'success' : ''}>
-          {task.state === 'queued' ? t(locale, '排队', 'Queued') : task.state === 'running' ? t(locale, '处理中', 'Running') : task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'cancelled' ? t(locale, '已取消', 'Cancelled') : task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART' ? t(locale, '结果未知', 'Result unknown') : t(locale, '失败', 'Failed')}
-        </Badge>
-        {(task.state === 'queued' || task.state === 'running') && <Button variant="secondary" icon="x" onClick={() => { void stopTask(task.id); }}>{t(locale, '停止', 'Stop')}</Button>}
-        {(task.state === 'failed' || task.state === 'cancelled') && task.capability === 'vision-analysis' && <small>{t(locale, '请重新选择作品集来源', 'Select portfolio sources again')}</small>}
-        {(task.state === 'failed' || task.state === 'cancelled') && task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region) && <small>{t(locale, '请重新选择原图', 'Select the source image again')}</small>}
-        {(task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region)) && <Button variant="secondary" icon="rotate-ccw" onClick={() => { void retryTask(task.id); }}>{t(locale, '重试', 'Retry')}</Button>}
-      </article>;
-          })}
-    </div> : <div className="page-empty-state"><EmptyState
+    /></div> : tasks.length > 0 && visibleTasks.length > 0 ? <div className="task-list" aria-label={t(locale, '任务列表', 'Task list')}>
+      {visibleTasks.map((task) => {
+        const summary = taskSummary(task);
+        const metadata = taskMetadata(task);
+        const canRetry = (task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region));
+        return <article className="task-row" aria-label={task.id} key={task.id}>
+          <strong className="task-row__cell task-row__type" title={task.capability ?? t(locale, '模型任务', 'Model task')}>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
+          <span className="task-row__cell task-row__state"><Badge tone={taskTone(task)}>{taskStateLabel(task)}</Badge></span>
+          <span className="task-row__cell task-row__summary" title={summary}>{summary}</span>
+          <span className="task-row__cell task-row__meta" title={metadata}>{metadata}</span>
+          <span className="task-row__actions">
+            {(task.state === 'queued' || task.state === 'running') && <IconButton name="x" label={t(locale, '停止', 'Stop')} onClick={() => { void stopTask(task.id); }} />}
+            {canRetry && <IconButton name="rotate-ccw" label={t(locale, '重试', 'Retry')} onClick={() => { void retryTask(task.id); }} />}
+          </span>
+        </article>;
+      })}
+    </div> : tasks.length > 0 ? <div className="page-empty-state"><EmptyState
+      icon="clock"
+      title={t(locale, '没有匹配任务', 'No matching tasks')}
+      description={t(locale, '当前分类没有任务记录。', 'No task records match this category.')}
+    /></div> : <div className="page-empty-state"><EmptyState
       icon="clock"
       title={t(locale, '没有模型任务', 'No model tasks')}
       description={!workspaceId ? t(
@@ -1706,7 +1748,7 @@ export const LibraryPages = ({
       />
     ),
     connections: <ConnectionsPage locale={locale} workspaceId={workspaceId} />,
-    tasks: <TasksPage locale={locale} navigate={navigate} workspaceId={workspaceId} />,
+    tasks: <TasksPage locale={locale} navigate={navigate} workspaceId={workspaceId} active={active} />,
     delivery: (
       <DeliveryPage
         locale={locale}
