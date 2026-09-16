@@ -43,11 +43,21 @@ const isSelectionInput = (value: unknown): value is PortfolioSelectionBridgeInpu
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
   const source = input.source;
-  return isNonEmpty(input.workspaceId) && isNonEmpty(input.connectionId) && isIdentifier(input.inspectionId)
+  const selections = input.selections;
+  if (!Array.isArray(selections) || selections.length === 0) return false;
+  const isSelection = (selection: unknown): selection is { inspectionId: string; sourceIds: string[] } => {
+    if (selection === null || typeof selection !== 'object') return false;
+    const candidate = selection as { inspectionId?: unknown; sourceIds?: unknown };
+    if (!isIdentifier(candidate.inspectionId) || !Array.isArray(candidate.sourceIds) || candidate.sourceIds.length === 0) return false;
+    return candidate.sourceIds.every(isIdentifier) && new Set(candidate.sourceIds).size === candidate.sourceIds.length;
+  };
+  if (!selections.every(isSelection)) return false;
+  const sourceCount = selections.reduce((total, selection) => total + selection.sourceIds.length, 0);
+  return isNonEmpty(input.workspaceId) && isNonEmpty(input.connectionId)
     && input.rightsConfirmed === true && source !== null && typeof source === 'object'
     && (source as Record<string, unknown>).kind === 'designer-draft' && isIdentifier((source as Record<string, unknown>).id)
-    && Array.isArray(input.sourceIds) && input.sourceIds.length > 0 && input.sourceIds.length <= 8
-    && input.sourceIds.every(isIdentifier) && new Set(input.sourceIds).size === input.sourceIds.length;
+    && new Set(selections.map((selection) => selection.inspectionId)).size === selections.length
+    && sourceCount <= 8;
 };
 const isDiscardInput = (value: unknown): value is { workspaceId: string; inspectionId: string } => value !== null && typeof value === 'object'
   && isNonEmpty((value as Record<string, unknown>).workspaceId) && isIdentifier((value as Record<string, unknown>).inspectionId);
@@ -82,14 +92,15 @@ export const createPortfolioSelectionHandler = (
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isSelectionInput(input)) return null;
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode === 'read-only') return null;
-  const task = await submit(workspace, {
+  const sourceBatches = await Promise.all(input.selections.map((selection) => inspector.selectedSources(selection.inspectionId, selection.sourceIds)));
+  const sources = sourceBatches.flat();
+  if (sources.length === 0 || sources.length > 8 || new Set(sources.map((source) => source.id)).size !== sources.length) throw new Error('PORTFOLIO_SOURCE_LIMIT');
+  return submit(workspace, {
       source: input.source,
       connectionId: input.connectionId,
-      sources: await inspector.selectedSources(input.inspectionId, input.sourceIds),
+      sources,
       rightsConfirmed: input.rightsConfirmed,
     });
-  inspector.discard(input.inspectionId);
-  return task;
 };
 
 export const createPortfolioDiscardHandler = (

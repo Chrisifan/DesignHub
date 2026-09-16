@@ -404,8 +404,7 @@ export const DesignerLibrary = ({
         workspaceId,
         source: { kind: "designer-draft", id: draftId },
         connectionId: "openai-compatible",
-        inspectionId: portfolioInspection.id,
-        sourceIds: selectedPortfolioSourceIds,
+        selections: [{ inspectionId: portfolioInspection.id, sourceIds: selectedPortfolioSourceIds }],
         rightsConfirmed: true,
       });
     } catch {

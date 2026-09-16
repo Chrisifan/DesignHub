@@ -24,9 +24,11 @@ it('inspects an explicitly requested public page only from the trusted active wo
   expect(inspectRemotePage).toHaveBeenCalledWith('https://public.test/work');
 });
 
-it('submits only selected transient sources with an explicit rights declaration and clears them afterwards', async () => {
+it('submits selected sources from retained inspection batches with an explicit rights declaration', async () => {
   const fixture = makeFixture('http://localhost:5173/?preview=1');
-  const selectedSources = vi.fn(async () => [{ id: 'candidate-b', description: 'Detail', image: { base64: 'cG5n', mimeType: 'image/png' } }]);
+  const selectedSources = vi.fn(async (inspectionId: string) => inspectionId === 'inspection-1'
+    ? [{ id: 'candidate-b', description: 'Cover', image: { base64: 'Y292ZXI=', mimeType: 'image/png' } }]
+    : [{ id: 'candidate-c', description: 'Detail', image: { base64: 'ZGV0YWls', mimeType: 'image/png' } }]);
   const discard = vi.fn();
   const submit = vi.fn(async () => ({ id: 'task-1', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 1 }));
   const selection = createPortfolioSelectionHandler(
@@ -38,17 +40,46 @@ it('submits only selected transient sources with an explicit rights declaration 
   );
   const input = {
     workspaceId: 'workspace-1', source: { kind: 'designer-draft' as const, id: 'draft-1' }, connectionId: 'provider-1',
-    inspectionId: 'inspection-1', sourceIds: ['candidate-b'], rightsConfirmed: true,
+    selections: [
+      { inspectionId: 'inspection-1', sourceIds: ['candidate-b'] },
+      { inspectionId: 'inspection-2', sourceIds: ['candidate-c'] },
+    ], rightsConfirmed: true,
   };
 
   await expect(selection(fixture.event, input)).resolves.toMatchObject({ id: 'task-1' });
   expect(selectedSources).toHaveBeenCalledWith('inspection-1', ['candidate-b']);
+  expect(selectedSources).toHaveBeenCalledWith('inspection-2', ['candidate-c']);
   expect(submit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-    sources: [{ id: 'candidate-b', description: 'Detail', image: { base64: 'cG5n', mimeType: 'image/png' } }],
+    sources: [
+      { id: 'candidate-b', description: 'Cover', image: { base64: 'Y292ZXI=', mimeType: 'image/png' } },
+      { id: 'candidate-c', description: 'Detail', image: { base64: 'ZGV0YWls', mimeType: 'image/png' } },
+    ],
     rightsConfirmed: true,
   }));
-  expect(discard).toHaveBeenCalledWith('inspection-1');
+  expect(discard).not.toHaveBeenCalled();
   await expect(selection(fixture.event, { ...input, rightsConfirmed: false })).resolves.toBeNull();
+});
+
+it('rejects duplicated inspection batches and more than eight aggregate sources', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const selectedSources = vi.fn();
+  const selection = createPortfolioSelectionHandler(
+    fixture.window,
+    'http://localhost:5173/?preview=1',
+    () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
+    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), inspectRemoteImage: vi.fn(), inspectRemotePage: vi.fn(), selectedSources, discard: vi.fn(), discardAll: vi.fn() },
+    vi.fn(),
+  );
+  const base = { workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', rightsConfirmed: true };
+
+  await expect(selection(fixture.event, { ...base, selections: [
+    { inspectionId: 'inspection-1', sourceIds: ['candidate-a'] },
+    { inspectionId: 'inspection-1', sourceIds: ['candidate-b'] },
+  ] })).resolves.toBeNull();
+  await expect(selection(fixture.event, { ...base, selections: [{
+    inspectionId: 'inspection-1', sourceIds: Array.from({ length: 9 }, (_, index) => `candidate-${index}`),
+  }] })).resolves.toBeNull();
+  expect(selectedSources).not.toHaveBeenCalled();
 });
 
 it('retains an inspected source session when task acceptance fails', async () => {
@@ -64,7 +95,7 @@ it('retains an inspected source session when task acceptance fails', async () =>
   );
 
   await expect(selection(fixture.event, {
-    workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', inspectionId: 'inspection-1', sourceIds: ['candidate-a'], rightsConfirmed: true,
+    workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', selections: [{ inspectionId: 'inspection-1', sourceIds: ['candidate-a'] }], rightsConfirmed: true,
   })).rejects.toThrow('TASK_ACCEPTANCE_FAILED');
   expect(discard).not.toHaveBeenCalled();
 });

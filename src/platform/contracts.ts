@@ -38,8 +38,7 @@ export type PortfolioSelectionInput = {
   workspaceId: string;
   source: { kind: 'designer-draft'; id: string };
   connectionId: string;
-  inspectionId: string;
-  sourceIds: string[];
+  selections: Array<{ inspectionId: string; sourceIds: string[] }>;
   rightsConfirmed: boolean;
 };
 
