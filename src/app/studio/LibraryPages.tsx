@@ -671,7 +671,7 @@ const ConnectionsPage = ({
         'Connections are provided by local adapters; projects and keys never enter example data.',
       ) : ''}
     />
-    <div className="connection-layout">
+    <div className="connection-layout connection-layout--status-first">
       <div className="page-empty-state">
         <EmptyState
           icon="plug"

@@ -493,6 +493,7 @@ it('keeps model setup on the connections page without a redundant settings actio
   render(<Harness initialView="connections" />);
   expect(screen.queryByRole('button', { name: '查看设置' })).not.toBeInTheDocument();
   expect(screen.getByLabelText('current-view')).toHaveTextContent('connections');
+  expect(document.querySelector('.connection-layout')).toHaveClass('connection-layout--status-first');
 });
 
 it('loads workspace trash entries and restores them through the desktop bridge', async () => {

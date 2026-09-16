@@ -693,6 +693,10 @@
   background: var(--content-card-background);
 }
 
+.connection-layout--status-first {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
 .library-page > .connection-layout {
   min-height: 0;
   overflow: hidden;
@@ -700,9 +704,9 @@
 
 .connection-layout > .page-empty-state {
   grid-column: 1;
-  grid-row: 1 / -1;
+  grid-row: 1;
   align-self: stretch;
-  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .provider-settings {
@@ -748,7 +752,7 @@
 .connection-layout > .capability-matrix {
   grid-column: 1;
   grid-row: 2;
-  padding: 28px 40px;
+  padding: 24px 40px 28px;
   border-right: 0;
   background: transparent;
 }
@@ -773,6 +777,8 @@
 
 .matrix-row {
   min-height: 58px;
+  margin-inline: 8px;
+  padding-inline: 12px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 12px;
 }
