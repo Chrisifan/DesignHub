@@ -915,6 +915,19 @@
   border-bottom: 1px solid var(--border-subtle);
 }
 
+.task-row--header {
+  min-height: 38px;
+  background: var(--surface-container-low);
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.task-row:last-child {
+  border-bottom: 0;
+}
+
 .task-row__cell {
   min-width: 0;
   overflow: hidden;

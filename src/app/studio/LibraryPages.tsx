@@ -884,7 +884,14 @@ const TasksPage = ({
       icon="circle-alert"
       title={t(locale, '任务读取失败', 'Could not load tasks')}
       description={t(locale, '请重试，原有任务不会被覆盖。', 'Retry without overwriting existing task records.')}
-    /></div> : tasks.length > 0 && visibleTasks.length > 0 ? <div className="task-list" aria-label={t(locale, '任务列表', 'Task list')}>
+    /></div> : tasks.length > 0 && visibleTasks.length > 0 ? <div className="task-list" role="list" aria-label={t(locale, '任务列表', 'Task list')}>
+      <div className="task-row task-row--header" role="listitem" aria-label={t(locale, '表头', 'Header')}>
+        <span className="task-row__cell task-row__type">{t(locale, '任务类型', 'Task type')}</span>
+        <span className="task-row__cell task-row__state">{t(locale, '状态', 'Status')}</span>
+        <span className="task-row__cell task-row__summary">{t(locale, '任务摘要', 'Task summary')}</span>
+        <span className="task-row__cell task-row__meta">{t(locale, '时间 / 结果', 'Time / result')}</span>
+        <span className="task-row__actions">{t(locale, '操作', 'Actions')}</span>
+      </div>
       {visibleTasks.map((task) => {
         const summary = taskSummary(task);
         const metadata = taskMetadata(task);

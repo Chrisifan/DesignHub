@@ -601,6 +601,9 @@ it('filters model tasks from the breadcrumb toolbar and keeps rows compact', asy
   fireEvent.click(within(toolbar).getByRole('button', { name: '全部5' }));
   expect(screen.getByText(longRequest)).toHaveClass('task-row__summary');
   expect(screen.getByText(longRequest)).toHaveAttribute('title', longRequest);
+  const taskList = screen.getByRole('list', { name: '任务列表' });
+  expect(within(taskList).getByRole('listitem', { name: '表头' })).toHaveTextContent('任务类型状态任务摘要时间 / 结果操作');
+  expect(taskList.lastElementChild).toHaveClass('task-row');
 });
 
 it('shows an empty state when a task category has no matches', async () => {
