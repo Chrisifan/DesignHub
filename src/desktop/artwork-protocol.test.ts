@@ -30,6 +30,28 @@ it('serves active-workspace artwork bytes without exposing its storage path', as
   );
 });
 
+it('serves artwork when Electron normalizes the standard URL to a root path', async () => {
+  const readArtwork = vi.fn(async () => ({
+    artworkId: 'artwork-portrait-1',
+    dataUrl: 'data:image/png;base64,AQID',
+  }));
+  const handler = createDesignerArtworkProtocolHandler(
+    () => workspace,
+    readArtwork,
+  );
+
+  const response = await handler({
+    url: 'designhub-artwork://artwork-portrait-1/',
+  });
+
+  expect(response.status).toBe(200);
+  expect(readArtwork).toHaveBeenCalledWith(
+    workspace,
+    'workspace-1',
+    'artwork-portrait-1',
+  );
+});
+
 it('does not read a valid artwork URL before a workspace is active', async () => {
   const readArtwork = vi.fn();
   const handler = createDesignerArtworkProtocolHandler(() => null, readArtwork);

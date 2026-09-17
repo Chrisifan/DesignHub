@@ -21,7 +21,7 @@ const parseArtworkId = (value: string): string | null => {
       || url.username
       || url.password
       || url.port
-      || url.pathname
+      || (url.pathname !== '' && url.pathname !== '/')
       || url.search
       || url.hash
     ) return null;
