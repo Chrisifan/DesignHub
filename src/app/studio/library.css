@@ -363,7 +363,7 @@
 
 /* Portfolio designer drawer */
 .ui-drawer.ui-drawer--portfolio {
-  inline-size: min(840px, 92vw);
+  inline-size: min(560px, 92vw);
 }
 
 .portfolio-drawer {
@@ -458,13 +458,13 @@
 
 .designer-portfolio-candidates {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
 .designer-portfolio-candidate {
   display: grid;
-  grid-template-columns: auto 34px minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-height: 50px;
@@ -473,6 +473,10 @@
   border-radius: 6px;
   background: var(--surface-container-lowest);
   font-size: 11px;
+}
+
+.designer-portfolio-candidate:has(img) {
+  grid-template-columns: auto 34px minmax(0, 1fr);
 }
 
 .designer-portfolio-candidate:has(input:checked) {
@@ -485,6 +489,13 @@
   height: 34px;
   object-fit: cover;
   border-radius: 3px;
+}
+
+.designer-portfolio-candidate__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .portfolio-drawer-actions {
@@ -536,7 +547,7 @@
 
 .portfolio-analysis-report__identity {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px 16px;
   margin: 0;
 }
@@ -550,7 +561,7 @@
 
 .portfolio-analysis-report__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   gap: 12px;
 }
@@ -845,7 +856,7 @@
 
 .portfolio-analysis-skeleton {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -866,7 +877,7 @@
 
 .portfolio-artwork-skeleton {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 

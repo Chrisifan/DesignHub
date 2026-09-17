@@ -2,6 +2,8 @@ import { expect, test } from 'playwright/test';
 
 import { gotoTestWorkspace } from './test-workspace';
 
+const longFilename = 'portfolio-reference-2026-final-approved-editorial-grid-material-lighting-typography-composition-texture-art-direction-presentation-cover-detail-archive-version-18.png';
+
 for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 }]) {
   test(`portfolio creation drawer adapts to content at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
@@ -30,6 +32,16 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
         },
         negativeRules: [{ zh: '避免霓虹渐变', en: 'Avoid neon gradients' }, { zh: '避免破坏安全边距', en: 'Keep safe margins' }], portfolioSheets: [],
       };
+      api.inspectPortfolioSources = async () => ({
+        id: 'inspection-e2e',
+        candidates: [{
+          id: 'source-e2e',
+          label: 'portfolio-reference-2026-final-approved-editorial-grid-material-lighting-typography-composition-texture-art-direction-presentation-cover-detail-archive-version-18.png',
+          description: '作品集封面',
+          origin: 'local-image',
+          previewUrl: '',
+        }],
+      });
       api.submitPortfolioSelection = async () => ({ id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'completed', cancelRequested: false, attempt: 1, result: { text: JSON.stringify({ candidates: [candidate] }) } });
       api.submitDesignerArtworkGeneration = () => new Promise(() => undefined);
     });
@@ -40,19 +52,31 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     const hostBox = await page.locator('[data-drawer-host]').boundingBox();
     expect(importBox).not.toBeNull();
     expect(hostBox).not.toBeNull();
-    const expectedWidth = Math.min(840, viewport.width * 0.92, hostBox!.width);
+    const expectedWidth = Math.min(560, viewport.width * 0.92, hostBox!.width);
     expect(Math.abs(importBox!.width - expectedWidth)).toBeLessThanOrEqual(1);
     expect(importBox!.x).toBeGreaterThanOrEqual(hostBox!.x);
     const footerBox = await drawer.locator('.ui-drawer__footer').boundingBox();
     expect(footerBox).not.toBeNull();
     expect(Math.abs(footerBox!.y + footerBox!.height - (importBox!.y + importBox!.height))).toBeLessThanOrEqual(1);
-    expect(await drawer.getByRole('button', { name: '检查页面' }).evaluate(
-      (button) => Boolean(button.closest('.ui-drawer__content')),
-    )).toBe(true);
+    await expect(drawer.getByRole('button', { name: '检查页面' })).toHaveCount(0);
+    await expect(drawer.getByRole('textbox', { name: '作品集链接' })).toHaveCount(0);
 
-    await page.getByRole('textbox', { name: '作品集链接' }).fill('https://example.com/portfolio');
-    await page.getByRole('button', { name: '检查页面' }).click();
-    await page.getByRole('checkbox', { name: '作品集封面' }).check();
+    await page.getByRole('button', { name: '选择图片' }).click();
+    await expect(page.getByRole('checkbox', { name: longFilename })).toBeChecked();
+    const filenameLayout = await drawer.locator('.designer-portfolio-candidate__name').evaluate((name) => {
+      const nameBox = name.getBoundingClientRect();
+      const rowBox = name.closest('.designer-portfolio-candidate')!.getBoundingClientRect();
+      return {
+        clientWidth: name.clientWidth,
+        scrollWidth: name.scrollWidth,
+        nameRight: nameBox.right,
+        rowRight: rowBox.right,
+        title: name.getAttribute('title'),
+      };
+    });
+    expect(filenameLayout.scrollWidth).toBeGreaterThan(filenameLayout.clientWidth);
+    expect(filenameLayout.nameRight).toBeLessThanOrEqual(filenameLayout.rowRight + 1);
+    expect(filenameLayout.title).toBe(longFilename);
     await page.getByRole('checkbox', { name: '我确认拥有分析这些来源的权利' }).check();
     await page.getByRole('button', { name: '开始分析' }).click();
 
@@ -69,6 +93,10 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
       (steps) => steps.map((step) => step.getBoundingClientRect().height),
     );
     expect(stepHeights.every((height) => height <= 40)).toBe(true);
+    const analysisColumns = await drawer.locator('.portfolio-analysis-report__grid').evaluate(
+      (grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length,
+    );
+    expect(analysisColumns).toBe(1);
     const analysisBox = await drawer.boundingBox();
     expect(analysisBox).not.toBeNull();
     expect(Math.abs(analysisBox!.width - importBox!.width)).toBeLessThanOrEqual(1);

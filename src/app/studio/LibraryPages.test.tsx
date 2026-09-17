@@ -79,7 +79,9 @@ it('exposes portfolio analysis as the only new-designer flow', () => {
   render(<Harness />);
   fireEvent.click(screen.getByRole('button', { name: '从作品集创建' }));
   const dialog = screen.getByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' });
-  expect(within(dialog).getByRole('textbox', { name: '作品集链接' })).toBeInTheDocument();
+  expect(within(dialog).queryByRole('textbox', { name: '作品集链接' })).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: '选择图片' })).toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: '选择 ZIP' })).toBeInTheDocument();
   expect(within(dialog).queryByRole('textbox', { name: '名称' })).not.toBeInTheDocument();
 });
 
