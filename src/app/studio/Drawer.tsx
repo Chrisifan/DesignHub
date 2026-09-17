@@ -21,6 +21,7 @@ export type DrawerProps = {
   children: ReactNode;
   footer?: ReactNode;
   locale?: Locale;
+  contentScrollKey?: string | number;
 };
 
 export const Drawer = ({
@@ -31,9 +32,11 @@ export const Drawer = ({
   children,
   footer,
   locale = 'zh-CN',
+  contentScrollKey,
 }: DrawerProps) => {
   const titleId = useId();
   const panelRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(() => (
     document.querySelector<HTMLElement>('[data-drawer-host]') ?? document.body
@@ -86,6 +89,10 @@ export const Drawer = ({
     setPortalTarget((currentTarget) => currentTarget === nextTarget ? currentTarget : nextTarget);
   }, [open, portalTarget]);
 
+  useLayoutEffect(() => {
+    if (open && contentRef.current) contentRef.current.scrollTop = 0;
+  }, [contentScrollKey, open]);
+
   if (!open) return null;
   if (!portalTarget) return null;
 
@@ -109,7 +116,7 @@ export const Drawer = ({
           <h2 id={titleId}>{title}</h2>
           <IconButton name="x" label={t(locale, '关闭', 'Close')} onClick={onClose} />
         </header>
-        <div className="ui-drawer__content">{children}</div>
+        <div ref={contentRef} className="ui-drawer__content">{children}</div>
         {footer ? <div className="ui-drawer__footer">{footer}</div> : null}
       </aside>
     </div>,

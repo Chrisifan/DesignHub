@@ -59,6 +59,25 @@ it('applies a content width class to the drawer panel', () => {
   expect(screen.getByRole('dialog', { name: '作品集分析' })).toHaveClass('ui-drawer--wide');
 });
 
+it('resets content scrolling when the drawer step changes', () => {
+  const { rerender } = render(
+    <Drawer open title="作品集分析" contentScrollKey="analyse" onClose={() => undefined}>
+      <div style={{ height: 2000 }}>分析结果</div>
+    </Drawer>,
+  );
+  const content = screen.getByRole('dialog', { name: '作品集分析' }).querySelector<HTMLElement>('.ui-drawer__content');
+  expect(content).not.toBeNull();
+  content!.scrollTop = 640;
+
+  rerender(
+    <Drawer open title="作品集分析" contentScrollKey="avatar" onClose={() => undefined}>
+      <div style={{ height: 2000 }}>形象生成</div>
+    </Drawer>,
+  );
+
+  expect(content).toHaveProperty('scrollTop', 0);
+});
+
 it('restores focus to the trigger after close', () => {
   const { rerender } = render(<button>春间标志</button>);
   const trigger = screen.getByRole('button', { name: '春间标志' });

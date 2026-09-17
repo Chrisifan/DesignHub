@@ -56,13 +56,14 @@ it("opens new designer creation with portfolio analysis only", () => {
   expect(within(dialog).queryByRole("textbox", { name: "风格描述" })).not.toBeInTheDocument();
 });
 
-it("opens portfolio analysis in a compact drawer", () => {
+it("keeps the portfolio creation drawer at one width", () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={personaProfiles} />);
 
   fireEvent.click(screen.getByRole("button", { name: "从作品集创建" }));
 
   const drawer = screen.getByRole("dialog", { name: "导入作品集分析 · 生成 AI 设计师档案" });
-  expect(drawer).toHaveClass("ui-drawer--compact");
+  expect(drawer).toHaveClass("ui-drawer--portfolio");
+  expect(drawer).not.toHaveClass("ui-drawer--compact", "ui-drawer--wide");
   expect(within(drawer).getByRole("list", { name: "生成流程" })).toHaveTextContent("1导入作品");
   expect(within(drawer).getByRole("button", { name: "开始分析" })).toBeInTheDocument();
 });
@@ -88,7 +89,7 @@ it("keeps portfolio analysis in the drawer and shows a loading skeleton", async 
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
 
   const drawer = screen.getByRole("dialog", { name: "导入作品集分析 · 生成 AI 设计师档案" });
-  expect(drawer).toHaveClass("ui-drawer--wide");
+  expect(drawer).toHaveClass("ui-drawer--portfolio");
   expect(within(drawer).getByText("正在提炼视觉 DNA")).toBeInTheDocument();
   expect(within(drawer).getByTestId("portfolio-analysis-skeleton")).toBeInTheDocument();
 });
@@ -244,8 +245,9 @@ it("inspects locally chosen portfolio images through the trusted main process", 
   expect(inspectPortfolioSources).toHaveBeenCalledWith({ workspaceId: "workspace-files", request: { kind: "local-images" } });
 });
 
-it("reviews a completed portfolio candidate and persists the published profile", async () => {
+it("renders a completed portfolio candidate as a read-only analysis report", async () => {
   const saveDesignerState = vi.fn(async () => true);
+  const notify = vi.fn();
   const candidate = {
     id: "portfolio-candidate-1",
     name: { zh: "作品集候选", en: "Portfolio candidate" },
@@ -310,7 +312,7 @@ it("reviews a completed portfolio candidate and persists the published profile",
   render(
     <DesignerLibrary
       locale="zh-CN"
-      notify={vi.fn()}
+      notify={notify}
       workspaceId="workspace-1"
     />,
   );
@@ -325,17 +327,23 @@ it("reviews a completed portfolio candidate and persists the published profile",
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
   await screen.findByRole("heading", { name: "作品集候选" });
   const drawer = screen.getByRole("dialog", { name: "导入作品集分析 · 生成 AI 设计师档案" });
-  expect(drawer).toHaveClass("ui-drawer--wide");
-  expect(within(drawer).getByRole("region", { name: "身份与理念" })).toBeInTheDocument();
-  expect(within(drawer).getByRole("region", { name: "色彩倾向与光影分布" })).toBeInTheDocument();
-  expect(within(drawer).getByRole("region", { name: "排版韵律与构图骨架" })).toBeInTheDocument();
-  expect(within(drawer).getByRole("region", { name: "材质肌理与感知参数" })).toBeInTheDocument();
-  expect(within(drawer).getByRole("region", { name: "否定规则" })).toBeInTheDocument();
-  expect(within(drawer).getByRole("spinbutton", { name: "柔和低对比度" })).toHaveValue(68);
-  expect(within(drawer).getByRole("textbox", { name: "排版特征" })).toHaveValue(candidate.styleDna.typography.zh);
-  expect(within(drawer).getByRole("textbox", { name: "构图特征" })).toHaveValue(candidate.styleDna.composition.zh);
-  expect(within(drawer).getByRole("textbox", { name: "材质特征" })).toHaveValue(candidate.styleDna.texture.zh);
-  expect(within(within(drawer).getByLabelText("生效规则")).getByText("避免霓虹渐变")).toBeInTheDocument();
+  expect(drawer).toHaveClass("ui-drawer--portfolio");
+  const report = within(drawer).getByRole("region", { name: "作品集候选的视觉 DNA 分析" });
+  expect(within(report).getByText("克制构成")).toBeInTheDocument();
+  expect(within(report).getByText("保留层次")).toBeInTheDocument();
+  expect(within(report).getByText("#F5F0E6")).toBeInTheDocument();
+  expect(within(report).getByText(candidate.styleDna.typography.zh)).toBeInTheDocument();
+  expect(within(report).getByText(candidate.styleDna.composition.zh)).toBeInTheDocument();
+  expect(within(report).getByText(candidate.styleDna.texture.zh)).toBeInTheDocument();
+  expect(within(report).getByText("柔和纸张漫反射")).toBeInTheDocument();
+  expect(within(report).getByText("避免霓虹渐变")).toBeInTheDocument();
+  expect(within(report).getAllByRole("progressbar")).toHaveLength(5);
+  expect(within(report).queryByRole("textbox")).not.toBeInTheDocument();
+  expect(within(report).queryByRole("spinbutton")).not.toBeInTheDocument();
+  expect(within(report).queryByRole("button", { name: /自定义否定/ })).not.toBeInTheDocument();
+  expect(within(drawer).getByRole("button", { name: "重新解析" })).toBeInTheDocument();
+  expect(within(drawer).queryByRole("button", { name: "追加作品集" })).not.toBeInTheDocument();
+  expect(notify).toHaveBeenCalledWith("作品集分析已完成，已生成视觉 DNA 报告。");
   expect(screen.getByRole("button", { name: "下一步：生成形象" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "发布预览" })).not.toBeInTheDocument();
 });
@@ -410,6 +418,11 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
   await screen.findByRole("heading", { name: "未来编辑" });
+  const report = screen.getByRole("region", { name: "未来编辑的视觉 DNA 分析" });
+  expect(within(report).getAllByText("未提取")).toHaveLength(5);
+  expect(within(report).getAllByText("--")).toHaveLength(5);
+  expect(within(report).queryByText("NaN%")).not.toBeInTheDocument();
+  expect(within(report).getAllByRole("progressbar").every((metric) => !metric.hasAttribute("aria-valuenow"))).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "下一步：生成形象" }));
 
   await waitFor(() => expect(submitDesignerArtworkGeneration).toHaveBeenCalledWith(expect.objectContaining({

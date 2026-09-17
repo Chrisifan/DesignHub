@@ -429,7 +429,7 @@ export const DesignerLibrary = ({
     setAnalysisTaskId(undefined);
     setWizardPhase("analyse");
     setCreationError("");
-    notify(t(locale, "作品集分析已完成，可以编辑特征。", "Portfolio analysis completed; edit the extracted features."));
+    notify(t(locale, "作品集分析已完成，已生成视觉 DNA 报告。", "Portfolio analysis completed; the visual DNA report is ready."));
     return true;
   };
   const analysisFailure = (returnPhase: PortfolioWizardPhase) => {
@@ -853,9 +853,7 @@ export const DesignerLibrary = ({
           canGenerateArtwork={Boolean(workspaceId) && !readOnly}
           onPublish={publishPreview}
           onDraftChange={setActiveDraft}
-          onAnalysisDraftChange={setAnalysisDraft}
           onBackToImport={() => setWizardPhase("import")}
-          onAddPortfolio={() => setWizardPhase("import")}
           onContinueToReview={() => selectedArtworkAssetId && setWizardPhase("review")}
           onClose={() => {
             discardPortfolioInspection();
@@ -896,9 +894,7 @@ const DesignerEditorModal = ({
   canGenerateArtwork,
   onPublish,
   onDraftChange,
-  onAnalysisDraftChange,
   onBackToImport,
-  onAddPortfolio,
   onContinueToReview,
   onClose,
   onSubmit,
@@ -930,9 +926,7 @@ const DesignerEditorModal = ({
   canGenerateArtwork: boolean;
   onPublish: () => void;
   onDraftChange: (draft: DesignerDraft) => void;
-  onAnalysisDraftChange: (draft: DesignerDraft) => void;
   onBackToImport: () => void;
-  onAddPortfolio: () => void;
   onContinueToReview: () => void;
   onClose: () => void;
   onSubmit: () => void;
@@ -951,7 +945,6 @@ const DesignerEditorModal = ({
       <Button type="button" variant="ai" icon="sparkles" onClick={onRequestCandidates}>{t(locale, "开始分析", "Start analysis")}</Button>
     </div> : wizardPhase === "analyse" && !analysisBusy ? <div className="portfolio-drawer-actions">
       <Button variant="ghost" onClick={onBackToImport}>{t(locale, "返回导入", "Back to import")}</Button>
-      <Button variant="secondary" onClick={onAddPortfolio}>{t(locale, "追加作品集", "Add portfolio")}</Button>
       <Button variant="secondary" icon="refresh-cw" onClick={onRequestCandidates}>{t(locale, "重新解析", "Reanalyse")}</Button>
       <Button variant="ai" icon="sparkles" disabled={!analysisDraft?.name.trim() || !canGenerateArtwork || artworkBusy} onClick={onGenerateArtwork}>{t(locale, "下一步：生成形象", "Next: generate artwork")}</Button>
     </div> : wizardPhase === "avatar" ? <div className="portfolio-drawer-actions">
@@ -965,7 +958,8 @@ const DesignerEditorModal = ({
       <Drawer
         open
         title={t(locale, "导入作品集分析 · 生成 AI 设计师档案", "Portfolio analysis · Create AI designer profile")}
-        className={wizardPhase === "import" ? "ui-drawer--compact" : "ui-drawer--wide"}
+        className="ui-drawer--portfolio"
+        contentScrollKey={wizardPhase}
         locale={locale}
         onClose={onClose}
         footer={footer}
@@ -991,7 +985,6 @@ const DesignerEditorModal = ({
           onInspectPortfolioSources={onInspectPortfolioSources}
           onPortfolioSourceToggle={onPortfolioSourceToggle}
           onArtworkSelect={onArtworkSelect}
-          onAnalysisDraftChange={onAnalysisDraftChange}
         />
       </Drawer>
     );
@@ -1082,14 +1075,16 @@ const AnalysisSection = ({
   icon,
   title,
   code,
+  tone,
   children,
 }: {
   id: string;
   icon: string;
   title: string;
   code: string;
+  tone?: "color" | "type" | "texture" | "danger";
   children: ReactNode;
-}) => <section className="portfolio-analysis-section" aria-labelledby={id}>
+}) => <section className={`portfolio-analysis-section${tone ? ` portfolio-analysis-section--${tone}` : ""}`} aria-labelledby={id}>
   <header className="portfolio-analysis-section__header">
     <span className="portfolio-analysis-section__icon"><Icon name={icon} size={15} /></span>
     <h3 id={id}>{title}</h3>
@@ -1101,28 +1096,142 @@ const AnalysisSection = ({
 const AnalysisMetric = ({
   label,
   value,
-  onChange,
 }: {
   label: string;
   value: string;
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }) => {
+  const hasValue = value.trim() !== "" && Number.isFinite(Number(value));
   const numericValue = percentageFromDraft(value);
-  return <label className="portfolio-analysis-metric">
+  return <div className="portfolio-analysis-metric">
     <span>{label}</span>
-    <span className="portfolio-analysis-metric__value">
-      <input type="number" min="0" max="100" step="1" aria-label={label} value={value} placeholder="--" onChange={onChange} />
-      <small>%</small>
-    </span>
-    <span className="portfolio-analysis-metric__track" aria-hidden="true"><i style={{ width: `${numericValue}%` }} /></span>
-  </label>;
+    <strong className="portfolio-analysis-metric__value">{hasValue ? `${numericValue}%` : "--"}</strong>
+    <span
+      className="portfolio-analysis-metric__track"
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      {...(hasValue ? { "aria-valuenow": numericValue } : {})}
+    ><i style={{ width: `${hasValue ? numericValue : 0}%` }} /></span>
+  </div>;
+};
+
+const analysisValue = (locale: Locale, value: string): string =>
+  value.trim() || t(locale, "未提取", "Not extracted");
+
+const AnalysisValue = ({
+  label,
+  value,
+  locale,
+}: {
+  label: string;
+  value: string;
+  locale: Locale;
+}) => <div className="portfolio-analysis-value">
+  <dt>{label}</dt>
+  <dd>{analysisValue(locale, value)}</dd>
+</div>;
+
+const PortfolioAnalysisReport = ({
+  locale,
+  draft,
+  selectionCount,
+  error,
+}: {
+  locale: Locale;
+  draft: DesignerDraft;
+  selectionCount: number;
+  error: string;
+}) => {
+  const palette = draft.palette.split(",").map((value) => value.trim()).filter(Boolean);
+  const tags = draft.tags.split(",").map((value) => value.trim()).filter(Boolean);
+  const negativeRules = draft.negativeRules.split("\n").map((value) => value.trim()).filter(Boolean);
+
+  return <section
+    className="portfolio-analysis-report"
+    aria-label={t(locale, `${draft.name}的视觉 DNA 分析`, `${draft.name} visual DNA analysis`)}
+  >
+    <header className="portfolio-analysis-report__intro">
+      <div className="portfolio-analysis-report__heading">
+        <div>
+          <p className="section-kicker">{t(locale, "特征解构", "Feature analysis")}</p>
+          <h2>{analysisValue(locale, draft.name)}</h2>
+        </div>
+        <span>{t(locale, `${selectionCount} 项来源 · AI 推断`, `${selectionCount} sources · AI inferred`)}</span>
+      </div>
+      <p className="portfolio-analysis-report__summary">{analysisValue(locale, draft.summary)}</p>
+      <dl className="portfolio-analysis-report__identity">
+        <AnalysisValue locale={locale} label={t(locale, "署名", "Signature")} value={draft.signature} />
+        <AnalysisValue locale={locale} label={t(locale, "创作原则", "Creative principle")} value={draft.principle} />
+      </dl>
+      <ul className="portfolio-analysis-tags" aria-label={t(locale, "风格标签", "Style tags")}>
+        {tags.length > 0
+          ? tags.map((tag) => <li key={tag}>{tag}</li>)
+          : <li>{t(locale, "未提取", "Not extracted")}</li>}
+      </ul>
+    </header>
+
+    <div className="portfolio-analysis-report__grid">
+      <AnalysisSection id="analysis-color" icon="palette" title={t(locale, "色彩倾向与光影分布", "Colour and light distribution")} code="COLOR MATRIX" tone="color">
+        <div className="portfolio-analysis-subheading">{t(locale, "主导色板", "Dominant palette")}</div>
+        <ul className="portfolio-analysis-palette" aria-label={t(locale, "主导色板", "Dominant palette")}>
+          {palette.length > 0
+            ? palette.map((color, index) => <li key={`${color}-${index}`}>
+              <i style={{ backgroundColor: color }} aria-hidden="true" />
+              <span>{color}</span>
+            </li>)
+            : <li className="is-empty">{t(locale, "未提取色板", "Palette not extracted")}</li>}
+        </ul>
+        <div className="portfolio-analysis-metrics">
+          <AnalysisMetric label={t(locale, "柔和低对比度", "Soft contrast")} value={draft.contrast} />
+          <AnalysisMetric label={t(locale, "暗部透气率", "Shadow airiness")} value={draft.darkAiriness} />
+        </div>
+      </AnalysisSection>
+
+      <AnalysisSection id="analysis-type-composition" icon="type" title={t(locale, "排版韵律与构图骨架", "Typography and composition")} code="TYPE / GRID" tone="type">
+        <div className="portfolio-analysis-copy-group">
+          <p>{analysisValue(locale, draft.typography)}</p>
+          <p>{analysisValue(locale, draft.composition)}</p>
+        </div>
+        <dl className="portfolio-analysis-values">
+          <AnalysisValue locale={locale} label={t(locale, "字体倾向", "Type tendency")} value={draft.typeFamily} />
+          <AnalysisValue locale={locale} label={t(locale, "字重偏好", "Weight preference")} value={draft.typeWeight} />
+          <AnalysisValue locale={locale} label={t(locale, "字距节奏", "Tracking rhythm")} value={draft.tracking} />
+          <AnalysisValue locale={locale} label={t(locale, "构图拓扑", "Composition topology")} value={draft.compositionTopology} />
+        </dl>
+        <AnalysisMetric label={t(locale, "留白占比", "Whitespace ratio")} value={draft.whitespace} />
+      </AnalysisSection>
+
+      <AnalysisSection id="analysis-texture" icon="layers" title={t(locale, "材质肌理与感知参数", "Texture and material perception")} code="TEXTURE / MAT" tone="texture">
+        <div className="portfolio-analysis-copy-group">
+          <p>{analysisValue(locale, draft.texture)}</p>
+        </div>
+        <div className="portfolio-analysis-metrics">
+          <AnalysisMetric label={t(locale, "纹理颗粒度", "Grain")} value={draft.grain} />
+          <AnalysisMetric label={t(locale, "光影漫反射率", "Diffuse light")} value={draft.diffuseLight} />
+        </div>
+        <dl className="portfolio-analysis-values">
+          <AnalysisValue locale={locale} label={t(locale, "着色与材质描述", "Rendering and material")} value={draft.rendering} />
+        </dl>
+      </AnalysisSection>
+    </div>
+
+    <AnalysisSection id="analysis-negative" icon="circle-alert" title={t(locale, "否定规则", "Negative constraints")} code={`${negativeRules.length} RULES`} tone="danger">
+      {negativeRules.length > 0
+        ? <ul className="portfolio-analysis-rules" aria-label={t(locale, "生效规则", "Active rules")}>
+          {negativeRules.map((rule) => <li key={rule}><Icon name="circle-alert" size={13} />{rule}</li>)}
+        </ul>
+        : <p className="portfolio-analysis-empty">{t(locale, "未提取否定规则", "Negative constraints not extracted")}</p>}
+    </AnalysisSection>
+    {error && <p className="form-error" role="alert">{error}</p>}
+  </section>;
 };
 
 const PortfolioCreationDrawer = ({
   locale, phase, analysing, artworkBusy, analysisDraft, analysisProfile, artworkOptions, selectedArtworkAssetId, selectionCount, publishedInSession,
   rightsConfirmed, portfolioUrl, portfolioInspection, selectedPortfolioSourceIds,
   error, onRightsConfirmed, onPortfolioUrlChange,
-  onInspectPortfolioSources, onPortfolioSourceToggle, onArtworkSelect, onAnalysisDraftChange,
+  onInspectPortfolioSources, onPortfolioSourceToggle, onArtworkSelect,
 }: {
   locale: Locale;
   phase: PortfolioWizardPhase;
@@ -1144,12 +1253,8 @@ const PortfolioCreationDrawer = ({
   onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
   onArtworkSelect: (assetId: string) => void;
-  onAnalysisDraftChange: (draft: DesignerDraft) => void;
 }) => {
   const activeStep = phase === "import" ? 0 : phase === "analyse" ? 1 : phase === "avatar" ? 2 : 3;
-  const setAnalysisField = (field: keyof DesignerDraft) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (analysisDraft) onAnalysisDraftChange({ ...analysisDraft, [field]: event.target.value });
-  };
   return <section className="portfolio-drawer">
     <ol className="portfolio-steps" aria-label={t(locale, "生成流程", "Creation steps")}>
       {[t(locale, "导入作品", "Import"), t(locale, "特征解构", "Analyse"), t(locale, "角色拟合", "Fit"), t(locale, "审阅发布", "Review")].map((label, index) => (
@@ -1180,59 +1285,12 @@ const PortfolioCreationDrawer = ({
         <label className="check-row"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => onRightsConfirmed(event.target.checked)} />{t(locale, "我确认拥有分析这些来源的权利", "I confirm I have rights to analyse these sources")}</label>
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-    ) : (analysing || (phase === "analyse" && !analysisDraft)) ? <PortfolioAnalysisLoading locale={locale} /> : phase === "analyse" && analysisDraft && analysisProfile ? <section className="portfolio-analysis-editor" aria-labelledby="portfolio-analysis-title">
-      <div className="portfolio-analysis-editor__intro">
-        <div><p className="section-kicker">{t(locale, "特征解构", "Feature analysis")}</p><h2 id="portfolio-analysis-title">{analysisDraft.name}</h2></div>
-        <span>{t(locale, `${selectionCount} 项来源 · AI 推断`, `${selectionCount} sources · AI inferred`)}</span>
-      </div>
-      <p className="portfolio-analysis-editor__note">{t(locale, "百分比为基于可见作品的可编辑推断信号，不代表准确率或物理测量。", "Percentages are editable signals inferred from visible work, not accuracy scores or physical measurements.")}</p>
-      <AnalysisSection id="analysis-identity" icon="sparkles" title={t(locale, "身份与理念", "Identity and principle")} code="PROFILE">
-        <div className="portfolio-analysis-fields portfolio-analysis-fields--identity">
-          <Field label={t(locale, "设计师名称", "Designer name")}><input value={analysisDraft.name} onChange={setAnalysisField("name")} /></Field>
-          <Field label={t(locale, "署名", "Signature")}><input value={analysisDraft.signature} onChange={setAnalysisField("signature")} /></Field>
-          <Field label={t(locale, "风格说明", "Style summary")}><textarea rows={4} value={analysisDraft.summary} onChange={setAnalysisField("summary")} /></Field>
-          <Field label={t(locale, "创作原则", "Creative principle")}><textarea rows={4} value={analysisDraft.principle} onChange={setAnalysisField("principle")} /></Field>
-          <Field label={t(locale, "标签", "Tags")}><input value={analysisDraft.tags} onChange={setAnalysisField("tags")} /></Field>
-        </div>
-      </AnalysisSection>
-      <AnalysisSection id="analysis-color" icon="palette" title={t(locale, "色彩倾向与光影分布", "Colour and light distribution")} code="COLOR MATRIX">
-        <div className="portfolio-analysis-fields">
-          <Field label={t(locale, "主导色板", "Dominant palette")}><div className="portfolio-palette-input"><input value={analysisDraft.palette} onChange={setAnalysisField("palette")} /><span>{analysisDraft.palette.split(",").filter((color) => color.trim()).map((color) => <i key={color} title={color.trim()} style={{ backgroundColor: color.trim() }} />)}</span></div></Field>
-          <div className="portfolio-analysis-metrics">
-            <AnalysisMetric label={t(locale, "柔和低对比度", "Soft contrast")} value={analysisDraft.contrast} onChange={setAnalysisField("contrast")} />
-            <AnalysisMetric label={t(locale, "暗部透气率", "Shadow airiness")} value={analysisDraft.darkAiriness} onChange={setAnalysisField("darkAiriness")} />
-          </div>
-        </div>
-      </AnalysisSection>
-      <AnalysisSection id="analysis-type-composition" icon="type" title={t(locale, "排版韵律与构图骨架", "Typography and composition")} code="TYPE / GRID">
-        <div className="portfolio-analysis-fields portfolio-analysis-fields--split">
-          <Field label={t(locale, "排版特征", "Typography traits")}><textarea rows={5} value={analysisDraft.typography} onChange={setAnalysisField("typography")} /></Field>
-          <Field label={t(locale, "构图特征", "Composition traits")}><textarea rows={5} value={analysisDraft.composition} onChange={setAnalysisField("composition")} /></Field>
-          <Field label={t(locale, "字体倾向", "Type tendency")}><input value={analysisDraft.typeFamily} onChange={setAnalysisField("typeFamily")} /></Field>
-          <Field label={t(locale, "字重偏好", "Weight preference")}><input value={analysisDraft.typeWeight} onChange={setAnalysisField("typeWeight")} /></Field>
-          <Field label={t(locale, "字距节奏", "Tracking rhythm")}><input value={analysisDraft.tracking} onChange={setAnalysisField("tracking")} /></Field>
-          <Field label={t(locale, "构图拓扑", "Composition topology")}><input value={analysisDraft.compositionTopology} onChange={setAnalysisField("compositionTopology")} /></Field>
-          <AnalysisMetric label={t(locale, "留白占比", "Whitespace ratio")} value={analysisDraft.whitespace} onChange={setAnalysisField("whitespace")} />
-        </div>
-      </AnalysisSection>
-      <AnalysisSection id="analysis-texture" icon="layers" title={t(locale, "材质肌理与感知参数", "Texture and material perception")} code="TEXTURE / MAT">
-        <div className="portfolio-analysis-fields">
-          <Field label={t(locale, "材质特征", "Texture traits")}><textarea rows={5} value={analysisDraft.texture} onChange={setAnalysisField("texture")} /></Field>
-          <div className="portfolio-analysis-metrics">
-            <AnalysisMetric label={t(locale, "纹理颗粒度", "Grain")} value={analysisDraft.grain} onChange={setAnalysisField("grain")} />
-            <AnalysisMetric label={t(locale, "光影漫反射率", "Diffuse light")} value={analysisDraft.diffuseLight} onChange={setAnalysisField("diffuseLight")} />
-          </div>
-          <Field label={t(locale, "着色与材质描述", "Rendering and material")}><input value={analysisDraft.rendering} onChange={setAnalysisField("rendering")} /></Field>
-        </div>
-      </AnalysisSection>
-      <AnalysisSection id="analysis-negative" icon="circle-alert" title={t(locale, "否定规则", "Negative constraints")} code={`${analysisDraft.negativeRules.split("\n").filter((rule) => rule.trim()).length} RULES`}>
-        <div className="portfolio-analysis-fields">
-          <Field label={t(locale, "每行一条规则", "One rule per line")}><textarea rows={4} value={analysisDraft.negativeRules} onChange={setAnalysisField("negativeRules")} /></Field>
-          <div className="portfolio-analysis-rules" aria-label={t(locale, "生效规则", "Active rules")}>{analysisDraft.negativeRules.split("\n").filter((rule) => rule.trim()).map((rule) => <span key={rule}><Icon name="circle-alert" size={13} />{rule.trim()}</span>)}</div>
-        </div>
-      </AnalysisSection>
-      {error && <p className="form-error" role="alert">{error}</p>}
-    </section> : phase === "avatar" ? artworkBusy ? <PortfolioArtworkLoading locale={locale} /> : <section className="candidate-review"><p className="section-kicker">{t(locale, "形象生成", "Artwork generation")}</p><h2>{t(locale, "选择设计师形象", "Choose designer artwork")}</h2><div className="persona-candidate-grid" role="group" aria-label={t(locale, "形象选项", "Artwork options")}>{artworkOptions.map((option, index) => <button type="button" key={option.assetId} className={`persona-candidate ${selectedArtworkAssetId === option.assetId ? "is-selected" : ""}`} aria-pressed={selectedArtworkAssetId === option.assetId} aria-label={`${t(locale, "形象", "Artwork")} ${index + 1}`} onClick={() => onArtworkSelect(option.assetId)}><img src={option.artworkUrl} alt="" /><strong>{t(locale, `形象 ${index + 1}`, `Artwork ${index + 1}`)}</strong></button>)}</div>{error && <p className="form-error" role="alert">{error}</p>}</section> : <section className="candidate-review"><p className="section-kicker">{t(locale, "预览发布", "Preview and publish")}</p><h2>{analysisDraft?.name}</h2><p>{analysisDraft?.summary}</p>{selectedArtworkAssetId && <img src={`designhub-artwork://${selectedArtworkAssetId}`} alt="" />}{publishedInSession && <p className="panel-note">{t(locale, "已发布。", "Published.")}</p>}{error && <p className="form-error" role="alert">{error}</p>}</section>}
+    ) : (analysing || (phase === "analyse" && !analysisDraft)) ? <PortfolioAnalysisLoading locale={locale} /> : phase === "analyse" && analysisDraft && analysisProfile ? <PortfolioAnalysisReport
+      locale={locale}
+      draft={analysisDraft}
+      selectionCount={selectionCount}
+      error={error}
+    /> : phase === "avatar" ? artworkBusy ? <PortfolioArtworkLoading locale={locale} /> : <section className="candidate-review"><p className="section-kicker">{t(locale, "形象生成", "Artwork generation")}</p><h2>{t(locale, "选择设计师形象", "Choose designer artwork")}</h2><div className="persona-candidate-grid" role="group" aria-label={t(locale, "形象选项", "Artwork options")}>{artworkOptions.map((option, index) => <button type="button" key={option.assetId} className={`persona-candidate ${selectedArtworkAssetId === option.assetId ? "is-selected" : ""}`} aria-pressed={selectedArtworkAssetId === option.assetId} aria-label={`${t(locale, "形象", "Artwork")} ${index + 1}`} onClick={() => onArtworkSelect(option.assetId)}><img src={option.artworkUrl} alt="" /><strong>{t(locale, `形象 ${index + 1}`, `Artwork ${index + 1}`)}</strong></button>)}</div>{error && <p className="form-error" role="alert">{error}</p>}</section> : <section className="candidate-review"><p className="section-kicker">{t(locale, "预览发布", "Preview and publish")}</p><h2>{analysisDraft?.name}</h2><p>{analysisDraft?.summary}</p>{selectedArtworkAssetId && <img src={`designhub-artwork://${selectedArtworkAssetId}`} alt="" />}{publishedInSession && <p className="panel-note">{t(locale, "已发布。", "Published.")}</p>}{error && <p className="form-error" role="alert">{error}</p>}</section>}
   </section>;
 };
 

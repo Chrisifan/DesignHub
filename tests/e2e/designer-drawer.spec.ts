@@ -31,19 +31,21 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
         negativeRules: [{ zh: '避免霓虹渐变', en: 'Avoid neon gradients' }, { zh: '避免破坏安全边距', en: 'Keep safe margins' }], portfolioSheets: [],
       };
       api.submitPortfolioSelection = async () => ({ id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'completed', cancelRequested: false, attempt: 1, result: { text: JSON.stringify({ candidates: [candidate] }) } });
+      api.submitDesignerArtworkGeneration = () => new Promise(() => undefined);
     });
 
     const drawer = page.getByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' });
-    await expect(drawer).toHaveClass(/ui-drawer--compact/);
-    const compactBox = await drawer.boundingBox();
+    await expect(drawer).toHaveClass(/ui-drawer--portfolio/);
+    const importBox = await drawer.boundingBox();
     const hostBox = await page.locator('[data-drawer-host]').boundingBox();
-    expect(compactBox).not.toBeNull();
+    expect(importBox).not.toBeNull();
     expect(hostBox).not.toBeNull();
-    expect(compactBox!.width).toBeLessThanOrEqual(461);
-    expect(compactBox!.x).toBeGreaterThanOrEqual(hostBox!.x);
+    const expectedWidth = Math.min(840, viewport.width * 0.92, hostBox!.width);
+    expect(Math.abs(importBox!.width - expectedWidth)).toBeLessThanOrEqual(1);
+    expect(importBox!.x).toBeGreaterThanOrEqual(hostBox!.x);
     const footerBox = await drawer.locator('.ui-drawer__footer').boundingBox();
     expect(footerBox).not.toBeNull();
-    expect(Math.abs(footerBox!.y + footerBox!.height - (compactBox!.y + compactBox!.height))).toBeLessThanOrEqual(1);
+    expect(Math.abs(footerBox!.y + footerBox!.height - (importBox!.y + importBox!.height))).toBeLessThanOrEqual(1);
     expect(await drawer.getByRole('button', { name: '检查页面' }).evaluate(
       (button) => Boolean(button.closest('.ui-drawer__content')),
     )).toBe(true);
@@ -54,20 +56,22 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await page.getByRole('checkbox', { name: '我确认拥有分析这些来源的权利' }).check();
     await page.getByRole('button', { name: '开始分析' }).click();
 
-    await expect(drawer).toHaveClass(/ui-drawer--wide/);
-    await expect(drawer.getByRole('region', { name: '身份与理念' })).toBeVisible();
+    await expect(drawer).toHaveClass(/ui-drawer--portfolio/);
+    await expect(drawer.getByRole('region', { name: '纸间秩序的视觉 DNA 分析' })).toBeVisible();
     await expect(drawer.getByRole('region', { name: '色彩倾向与光影分布' })).toBeVisible();
     await expect(drawer.getByRole('region', { name: '排版韵律与构图骨架' })).toBeAttached();
     await expect(drawer.getByRole('region', { name: '材质肌理与感知参数' })).toBeAttached();
     await expect(drawer.getByRole('region', { name: '否定规则' })).toBeAttached();
-    await expect(drawer.getByRole('spinbutton', { name: '柔和低对比度' })).toHaveValue('68');
+    await expect(drawer.getByRole('progressbar')).toHaveCount(5);
+    await expect(drawer.getByRole('textbox')).toHaveCount(0);
+    await expect(drawer.getByRole('spinbutton')).toHaveCount(0);
     const stepHeights = await drawer.getByRole('list', { name: '生成流程' }).locator('li').evaluateAll(
       (steps) => steps.map((step) => step.getBoundingClientRect().height),
     );
     expect(stepHeights.every((height) => height <= 40)).toBe(true);
     const analysisBox = await drawer.boundingBox();
     expect(analysisBox).not.toBeNull();
-    expect(analysisBox!.width).toBeLessThanOrEqual(841);
+    expect(Math.abs(analysisBox!.width - importBox!.width)).toBeLessThanOrEqual(1);
     expect(analysisBox!.x).toBeGreaterThanOrEqual(hostBox!.x);
     expect(analysisBox!.x + analysisBox!.width).toBeLessThanOrEqual(hostBox!.x + hostBox!.width + 1);
     const overflow = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('body *')]
@@ -89,5 +93,13 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await expect(drawer.getByRole('region', { name: '否定规则' })).toBeVisible();
     await expect(drawer.getByRole('button', { name: '下一步：生成形象' })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('portfolio-analysis-result-bottom.png'), fullPage: true });
+    await drawer.getByRole('button', { name: '下一步：生成形象' }).click();
+    await expect.poll(() => drawer.locator('.ui-drawer__content').evaluate((content) => content.scrollTop)).toBeLessThanOrEqual(1);
+    await expect(drawer.getByText('正在生成设计师形象')).toBeVisible();
+    await expect(drawer.getByTestId('portfolio-artwork-skeleton')).toBeVisible();
+    const artworkBox = await drawer.boundingBox();
+    expect(artworkBox).not.toBeNull();
+    expect(Math.abs(artworkBox!.width - importBox!.width)).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: testInfo.outputPath('portfolio-artwork-loading.png'), fullPage: true });
   });
 }
