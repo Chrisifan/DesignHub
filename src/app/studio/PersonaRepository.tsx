@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 
 import type { Locale } from '../i18n';
-import { PersonaArtwork } from './PersonaArtwork';
+import { DesignerProfileCard } from './DesignerProfileCard';
 import { PageToolbarSlot } from './PageToolbar';
 import { localize, type PersonaProfile } from './personas';
-import { Badge, EmptyState, Icon, t } from './ui';
+import { EmptyState, Icon, t } from './ui';
 
 /** User-facing filters intentionally omit the legacy status value. */
 export type PersonaStatusFilter = 'all' | Exclude<PersonaProfile['status'], 'built-in'>;
@@ -113,28 +113,16 @@ export const PersonaRepository = ({
               <button
                 type="button"
                 key={profile.id}
-                className={`persona-repository-row ${selected ? 'is-selected' : ''}`}
+                className={`persona-repository-card-button ${selected ? 'is-selected' : ''}`}
                 aria-pressed={selected}
                 onClick={() => onSelect(profile.id)}
               >
-                <span className="persona-repository-row__avatar"><PersonaArtwork locale={locale} personaId={profile.id} profile={profile} crop="avatar" /></span>
-                <span className="persona-repository-row__body">
-                  <span className="persona-repository-row__title">
-                    <strong>{localize(locale, profile.name)}</strong>
-                    {profile.id === activeDefaultId && <Badge tone="primary">{t(locale, '默认', 'Default')}</Badge>}
-                  </span>
-                  <span className="persona-repository-row__meta">
-                    <span className="mono">{profile.personaCode}</span><span>{profile.version}</span><span className={`persona-status-dot persona-status-dot--${profile.status}`} />{statusLabel(locale, profile.status)}
-                  </span>
-                  <span className="persona-repository-row__summary">{localize(locale, profile.summary)}</span>
-                  <span className="persona-repository-row__footer">
-                    {profile.tags.slice(0, 3).map((tag) => (
-                      <span className="persona-tag" key={`${profile.id}-${tag.zh}`}>{localize(locale, tag)}</span>
-                    ))}
-                    <span className="persona-repository-row__refs"><Icon name="folder" size={12} />{profile.referenceCount}</span>
-                  </span>
-                </span>
-                <Icon name="chevron-right" size={15} />
+                <DesignerProfileCard
+                  locale={locale}
+                  profile={profile}
+                  mode="library"
+                  isDefault={profile.id === activeDefaultId}
+                />
               </button>
             );
           })}
