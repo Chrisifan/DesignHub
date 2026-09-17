@@ -16,16 +16,15 @@ import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/lib
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
 import type { ProviderConfigMap, ProviderConfigSaveInput } from '../features/providers/config';
 
-export type PortfolioInspectionRequest = {
-  kind: 'local-images' | 'local-zip' | 'remote-image' | 'remote-page';
-  url?: string;
-};
+export type PortfolioInspectionRequest =
+  | { kind: 'local-images' }
+  | { kind: 'local-zip' };
 
 export type PortfolioInspectionCandidate = {
   id: string;
   label: string;
   description: string;
-  origin: 'local-image' | 'zip-image' | 'remote-image' | 'page-image';
+  origin: 'local-image' | 'zip-image';
   previewUrl: string;
 };
 

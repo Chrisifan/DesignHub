@@ -23,21 +23,12 @@ type FileChooser = (kind: 'local-images' | 'local-zip') => Promise<string[] | nu
 
 const isNonEmpty = (value: unknown, maximum = 4096): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= maximum;
 const isIdentifier = (value: unknown): value is string => isNonEmpty(value, 128) && !/[\u0000-\u001F/\\]/u.test(value);
-const isRemoteUrl = (value: unknown): value is string => {
-  if (!isNonEmpty(value)) return false;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'https:' && !parsed.username && !parsed.password;
-  } catch { return false; }
-};
 const isInspectionInput = (value: unknown): value is PortfolioInspectionBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
   if (!isNonEmpty(input.workspaceId) || !input.request || typeof input.request !== 'object') return false;
   const request = input.request as Record<string, unknown>;
-  return (request.kind === 'local-images' || request.kind === 'local-zip')
-    ? request.url === undefined
-    : (request.kind === 'remote-image' || request.kind === 'remote-page') && isRemoteUrl(request.url);
+  return (request.kind === 'local-images' || request.kind === 'local-zip') && request.url === undefined;
 };
 const isSelectionInput = (value: unknown): value is PortfolioSelectionBridgeInput => {
   if (!value || typeof value !== 'object') return false;
@@ -72,14 +63,11 @@ export const createPortfolioInspectionHandler = (
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isInspectionInput(input)) return null;
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
-  if (input.request.kind === 'local-images' || input.request.kind === 'local-zip') {
-    const paths = await chooseFiles(input.request.kind);
-    if (!paths?.length) return null;
-    return input.request.kind === 'local-images' ? inspector.inspectLocalImages(paths) : inspector.inspectZip(paths[0] as string);
-  }
-  return input.request.kind === 'remote-image'
-    ? inspector.inspectRemoteImage(input.request.url as string)
-    : inspector.inspectRemotePage(input.request.url as string);
+  const paths = await chooseFiles(input.request.kind);
+  if (!paths?.length) return null;
+  return input.request.kind === 'local-images'
+    ? inspector.inspectLocalImages(paths)
+    : inspector.inspectZip(paths[0] as string);
 };
 
 export const createPortfolioSelectionHandler = (

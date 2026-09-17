@@ -8,20 +8,27 @@ const makeFixture = (url: string) => {
   return { event: { sender: webContents, senderFrame: mainFrame }, window: { webContents } };
 };
 
-it('inspects an explicitly requested public page only from the trusted active workspace', async () => {
+it('inspects local images and rejects unsupported portfolio request shapes', async () => {
   const fixture = makeFixture('http://localhost:5173/?preview=1');
-  const inspectRemotePage = vi.fn(async () => ({ id: 'inspection-1', candidates: [] }));
+  const chooseFiles = vi.fn(async () => ['/tmp/cover.png']);
+  const inspectLocalImages = vi.fn(async () => ({ id: 'inspection-1', candidates: [] }));
   const inspect = createPortfolioInspectionHandler(
     fixture.window,
     'http://localhost:5173/?preview=1',
     () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
-    async () => null,
-    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), inspectRemoteImage: vi.fn(), inspectRemotePage, selectedSources: vi.fn(), discard: vi.fn(), discardAll: vi.fn() },
+    chooseFiles,
+    { inspectLocalImages, inspectZip: vi.fn(), selectedSources: vi.fn(), discard: vi.fn(), discardAll: vi.fn() },
   );
 
-  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'remote-page', url: 'https://public.test/work' } })).resolves.toMatchObject({ id: 'inspection-1' });
-  await expect(inspect(fixture.event, { workspaceId: 'workspace-2', request: { kind: 'remote-page', url: 'https://public.test/work' } })).resolves.toBeNull();
-  expect(inspectRemotePage).toHaveBeenCalledWith('https://public.test/work');
+  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'local-images' } })).resolves.toMatchObject({ id: 'inspection-1' });
+  expect(chooseFiles).toHaveBeenCalledWith('local-images');
+  expect(inspectLocalImages).toHaveBeenCalledWith(['/tmp/cover.png']);
+
+  chooseFiles.mockClear();
+  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'remote-page', url: 'https://public.test/work' } })).resolves.toBeNull();
+  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'remote-image', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
+  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'local-images', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
+  expect(chooseFiles).not.toHaveBeenCalled();
 });
 
 it('submits selected sources from retained inspection batches with an explicit rights declaration', async () => {
@@ -35,7 +42,7 @@ it('submits selected sources from retained inspection batches with an explicit r
     fixture.window,
     'http://localhost:5173/?preview=1',
     () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
-    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), inspectRemoteImage: vi.fn(), inspectRemotePage: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
+    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
     submit,
   );
   const input = {
@@ -67,7 +74,7 @@ it('rejects duplicated inspection batches and more than eight aggregate sources'
     fixture.window,
     'http://localhost:5173/?preview=1',
     () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
-    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), inspectRemoteImage: vi.fn(), inspectRemotePage: vi.fn(), selectedSources, discard: vi.fn(), discardAll: vi.fn() },
+    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), selectedSources, discard: vi.fn(), discardAll: vi.fn() },
     vi.fn(),
   );
   const base = { workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', rightsConfirmed: true };
@@ -90,7 +97,7 @@ it('retains an inspected source session when task acceptance fails', async () =>
     fixture.window,
     'http://localhost:5173/?preview=1',
     () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
-    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), inspectRemoteImage: vi.fn(), inspectRemotePage: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
+    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
     async () => { throw new Error('TASK_ACCEPTANCE_FAILED'); },
   );
 

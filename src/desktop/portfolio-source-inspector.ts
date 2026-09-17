@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { lookup } from 'node:dns/promises';
 import { readFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
@@ -12,8 +11,6 @@ const maxPortfolioSources = 8;
 const maxArchiveEntries = 128;
 const maxArchiveBytes = 24 * 1024 * 1024;
 const maxImageBytes = 8 * 1024 * 1024;
-const maxPageBytes = 1024 * 1024;
-const maxRedirects = 3;
 const supportedImageTypes = new Map([
   ['png', 'image/png'],
   ['jpg', 'image/jpeg'],
@@ -25,92 +22,24 @@ const supportedImageTypes = new Map([
 export type { PortfolioInspection, PortfolioInspectionCandidate } from '../platform/contracts';
 
 type LoadedInspectionSource = PortfolioInspectionCandidate & { image: PortfolioImageSource['image'] };
-type DeferredPageInspectionSource = PortfolioInspectionCandidate & { remoteImageUrl: string };
-type InspectionSource = LoadedInspectionSource | DeferredPageInspectionSource;
-type FetchResponse = {
-  status: number;
-  headers: { get: (name: string) => string | null };
-  body?: { getReader: () => { read: () => Promise<{ done: boolean; value?: Uint8Array }> } } | null;
-  arrayBuffer: () => Promise<ArrayBuffer>;
-};
-type FetchRequest = (url: string, options: { redirect: 'manual'; credentials: 'omit'; headers: Record<string, string> }) => Promise<FetchResponse>;
+type InspectionSource = LoadedInspectionSource;
 
 export type PortfolioSourceInspectorOptions = {
   readFile?: (path: string) => Promise<Uint8Array>;
-  resolvePublicAddresses?: (hostname: string) => Promise<string[]>;
-  fetch?: FetchRequest;
   normalizeImage?: (input: { bytes: Uint8Array; mimeType: string }) => Promise<{ bytes: Uint8Array; mimeType: string }>;
 };
 
 export type PortfolioSourceInspector = {
   inspectLocalImages: (paths: readonly string[]) => Promise<PortfolioInspection>;
   inspectZip: (path: string) => Promise<PortfolioInspection>;
-  inspectRemoteImage: (url: string) => Promise<PortfolioInspection>;
-  inspectRemotePage: (url: string) => Promise<PortfolioInspection>;
   selectedSources: (inspectionId: string, sourceIds: readonly string[]) => Promise<PortfolioImageSource[]>;
   discard: (inspectionId: string) => void;
   discardAll: () => void;
 };
 
-const ipv4Parts = (address: string): number[] | null => {
-  const parts = address.split('.').map(Number);
-  return parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) ? parts : null;
-};
-
-const isPrivateIpv4Address = (address: string): boolean => {
-  const parts = ipv4Parts(address);
-  if (!parts) return true;
-  const [first, second] = parts;
-  return first === 0 || first === 10 || first === 127 || first >= 224
-    || (first === 100 && second >= 64 && second <= 127)
-    || (first === 169 && second === 254)
-    || (first === 172 && second >= 16 && second <= 31)
-    || (first === 192 && (second === 0 || second === 168))
-    || (first === 198 && (second === 18 || second === 19 || second === 51))
-    || (first === 203 && second === 0);
-};
-
-const ipv6Hextets = (address: string): number[] | null => {
-  const normalized = address.toLowerCase();
-  if (normalized.includes('%') || normalized.split('::').length > 2) return null;
-  const convert = (part: string): number[] | null => {
-    if (part.includes('.')) {
-      const parts = ipv4Parts(part);
-      return parts ? [(parts[0]! << 8) | parts[1]!, (parts[2]! << 8) | parts[3]!] : null;
-    }
-    return /^[0-9a-f]{1,4}$/u.test(part) ? [Number.parseInt(part, 16)] : null;
-  };
-  const [before, after] = normalized.split('::');
-  const beforeParts = before ? before.split(':') : [];
-  const afterParts = after === undefined || !after ? [] : after.split(':');
-  const values = [...beforeParts, ...afterParts].flatMap((part) => convert(part) ?? []);
-  if ([...beforeParts, ...afterParts].some((part) => convert(part) === null)) return null;
-  if (after === undefined) return values.length === 8 ? values : null;
-  const omitted = 8 - values.length;
-  return omitted > 0 ? [...beforeParts.flatMap((part) => convert(part) as number[]), ...Array.from({ length: omitted }, () => 0), ...afterParts.flatMap((part) => convert(part) as number[])] : null;
-};
-
-const isPrivateAddress = (address: string): boolean => {
-  const normalized = address.toLowerCase();
-  if (!normalized.includes(':')) return isPrivateIpv4Address(normalized);
-  const parts = ipv6Hextets(normalized);
-  if (!parts) return true;
-  const first = parts[0]!;
-  const isUnspecified = parts.every((part) => part === 0);
-  const isLoopback = parts.slice(0, 7).every((part) => part === 0) && parts[7] === 1;
-  const isIpv4Mapped = parts.slice(0, 5).every((part) => part === 0) && parts[5] === 0xffff;
-  if (isIpv4Mapped) return isPrivateIpv4Address(`${parts[6]! >> 8}.${parts[6]! & 255}.${parts[7]! >> 8}.${parts[7]! & 255}`);
-  return isUnspecified || isLoopback || (first & 0xffc0) === 0xfe80 || (first & 0xfe00) === 0xfc00 || (first & 0xff00) === 0xff00;
-};
-
 const imageTypeForName = (name: string): string | null => {
   const extension = name.split('.').at(-1)?.toLowerCase();
   return extension ? supportedImageTypes.get(extension) ?? null : null;
-};
-
-const imageTypeFromHeader = (contentType: string | null): string | null => {
-  const normalized = contentType?.split(';', 1)[0]?.trim().toLowerCase() ?? '';
-  return [...supportedImageTypes.values()].includes(normalized) ? normalized : null;
 };
 
 const hasImageSignature = (bytes: Uint8Array, mimeType: string): boolean => {
@@ -167,95 +96,9 @@ const assertArchivePath = (name: string): string => {
   return normalized;
 };
 
-const readBoundedResponse = async (response: FetchResponse, maximumBytes: number): Promise<Uint8Array> => {
-  const advertised = Number(response.headers.get('content-length'));
-  if (Number.isFinite(advertised) && advertised > maximumBytes) throw new Error('PORTFOLIO_SOURCE_TOO_LARGE');
-  if (!response.body) {
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > maximumBytes) throw new Error('PORTFOLIO_SOURCE_TOO_LARGE');
-    return bytes;
-  }
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  const reader = response.body.getReader();
-  for (;;) {
-    const next = await reader.read();
-    if (next.done) break;
-    const chunk = next.value ?? new Uint8Array();
-    size += chunk.byteLength;
-    if (size > maximumBytes) throw new Error('PORTFOLIO_SOURCE_TOO_LARGE');
-    chunks.push(chunk);
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  chunks.forEach((chunk) => { bytes.set(chunk, offset); offset += chunk.byteLength; });
-  return bytes;
-};
-
-const attributeValue = (tag: string, name: string): string | null => {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  const matched = tag.match(new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s/>]+))`, 'iu'));
-  return matched ? (matched[1] ?? matched[2] ?? matched[3] ?? '').trim() : null;
-};
-
-const hasHiddenSemantics = (tag: string): boolean => {
-  const hasHidden = /(?:^|\s)hidden(?:\s|=|\/|>)/iu.test(tag);
-  const ariaHidden = attributeValue(tag, 'aria-hidden')?.toLowerCase() === 'true';
-  const style = attributeValue(tag, 'style') ?? '';
-  return hasHidden || ariaHidden || /\bdisplay\s*:\s*none\b|\bvisibility\s*:\s*hidden\b/iu.test(style);
-};
-
-const isZeroDimension = (value: string): boolean => /^0+(?:\.0+)?(?:px|em|rem|%|vh|vw|pt|pc|cm|mm|in)?$/iu.test(value.trim());
-
-const hasZeroDimension = (tag: string): boolean => {
-  const style = attributeValue(tag, 'style') ?? '';
-  const zeroStyle = /(?:^|;)\s*(?:width|height)\s*:\s*0+(?:\.0+)?(?:px|em|rem|%|vh|vw|pt|pc|cm|mm|in)?\s*(?:!important\s*)?(?:;|$)/iu.test(style);
-  return zeroStyle || ['width', 'height'].some((name) => {
-    const value = attributeValue(tag, name);
-    return value !== null && isZeroDimension(value);
-  });
-};
-
-const voidElements = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
-
-const visiblePageImages = (html: string, baseUrl: string): Array<{ url: string; label: string }> => {
-  const seen = new Set<string>();
-  const candidates: Array<{ url: string; label: string }> = [];
-  const hiddenStack: boolean[] = [];
-  const tags = html.replace(/<!--[\s\S]*?-->/gu, '').match(/<\/?[a-z][a-z0-9:-]*\b(?:[^>"']|"[^"]*"|'[^']*')*>/giu) ?? [];
-  tags.forEach((tag) => {
-    const match = tag.match(/^<\/?([a-z][a-z0-9:-]*)\b/iu);
-    const name = match?.[1]?.toLowerCase();
-    if (!name) return;
-    if (tag.startsWith('</')) {
-      hiddenStack.pop();
-      return;
-    }
-    const isImage = name === 'img';
-    const hidden = hiddenStack.some(Boolean) || name === 'template' || name === 'script' || name === 'style' || name === 'noscript' || hasHiddenSemantics(tag);
-    if (!isImage) {
-      if (!tag.endsWith('/>') && !voidElements.has(name)) hiddenStack.push(hidden);
-      return;
-    }
-    if (hidden || hasZeroDimension(tag)) return;
-    const source = tag.match(/\bsrc\s*=\s*["']([^"']+)["']/iu)?.[1];
-    if (!source) return;
-    try {
-      const url = new URL(source, baseUrl).toString();
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || seen.has(url)) return;
-      seen.add(url);
-      candidates.push({ url, label: tag.match(/\balt\s*=\s*["']([^"']*)["']/iu)?.[1]?.trim() || parsed.pathname.split('/').at(-1) || 'Portfolio image' });
-    } catch { /* An unparseable page image is not a selectable candidate. */ }
-  });
-  return candidates;
-};
-
 export const createPortfolioSourceInspector = (options: PortfolioSourceInspectorOptions = {}): PortfolioSourceInspector => {
   const sessions = new Map<string, InspectionSource[]>();
   const read = options.readFile ?? (async (path: string) => new Uint8Array(await readFile(path)));
-  const resolvePublicAddresses = options.resolvePublicAddresses ?? (async (hostname: string) => (await lookup(hostname, { all: true })).map((item) => item.address));
-  const remoteFetch = options.fetch ?? ((url, request) => fetch(url, request) as Promise<FetchResponse>);
   const normalizeImage = options.normalizeImage ?? normalizePortfolioImage;
   const visionImage = async (bytes: Uint8Array, mimeType: string): Promise<PortfolioImageSource['image']> => {
     const normalized = await normalizeImage({ bytes, mimeType });
@@ -273,33 +116,6 @@ export const createPortfolioSourceInspector = (options: PortfolioSourceInspector
         id: sourceId, label, description, origin, previewUrl,
       })),
     };
-  };
-  const assertPublicUrl = async (value: string): Promise<URL> => {
-    let parsed: URL;
-    try { parsed = new URL(value); } catch { throw new Error('PORTFOLIO_REMOTE_URL_INVALID'); }
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hostname.length === 0) throw new Error('PORTFOLIO_REMOTE_URL_INVALID');
-    const addresses = await resolvePublicAddresses(parsed.hostname);
-    if (addresses.length === 0 || addresses.some(isPrivateAddress)) throw new Error('PORTFOLIO_REMOTE_ADDRESS_FORBIDDEN');
-    return parsed;
-  };
-  const download = async (value: string, kind: 'image' | 'page'): Promise<{ url: string; bytes: Uint8Array; mimeType: string }> => {
-    let current = value;
-    for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
-      const url = await assertPublicUrl(current);
-      const response = await remoteFetch(url.toString(), { redirect: 'manual', credentials: 'omit', headers: { accept: kind === 'image' ? 'image/png,image/jpeg,image/webp,image/gif' : 'text/html,application/xhtml+xml' } });
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location');
-        if (!location || redirects === maxRedirects) throw new Error('PORTFOLIO_REDIRECT_INVALID');
-        current = new URL(location, url).toString();
-        continue;
-      }
-      if (response.status < 200 || response.status >= 300) throw new Error('PORTFOLIO_REMOTE_FETCH_FAILED');
-      const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ?? '';
-      const mimeType = kind === 'image' ? imageTypeFromHeader(contentType) : (contentType === 'text/html' || contentType === 'application/xhtml+xml' ? contentType : null);
-      if (!mimeType) throw new Error('PORTFOLIO_REMOTE_TYPE_INVALID');
-      return { url: url.toString(), bytes: await readBoundedResponse(response, kind === 'image' ? maxImageBytes : maxPageBytes), mimeType };
-    }
-    throw new Error('PORTFOLIO_REDIRECT_INVALID');
   };
   const inspectLocalImages = async (paths: readonly string[]): Promise<PortfolioInspection> => {
     if (paths.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
@@ -350,24 +166,6 @@ export const createPortfolioSourceInspector = (options: PortfolioSourceInspector
     if (failure) throw failure;
     return saveInspection(sources);
   };
-  const inspectRemoteImage = async (url: string): Promise<PortfolioInspection> => {
-    const downloaded = await download(url, 'image');
-    return saveInspection([sourceFromBytes({ label: new URL(downloaded.url).pathname.split('/').at(-1) || 'Portfolio image', origin: 'remote-image', bytes: downloaded.bytes, mimeType: downloaded.mimeType })]);
-  };
-  const inspectRemotePage = async (url: string): Promise<PortfolioInspection> => {
-    const page = await download(url, 'page');
-    const decoder = new TextDecoder();
-    const discovered = visiblePageImages(decoder.decode(page.bytes), page.url).slice(0, maxPortfolioSources);
-    const sources: InspectionSource[] = discovered.map((candidate) => ({
-      id: `portfolio-source-${randomUUID()}`,
-      label: candidate.label,
-      description: candidate.label,
-      origin: 'page-image',
-      previewUrl: '',
-      remoteImageUrl: candidate.url,
-    }));
-    return saveInspection(sources);
-  };
   const selectedSources = async (inspectionId: string, sourceIds: readonly string[]): Promise<PortfolioImageSource[]> => {
     const sources = sessions.get(inspectionId);
     if (!sources) throw new Error('PORTFOLIO_INSPECTION_NOT_FOUND');
@@ -376,24 +174,15 @@ export const createPortfolioSourceInspector = (options: PortfolioSourceInspector
     const selected = sourceIds.map((id) => sources.find((source) => source.id === id)).filter((source): source is InspectionSource => Boolean(source));
     if (selected.length !== sourceIds.length) throw new Error('PORTFOLIO_SOURCE_SELECTION_INVALID');
     return Promise.all(selected.map(async (source) => {
-      if ('image' in source) {
-        if ('url' in source.image) return { id: source.id, description: source.description, image: source.image };
-        return {
-          id: source.id,
-          description: source.description,
-          image: await visionImage(new Uint8Array(Buffer.from(source.image.base64, 'base64')), source.image.mimeType ?? 'image/png'),
-        };
-      }
-      const downloaded = await download(source.remoteImageUrl, 'image');
-      assertImageBytes(downloaded.bytes, downloaded.mimeType);
+      if ('url' in source.image) return { id: source.id, description: source.description, image: source.image };
       return {
         id: source.id,
         description: source.description,
-        image: await visionImage(downloaded.bytes, downloaded.mimeType),
+        image: await visionImage(new Uint8Array(Buffer.from(source.image.base64, 'base64')), source.image.mimeType ?? 'image/png'),
       };
     }));
   };
   const discard = (inspectionId: string): void => { sessions.delete(inspectionId); };
   const discardAll = (): void => { sessions.clear(); };
-  return { inspectLocalImages, inspectZip, inspectRemoteImage, inspectRemotePage, selectedSources, discard, discardAll };
+  return { inspectLocalImages, inspectZip, selectedSources, discard, discardAll };
 };
