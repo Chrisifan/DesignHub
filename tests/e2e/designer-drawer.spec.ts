@@ -87,6 +87,18 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await expect(drawer.getByRole('region', { name: '材质肌理与感知参数' })).toBeAttached();
     await expect(drawer.getByRole('region', { name: '否定规则' })).toBeAttached();
     await expect(drawer.getByRole('progressbar')).toHaveCount(5);
+    const grainProgress = drawer.getByRole('progressbar', { name: '纹理颗粒度' });
+    const grainPresentation = await grainProgress.evaluate((track) => {
+      const fill = track.querySelector<HTMLElement>('i')!;
+      return {
+        token: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim(),
+        color: getComputedStyle(fill).backgroundColor,
+        ratio: fill.getBoundingClientRect().width / track.getBoundingClientRect().width,
+      };
+    });
+    expect(grainPresentation.token).toBe('#f6bd60');
+    expect(grainPresentation.color).toBe('rgb(246, 189, 96)');
+    expect(grainPresentation.ratio).toBeCloseTo(0.15, 2);
     await expect(drawer.getByRole('textbox')).toHaveCount(0);
     await expect(drawer.getByRole('spinbutton')).toHaveCount(0);
     const stepHeights = await drawer.getByRole('list', { name: '生成流程' }).locator('li').evaluateAll(

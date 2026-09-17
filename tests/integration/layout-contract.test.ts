@@ -5,6 +5,13 @@ import { expect, it } from 'vitest';
 const readStyle = (file: string): string =>
   readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8');
 
+it('defines the warning accent in the shared dark theme', () => {
+  const tokens = readStyle('../../src/app/styles/tokens.css');
+  const darkTheme = tokens.match(/:root,\s*:root\[data-theme='dark'\]\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+
+  expect(darkTheme).toMatch(/--warning:\s*#f6bd60;/u);
+});
+
 it('defines shared layout tokens for compact toolbar controls and unframed main content', () => {
   const tokens = readStyle('../../src/app/styles/tokens.css');
 
