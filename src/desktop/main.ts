@@ -449,12 +449,10 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(portfolioInspectChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createPortfolioInspectionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (kind) => {
+    return createPortfolioInspectionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async () => {
       const result = await dialog.showOpenDialog(activeWindow!, {
-        properties: kind === 'local-images' ? ['openFile', 'multiSelections'] : ['openFile'],
-        filters: kind === 'local-images'
-          ? [{ name: 'Portfolio images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
-          : [{ name: 'Portfolio archive', extensions: ['zip'] }],
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Portfolio images or ZIP', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'zip'] }],
       });
       return result.canceled ? null : result.filePaths;
     }, portfolioSourceInspector)(event, input);

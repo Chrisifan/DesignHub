@@ -2,33 +2,65 @@ import { expect, it, vi } from 'vitest';
 
 import { createPortfolioInspectionHandler, createPortfolioSelectionHandler } from './portfolio';
 
+const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+
 const makeFixture = (url: string) => {
   const mainFrame = { url };
   const webContents = { mainFrame, getURL: () => url };
   return { event: { sender: webContents, senderFrame: mainFrame }, window: { webContents } };
 };
 
-it('inspects local images and rejects unsupported portfolio request shapes', async () => {
+it('routes the unified native picker and trusted uploaded bytes', async () => {
   const fixture = makeFixture('http://localhost:5173/?preview=1');
   const chooseFiles = vi.fn(async () => ['/tmp/cover.png']);
-  const inspectLocalImages = vi.fn(async () => ({ id: 'inspection-1', candidates: [] }));
+  const inspectLocalFiles = vi.fn(async () => ({ id: 'inspection-native', candidates: [] }));
+  const inspectUploadedFiles = vi.fn(async () => ({ id: 'inspection-upload', candidates: [] }));
   const inspect = createPortfolioInspectionHandler(
     fixture.window,
     'http://localhost:5173/?preview=1',
     () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
     chooseFiles,
-    { inspectLocalImages, inspectZip: vi.fn(), selectedSources: vi.fn(), discard: vi.fn(), discardAll: vi.fn() },
+    { inspectLocalFiles, inspectUploadedFiles, selectedSources: vi.fn(), discard: vi.fn(), discardAll: vi.fn() },
   );
 
-  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'local-images' } })).resolves.toMatchObject({ id: 'inspection-1' });
-  expect(chooseFiles).toHaveBeenCalledWith('local-images');
-  expect(inspectLocalImages).toHaveBeenCalledWith(['/tmp/cover.png']);
+  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'local-files' } })).resolves.toMatchObject({ id: 'inspection-native' });
+  await expect(inspect(fixture.event, {
+    workspaceId: 'workspace-1',
+    request: { kind: 'uploaded-files', files: [{ name: 'pasted.png', mimeType: 'image/png', bytes: png }] },
+  })).resolves.toMatchObject({ id: 'inspection-upload' });
+  expect(chooseFiles).toHaveBeenCalledTimes(1);
+  expect(inspectLocalFiles).toHaveBeenCalledWith(['/tmp/cover.png']);
+  expect(inspectUploadedFiles).toHaveBeenCalledWith([{ name: 'pasted.png', mimeType: 'image/png', bytes: png }]);
 
   chooseFiles.mockClear();
   await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'remote-page', url: 'https://public.test/work' } })).resolves.toBeNull();
   await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'remote-image', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
-  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'local-images', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
+  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'local-files', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
   expect(chooseFiles).not.toHaveBeenCalled();
+});
+
+it('rejects malformed or oversized renderer file payloads', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const inspectUploadedFiles = vi.fn();
+  const inspect = createPortfolioInspectionHandler(
+    fixture.window,
+    'http://localhost:5173/?preview=1',
+    () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
+    vi.fn(),
+    { inspectLocalFiles: vi.fn(), inspectUploadedFiles, selectedSources: vi.fn(), discard: vi.fn(), discardAll: vi.fn() },
+  );
+  const image = (name: string, bytes: Uint8Array = png) => ({ name, mimeType: 'image/png', bytes });
+  const invalidRequests = [
+    { kind: 'uploaded-files', files: [{ name: 'missing.png', mimeType: 'image/png' }] },
+    { kind: 'uploaded-files', files: Array.from({ length: 9 }, (_, index) => image(`sheet-${index}.png`)) },
+    { kind: 'uploaded-files', files: [image('../outside.png')] },
+    { kind: 'uploaded-files', files: [image('large.png', new Uint8Array(8 * 1024 * 1024 + 1))] },
+  ];
+
+  for (const request of invalidRequests) {
+    await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request })).resolves.toBeNull();
+  }
+  expect(inspectUploadedFiles).not.toHaveBeenCalled();
 });
 
 it('submits selected sources from retained inspection batches with an explicit rights declaration', async () => {
@@ -42,7 +74,7 @@ it('submits selected sources from retained inspection batches with an explicit r
     fixture.window,
     'http://localhost:5173/?preview=1',
     () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
-    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
+    { inspectLocalFiles: vi.fn(), inspectUploadedFiles: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
     submit,
   );
   const input = {
@@ -74,7 +106,7 @@ it('rejects duplicated inspection batches and more than eight aggregate sources'
     fixture.window,
     'http://localhost:5173/?preview=1',
     () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
-    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), selectedSources, discard: vi.fn(), discardAll: vi.fn() },
+    { inspectLocalFiles: vi.fn(), inspectUploadedFiles: vi.fn(), selectedSources, discard: vi.fn(), discardAll: vi.fn() },
     vi.fn(),
   );
   const base = { workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', rightsConfirmed: true };
@@ -97,7 +129,7 @@ it('retains an inspected source session when task acceptance fails', async () =>
     fixture.window,
     'http://localhost:5173/?preview=1',
     () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
-    { inspectLocalImages: vi.fn(), inspectZip: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
+    { inspectLocalFiles: vi.fn(), inspectUploadedFiles: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
     async () => { throw new Error('TASK_ACCEPTANCE_FAILED'); },
   );
 

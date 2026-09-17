@@ -1,7 +1,7 @@
 import type { PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import type { PortfolioInspection, PortfolioInspectionRequest, PortfolioSelectionInput } from '../../platform/contracts';
+import type { PortfolioInspection, PortfolioInspectionRequest, PortfolioSelectionInput, PortfolioUploadFile } from '../../platform/contracts';
 import type { PortfolioSourceInspector } from '../portfolio-source-inspector';
 import { isTrustedWorkspaceRequest } from './workspace';
 
@@ -19,16 +19,37 @@ export type PortfolioSelectionBridgeInput = PortfolioSelectionInput;
 type PortfolioSender = { mainFrame: { url: string }; getURL: () => string };
 type PortfolioRequestEvent = { sender: PortfolioSender; senderFrame: { url: string } | null };
 type PortfolioWindow = { webContents: PortfolioSender };
-type FileChooser = (kind: 'local-images' | 'local-zip') => Promise<string[] | null>;
+type FileChooser = () => Promise<string[] | null>;
+
+const maxPortfolioSources = 8;
+const maxArchiveBytes = 24 * 1024 * 1024;
+const maxImageBytes = 8 * 1024 * 1024;
+const supportedImageExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif']);
 
 const isNonEmpty = (value: unknown, maximum = 4096): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= maximum;
 const isIdentifier = (value: unknown): value is string => isNonEmpty(value, 128) && !/[\u0000-\u001F/\\]/u.test(value);
+const extensionForName = (name: string): string => name.split('.').at(-1)?.toLowerCase() ?? '';
+const isUploadFile = (value: unknown): value is PortfolioUploadFile => {
+  if (!value || typeof value !== 'object') return false;
+  const file = value as Record<string, unknown>;
+  if (!isNonEmpty(file.name, 512) || /[\\/\u0000-\u001F]/u.test(file.name) || typeof file.mimeType !== 'string' || file.mimeType.length > 128 || !(file.bytes instanceof Uint8Array)) return false;
+  const extension = extensionForName(file.name);
+  if (extension === 'zip') return file.bytes.byteLength <= maxArchiveBytes;
+  return supportedImageExtensions.has(extension) && file.bytes.byteLength <= maxImageBytes;
+};
+const isUploadBatch = (files: unknown): files is PortfolioUploadFile[] => {
+  if (!Array.isArray(files) || files.length === 0 || files.length > maxPortfolioSources || !files.every(isUploadFile)) return false;
+  const zipCount = files.filter((file) => extensionForName(file.name) === 'zip').length;
+  return zipCount === 0 || (zipCount === 1 && files.length === 1);
+};
 const isInspectionInput = (value: unknown): value is PortfolioInspectionBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
   if (!isNonEmpty(input.workspaceId) || !input.request || typeof input.request !== 'object') return false;
   const request = input.request as Record<string, unknown>;
-  return (request.kind === 'local-images' || request.kind === 'local-zip') && request.url === undefined;
+  if (request.url !== undefined) return false;
+  if (request.kind === 'local-files') return request.files === undefined;
+  return request.kind === 'uploaded-files' && isUploadBatch(request.files);
 };
 const isSelectionInput = (value: unknown): value is PortfolioSelectionBridgeInput => {
   if (!value || typeof value !== 'object') return false;
@@ -63,11 +84,10 @@ export const createPortfolioInspectionHandler = (
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isInspectionInput(input)) return null;
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
-  const paths = await chooseFiles(input.request.kind);
+  if (input.request.kind === 'uploaded-files') return inspector.inspectUploadedFiles(input.request.files);
+  const paths = await chooseFiles();
   if (!paths?.length) return null;
-  return input.request.kind === 'local-images'
-    ? inspector.inspectLocalImages(paths)
-    : inspector.inspectZip(paths[0] as string);
+  return inspector.inspectLocalFiles(paths);
 };
 
 export const createPortfolioSelectionHandler = (
