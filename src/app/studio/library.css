@@ -941,6 +941,283 @@
   border-radius: 6px;
 }
 
+.portfolio-review,
+.designer-profile-card--review {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.designer-profile-card--review {
+  gap: 12px;
+}
+
+.designer-profile-card__review-head {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-container-lowest);
+}
+
+.designer-profile-card__review-artwork {
+  position: relative;
+  min-height: 148px;
+  overflow: hidden;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-container-low);
+}
+
+.designer-profile-card__review-artwork .persona-artwork,
+.designer-profile-card__review-artwork img {
+  width: 100%;
+  height: 100%;
+}
+
+.designer-profile-card__review-artwork img {
+  object-fit: cover;
+}
+
+.designer-profile-card__active-label {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100% - 16px);
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tertiary) 54%, var(--border-subtle));
+  border-radius: 4px;
+  color: var(--tertiary);
+  background: color-mix(in srgb, var(--surface-container-lowest) 90%, transparent);
+  font-size: 8px;
+  line-height: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-profile-card__active-label i {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.designer-profile-card__review-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  padding: 15px 16px;
+}
+
+.designer-profile-card__review-identity > .mono {
+  color: var(--on-surface-variant);
+  font-size: 9px;
+  line-height: 14px;
+}
+
+.designer-profile-card__review-identity h2 {
+  max-width: 100%;
+  margin: 5px 0 2px;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.designer-profile-card__review-identity > p {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.designer-profile-card__review-identity .designer-profile-card__tags {
+  flex-wrap: wrap;
+  margin-top: 9px;
+  padding: 0;
+  overflow: visible;
+}
+
+.designer-profile-card__review-identity .badge {
+  margin-top: 9px;
+}
+
+.designer-profile-card__signals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.designer-profile-card__dna,
+.designer-profile-card__rules {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-container-lowest) 86%, transparent);
+}
+
+.designer-profile-card__section-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--primary);
+}
+
+.designer-profile-card__section-title h3 {
+  margin: 0;
+  color: var(--on-surface);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.designer-profile-card__section-title > span {
+  color: var(--on-surface-variant);
+  font-size: 8px;
+  line-height: 13px;
+}
+
+.designer-profile-card__palette {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.designer-profile-card__palette > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.designer-profile-card__palette i {
+  display: block;
+  height: 32px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.designer-profile-card__palette small {
+  overflow: hidden;
+  color: var(--on-surface-variant);
+  font-size: 8px;
+  line-height: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.designer-profile-card__dna-group {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.designer-profile-card__dna-group h4,
+.designer-profile-card__dna-group p {
+  margin: 0;
+}
+
+.designer-profile-card__dna-group h4 {
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.designer-profile-card__dna-group p {
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.designer-profile-card__dna-group dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin: 2px 0 0;
+}
+
+.designer-profile-card__dna-group dl > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.designer-profile-card__dna-group dt,
+.designer-profile-card__dna-group dd {
+  margin: 0;
+  font-size: 9px;
+  line-height: 15px;
+  overflow-wrap: anywhere;
+}
+
+.designer-profile-card__dna-group dt {
+  color: var(--on-surface-variant);
+}
+
+.designer-profile-card__dna-group--material .designer-profile-metric {
+  margin-top: 3px;
+}
+
+.designer-profile-card__rules .designer-profile-card__section-title {
+  color: var(--error);
+}
+
+.designer-profile-card__rules ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.designer-profile-card__rules li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 9px;
+  border-left: 2px solid var(--error);
+  color: var(--on-surface);
+  background: color-mix(in srgb, var(--error) 6%, transparent);
+  font-size: 10px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.designer-profile-card__rules li .ui-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--error);
+}
+
+.designer-profile-card__rules > p {
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.portfolio-review__published {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--tertiary);
+}
+
 @keyframes portfolio-skeleton {
   to { background-position: -120% 0; }
 }
@@ -978,6 +1255,18 @@
 
   .portfolio-analysis-section__header {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .designer-profile-card__review-head,
+  .designer-profile-card__signals,
+  .designer-profile-card__dna-group dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .designer-profile-card__review-artwork {
+    min-height: 220px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
   }
 }
 

@@ -490,6 +490,12 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   expect(screen.getByRole("img", { name: "生成的设计师 Avatar" })).toBeInTheDocument();
   expect(submitDesignerArtworkGeneration).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole("button", { name: "下一步：预览发布" }));
+  const dossier = screen.getByRole("region", { name: "未来编辑设计师档案" });
+  expect(within(dossier).getByRole("img", { name: /未来编辑形象/ })).toHaveAttribute("src", "designhub-artwork://artwork-portrait-1");
+  expect(within(dossier).getByRole("region", { name: "核心指标" })).toBeInTheDocument();
+  expect(within(dossier).getByRole("region", { name: "Style DNA" })).toBeInTheDocument();
+  expect(within(dossier).getByRole("region", { name: "否定规则" })).toHaveTextContent("避免霓虹渐变");
+  expect(submitDesignerArtworkGeneration).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole("button", { name: "返回形象" }));
   expect(screen.getByRole("img", { name: "生成的设计师 Avatar" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "下一步：预览发布" }));
@@ -515,6 +521,55 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   expect(persistedProfiles[0]?.artworkUrl).not.toMatch(/^data:/u);
   expect(persistedProfiles[0]?.name.en).toBe("Future editor");
   expect(persistedProfiles[0]?.summary.en).toBe("Rational, bright digital typography");
+});
+
+it("keeps the review dossier visible when publishing fails", async () => {
+  const candidate = { ...personaProfiles[0]!, id: "candidate-publish-failure" };
+  const saveDesignerState = vi.fn(async () => {
+    throw new Error("WRITE_FAILED");
+  });
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    inspectPortfolioSources: vi.fn(async () => ({
+      id: "inspection-publish-failure",
+      candidates: [{ id: "source-publish-failure", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
+    })),
+    submitPortfolioSelection: vi.fn(async () => ({
+      id: "task-analysis-publish-failure",
+      requestId: "request-analysis-publish-failure",
+      state: "completed" as const,
+      cancelRequested: false,
+      attempt: 1,
+      result: { text: JSON.stringify({ candidates: [candidate] }) },
+    })),
+    submitDesignerArtworkGeneration: vi.fn(async () => ({
+      id: "task-artwork-publish-failure",
+      requestId: "request-artwork-publish-failure",
+      state: "completed" as const,
+      cancelRequested: false,
+      attempt: 1,
+      result: { assetIds: ["artwork-publish-failure"], imageCount: 1 },
+    })),
+    readDesignerArtwork: vi.fn(async ({ artworkId }) => ({ artworkId, dataUrl: "data:image/png;base64,AQID" })),
+    saveDesignerState,
+  } as typeof window.designhub;
+
+  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-publish-failure" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
+  fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
+  await screen.findByText("Portfolio");
+  fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Next: generate artwork" }));
+  await screen.findByRole("img", { name: "Generated designer Avatar" });
+  fireEvent.click(screen.getByRole("button", { name: "Next: preview and publish" }));
+  const dossier = screen.getByRole("region", { name: "Paper & Type designer profile" });
+  fireEvent.click(screen.getByRole("button", { name: "Publish preview" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("Designer publishing failed; try again.");
+  expect(dossier).toBeInTheDocument();
+  expect(within(dossier).getByRole("img", { name: /Paper & Type/ })).toHaveAttribute("src", "designhub-artwork://artwork-publish-failure");
+  expect(screen.queryByText("Published.")).not.toBeInTheDocument();
 });
 
 it("keeps the current Avatar when regeneration fails and replaces it after a successful retry", async () => {

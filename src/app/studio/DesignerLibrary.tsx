@@ -10,6 +10,7 @@ import {
 
 import type { Locale } from "../i18n";
 import { Drawer } from "./Drawer";
+import { DesignerProfileCard } from "./DesignerProfileCard";
 import { PersonaInspector } from "./PersonaInspector";
 import { PortfolioUploader } from "./PortfolioUploader";
 import {
@@ -237,6 +238,7 @@ export const DesignerLibrary = ({
   const [loading, setLoading] = useState(Boolean(workspaceId));
   const [loadFailed, setLoadFailed] = useState(false);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const skipNextPersistence = useRef(false);
   const discardPortfolioInspection = useCallback(() => {
     if (workspaceId && portfolioInspection) void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
     setPortfolioInspection(null);
@@ -308,6 +310,10 @@ export const DesignerLibrary = ({
   }, [preview, workspaceId, initialProfiles]);
   useEffect(() => {
     if (!workspaceId || isHydrating.current || readOnly) return;
+    if (skipNextPersistence.current) {
+      skipNextPersistence.current = false;
+      return;
+    }
     const state = {
       profiles,
       defaultId,
@@ -660,7 +666,7 @@ export const DesignerLibrary = ({
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [artworkTaskId, editor, locale, notify, workspaceId]);
-  const publishPreview = () => {
+  const publishPreview = async () => {
     if (!analysisProfile || !analysisDraft || !artwork) return;
     const published: PersonaProfile = {
       ...profileFromDraft(analysisDraft, analysisProfile, locale),
@@ -670,26 +676,46 @@ export const DesignerLibrary = ({
       artworkAssetId: artwork.assetId,
       artworkUrl: artwork.artworkUrl,
     };
-    setProfiles((previous) => [
-      published,
-      ...previous,
-    ]);
-    setSelectedId(published.id);
-    setCreationError("");
-    setPublishedInSession(true);
-    notify(
-      workspaceId
-        ? t(
-            locale,
-            "设计师已发布并保存到当前工作区。",
-            "Designer published and saved to the current workspace.",
-          )
-        : t(
-            locale,
-            "已在本次示例会话中发布，不会写入磁盘。",
-            "Published in this example session only; nothing was written to disk.",
-          ),
-    );
+    const nextProfiles = [published, ...profiles];
+    try {
+      if (workspaceId) {
+        const saveDesignerState = getDesktopApi().saveDesignerState;
+        if (!saveDesignerState) throw new Error("DESIGNER_SAVE_UNAVAILABLE");
+        const state = {
+          profiles: nextProfiles,
+          defaultId,
+          drafts: {
+            newDraft: newDraft as DesignerDraftState,
+            editDrafts: editDrafts as Record<string, DesignerDraftState>,
+          },
+        };
+        const persistence = saveQueue.current
+          .catch(() => undefined)
+          .then(() => saveDesignerState(workspaceId, state));
+        saveQueue.current = persistence;
+        if (!await persistence) throw new Error("DESIGNER_SAVE_FAILED");
+        skipNextPersistence.current = true;
+      }
+      setProfiles(nextProfiles);
+      setSelectedId(published.id);
+      setCreationError("");
+      setPublishedInSession(true);
+      notify(
+        workspaceId
+          ? t(
+              locale,
+              "设计师已发布并保存到当前工作区。",
+              "Designer published and saved to the current workspace.",
+            )
+          : t(
+              locale,
+              "已在本次示例会话中发布，不会写入磁盘。",
+              "Published in this example session only; nothing was written to disk.",
+            ),
+      );
+    } catch {
+      setCreationError(t(locale, "设计师发布失败，请重试。", "Designer publishing failed; try again."));
+    }
   };
   const deleteSelected = () => {
     if (readOnly || loading || loadFailed) return;
@@ -908,7 +934,7 @@ const DesignerEditorModal = ({
   onContinueToAvatar: () => void;
   artworkBusy: boolean;
   canGenerateArtwork: boolean;
-  onPublish: () => void;
+  onPublish: () => void | Promise<void>;
   onDraftChange: (draft: DesignerDraft) => void;
   onBackToImport: () => void;
   onBackToAnalysis: () => void;
@@ -939,7 +965,7 @@ const DesignerEditorModal = ({
       <Button variant="primary" icon="arrow-right" disabled={!artwork || artworkBusy} onClick={onContinueToReview}>{t(locale, "下一步：预览发布", "Next: preview and publish")}</Button>
     </div> : wizardPhase === "review" ? <div className="portfolio-drawer-actions">
       <Button variant="ghost" onClick={onBackToAvatar}>{t(locale, "返回形象", "Back to Avatar")}</Button>
-      <Button variant="primary" icon="check" disabled={publishedInSession} onClick={onPublish}>{t(locale, "发布预览", "Publish preview")}</Button>
+      <Button variant="primary" icon="check" disabled={publishedInSession} onClick={() => void onPublish()}>{t(locale, "发布预览", "Publish preview")}</Button>
     </div> : undefined;
     return (
       <Drawer
@@ -1238,6 +1264,11 @@ const PortfolioCreationDrawer = ({
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
 }) => {
   const activeStep = phase === "import" ? 0 : phase === "analyse" ? 1 : phase === "avatar" ? 2 : 3;
+  const reviewProfile = analysisDraft && analysisProfile && artwork ? {
+    ...profileFromDraft(analysisDraft, analysisProfile, locale),
+    artworkAssetId: artwork.assetId,
+    artworkUrl: artwork.artworkUrl,
+  } : undefined;
   return <section className="portfolio-drawer">
     <ol className="portfolio-steps" aria-label={t(locale, "生成流程", "Creation steps")}>
       {[t(locale, "导入作品", "Import"), t(locale, "特征解构", "Analyse"), t(locale, "角色拟合", "Fit"), t(locale, "审阅发布", "Review")].map((label, index) => (
@@ -1266,7 +1297,12 @@ const PortfolioCreationDrawer = ({
       draft={analysisDraft}
       selectionCount={selectionCount}
       error={error}
-    /> : phase === "avatar" ? artworkBusy ? <PortfolioArtworkLoading locale={locale} /> : <section className="candidate-review"><p className="section-kicker">{t(locale, "形象生成", "Artwork generation")}</p><h2>{t(locale, "设计师形象", "Designer Avatar")}</h2>{artwork && <figure className="portfolio-avatar-preview"><img src={artwork.artworkUrl} alt={t(locale, "生成的设计师 Avatar", "Generated designer Avatar")} /></figure>}{error && <p className="form-error" role="alert">{error}</p>}</section> : <section className="candidate-review"><p className="section-kicker">{t(locale, "预览发布", "Preview and publish")}</p><h2>{analysisDraft?.name}</h2><p>{analysisDraft?.summary}</p>{artwork && <img src={artwork.artworkUrl} alt={t(locale, "生成的设计师 Avatar", "Generated designer Avatar")} />}{publishedInSession && <p className="panel-note">{t(locale, "已发布。", "Published.")}</p>}{error && <p className="form-error" role="alert">{error}</p>}</section>}
+    /> : phase === "avatar" ? artworkBusy ? <PortfolioArtworkLoading locale={locale} /> : <section className="candidate-review"><p className="section-kicker">{t(locale, "形象生成", "Artwork generation")}</p><h2>{t(locale, "设计师形象", "Designer Avatar")}</h2>{artwork && <figure className="portfolio-avatar-preview"><img src={artwork.artworkUrl} alt={t(locale, "生成的设计师 Avatar", "Generated designer Avatar")} /></figure>}{error && <p className="form-error" role="alert">{error}</p>}</section> : <section className="portfolio-review">
+      <p className="section-kicker">{t(locale, "预览发布", "Preview and publish")}</p>
+      {reviewProfile && <DesignerProfileCard locale={locale} profile={reviewProfile} mode="review" />}
+      {publishedInSession && <p className="panel-note portfolio-review__published"><Icon name="check" size={15} />{t(locale, "已发布。", "Published.")}</p>}
+      {error && <p className="form-error" role="alert">{error}</p>}
+    </section>}
   </section>;
 };
 
