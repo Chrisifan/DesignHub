@@ -1230,7 +1230,10 @@ const PortfolioAnalysisReport = ({
     <AnalysisSection id="analysis-negative" icon="circle-alert" title={t(locale, "否定规则", "Negative constraints")} code={`${negativeRules.length} RULES`} tone="danger">
       {negativeRules.length > 0
         ? <ul className="portfolio-analysis-rules" aria-label={t(locale, "生效规则", "Active rules")}>
-          {negativeRules.map((rule) => <li key={rule}><Icon name="circle-alert" size={13} />{rule}</li>)}
+          {negativeRules.map((rule) => <li key={rule}>
+            <Icon name="circle-alert" size={13} />
+            <span className="portfolio-analysis-rule__text" title={rule}>{rule}</span>
+          </li>)}
         </ul>
         : <p className="portfolio-analysis-empty">{t(locale, "未提取否定规则", "Negative constraints not extracted")}</p>}
     </AnalysisSection>

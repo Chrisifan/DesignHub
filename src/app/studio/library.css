@@ -824,8 +824,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   max-width: 100%;
   min-height: 30px;
+  overflow: hidden;
   padding: 5px 9px;
   border: 1px solid color-mix(in srgb, var(--error) 56%, var(--border-subtle));
   border-radius: 5px;
@@ -833,6 +835,18 @@
   background: color-mix(in srgb, var(--error) 7%, transparent);
   font-size: 10px;
   line-height: 16px;
+  white-space: nowrap;
+}
+
+.portfolio-analysis-rules > li .ui-icon {
+  flex: 0 0 auto;
+}
+
+.portfolio-analysis-rule__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .portfolio-analysis-empty {

@@ -387,7 +387,9 @@ it("renders a completed portfolio candidate as a read-only analysis report", asy
   expect(within(report).getByText(candidate.styleDna.composition.zh)).toBeInTheDocument();
   expect(within(report).getByText(candidate.styleDna.texture.zh)).toBeInTheDocument();
   expect(within(report).getByText("柔和纸张漫反射")).toBeInTheDocument();
-  expect(within(report).getByText("避免霓虹渐变")).toBeInTheDocument();
+  const negativeRule = within(report).getByText("避免霓虹渐变");
+  expect(negativeRule).toHaveAttribute("title", "避免霓虹渐变");
+  expect(negativeRule).toHaveClass("portfolio-analysis-rule__text");
   expect(within(report).getAllByRole("progressbar")).toHaveLength(5);
   expect(within(report).queryByRole("textbox")).not.toBeInTheDocument();
   expect(within(report).queryByRole("spinbutton")).not.toBeInTheDocument();
