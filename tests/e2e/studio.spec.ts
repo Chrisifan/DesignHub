@@ -279,6 +279,62 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
   ).toBe(true);
 });
 
+test('designer dossier cards keep a stable responsive grid', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await gotoTestWorkspace(page);
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '设计师', exact: true }).click();
+
+  const repository = page.getByLabel('设计师档案库');
+  const cards = repository.locator('.designer-profile-card--library');
+  await expect(cards).toHaveCount(2);
+  const desktopColumns = await repository.locator('.persona-repository__list').evaluate(
+    (grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length,
+  );
+  expect(desktopColumns).toBe(2);
+
+  const firstCard = cards.first();
+  await firstCard.locator('.designer-profile-card__identity strong').evaluate((element) => {
+    element.textContent = '纸感排版与编辑网格系统设计师档案超长名称用于边界验证';
+    element.setAttribute('title', element.textContent);
+  });
+  await firstCard.locator('.designer-profile-card__identity > span').evaluate((element) => {
+    element.textContent = '一条非常长的设计师署名，不应突破档案卡片的可视边界';
+    element.setAttribute('title', element.textContent);
+  });
+  const containment = await firstCard.evaluate((card) => {
+    const bounds = card.getBoundingClientRect();
+    const textNodes = [...card.querySelectorAll<HTMLElement>('.designer-profile-card__identity strong, .designer-profile-card__identity > span')];
+    return {
+      cardLeft: bounds.left,
+      cardRight: bounds.right,
+      textBounds: textNodes.map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, title: node.title };
+      }),
+    };
+  });
+  expect(containment.textBounds.every((bounds) => bounds.left >= containment.cardLeft - 1 && bounds.right <= containment.cardRight + 1)).toBe(true);
+  expect(containment.textBounds.every((bounds) => bounds.title.length > 0)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('designer-dossier-grid.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 680, height: 720 });
+  const narrowColumns = await repository.locator('.persona-repository__list').evaluate(
+    (grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length,
+  );
+  expect(narrowColumns).toBe(1);
+  const narrowContainment = await repository.evaluate((element) => {
+    const repositoryBounds = element.getBoundingClientRect();
+    const cardBounds = [...element.querySelectorAll<HTMLElement>('.persona-repository-card-button')]
+      .map((card) => card.getBoundingClientRect());
+    return {
+      noInternalOverflow: element.scrollWidth <= element.clientWidth,
+      cardsContained: cardBounds.every((bounds) => bounds.left >= repositoryBounds.left - 1 && bounds.right <= repositoryBounds.right + 1),
+    };
+  });
+  expect(narrowContainment).toEqual({ noInternalOverflow: true, cardsContained: true });
+  await page.screenshot({ path: testInfo.outputPath('designer-dossier-grid-narrow.png'), fullPage: true });
+});
+
 test('native dialog restores focus and retains a cancelled draft', async ({
   page,
 }) => {

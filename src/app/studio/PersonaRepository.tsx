@@ -114,6 +114,7 @@ export const PersonaRepository = ({
                 type="button"
                 key={profile.id}
                 className={`persona-repository-card-button ${selected ? 'is-selected' : ''}`}
+                aria-label={localize(locale, profile.name)}
                 aria-pressed={selected}
                 onClick={() => onSelect(profile.id)}
               >

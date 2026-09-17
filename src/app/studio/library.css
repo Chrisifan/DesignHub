@@ -976,6 +976,12 @@
   height: 100%;
 }
 
+.designer-profile-card__review-artwork .persona-artwork {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+}
+
 .designer-profile-card__review-artwork img {
   object-fit: cover;
 }
