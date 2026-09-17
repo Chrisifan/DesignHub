@@ -476,13 +476,22 @@ it("requests artwork for a selected candidate and adopts the managed image befor
     workspaceId: "workspace-1",
     source: { kind: "designer-draft", id: candidate.id },
     prompt: expect.stringContaining("Future editor"),
-    count: 3,
+    count: 1,
   })));
   await waitFor(() => expect(readDesignerArtwork).toHaveBeenCalledWith({
     workspaceId: "workspace-1",
     artworkId: "artwork-portrait-1",
   }));
-  fireEvent.click(screen.getByRole("button", { name: "形象 1" }));
+  expect(screen.getByRole("img", { name: "生成的设计师 Avatar" })).toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "形象选项" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "返回分析" }));
+  expect(screen.getByRole("region", { name: "未来编辑的视觉 DNA 分析" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "下一步：生成形象" }));
+  expect(screen.getByRole("img", { name: "生成的设计师 Avatar" })).toBeInTheDocument();
+  expect(submitDesignerArtworkGeneration).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "下一步：预览发布" }));
+  fireEvent.click(screen.getByRole("button", { name: "返回形象" }));
+  expect(screen.getByRole("img", { name: "生成的设计师 Avatar" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "下一步：预览发布" }));
   fireEvent.click(screen.getByRole("button", { name: "发布预览" }));
   await waitFor(() =>
@@ -506,6 +515,51 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   expect(persistedProfiles[0]?.artworkUrl).not.toMatch(/^data:/u);
   expect(persistedProfiles[0]?.name.en).toBe("Future editor");
   expect(persistedProfiles[0]?.summary.en).toBe("Rational, bright digital typography");
+});
+
+it("keeps the current Avatar when regeneration fails and replaces it after a successful retry", async () => {
+  const candidate = { ...personaProfiles[0]!, id: "candidate-regenerate" };
+  const submitDesignerArtworkGeneration = vi.fn()
+    .mockResolvedValueOnce({
+      id: "task-artwork-1", requestId: "request-artwork-1", state: "completed" as const,
+      cancelRequested: false, attempt: 1, result: { assetIds: ["artwork-1"], imageCount: 1 },
+    })
+    .mockRejectedValueOnce(new Error("PROVIDER_REQUEST_FAILED"))
+    .mockResolvedValueOnce({
+      id: "task-artwork-2", requestId: "request-artwork-2", state: "completed" as const,
+      cancelRequested: false, attempt: 1, result: { assetIds: ["artwork-2"], imageCount: 1 },
+    });
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    inspectPortfolioSources: vi.fn(async () => ({
+      id: "inspection-regenerate",
+      candidates: [{ id: "source-regenerate", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
+    })),
+    submitPortfolioSelection: vi.fn(async () => ({
+      id: "task-analysis-regenerate", requestId: "request-analysis-regenerate", state: "completed" as const,
+      cancelRequested: false, attempt: 1, result: { text: JSON.stringify({ candidates: [candidate] }) },
+    })),
+    submitDesignerArtworkGeneration,
+    readDesignerArtwork: vi.fn(async ({ artworkId }) => ({ artworkId, dataUrl: "data:image/png;base64,AQID" })),
+  } as typeof window.designhub;
+  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-regenerate" />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
+  fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
+  await screen.findByText("Portfolio");
+  fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Next: generate artwork" }));
+  const avatar = await screen.findByRole("img", { name: "Generated designer Avatar" });
+  expect(avatar).toHaveAttribute("src", "designhub-artwork://artwork-1");
+
+  fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
+  await screen.findByText("Character artwork generation failed; try again.");
+  expect(screen.getByRole("img", { name: "Generated designer Avatar" })).toHaveAttribute("src", "designhub-artwork://artwork-1");
+
+  fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
+  await waitFor(() => expect(screen.getByRole("img", { name: "Generated designer Avatar" })).toHaveAttribute("src", "designhub-artwork://artwork-2"));
+  expect(submitDesignerArtworkGeneration).toHaveBeenCalledTimes(3);
 });
 
 it("enters the artwork step immediately and keeps polling beyond six seconds until generation completes", async () => {
@@ -597,7 +651,7 @@ it("enters the artwork step immediately and keeps polling beyond six seconds unt
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByRole("button", { name: "形象 1" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "生成的设计师 Avatar" })).toBeInTheDocument();
     expect(listTasks).toHaveBeenCalledTimes(14);
   } finally {
     vi.useRealTimers();
