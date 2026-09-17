@@ -16,9 +16,15 @@ import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/lib
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
 import type { ProviderConfigMap, ProviderConfigSaveInput } from '../features/providers/config';
 
+export type PortfolioUploadFile = {
+  name: string;
+  mimeType: string;
+  bytes: Uint8Array;
+};
+
 export type PortfolioInspectionRequest =
-  | { kind: 'local-images' }
-  | { kind: 'local-zip' };
+  | { kind: 'local-files' }
+  | { kind: 'uploaded-files'; files: PortfolioUploadFile[] };
 
 export type PortfolioInspectionCandidate = {
   id: string;

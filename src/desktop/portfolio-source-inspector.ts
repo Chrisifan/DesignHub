@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { Unzip, UnzipInflate } from 'fflate';
 
 import type { PortfolioImageSource } from '../features/agent/analyze-portfolio';
-import type { PortfolioInspection, PortfolioInspectionCandidate } from '../platform/contracts';
+import type { PortfolioInspection, PortfolioInspectionCandidate, PortfolioUploadFile } from '../platform/contracts';
 
 const maxPortfolioSources = 8;
 const maxArchiveEntries = 128;
@@ -30,8 +30,8 @@ export type PortfolioSourceInspectorOptions = {
 };
 
 export type PortfolioSourceInspector = {
-  inspectLocalImages: (paths: readonly string[]) => Promise<PortfolioInspection>;
-  inspectZip: (path: string) => Promise<PortfolioInspection>;
+  inspectLocalFiles: (paths: readonly string[]) => Promise<PortfolioInspection>;
+  inspectUploadedFiles: (files: readonly PortfolioUploadFile[]) => Promise<PortfolioInspection>;
   selectedSources: (inspectionId: string, sourceIds: readonly string[]) => Promise<PortfolioImageSource[]>;
   discard: (inspectionId: string) => void;
   discardAll: () => void;
@@ -40,6 +40,17 @@ export type PortfolioSourceInspector = {
 const imageTypeForName = (name: string): string | null => {
   const extension = name.split('.').at(-1)?.toLowerCase();
   return extension ? supportedImageTypes.get(extension) ?? null : null;
+};
+
+const fileName = (path: string): string => path.split(/[\\/]/u).at(-1) || 'Portfolio image';
+const isZipName = (name: string): boolean => name.toLowerCase().endsWith('.zip');
+const assertBatchShape = (names: readonly string[]): 'images' | 'zip' => {
+  if (names.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
+  const zipCount = names.filter(isZipName).length;
+  if (zipCount > 1) throw new Error('PORTFOLIO_ARCHIVE_MULTIPLE');
+  if (zipCount === 1 && names.length !== 1) throw new Error('PORTFOLIO_SOURCE_MIXED');
+  if (zipCount === 0 && names.length > maxPortfolioSources) throw new Error('PORTFOLIO_SOURCE_LIMIT');
+  return zipCount === 1 ? 'zip' : 'images';
 };
 
 const hasImageSignature = (bytes: Uint8Array, mimeType: string): boolean => {
@@ -117,20 +128,19 @@ export const createPortfolioSourceInspector = (options: PortfolioSourceInspector
       })),
     };
   };
-  const inspectLocalImages = async (paths: readonly string[]): Promise<PortfolioInspection> => {
-    if (paths.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
-    if (paths.length > maxPortfolioSources) throw new Error('PORTFOLIO_SOURCE_LIMIT');
-    const sources = await Promise.all(paths.map(async (path) => {
-      const mimeType = imageTypeForName(path);
+  const inspectImages = async (files: readonly { name: string; bytes: Uint8Array; declaredMimeType?: string }[]): Promise<PortfolioInspection> => {
+    if (files.length === 0) throw new Error('PORTFOLIO_SOURCE_REQUIRED');
+    if (files.length > maxPortfolioSources) throw new Error('PORTFOLIO_SOURCE_LIMIT');
+    const sources = files.map(({ name, bytes, declaredMimeType }) => {
+      const mimeType = imageTypeForName(name);
       if (!mimeType) throw new Error('PORTFOLIO_IMAGE_TYPE_INVALID');
-      const bytes = await read(path);
+      if (declaredMimeType && declaredMimeType !== mimeType) throw new Error('PORTFOLIO_IMAGE_TYPE_INVALID');
       if (bytes.byteLength > maxImageBytes) throw new Error('PORTFOLIO_SOURCE_TOO_LARGE');
-      return sourceFromBytes({ label: path.split(/[\\/]/u).at(-1) || 'Portfolio image', origin: 'local-image', bytes, mimeType });
-    }));
+      return sourceFromBytes({ label: name, origin: 'local-image', bytes, mimeType });
+    });
     return saveInspection(sources);
   };
-  const inspectZip = async (path: string): Promise<PortfolioInspection> => {
-    const archive = await read(path);
+  const inspectArchive = (archive: Uint8Array): PortfolioInspection => {
     if (archive.byteLength > maxArchiveBytes) throw new Error('PORTFOLIO_ARCHIVE_TOO_LARGE');
     const sources: InspectionSource[] = [];
     const names = new Set<string>();
@@ -166,6 +176,22 @@ export const createPortfolioSourceInspector = (options: PortfolioSourceInspector
     if (failure) throw failure;
     return saveInspection(sources);
   };
+  const inspectLocalFiles = async (paths: readonly string[]): Promise<PortfolioInspection> => {
+    const kind = assertBatchShape(paths);
+    if (kind === 'zip') return inspectArchive(await read(paths[0] as string));
+    return inspectImages(await Promise.all(paths.map(async (path) => ({ name: fileName(path), bytes: await read(path) }))));
+  };
+  const inspectUploadedFiles = async (files: readonly PortfolioUploadFile[]): Promise<PortfolioInspection> => {
+    const kind = assertBatchShape(files.map(({ name }) => name));
+    if (kind === 'zip') {
+      const [archive] = files;
+      if (!archive || (archive.mimeType && !['application/zip', 'application/x-zip-compressed'].includes(archive.mimeType))) {
+        throw new Error('PORTFOLIO_ARCHIVE_TYPE_INVALID');
+      }
+      return inspectArchive(archive.bytes);
+    }
+    return inspectImages(files.map(({ name, mimeType, bytes }) => ({ name, declaredMimeType: mimeType, bytes })));
+  };
   const selectedSources = async (inspectionId: string, sourceIds: readonly string[]): Promise<PortfolioImageSource[]> => {
     const sources = sessions.get(inspectionId);
     if (!sources) throw new Error('PORTFOLIO_INSPECTION_NOT_FOUND');
@@ -184,5 +210,5 @@ export const createPortfolioSourceInspector = (options: PortfolioSourceInspector
   };
   const discard = (inspectionId: string): void => { sessions.delete(inspectionId); };
   const discardAll = (): void => { sessions.clear(); };
-  return { inspectLocalImages, inspectZip, selectedSources, discard, discardAll };
+  return { inspectLocalFiles, inspectUploadedFiles, selectedSources, discard, discardAll };
 };
