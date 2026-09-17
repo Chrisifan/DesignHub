@@ -219,7 +219,6 @@ export const DesignerLibrary = ({
   >(null);
   const [wizardPhase, setWizardPhase] = useState<PortfolioWizardPhase>("import");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
-  const [portfolioUrl, setPortfolioUrl] = useState("");
   const [portfolioInspection, setPortfolioInspection] = useState<PortfolioInspection | null>(null);
   const [selectedPortfolioSourceIds, setSelectedPortfolioSourceIds] = useState<string[]>([]);
   const [selectionBatches, setSelectionBatches] = useState<PortfolioSelectionBatch[]>([]);
@@ -348,7 +347,6 @@ export const DesignerLibrary = ({
     if (readOnly || loading || loadFailed) return;
     setWizardPhase("import");
     setRightsConfirmed(false);
-    setPortfolioUrl("");
     discardPortfolioInspection();
     setAnalysisProfile(undefined);
     setAnalysisDraft(undefined);
@@ -490,19 +488,15 @@ export const DesignerLibrary = ({
       setCreationError(t(locale, "当前工作区未连接模型，无法检查作品集。", "No connected workspace is available to inspect portfolio sources."));
       return;
     }
-    if ((request.kind === "remote-image" || request.kind === "remote-page") && !request.url?.trim()) {
-      setCreationError(t(locale, "请输入 HTTPS 作品集链接。", "Enter an HTTPS portfolio URL."));
-      return;
-    }
     setCreationError("");
     try {
       const next = await getDesktopApi().inspectPortfolioSources?.({ workspaceId, request });
-      if (!next) throw new Error("PORTFOLIO_INSPECTION_UNAVAILABLE");
-      if (portfolioInspection && workspaceId) void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
+      if (!next) return;
+      if (portfolioInspection) void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
       setPortfolioInspection(next);
-      setSelectedPortfolioSourceIds([]);
+      setSelectedPortfolioSourceIds(next.candidates.map((candidate) => candidate.id));
     } catch {
-      setCreationError(t(locale, "作品集来源无法检查，请使用公开 HTTPS 图片、页面或本地文件。", "Portfolio sources could not be inspected. Use a public HTTPS image, page, or local file."));
+      setCreationError(t(locale, "作品集文件无法检查，请选择有效图片或 ZIP 文件。", "Portfolio files could not be inspected. Choose valid images or a ZIP file."));
     }
   };
   const togglePortfolioSource = (sourceId: string, selected: boolean) => {
@@ -834,7 +828,6 @@ export const DesignerLibrary = ({
           analysisDraft={analysisDraft}
           analysisProfile={analysisProfile}
           rightsConfirmed={rightsConfirmed}
-          portfolioUrl={portfolioUrl}
           portfolioInspection={portfolioInspection}
           selectedPortfolioSourceIds={selectedPortfolioSourceIds}
           selectionCount={selectionBatches.reduce((total, batch) => total + batch.sourceIds.length, 0)}
@@ -843,7 +836,6 @@ export const DesignerLibrary = ({
           publishedInSession={publishedInSession}
           error={creationError}
           onRightsConfirmed={setRightsConfirmed}
-          onPortfolioUrlChange={setPortfolioUrl}
           onInspectPortfolioSources={inspectPortfolioSources}
           onPortfolioSourceToggle={togglePortfolioSource}
           onArtworkSelect={setSelectedArtworkAssetId}
@@ -875,7 +867,6 @@ const DesignerEditorModal = ({
   analysisDraft,
   analysisProfile,
   rightsConfirmed,
-  portfolioUrl,
   portfolioInspection,
   selectedPortfolioSourceIds,
   selectionCount,
@@ -884,7 +875,6 @@ const DesignerEditorModal = ({
   publishedInSession,
   error,
   onRightsConfirmed,
-  onPortfolioUrlChange,
   onInspectPortfolioSources,
   onPortfolioSourceToggle,
   onArtworkSelect,
@@ -907,7 +897,6 @@ const DesignerEditorModal = ({
   analysisDraft?: DesignerDraft;
   analysisProfile?: PersonaProfile;
   rightsConfirmed: boolean;
-  portfolioUrl: string;
   portfolioInspection: PortfolioInspection | null;
   selectedPortfolioSourceIds: string[];
   selectionCount: number;
@@ -916,7 +905,6 @@ const DesignerEditorModal = ({
   publishedInSession: boolean;
   error: string;
   onRightsConfirmed: (value: boolean) => void;
-  onPortfolioUrlChange: (value: string) => void;
   onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
   onArtworkSelect: (assetId: string) => void;
@@ -976,12 +964,10 @@ const DesignerEditorModal = ({
           selectionCount={selectionCount}
           publishedInSession={publishedInSession}
           rightsConfirmed={rightsConfirmed}
-          portfolioUrl={portfolioUrl}
           portfolioInspection={portfolioInspection}
           selectedPortfolioSourceIds={selectedPortfolioSourceIds}
           error={error}
           onRightsConfirmed={onRightsConfirmed}
-          onPortfolioUrlChange={onPortfolioUrlChange}
           onInspectPortfolioSources={onInspectPortfolioSources}
           onPortfolioSourceToggle={onPortfolioSourceToggle}
           onArtworkSelect={onArtworkSelect}
@@ -1229,8 +1215,8 @@ const PortfolioAnalysisReport = ({
 
 const PortfolioCreationDrawer = ({
   locale, phase, analysing, artworkBusy, analysisDraft, analysisProfile, artworkOptions, selectedArtworkAssetId, selectionCount, publishedInSession,
-  rightsConfirmed, portfolioUrl, portfolioInspection, selectedPortfolioSourceIds,
-  error, onRightsConfirmed, onPortfolioUrlChange,
+  rightsConfirmed, portfolioInspection, selectedPortfolioSourceIds,
+  error, onRightsConfirmed,
   onInspectPortfolioSources, onPortfolioSourceToggle, onArtworkSelect,
 }: {
   locale: Locale;
@@ -1244,12 +1230,10 @@ const PortfolioCreationDrawer = ({
   selectionCount: number;
   publishedInSession: boolean;
   rightsConfirmed: boolean;
-  portfolioUrl: string;
   portfolioInspection: PortfolioInspection | null;
   selectedPortfolioSourceIds: string[];
   error: string;
   onRightsConfirmed: (value: boolean) => void;
-  onPortfolioUrlChange: (value: string) => void;
   onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
   onArtworkSelect: (assetId: string) => void;
@@ -1267,19 +1251,15 @@ const PortfolioCreationDrawer = ({
       <div className="portfolio-import">
         <p className="section-kicker">{t(locale, "作品集来源", "Portfolio sources")}</p>
         <h3>{t(locale, "选择用于提炼风格的作品", "Choose work to extract style")}</h3>
-        <Field label={t(locale, "作品集链接", "Portfolio URL")}>
-          <textarea rows={3} value={portfolioUrl} onChange={(event) => onPortfolioUrlChange(event.target.value)} />
-        </Field>
         <div className="portfolio-source-actions" role="group" aria-label={t(locale, "检查作品集来源", "Inspect portfolio sources")}>
-          <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "remote-page", url: portfolioUrl })}>{t(locale, "检查页面", "Inspect page")}</Button>
-          <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "remote-image", url: portfolioUrl })}>{t(locale, "检查图片", "Inspect image")}</Button>
           <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "local-images" })}>{t(locale, "选择图片", "Choose images")}</Button>
           <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "local-zip" })}>{t(locale, "选择 ZIP", "Choose ZIP")}</Button>
         </div>
         {portfolioInspection && <div className="designer-portfolio-candidates" role="group" aria-label={t(locale, "作品集候选", "Portfolio candidates")}>
           {portfolioInspection.candidates.map((candidate) => <label key={candidate.id} className="designer-portfolio-candidate">
             <input type="checkbox" aria-label={candidate.label} checked={selectedPortfolioSourceIds.includes(candidate.id)} onChange={(event) => onPortfolioSourceToggle(candidate.id, event.target.checked)} />
-            {candidate.previewUrl && <img src={candidate.previewUrl} alt="" />}<span>{candidate.label}</span>
+            {candidate.previewUrl && <img src={candidate.previewUrl} alt="" />}
+            <span className="designer-portfolio-candidate__name" title={candidate.label}>{candidate.label}</span>
           </label>)}
         </div>}
         <label className="check-row"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => onRightsConfirmed(event.target.checked)} />{t(locale, "我确认拥有分析这些来源的权利", "I confirm I have rights to analyse these sources")}</label>

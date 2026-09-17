@@ -46,9 +46,9 @@ it("opens new designer creation with portfolio analysis only", () => {
   fireEvent.click(screen.getByRole("button", { name: "从作品集创建" }));
 
   const dialog = screen.getByRole("dialog", { name: "导入作品集分析 · 生成 AI 设计师档案" });
-  expect(within(dialog).getByRole("textbox", { name: "作品集链接" })).toBeInTheDocument();
-  expect(within(dialog).getByRole("button", { name: "检查页面" }).closest(".ui-drawer__content")).toBeInTheDocument();
-  expect(within(dialog).getByRole("button", { name: "检查图片" }).closest(".ui-drawer__content")).toBeInTheDocument();
+  expect(within(dialog).queryByRole("textbox", { name: "作品集链接" })).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole("button", { name: "检查页面" })).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole("button", { name: "检查图片" })).not.toBeInTheDocument();
   expect(within(dialog).getByRole("button", { name: "选择图片" }).closest(".ui-drawer__content")).toBeInTheDocument();
   expect(within(dialog).getByRole("button", { name: "选择 ZIP" }).closest(".ui-drawer__content")).toBeInTheDocument();
   expect(within(dialog).getByRole("button", { name: "开始分析" }).closest(".ui-drawer__footer")).toBeInTheDocument();
@@ -74,17 +74,16 @@ it("keeps portfolio analysis in the drawer and shows a loading skeleton", async 
     chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-loading",
-      candidates: [{ id: "source-loading", label: "Portfolio", description: "Portfolio", origin: "page-image" as const, previewUrl: "" }],
+      candidates: [{ id: "source-loading", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
     })),
     submitPortfolioSelection: vi.fn(() => submission.promise),
   };
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-loading" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), { target: { value: "https://example.com/loading.png" } });
-  fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
   await screen.findByText("Portfolio");
-  fireEvent.click(screen.getByRole("checkbox", { name: "Portfolio" }));
+  expect(screen.getByRole("checkbox", { name: "Portfolio" })).toBeChecked();
   fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
 
@@ -123,12 +122,12 @@ it("requires portfolio rights confirmation before entering candidate review", ()
   ).toBeInTheDocument();
 });
 
-it("inspects portfolio candidates and submits only the explicitly checked sources", async () => {
+it("selects local portfolio candidates by default and submits after an explicit deselection", async () => {
   const inspectPortfolioSources = vi.fn(async () => ({
     id: "inspection-1",
     candidates: [
-      { id: "candidate-a", label: "Cover", description: "Cover", origin: "remote-image" as const, previewUrl: "data:image/png;base64,cG5n" },
-      { id: "candidate-b", label: "Detail", description: "Detail", origin: "remote-image" as const, previewUrl: "data:image/png;base64,cG5n" },
+      { id: "candidate-a", label: "Cover", description: "Cover", origin: "local-image" as const, previewUrl: "data:image/png;base64,cG5n" },
+      { id: "candidate-b", label: "Detail", description: "Detail", origin: "local-image" as const, previewUrl: "data:image/png;base64,cG5n" },
     ],
   }));
   const submitPortfolioSelection = vi.fn(async () => ({
@@ -138,33 +137,32 @@ it("inspects portfolio candidates and submits only the explicitly checked source
   render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-selected" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Portfolio URL" }), { target: { value: "https://public.test/portfolio" } });
-  fireEvent.click(screen.getByRole("button", { name: "Inspect page" }));
+  fireEvent.click(screen.getByRole("button", { name: "Choose images" }));
   await screen.findByText("Cover");
-  fireEvent.click(screen.getByRole("checkbox", { name: "Cover" }));
+  expect(screen.getByRole("checkbox", { name: "Cover" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Detail" })).toBeChecked();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Detail" }));
   fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
   fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
 
   await waitFor(() => expect(submitPortfolioSelection).toHaveBeenCalledWith(expect.objectContaining({
     workspaceId: "workspace-selected", selections: [{ inspectionId: "inspection-1", sourceIds: ["candidate-a"] }], rightsConfirmed: true,
   })));
-  expect(inspectPortfolioSources).toHaveBeenCalledWith({ workspaceId: "workspace-selected", request: { kind: "remote-page", url: "https://public.test/portfolio" } });
+  expect(inspectPortfolioSources).toHaveBeenCalledWith({ workspaceId: "workspace-selected", request: { kind: "local-images" } });
 });
 
 it("keeps an inspected selection available for retry when portfolio submission rejects", async () => {
   const inspectPortfolioSources = vi.fn(async () => ({
     id: "inspection-retry",
-    candidates: [{ id: "candidate-retry", label: "Retry source", description: "Retry source", origin: "page-image" as const, previewUrl: "" }],
+    candidates: [{ id: "candidate-retry", label: "Retry source", description: "Retry source", origin: "local-image" as const, previewUrl: "" }],
   }));
   const submitPortfolioSelection = vi.fn(async () => { throw new Error("TASK_ACCEPTANCE_FAILED"); });
   window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources, submitPortfolioSelection };
   render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-retry" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Portfolio URL" }), { target: { value: "https://public.test/retry" } });
-  fireEvent.click(screen.getByRole("button", { name: "Inspect page" }));
+  fireEvent.click(screen.getByRole("button", { name: "Choose images" }));
   await screen.findByText("Retry source");
-  fireEvent.click(screen.getByRole("checkbox", { name: "Retry source" }));
   fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
   fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
 
@@ -176,7 +174,7 @@ it("keeps an inspected selection available for retry when portfolio submission r
 it("submits a rights-confirmed portfolio analysis task for a workspace designer draft", async () => {
   const inspectPortfolioSources = vi.fn(async () => ({
     id: "inspection-submit",
-    candidates: [{ id: "source-submit", label: "Portfolio", description: "Portfolio", origin: "page-image" as const, previewUrl: "data:image/png;base64,cG5n" }],
+    candidates: [{ id: "source-submit", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "data:image/png;base64,cG5n" }],
   }));
   const submitPortfolioSelection = vi.fn(async () => ({
     id: "task-portfolio",
@@ -198,12 +196,8 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
     />,
   );
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
-    target: { value: "https://example.com/portfolio.png" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
   await screen.findByText("Portfolio");
-  fireEvent.click(screen.getByRole("checkbox", { name: "Portfolio" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
   await waitFor(() =>
@@ -219,9 +213,10 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
 });
 
 it("inspects locally chosen portfolio images through the trusted main process", async () => {
+  const longFilename = "a-very-long-portfolio-filename-that-must-not-overflow-the-drawer-layout.png";
   const inspectPortfolioSources = vi.fn(async () => ({
     id: "inspection-local",
-    candidates: [{ id: "source-local", label: "Reference", description: "Reference", origin: "local-image" as const, previewUrl: "" }],
+    candidates: [{ id: "source-local", label: longFilename, description: "Reference", origin: "local-image" as const, previewUrl: "" }],
   }));
   const submitPortfolioSelection = vi.fn(async () => ({
     id: "task-file-portfolio",
@@ -234,15 +229,39 @@ it("inspects locally chosen portfolio images through the trusted main process", 
   render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-files" />);
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Choose images" }));
-  await screen.findByText("Reference");
+  const filename = await screen.findByText(longFilename);
   expect(within(screen.getByRole("group", { name: "Portfolio candidates" })).queryByRole("img")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("checkbox", { name: "Reference" }));
+  expect(screen.getByRole("checkbox", { name: longFilename })).toBeChecked();
+  expect(filename).toHaveClass("designer-portfolio-candidate__name");
+  expect(filename).toHaveAttribute("title", longFilename);
   fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
   fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
   await waitFor(() => expect(submitPortfolioSelection).toHaveBeenCalledWith(expect.objectContaining({
     selections: [{ inspectionId: "inspection-local", sourceIds: ["source-local"] }], rightsConfirmed: true,
   })));
   expect(inspectPortfolioSources).toHaveBeenCalledWith({ workspaceId: "workspace-files", request: { kind: "local-images" } });
+});
+
+it("keeps the current local inspection when the next file picker is cancelled", async () => {
+  const inspectPortfolioSources = vi.fn()
+    .mockResolvedValueOnce({
+      id: "inspection-kept",
+      candidates: [{ id: "source-kept", label: "Keep me.png", description: "Keep me", origin: "local-image" as const, previewUrl: "" }],
+    })
+    .mockResolvedValueOnce(null);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources };
+  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-cancel" />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
+  fireEvent.click(screen.getByRole("button", { name: "Choose images" }));
+  await screen.findByText("Keep me.png");
+  expect(screen.getByRole("checkbox", { name: "Keep me.png" })).toBeChecked();
+
+  fireEvent.click(screen.getByRole("button", { name: "Choose ZIP" }));
+  await waitFor(() => expect(inspectPortfolioSources).toHaveBeenCalledTimes(2));
+  expect(screen.getByText("Keep me.png")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Keep me.png" })).toBeChecked();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
 it("renders a completed portfolio candidate as a read-only analysis report", async () => {
@@ -287,7 +306,7 @@ it("renders a completed portfolio candidate as a read-only analysis report", asy
     chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-complete",
-      candidates: [{ id: "source-complete", label: "Portfolio", description: "Portfolio", origin: "page-image" as const, previewUrl: "" }],
+      candidates: [{ id: "source-complete", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
     })),
     submitPortfolioSelection: vi.fn(async () => ({
       id: "task-complete",
@@ -317,12 +336,8 @@ it("renders a completed portfolio candidate as a read-only analysis report", asy
     />,
   );
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
-    target: { value: "https://example.com/portfolio.png" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
   await screen.findByText("Portfolio");
-  fireEvent.click(screen.getByRole("checkbox", { name: "Portfolio" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
   await screen.findByRole("heading", { name: "作品集候选" });
@@ -391,7 +406,7 @@ it("requests artwork for a selected candidate and adopts the managed image befor
     chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-artwork",
-      candidates: [{ id: "source-artwork", label: "作品集", description: "Artwork portfolio", origin: "page-image" as const, previewUrl: "" }],
+      candidates: [{ id: "source-artwork", label: "作品集", description: "Artwork portfolio", origin: "local-image" as const, previewUrl: "" }],
     })),
     submitPortfolioSelection: vi.fn(async () => ({
       id: "task-candidate",
@@ -409,12 +424,8 @@ it("requests artwork for a selected candidate and adopts the managed image befor
 
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-1" />);
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
-    target: { value: "https://example.com/artwork-portfolio" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
   await screen.findByText("作品集");
-  fireEvent.click(screen.getByRole("checkbox", { name: "作品集" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
   await screen.findByRole("heading", { name: "未来编辑" });
@@ -506,7 +517,7 @@ it("enters the artwork step immediately and keeps polling beyond six seconds unt
       chooseWorkspaceDirectory: async () => null,
       inspectPortfolioSources: vi.fn(async () => ({
         id: "inspection-artwork-poll",
-        candidates: [{ id: "source-artwork-poll", label: "作品集", description: "Artwork portfolio", origin: "page-image" as const, previewUrl: "" }],
+        candidates: [{ id: "source-artwork-poll", label: "作品集", description: "Artwork portfolio", origin: "local-image" as const, previewUrl: "" }],
       })),
       submitPortfolioSelection: vi.fn(async () => ({
         id: "task-analysis-artwork-poll",
@@ -523,10 +534,8 @@ it("enters the artwork step immediately and keeps polling beyond six seconds unt
 
     render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-artwork-poll" />);
     fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), { target: { value: "https://example.com/artwork-poll" } });
-    fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
     await screen.findByText("作品集");
-    fireEvent.click(screen.getByRole("checkbox", { name: "作品集" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
     fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
     await screen.findByRole("heading", { name: "长时生成" });
@@ -564,7 +573,7 @@ it("does not show fabricated candidates when the completed portfolio task failed
     chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-failed",
-      candidates: [{ id: "source-failed", label: "Portfolio", description: "Portfolio", origin: "page-image" as const, previewUrl: "" }],
+      candidates: [{ id: "source-failed", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
     })),
     submitPortfolioSelection: vi.fn(async () => ({
       id: "task-failed",
@@ -593,12 +602,8 @@ it("does not show fabricated candidates when the completed portfolio task failed
     />,
   );
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
-    target: { value: "https://example.com/portfolio.png" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
   await screen.findByText("Portfolio");
-  fireEvent.click(screen.getByRole("checkbox", { name: "Portfolio" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
   fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
   await waitFor(() =>
@@ -659,7 +664,7 @@ it("keeps polling a portfolio task that completes after the initial six-second w
       chooseWorkspaceDirectory: async () => null,
       inspectPortfolioSources: vi.fn(async () => ({
         id: "inspection-poll",
-        candidates: [{ id: "source-poll", label: "Portfolio", description: "Portfolio", origin: "page-image" as const, previewUrl: "" }],
+        candidates: [{ id: "source-poll", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
       })),
       submitPortfolioSelection: vi.fn(async () => ({
         id: "task-poll",
@@ -686,15 +691,11 @@ it("keeps polling a portfolio task that completes after the initial six-second w
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "从作品集创建" }));
     });
-    fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), {
-      target: { value: "https://example.com/poll.png" },
-    });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+      fireEvent.click(screen.getByRole("button", { name: "选择图片" }));
       await Promise.resolve();
     });
     expect(screen.getByText("Portfolio")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Portfolio" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
