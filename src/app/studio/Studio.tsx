@@ -860,7 +860,7 @@ export const Studio = ({
                         <div className="project-meta">
                           <span className="design-attribution">
                             <span className="design-attribution-avatars">
-                              {projectContributorIds(project).slice(0, 3).map((designerId) => <PersonaArtwork key={designerId} personaId={designerId} crop="avatar" profile={designerOptions.find((profile) => profile.id === designerId)} />)}
+                              {projectContributorIds(project).slice(0, 3).map((designerId) => <PersonaArtwork key={designerId} locale={locale} personaId={designerId} crop="avatar" profile={designerOptions.find((profile) => profile.id === designerId)} />)}
                             </span>
                             <strong>
                               {projectDesignerLabel(project)}{(project.designerSnapshot as { version?: string } | undefined)?.version ? ` · ${(project.designerSnapshot as { version?: string }).version}` : ''}

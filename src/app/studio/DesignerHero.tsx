@@ -37,7 +37,7 @@ export const DesignerHero = ({
       className={`designer-hero ${compact ? 'designer-hero--compact' : ''}`}
       aria-label={label ?? t(locale, '当前设计师', 'Active designer')}
     >
-      <PersonaArtwork personaId={persona.id} profile={persona} crop={compact ? 'avatar' : 'half'} />
+      <PersonaArtwork locale={locale} personaId={persona.id} profile={persona} crop={compact ? 'avatar' : 'half'} />
       <div className="designer-hero__copy">
         <small>{t(locale, '当前设计师', 'ACTIVE DESIGNER')}</small>
         <strong>{localize(locale, persona.name)} · {persona.version}</strong>

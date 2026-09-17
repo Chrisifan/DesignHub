@@ -30,7 +30,7 @@ export const PersonaCard = ({
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <PersonaArtwork personaId={persona.id} profile={persona} crop="full" />
+      <PersonaArtwork locale={locale} personaId={persona.id} profile={persona} crop="full" />
       <span className="persona-card__body">
         <span className="persona-card__label">
           {selected && <Icon name="check" size={14} />}

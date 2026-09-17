@@ -72,7 +72,7 @@ export const PersonaInspector = ({
         <Badge tone={profile.status === 'published' ? 'success' : profile.status === 'draft' ? 'ai' : ''}>{status}</Badge>
       </header>
       <div className="persona-inspector__hero">
-        <div className="persona-inspector__portrait"><PersonaArtwork personaId={profile.id} profile={profile} crop="half" /><span className="persona-inspector__portrait-index mono">{profile.referenceCount.toString().padStart(2, '0')}</span></div>
+        <div className="persona-inspector__portrait"><PersonaArtwork locale={locale} personaId={profile.id} profile={profile} crop="half" /><span className="persona-inspector__portrait-index mono">{profile.referenceCount.toString().padStart(2, '0')}</span></div>
         <div className="persona-inspector__identity">
           <p className="persona-inspector__archetype">{t(locale, 'ARCHETYPE', 'ARCHETYPE')}</p>
           <h2>{localize(locale, profile.name)}</h2>

@@ -26,10 +26,49 @@
 .persona-artwork--unavailable {
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 8px;
   padding: 12px;
   color: var(--on-surface-variant);
   font-size: 11px;
   text-align: center;
+}
+
+.persona-artwork--unavailable > .ui-icon,
+.persona-artwork--unavailable > span {
+  position: relative;
+  z-index: 1;
+}
+
+.persona-artwork--unavailable > .ui-icon {
+  color: var(--primary);
+}
+
+.designer-profile-card {
+  min-width: 0;
+}
+
+.designer-profile-card__artwork {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+}
+
+.designer-profile-card__artwork .persona-artwork,
+.designer-profile-card__artwork img {
+  width: 100%;
+  height: 100%;
+}
+
+.designer-profile-card__identity strong,
+.designer-profile-card__identity > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.designer-profile-card__compact-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .persona-artwork--unavailable::before {
