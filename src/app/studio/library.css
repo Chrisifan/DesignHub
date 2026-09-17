@@ -824,6 +824,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   min-height: 30px;
@@ -843,6 +844,8 @@
 }
 
 .portfolio-analysis-rule__text {
+  width: 0;
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

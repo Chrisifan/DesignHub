@@ -3,6 +3,7 @@ import { expect, test } from 'playwright/test';
 import { gotoTestWorkspace } from './test-workspace';
 
 const longFilename = 'portfolio-reference-2026-final-approved-editorial-grid-material-lighting-typography-composition-texture-art-direction-presentation-cover-detail-archive-version-18.png';
+const longNegativeRule = '避免使用会破坏安全边距、信息层级与主体识别度的霓虹渐变、高强度装饰效果以及喧宾夺主的复杂背景纹理';
 const avatarPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64');
 
 for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 }]) {
@@ -13,7 +14,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await gotoTestWorkspace(page);
     await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '设计师', exact: true }).click();
     await page.getByRole('button', { name: '从作品集创建' }).click();
-    await page.evaluate(() => {
+    await page.evaluate((longRule) => {
       const api = (window as typeof window & { designhub: Record<string, unknown> }).designhub;
       const candidate = {
         id: 'candidate-e2e', name: { zh: '纸间秩序', en: 'Paper Order' }, signature: { zh: '纸张与网格', en: 'Paper and grid' },
@@ -32,7 +33,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
             compositionTopology: { zh: '非对称垂直流', en: 'Asymmetric vertical flow' }, rendering: { zh: '纸张漫反射', en: 'Paper diffusion' },
           },
         },
-        negativeRules: [{ zh: '避免霓虹渐变', en: 'Avoid neon gradients' }, { zh: '避免破坏安全边距', en: 'Keep safe margins' }], portfolioSheets: [],
+        negativeRules: [{ zh: longRule, en: 'Avoid decorative effects that harm hierarchy and subject clarity' }, { zh: '避免破坏安全边距', en: 'Keep safe margins' }], portfolioSheets: [],
       };
       api.inspectPortfolioSources = async () => ({
         id: 'inspection-e2e',
@@ -53,7 +54,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
         return { id: `task-${artworkId}`, requestId: `request-${artworkId}`, state: 'completed', cancelRequested: false, attempt: 1, result: { assetIds: [artworkId], imageCount: 1 } };
       };
       api.readDesignerArtwork = async ({ artworkId }: { artworkId: string }) => ({ artworkId, dataUrl: 'data:image/png;base64,AQID' });
-    });
+    }, longNegativeRule);
 
     const drawer = page.getByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' });
     await expect(drawer).toHaveClass(/ui-drawer--portfolio/);
@@ -101,6 +102,18 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await expect(drawer.getByRole('region', { name: '材质肌理与感知参数' })).toBeAttached();
     await expect(drawer.getByRole('region', { name: '否定规则' })).toBeAttached();
     await expect(drawer.getByRole('progressbar')).toHaveCount(5);
+    const ruleText = drawer.getByText(longNegativeRule, { exact: true });
+    await expect(ruleText).toHaveAttribute('title', longNegativeRule);
+    const ruleLayout = await ruleText.evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      whiteSpace: getComputedStyle(element).whiteSpace,
+      textOverflow: getComputedStyle(element).textOverflow,
+    }));
+    expect(ruleLayout.scrollWidth).toBeGreaterThan(ruleLayout.clientWidth);
+    expect(ruleLayout.clientWidth).toBeGreaterThan(100);
+    expect(ruleLayout.whiteSpace).toBe('nowrap');
+    expect(ruleLayout.textOverflow).toBe('ellipsis');
     const grainProgress = drawer.getByRole('progressbar', { name: '纹理颗粒度' });
     const grainPresentation = await grainProgress.evaluate((track) => {
       const fill = track.querySelector<HTMLElement>('i')!;
@@ -179,7 +192,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await expect(dossier).toBeVisible();
     await expect(dossier.getByRole('region', { name: '核心指标' }).getByRole('progressbar')).toHaveCount(4);
     await expect(dossier.getByRole('region', { name: 'Style DNA' })).toBeVisible();
-    await expect(dossier.getByRole('region', { name: '否定规则' })).toContainText('避免霓虹渐变');
+    await expect(dossier.getByRole('region', { name: '否定规则' })).toContainText(longNegativeRule);
     await expect(dossier.getByRole('progressbar')).toHaveCount(5);
     const reviewArtworkBox = await dossier.locator('.designer-profile-card__review-artwork').boundingBox();
     expect(reviewArtworkBox).not.toBeNull();
