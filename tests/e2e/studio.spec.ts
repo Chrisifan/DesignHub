@@ -290,7 +290,7 @@ test('designer dossier cards keep a stable responsive grid', async ({ page }, te
   const desktopColumns = await repository.locator('.persona-repository__list').evaluate(
     (grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length,
   );
-  expect(desktopColumns).toBe(2);
+  expect(desktopColumns).toBe(4);
 
   const firstCard = cards.first();
   await firstCard.locator('.designer-profile-card__identity strong').evaluate((element) => {
