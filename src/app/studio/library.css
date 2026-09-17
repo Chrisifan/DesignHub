@@ -363,7 +363,7 @@
 
 /* Portfolio designer drawer */
 .ui-drawer.ui-drawer--portfolio {
-  inline-size: min(560px, 92vw);
+  inline-size: min(520px, 92vw);
 }
 
 .portfolio-drawer {
@@ -446,14 +446,50 @@
   margin: 0;
 }
 
-.portfolio-source-actions {
+.portfolio-uploader {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  place-items: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 104px;
+  padding: 18px;
+  border: 1px dashed var(--outline-variant);
+  border-radius: 6px;
+  color: var(--on-surface-variant);
+  background: color-mix(in srgb, var(--surface-container-low) 70%, transparent);
+  cursor: pointer;
 }
 
-.portfolio-source-actions .ui-button {
-  justify-content: center;
+.portfolio-uploader .ui-icon {
+  color: var(--primary);
+}
+
+.portfolio-uploader strong {
+  color: var(--on-surface);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.portfolio-uploader small {
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.portfolio-uploader:hover,
+.portfolio-uploader.is-dragging {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface-container-low));
+}
+
+.portfolio-uploader:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.portfolio-uploader:disabled {
+  cursor: wait;
+  opacity: 0.64;
 }
 
 .designer-portfolio-candidates {
@@ -500,6 +536,7 @@
 
 .portfolio-drawer-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   width: 100%;
@@ -877,17 +914,31 @@
 
 .portfolio-artwork-skeleton {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  justify-items: center;
 }
 
 .portfolio-artwork-skeleton i {
   display: block;
+  width: min(100%, 320px);
   aspect-ratio: 1;
   border-radius: 7px;
   background: linear-gradient(105deg, var(--surface-container) 20%, var(--surface-container-high) 38%, var(--surface-container) 56%);
   background-size: 220% 100%;
   animation: portfolio-skeleton 1.5s linear infinite;
+}
+
+.portfolio-avatar-preview {
+  width: min(100%, 320px);
+  margin: 0 auto;
+}
+
+.portfolio-avatar-preview img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
 }
 
 @keyframes portfolio-skeleton {
@@ -909,7 +960,6 @@
 
   .designer-portfolio-candidates,
   .portfolio-analysis-skeleton,
-  .portfolio-artwork-skeleton,
   .portfolio-analysis-report__grid,
   .portfolio-analysis-report__identity,
   .portfolio-analysis-values {
