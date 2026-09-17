@@ -11,6 +11,7 @@ import {
 import type { Locale } from "../i18n";
 import { Drawer } from "./Drawer";
 import { PersonaInspector } from "./PersonaInspector";
+import { PortfolioUploader } from "./PortfolioUploader";
 import {
   PersonaRepository,
   type PersonaStatusFilter,
@@ -56,7 +57,6 @@ type DesignerDraft = {
 };
 
 type PortfolioWizardPhase = "import" | "analyse" | "avatar" | "review";
-type PortfolioSelectionBatch = { inspectionId: string; sourceIds: string[] };
 type ArtworkOption = { assetId: string; artworkUrl: string };
 
 const emptyDraft: DesignerDraft = {
@@ -221,7 +221,7 @@ export const DesignerLibrary = ({
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [portfolioInspection, setPortfolioInspection] = useState<PortfolioInspection | null>(null);
   const [selectedPortfolioSourceIds, setSelectedPortfolioSourceIds] = useState<string[]>([]);
-  const [selectionBatches, setSelectionBatches] = useState<PortfolioSelectionBatch[]>([]);
+  const [portfolioInspecting, setPortfolioInspecting] = useState(false);
   const [analysisProfile, setAnalysisProfile] = useState<PersonaProfile>();
   const [analysisDraft, setAnalysisDraft] = useState<DesignerDraft>();
   const [analysisTaskId, setAnalysisTaskId] = useState<string>();
@@ -239,14 +239,10 @@ export const DesignerLibrary = ({
   const [loadFailed, setLoadFailed] = useState(false);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const discardPortfolioInspection = useCallback(() => {
-    const inspectionIds = new Set([...selectionBatches.map((batch) => batch.inspectionId), portfolioInspection?.id].filter((id): id is string => Boolean(id)));
-    if (workspaceId) inspectionIds.forEach((inspectionId) => {
-      void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId });
-    });
+    if (workspaceId && portfolioInspection) void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
     setPortfolioInspection(null);
     setSelectedPortfolioSourceIds([]);
-    setSelectionBatches([]);
-  }, [portfolioInspection, selectionBatches, workspaceId]);
+  }, [portfolioInspection, workspaceId]);
   useEffect(() => {
     let cancelled = false;
     isHydrating.current = Boolean(workspaceId);
@@ -348,6 +344,7 @@ export const DesignerLibrary = ({
     setWizardPhase("import");
     setRightsConfirmed(false);
     discardPortfolioInspection();
+    setPortfolioInspecting(false);
     setAnalysisProfile(undefined);
     setAnalysisDraft(undefined);
     setAnalysisTaskId(undefined);
@@ -440,22 +437,12 @@ export const DesignerLibrary = ({
       setCreationError(t(locale, "请先确认拥有分析这些来源的权利。", "Confirm rights before analysing these sources."));
       return;
     }
-    if ((!portfolioInspection || selectedPortfolioSourceIds.length === 0) && selectionBatches.length === 0) {
+    if (!portfolioInspection || selectedPortfolioSourceIds.length === 0) {
       setCreationError(t(locale, "请先检查并勾选至少一个作品集来源。", "Inspect and select at least one portfolio source first."));
       return;
     }
     if (!workspaceId) {
       setCreationError(t(locale, "当前工作区未连接模型，无法分析作品集。", "No connected model is available for portfolio analysis."));
-      return;
-    }
-    const current = portfolioInspection && selectedPortfolioSourceIds.length > 0
-      ? { inspectionId: portfolioInspection.id, sourceIds: selectedPortfolioSourceIds }
-      : undefined;
-    const selections = current
-      ? [...selectionBatches.filter((batch) => batch.inspectionId !== current.inspectionId), current]
-      : selectionBatches;
-    if (selections.reduce((total, batch) => total + batch.sourceIds.length, 0) > 8) {
-      setCreationError(t(locale, "最多可同时分析 8 个作品集来源。", "Analyse at most eight portfolio sources at once."));
       return;
     }
     const returnPhase = analysisProfile ? "analyse" : "import";
@@ -466,13 +453,10 @@ export const DesignerLibrary = ({
         workspaceId,
         source: { kind: "designer-draft", id: `designer-${crypto.randomUUID()}` },
         connectionId: "openai-compatible",
-        selections,
+        selections: [{ inspectionId: portfolioInspection.id, sourceIds: selectedPortfolioSourceIds }],
         rightsConfirmed: true,
       });
       if (!task) throw new Error("ANALYSIS_UNAVAILABLE");
-      setSelectionBatches(selections);
-      setPortfolioInspection(null);
-      setSelectedPortfolioSourceIds([]);
       if (acceptAnalysis(task)) return;
       if (task.state === "failed" || task.state === "cancelled") throw new Error("ANALYSIS_FAILED");
       const completed = ((await getDesktopApi().listTasks?.(workspaceId)) ?? []).find((item) => item.id === task.id);
@@ -488,6 +472,7 @@ export const DesignerLibrary = ({
       setCreationError(t(locale, "当前工作区未连接模型，无法检查作品集。", "No connected workspace is available to inspect portfolio sources."));
       return;
     }
+    setPortfolioInspecting(true);
     setCreationError("");
     try {
       const next = await getDesktopApi().inspectPortfolioSources?.({ workspaceId, request });
@@ -497,11 +482,13 @@ export const DesignerLibrary = ({
       setSelectedPortfolioSourceIds(next.candidates.map((candidate) => candidate.id));
     } catch {
       setCreationError(t(locale, "作品集文件无法检查，请选择有效图片或 ZIP 文件。", "Portfolio files could not be inspected. Choose valid images or a ZIP file."));
+    } finally {
+      setPortfolioInspecting(false);
     }
   };
   const togglePortfolioSource = (sourceId: string, selected: boolean) => {
     setSelectedPortfolioSourceIds((previous) => selected
-      ? [...previous, sourceId].slice(0, Math.max(0, 8 - selectionBatches.reduce((total, batch) => total + batch.sourceIds.length, 0)))
+      ? previous.includes(sourceId) ? previous : [...previous, sourceId].slice(0, 8)
       : previous.filter((id) => id !== sourceId));
   };
   useEffect(() => {
@@ -830,13 +817,15 @@ export const DesignerLibrary = ({
           rightsConfirmed={rightsConfirmed}
           portfolioInspection={portfolioInspection}
           selectedPortfolioSourceIds={selectedPortfolioSourceIds}
-          selectionCount={selectionBatches.reduce((total, batch) => total + batch.sourceIds.length, 0)}
+          selectionCount={selectedPortfolioSourceIds.length}
+          portfolioInspecting={portfolioInspecting}
           artworkOptions={artworkOptions}
           selectedArtworkAssetId={selectedArtworkAssetId}
           publishedInSession={publishedInSession}
           error={creationError}
           onRightsConfirmed={setRightsConfirmed}
           onInspectPortfolioSources={inspectPortfolioSources}
+          onPortfolioUploadError={setCreationError}
           onPortfolioSourceToggle={togglePortfolioSource}
           onArtworkSelect={setSelectedArtworkAssetId}
           onRequestCandidates={requestCandidates}
@@ -869,6 +858,7 @@ const DesignerEditorModal = ({
   rightsConfirmed,
   portfolioInspection,
   selectedPortfolioSourceIds,
+  portfolioInspecting,
   selectionCount,
   artworkOptions,
   selectedArtworkAssetId,
@@ -876,6 +866,7 @@ const DesignerEditorModal = ({
   error,
   onRightsConfirmed,
   onInspectPortfolioSources,
+  onPortfolioUploadError,
   onPortfolioSourceToggle,
   onArtworkSelect,
   onRequestCandidates,
@@ -899,13 +890,15 @@ const DesignerEditorModal = ({
   rightsConfirmed: boolean;
   portfolioInspection: PortfolioInspection | null;
   selectedPortfolioSourceIds: string[];
+  portfolioInspecting: boolean;
   selectionCount: number;
   artworkOptions: ArtworkOption[];
   selectedArtworkAssetId?: string;
   publishedInSession: boolean;
   error: string;
   onRightsConfirmed: (value: boolean) => void;
-  onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
+  onInspectPortfolioSources: (request: PortfolioInspectionRequest) => Promise<void>;
+  onPortfolioUploadError: (message: string) => void;
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
   onArtworkSelect: (assetId: string) => void;
   onRequestCandidates: () => void;
@@ -966,9 +959,11 @@ const DesignerEditorModal = ({
           rightsConfirmed={rightsConfirmed}
           portfolioInspection={portfolioInspection}
           selectedPortfolioSourceIds={selectedPortfolioSourceIds}
+          portfolioInspecting={portfolioInspecting}
           error={error}
           onRightsConfirmed={onRightsConfirmed}
           onInspectPortfolioSources={onInspectPortfolioSources}
+          onPortfolioUploadError={onPortfolioUploadError}
           onPortfolioSourceToggle={onPortfolioSourceToggle}
           onArtworkSelect={onArtworkSelect}
         />
@@ -1216,8 +1211,8 @@ const PortfolioAnalysisReport = ({
 const PortfolioCreationDrawer = ({
   locale, phase, analysing, artworkBusy, analysisDraft, analysisProfile, artworkOptions, selectedArtworkAssetId, selectionCount, publishedInSession,
   rightsConfirmed, portfolioInspection, selectedPortfolioSourceIds,
-  error, onRightsConfirmed,
-  onInspectPortfolioSources, onPortfolioSourceToggle, onArtworkSelect,
+  portfolioInspecting, error, onRightsConfirmed,
+  onInspectPortfolioSources, onPortfolioUploadError, onPortfolioSourceToggle, onArtworkSelect,
 }: {
   locale: Locale;
   phase: PortfolioWizardPhase;
@@ -1232,9 +1227,11 @@ const PortfolioCreationDrawer = ({
   rightsConfirmed: boolean;
   portfolioInspection: PortfolioInspection | null;
   selectedPortfolioSourceIds: string[];
+  portfolioInspecting: boolean;
   error: string;
   onRightsConfirmed: (value: boolean) => void;
-  onInspectPortfolioSources: (request: PortfolioInspectionRequest) => void;
+  onInspectPortfolioSources: (request: PortfolioInspectionRequest) => Promise<void>;
+  onPortfolioUploadError: (message: string) => void;
   onPortfolioSourceToggle: (sourceId: string, selected: boolean) => void;
   onArtworkSelect: (assetId: string) => void;
 }) => {
@@ -1251,10 +1248,7 @@ const PortfolioCreationDrawer = ({
       <div className="portfolio-import">
         <p className="section-kicker">{t(locale, "作品集来源", "Portfolio sources")}</p>
         <h3>{t(locale, "选择用于提炼风格的作品", "Choose work to extract style")}</h3>
-        <div className="portfolio-source-actions" role="group" aria-label={t(locale, "检查作品集来源", "Inspect portfolio sources")}>
-          <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "local-images" })}>{t(locale, "选择图片", "Choose images")}</Button>
-          <Button type="button" variant="secondary" onClick={() => onInspectPortfolioSources({ kind: "local-zip" })}>{t(locale, "选择 ZIP", "Choose ZIP")}</Button>
-        </div>
+        <PortfolioUploader locale={locale} busy={portfolioInspecting} onInspect={onInspectPortfolioSources} onError={onPortfolioUploadError} />
         {portfolioInspection && <div className="designer-portfolio-candidates" role="group" aria-label={t(locale, "作品集候选", "Portfolio candidates")}>
           {portfolioInspection.candidates.map((candidate) => <label key={candidate.id} className="designer-portfolio-candidate">
             <input type="checkbox" aria-label={candidate.label} checked={selectedPortfolioSourceIds.includes(candidate.id)} onChange={(event) => onPortfolioSourceToggle(candidate.id, event.target.checked)} />
