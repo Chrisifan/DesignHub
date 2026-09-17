@@ -3,7 +3,7 @@ import { access, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { isSafeProviderCode, taskRecordKeys, type TaskProviderFailure, type TaskRecord, type TaskSource, type TaskState } from '../../features/tasks/state';
+import { isPortfolioAnalysisDiagnostic, isSafeProviderCode, taskRecordKeys, type TaskProviderFailure, type TaskRecord, type TaskSource, type TaskState } from '../../features/tasks/state';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
@@ -82,6 +82,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.updatedAt === undefined || typeof value.updatedAt === 'string')
   && (value.errorCode === undefined || typeof value.errorCode === 'string')
   && (value.providerFailure === undefined || isProviderFailure(value.providerFailure))
+  && (value.analysisDiagnostic === undefined || isPortfolioAnalysisDiagnostic(value.analysisDiagnostic))
   && (value.result === undefined || isResult(value.result));
 
 const validateWorkspace = (handle: WorkspaceHandle, workspaceId: string, writable: boolean): string => {

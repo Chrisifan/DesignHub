@@ -262,9 +262,21 @@ it("reviews a completed portfolio candidate and persists the published profile",
     referenceCount: 0,
     styleDna: {
       palette: ["#F5F0E6", "#242424"],
-      typography: { zh: "高对比衬线体", en: "High-contrast serif" },
-      composition: { zh: "对称网格", en: "Symmetrical grid" },
-      texture: { zh: "粗粝纸张", en: "Rough paper" },
+      typography: { zh: "高对比衬线体配合紧凑说明文字，建立清晰而克制的阅读层级。", en: "High-contrast serif with compact supporting copy." },
+      composition: { zh: "对称网格与非对称垂直流结合，主体沿明确基线推进。", en: "A grid combined with asymmetric vertical flow." },
+      texture: { zh: "粗粝纸张、低对比颗粒与柔和漫反射共同构成触感。", en: "Rough paper, subtle grain, and soft diffusion." },
+      signals: {
+        contrast: 68,
+        darkAiriness: 82,
+        whitespace: 38,
+        grain: 15,
+        diffuseLight: 92,
+        typeFamily: { zh: "宋体倾向", en: "Serif tendency" },
+        typeWeight: { zh: "半粗体", en: "Semibold" },
+        tracking: { zh: "紧凑", en: "Compact" },
+        compositionTopology: { zh: "非对称垂直流", en: "Asymmetric vertical flow" },
+        rendering: { zh: "柔和纸张漫反射", en: "Soft paper diffusion" },
+      },
     },
     negativeRules: [{ zh: "避免霓虹渐变", en: "Avoid neon gradients" }],
     portfolioSheets: [],
@@ -314,6 +326,16 @@ it("reviews a completed portfolio candidate and persists the published profile",
   await screen.findByRole("heading", { name: "作品集候选" });
   const drawer = screen.getByRole("dialog", { name: "导入作品集分析 · 生成 AI 设计师档案" });
   expect(drawer).toHaveClass("ui-drawer--wide");
+  expect(within(drawer).getByRole("region", { name: "身份与理念" })).toBeInTheDocument();
+  expect(within(drawer).getByRole("region", { name: "色彩倾向与光影分布" })).toBeInTheDocument();
+  expect(within(drawer).getByRole("region", { name: "排版韵律与构图骨架" })).toBeInTheDocument();
+  expect(within(drawer).getByRole("region", { name: "材质肌理与感知参数" })).toBeInTheDocument();
+  expect(within(drawer).getByRole("region", { name: "否定规则" })).toBeInTheDocument();
+  expect(within(drawer).getByRole("spinbutton", { name: "柔和低对比度" })).toHaveValue(68);
+  expect(within(drawer).getByRole("textbox", { name: "排版特征" })).toHaveValue(candidate.styleDna.typography.zh);
+  expect(within(drawer).getByRole("textbox", { name: "构图特征" })).toHaveValue(candidate.styleDna.composition.zh);
+  expect(within(drawer).getByRole("textbox", { name: "材质特征" })).toHaveValue(candidate.styleDna.texture.zh);
+  expect(within(within(drawer).getByLabelText("生效规则")).getByText("避免霓虹渐变")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "下一步：生成形象" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "发布预览" })).not.toBeInTheDocument();
 });
@@ -393,7 +415,7 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   await waitFor(() => expect(submitDesignerArtworkGeneration).toHaveBeenCalledWith(expect.objectContaining({
     workspaceId: "workspace-1",
     source: { kind: "designer-draft", id: candidate.id },
-    prompt: expect.stringContaining("未来编辑"),
+    prompt: expect.stringContaining("Future editor"),
     count: 3,
   })));
   await waitFor(() => expect(readDesignerArtwork).toHaveBeenCalledWith({
@@ -422,6 +444,106 @@ it("requests artwork for a selected candidate and adopts the managed image befor
     .filter((profile) => profile.artworkAssetId === "artwork-portrait-1");
   expect(persistedProfiles).toHaveLength(1);
   expect(persistedProfiles[0]?.artworkUrl).not.toMatch(/^data:/u);
+  expect(persistedProfiles[0]?.name.en).toBe("Future editor");
+  expect(persistedProfiles[0]?.summary.en).toBe("Rational, bright digital typography");
+});
+
+it("enters the artwork step immediately and keeps polling beyond six seconds until generation completes", async () => {
+  try {
+    const candidate = {
+      id: "candidate-artwork-poll",
+      name: { zh: "长时生成", en: "Long generation" },
+      signature: { zh: "形象候选", en: "Artwork candidate" },
+      summary: { zh: "等待完整生成", en: "Wait for complete generation" },
+      principle: { zh: "保持视觉秩序", en: "Keep visual order" },
+      personaCode: "LONG-1",
+      version: "v0.1",
+      status: "draft" as const,
+      artworkUrl: "",
+      artworkAlt: { zh: "长时生成形象", en: "Long generation portrait" },
+      tags: [{ zh: "编辑感", en: "Editorial" }],
+      referenceCount: 0,
+      styleDna: {
+        palette: ["#F5F0E6", "#242424"],
+        typography: { zh: "高对比衬线体", en: "High-contrast serif" },
+        composition: { zh: "对称网格", en: "Symmetrical grid" },
+        texture: { zh: "粗粝纸张", en: "Rough paper" },
+      },
+      negativeRules: [{ zh: "避免霓虹渐变", en: "Avoid neon gradients" }],
+      portfolioSheets: [],
+    };
+    const runningTask = {
+      id: "task-artwork-poll",
+      requestId: "request-artwork-poll",
+      state: "running" as const,
+      cancelRequested: false,
+      attempt: 1,
+      source: { kind: "designer-draft" as const, id: candidate.id },
+    };
+    const completedTask = {
+      ...runningTask,
+      state: "completed" as const,
+      result: { assetIds: ["artwork-long-1"], imageCount: 1 },
+    };
+    const submission = createDeferred<typeof runningTask>();
+    const listTasks = vi.fn();
+    Array.from({ length: 13 }).forEach(() => listTasks.mockResolvedValueOnce([runningTask]));
+    listTasks.mockResolvedValueOnce([completedTask]);
+    window.designhub = {
+      chooseWorkspaceDirectory: async () => null,
+      inspectPortfolioSources: vi.fn(async () => ({
+        id: "inspection-artwork-poll",
+        candidates: [{ id: "source-artwork-poll", label: "作品集", description: "Artwork portfolio", origin: "page-image" as const, previewUrl: "" }],
+      })),
+      submitPortfolioSelection: vi.fn(async () => ({
+        id: "task-analysis-artwork-poll",
+        requestId: "request-analysis-artwork-poll",
+        state: "completed" as const,
+        cancelRequested: false,
+        attempt: 1,
+        result: { text: JSON.stringify({ candidates: [candidate] }) },
+      })),
+      submitDesignerArtworkGeneration: vi.fn(() => submission.promise),
+      listTasks,
+      readDesignerArtwork: vi.fn(async () => ({ artworkId: "artwork-long-1", dataUrl: "data:image/png;base64,AQID" })),
+    } as typeof window.designhub;
+
+    render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-artwork-poll" />);
+    fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "作品集链接" }), { target: { value: "https://example.com/artwork-poll" } });
+    fireEvent.click(screen.getByRole("button", { name: "检查页面" }));
+    await screen.findByText("作品集");
+    fireEvent.click(screen.getByRole("checkbox", { name: "作品集" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "我确认拥有分析这些来源的权利" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始分析" }));
+    await screen.findByRole("heading", { name: "长时生成" });
+    fireEvent.click(screen.getByRole("button", { name: "下一步：生成形象" }));
+
+    expect(screen.getByText("正在生成设计师形象")).toBeInTheDocument();
+    expect(screen.getByTestId("portfolio-artwork-skeleton")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "生成流程" }).children[2]).toHaveClass("is-active");
+
+    vi.useFakeTimers();
+    await act(async () => {
+      submission.resolve(runningTask);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_500);
+    });
+    expect(screen.queryByText("人物形象生成失败，请重试。")).not.toBeInTheDocument();
+    expect(screen.getByText("正在生成设计师形象")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "形象 1" })).toBeInTheDocument();
+    expect(listTasks).toHaveBeenCalledTimes(14);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("does not show fabricated candidates when the completed portfolio task failed", async () => {

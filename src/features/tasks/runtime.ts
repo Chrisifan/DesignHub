@@ -1,5 +1,5 @@
 import type { RevisionStore } from '../revisions/commit-revision';
-import { completeTask, createTaskState, retryTask, transitionTask, type TaskProviderFailure, type TaskRecord } from './state';
+import { completeTask, createTaskState, retryTask, transitionTask, type PortfolioAnalysisDiagnostic, type TaskProviderFailure, type TaskRecord } from './state';
 
 import type { TaskCandidate } from './state';
 
@@ -12,7 +12,7 @@ export type TaskRuntime = {
   run: (taskId: string) => TaskRecord | undefined;
   cancel: (taskId: string) => TaskRecord | undefined;
   complete: (taskId: string, result?: TaskResult) => Promise<TaskRecord>;
-  fail: (taskId: string, errorCode: string, providerFailure?: TaskProviderFailure) => Promise<TaskRecord>;
+  fail: (taskId: string, errorCode: string, providerFailure?: TaskProviderFailure, analysisDiagnostic?: PortfolioAnalysisDiagnostic) => Promise<TaskRecord>;
   retry: (taskId: string) => TaskRecord | undefined;
   finish: (taskId: string, result: TaskResult, revisionStore: RevisionStore) => Promise<TaskRecord>;
   flush: () => Promise<void>;
@@ -83,11 +83,11 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     await persistence;
     return structuredClone(completed);
   };
-  const fail = async (taskId: string, errorCode: string, providerFailure?: TaskProviderFailure): Promise<TaskRecord> => {
+  const fail = async (taskId: string, errorCode: string, providerFailure?: TaskProviderFailure, analysisDiagnostic?: PortfolioAnalysisDiagnostic): Promise<TaskRecord> => {
     const task = tasks.get(taskId);
     if (!task) throw new Error('TASK_NOT_FOUND');
     if (task.state === 'completed' || task.state === 'cancelled') return structuredClone(task);
-    const failed = transitionTask({ ...task, errorCode, ...(providerFailure ? { providerFailure } : {}), updatedAt: new Date().toISOString() }, 'failed');
+    const failed = transitionTask({ ...task, errorCode, ...(providerFailure ? { providerFailure } : {}), ...(analysisDiagnostic ? { analysisDiagnostic } : {}), updatedAt: new Date().toISOString() }, 'failed');
     tasks.set(taskId, failed);
     schedulePersistence();
     await persistence;

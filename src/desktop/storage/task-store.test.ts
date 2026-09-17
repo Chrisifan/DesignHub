@@ -115,6 +115,27 @@ it('persists only validated safe provider failure diagnostics', async () => {
   workspace.close();
 });
 
+it('persists only known portfolio analysis diagnostics and accepts historical records without one', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const failedTask: TaskRecord = {
+    ...task,
+    state: 'failed',
+    errorCode: 'VISION_ANALYSIS_INVALID_RESPONSE',
+    analysisDiagnostic: 'payload.invalid_json',
+  };
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [failedTask])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).resolves.toEqual([failedTask]);
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+    ...failedTask,
+    analysisDiagnostic: 'private response text',
+  } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+    ...failedTask,
+    analysisDiagnostic: undefined,
+  }])).resolves.toBe(true);
+  workspace.close();
+});
+
 it('rejects invalid persisted image-tool parameters', async () => {
   const workspace = await createTemporaryWorkspace();
   const invalidTask = {

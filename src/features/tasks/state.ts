@@ -28,6 +28,33 @@ export type TaskProviderFailure = {
   retryAfterSeconds?: number;
 };
 
+export const portfolioAnalysisDiagnostics = [
+  'payload.invalid_json',
+  'candidates.expected_single_candidate',
+  'candidate.required_fields',
+  'candidate.styleDna.palette.required',
+  'candidate.styleDna.typography.required',
+  'candidate.styleDna.composition.required',
+  'candidate.styleDna.texture.required',
+  'candidate.styleDna.signals.contrast.invalid_percentage',
+  'candidate.styleDna.signals.darkAiriness.invalid_percentage',
+  'candidate.styleDna.signals.whitespace.invalid_percentage',
+  'candidate.styleDna.signals.grain.invalid_percentage',
+  'candidate.styleDna.signals.diffuseLight.invalid_percentage',
+  'candidate.styleDna.signals.typeFamily.required',
+  'candidate.styleDna.signals.typeWeight.required',
+  'candidate.styleDna.signals.tracking.required',
+  'candidate.styleDna.signals.compositionTopology.required',
+  'candidate.styleDna.signals.rendering.required',
+] as const;
+
+export type PortfolioAnalysisDiagnostic = typeof portfolioAnalysisDiagnostics[number];
+
+const portfolioAnalysisDiagnosticSet = new Set<string>(portfolioAnalysisDiagnostics);
+export const isPortfolioAnalysisDiagnostic = (value: unknown): value is PortfolioAnalysisDiagnostic => (
+  typeof value === 'string' && portfolioAnalysisDiagnosticSet.has(value)
+);
+
 const safeProviderCodes = new Set([
   'content_policy_violation', 'context_length_exceeded', 'image_too_large', 'image_too_small',
   'insufficient_quota', 'invalid_image_format', 'invalid_request_error', 'model_not_found',
@@ -41,7 +68,7 @@ export const taskRecordKeys = new Set<keyof TaskRecord>([
   'id', 'requestId', 'requestText', 'state', 'cancelRequested', 'attempt', 'source', 'documentId',
   'sourceAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
   'portfolio', 'model', 'size', 'count', 'tool', 'toolParams', 'region', 'createdAt', 'updatedAt',
-  'errorCode', 'providerFailure', 'result',
+  'errorCode', 'providerFailure', 'analysisDiagnostic', 'result',
 ]);
 
 export type TaskRecord = {
@@ -70,6 +97,7 @@ export type TaskRecord = {
   updatedAt?: string;
   errorCode?: string;
   providerFailure?: TaskProviderFailure;
+  analysisDiagnostic?: PortfolioAnalysisDiagnostic;
   result?: {
     text?: string;
     assetIds?: string[];
@@ -114,5 +142,5 @@ export const completeTask = (task: TaskRecord): TaskRecord => (
 
 export const retryTask = (task: TaskRecord, id: string): TaskRecord => {
   if (task.state !== 'failed' && task.state !== 'cancelled') throw new Error('TASK_NOT_RETRYABLE');
-  return { ...task, id, state: 'queued', cancelRequested: false, attempt: task.attempt + 1, errorCode: undefined, providerFailure: undefined };
+  return { ...task, id, state: 'queued', cancelRequested: false, attempt: task.attempt + 1, errorCode: undefined, providerFailure: undefined, analysisDiagnostic: undefined };
 };

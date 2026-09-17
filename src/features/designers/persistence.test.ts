@@ -41,6 +41,26 @@ it('persists an optional custom artwork asset reference alongside its URL', () =
   expect(isDesignerLibraryState({ profiles: [profile], defaultId: 'custom-art' })).toBe(true);
 });
 
+it('accepts structured visual analysis signals while keeping legacy profiles compatible', () => {
+  const profile = {
+    id: 'structured-analysis', name: { zh: '纸感', en: 'Paper' }, signature: { zh: '', en: '' }, summary: { zh: '', en: '' }, principle: { zh: '', en: '' }, personaCode: 'PAPER', version: 'v1', status: 'draft', artworkUrl: '', artworkAlt: { zh: '', en: '' }, tags: [], referenceCount: 0,
+    styleDna: {
+      palette: ['#F5F0E6'], typography: { zh: '衬线', en: 'Serif' }, composition: { zh: '网格', en: 'Grid' }, texture: { zh: '纸张', en: 'Paper' },
+      signals: {
+        contrast: 68, darkAiriness: 82, whitespace: 38, grain: 15, diffuseLight: 92,
+        typeFamily: { zh: '宋体倾向', en: 'Serif tendency' }, typeWeight: { zh: '半粗体', en: 'Semibold' }, tracking: { zh: '紧凑', en: 'Compact' },
+        compositionTopology: { zh: '非对称垂直流', en: 'Asymmetric vertical flow' }, rendering: { zh: '纸张漫反射', en: 'Paper diffusion' },
+      },
+    },
+    negativeRules: [], portfolioSheets: [],
+  };
+  expect(isDesignerLibraryState({ profiles: [profile], defaultId: profile.id })).toBe(true);
+  expect(isDesignerLibraryState({
+    profiles: [{ ...profile, styleDna: { ...profile.styleDna, signals: { ...profile.styleDna.signals, grain: 101 } } }],
+    defaultId: profile.id,
+  })).toBe(false);
+});
+
 it('removes legacy seeded designer profiles without touching real user profiles', () => {
   const legacy = {
     id: 'paper-type', name: { zh: '纸感排版', en: 'Paper & Type' }, signature: { zh: '示例', en: 'Example' },

@@ -66,6 +66,22 @@ it('marks provider failures and keeps a retryable task record', async () => {
   expect(failed.errorCode).toBe('PROVIDER_UNAVAILABLE');
 });
 
+it('persists a safe analysis diagnostic on failure and clears it on retry', async () => {
+  const runtime = createTaskRuntime();
+  runtime.start(baseTask);
+  await runtime.fail(
+    'task-1',
+    'VISION_ANALYSIS_INVALID_RESPONSE',
+    undefined,
+    'candidate.styleDna.signals.contrast.invalid_percentage',
+  );
+  expect(runtime.get('task-1')?.analysisDiagnostic).toBe(
+    'candidate.styleDna.signals.contrast.invalid_percentage',
+  );
+  const retried = runtime.retry('task-1');
+  expect(retried?.analysisDiagnostic).toBeUndefined();
+});
+
 it('creates a new queued attempt when a failed task is explicitly retried', async () => {
   const runtime = createTaskRuntime();
   runtime.start(baseTask);

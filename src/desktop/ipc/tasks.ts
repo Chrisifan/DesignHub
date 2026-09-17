@@ -1,4 +1,4 @@
-import { isSafeProviderCode, taskRecordKeys, type TaskRecord } from '../../features/tasks/state';
+import { isPortfolioAnalysisDiagnostic, isSafeProviderCode, taskRecordKeys, type TaskRecord } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { isTrustedWorkspaceRequest } from './workspace';
 
@@ -29,7 +29,8 @@ const isTaskRecord = (value: unknown): value is TaskRecord => {
     && isTaskState(task.state)
     && typeof task.cancelRequested === 'boolean'
     && Number.isInteger(task.attempt) && Number(task.attempt) > 0
-    && (task.providerFailure === undefined || isTaskProviderFailure(task.providerFailure));
+    && (task.providerFailure === undefined || isTaskProviderFailure(task.providerFailure))
+    && (task.analysisDiagnostic === undefined || isPortfolioAnalysisDiagnostic(task.analysisDiagnostic));
 };
 const isTaskList = (value: unknown): value is TaskRecord[] => Array.isArray(value) && value.every(isTaskRecord);
 

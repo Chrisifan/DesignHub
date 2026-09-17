@@ -1,5 +1,5 @@
 import type { ChatRequest, ChatResponse, GeneratedImage, VisionRequest } from '../providers/adapter';
-import { isSafeProviderCode, type TaskProviderFailure, type TaskRecord } from '../tasks/state';
+import { isPortfolioAnalysisDiagnostic, isSafeProviderCode, type PortfolioAnalysisDiagnostic, type TaskProviderFailure, type TaskRecord } from '../tasks/state';
 import type { TaskSource } from '../tasks/state';
 import type { TaskRuntime } from '../tasks/runtime';
 import type { Region } from '../canvas/selection';
@@ -137,9 +137,15 @@ const providerFailure = (error: unknown): TaskProviderFailure | undefined => {
   };
 };
 
+const analysisDiagnostic = (error: unknown): PortfolioAnalysisDiagnostic | undefined => {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = (error as Record<string, unknown>).analysisDiagnostic;
+  return isPortfolioAnalysisDiagnostic(value) ? value : undefined;
+};
+
 const failTask = async (runtime: TaskRuntime, taskIdValue: string, error: unknown): Promise<void> => {
   const details = providerFailure(error);
-  await runtime.fail(taskIdValue, errorCode(error), details);
+  await runtime.fail(taskIdValue, errorCode(error), details, analysisDiagnostic(error));
 };
 
 const sourceDataValues = (sources: readonly PortfolioImageSource[]): string[] => sources.flatMap((source) => [

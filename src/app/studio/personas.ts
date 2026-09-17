@@ -4,6 +4,19 @@ export type LocalizedText = { zh: string; en: string };
 export type PersonaCrop = 'avatar' | 'half' | 'full';
 export type PersonaCandidateStatus = 'idle' | 'generating' | 'ready' | 'failed';
 
+export type StyleDnaSignals = {
+  contrast: number;
+  darkAiriness: number;
+  whitespace: number;
+  grain: number;
+  diffuseLight: number;
+  typeFamily: LocalizedText;
+  typeWeight: LocalizedText;
+  tracking: LocalizedText;
+  compositionTopology: LocalizedText;
+  rendering: LocalizedText;
+};
+
 export type PersonaProfile = {
   id: string;
   name: LocalizedText;
@@ -23,6 +36,7 @@ export type PersonaProfile = {
     typography: LocalizedText;
     composition: LocalizedText;
     texture: LocalizedText;
+    signals?: StyleDnaSignals;
   };
   negativeRules: LocalizedText[];
   portfolioSheets: Array<{

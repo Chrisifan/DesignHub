@@ -37,7 +37,15 @@ it('rejects malformed task writes before storage is called', async () => {
     ...task,
     providerMessage: 'private provider error',
   }] })).resolves.toBe(false);
+  await expect(save(fixture.event, { workspaceId: 'workspace-1', tasks: [{
+    ...task,
+    analysisDiagnostic: 'private response text',
+  }] })).resolves.toBe(false);
   expect(writes).toBe(0);
+  await expect(save(fixture.event, { workspaceId: 'workspace-1', tasks: [{
+    ...task,
+    analysisDiagnostic: 'payload.invalid_json',
+  }] })).resolves.toBe(true);
   await expect(save(fixture.event, { workspaceId: 'workspace-1', tasks: [task] })).resolves.toBe(true);
-  expect(writes).toBe(1);
+  expect(writes).toBe(2);
 });

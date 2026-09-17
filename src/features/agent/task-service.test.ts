@@ -543,6 +543,36 @@ it('persists safe provider diagnostics for failed portfolio analysis without ret
   expect(serialized).not.toContain('Private portfolio cover');
 });
 
+it('persists a safe portfolio response diagnostic without retaining rejected response or source data', async () => {
+  const sourceData = 'cHJpdmF0ZS1wb3J0Zm9saW8taW1hZ2U=';
+  const rejectedResponse = '{bad json';
+  const persisted: TaskRecord[][] = [];
+  const runtime = createTaskRuntime({ persist: async (tasks) => { persisted.push([...tasks]); } });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      analyzeVision: async () => ({ text: rejectedResponse, cost: null }),
+    }),
+  });
+
+  const task = await service.submitPortfolioAnalysis({
+    source: { kind: 'designer-draft', id: 'designer-draft-invalid-response' }, connectionId: 'provider-1', rightsConfirmed: true,
+    sources: [{ id: 'source-a', description: 'Private portfolio cover', image: { base64: sourceData, mimeType: 'image/png' } }],
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)).toMatchObject({
+    state: 'failed',
+    errorCode: 'VISION_ANALYSIS_INVALID_RESPONSE',
+    analysisDiagnostic: 'payload.invalid_json',
+  });
+  const serialized = JSON.stringify(persisted.at(-1));
+  expect(serialized).not.toContain(rejectedResponse);
+  expect(serialized).not.toContain(sourceData);
+  expect(serialized).not.toContain('Private portfolio cover');
+});
+
 it('does not persist provider codes that resemble credentials', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({

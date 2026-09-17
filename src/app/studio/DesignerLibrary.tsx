@@ -5,6 +5,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from "react";
 
 import type { Locale } from "../i18n";
@@ -42,6 +43,16 @@ type DesignerDraft = {
   composition: string;
   texture: string;
   negativeRules: string;
+  contrast: string;
+  darkAiriness: string;
+  whitespace: string;
+  grain: string;
+  diffuseLight: string;
+  typeFamily: string;
+  typeWeight: string;
+  tracking: string;
+  compositionTopology: string;
+  rendering: string;
 };
 
 type PortfolioWizardPhase = "import" | "analyse" | "avatar" | "review";
@@ -61,6 +72,16 @@ const emptyDraft: DesignerDraft = {
   composition: "",
   texture: "",
   negativeRules: "",
+  contrast: "",
+  darkAiriness: "",
+  whitespace: "",
+  grain: "",
+  diffuseLight: "",
+  typeFamily: "",
+  typeWeight: "",
+  tracking: "",
+  compositionTopology: "",
+  rendering: "",
 };
 
 const profileToDraft = (
@@ -81,29 +102,67 @@ const profileToDraft = (
   negativeRules: profile.negativeRules
     .map((rule) => localize(locale, rule))
     .join("\n"),
+  contrast: profile.styleDna.signals?.contrast.toString() ?? "",
+  darkAiriness: profile.styleDna.signals?.darkAiriness.toString() ?? "",
+  whitespace: profile.styleDna.signals?.whitespace.toString() ?? "",
+  grain: profile.styleDna.signals?.grain.toString() ?? "",
+  diffuseLight: profile.styleDna.signals?.diffuseLight.toString() ?? "",
+  typeFamily: profile.styleDna.signals ? localize(locale, profile.styleDna.signals.typeFamily) : "",
+  typeWeight: profile.styleDna.signals ? localize(locale, profile.styleDna.signals.typeWeight) : "",
+  tracking: profile.styleDna.signals ? localize(locale, profile.styleDna.signals.tracking) : "",
+  compositionTopology: profile.styleDna.signals ? localize(locale, profile.styleDna.signals.compositionTopology) : "",
+  rendering: profile.styleDna.signals ? localize(locale, profile.styleDna.signals.rendering) : "",
 });
 
 const localized = (value: string): LocalizedText => ({ zh: value, en: value });
 
-const profileFromDraft = (draft: DesignerDraft, base: PersonaProfile): PersonaProfile => ({
-  ...base,
-  name: localized(draft.name.trim()),
-  signature: localized(draft.signature.trim()),
-  summary: localized(draft.summary.trim()),
-  principle: localized(draft.principle.trim()),
-  personaCode: draft.personaCode.trim(),
-  version: draft.version.trim(),
-  tags: draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean).map(localized),
-  styleDna: {
-    palette: draft.palette.split(",").map((color) => color.trim()).filter(Boolean),
-    typography: localized(draft.typography.trim()),
-    composition: localized(draft.composition.trim()),
-    texture: localized(draft.texture.trim()),
-  },
-  negativeRules: draft.negativeRules.split("\n").map((rule) => rule.trim()).filter(Boolean).map(localized),
-  artworkAssetId: undefined,
-  artworkUrl: "",
-});
+const updateLocalized = (base: LocalizedText, locale: Locale, value: string): LocalizedText => locale === "zh-CN"
+  ? { ...base, zh: value }
+  : { ...base, en: value };
+
+const percentageFromDraft = (value: string, fallback = 0): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : fallback;
+};
+
+const profileFromDraft = (draft: DesignerDraft, base: PersonaProfile, locale: Locale): PersonaProfile => {
+  const tags = draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean);
+  const negativeRules = draft.negativeRules.split("\n").map((rule) => rule.trim()).filter(Boolean);
+  const hasSignals = Boolean(base.styleDna.signals) || [draft.contrast, draft.darkAiriness, draft.whitespace, draft.grain, draft.diffuseLight,
+    draft.typeFamily, draft.typeWeight, draft.tracking, draft.compositionTopology, draft.rendering].some((value) => value.trim());
+  const previousSignals = base.styleDna.signals;
+  return {
+    ...base,
+    name: updateLocalized(base.name, locale, draft.name.trim()),
+    signature: updateLocalized(base.signature, locale, draft.signature.trim()),
+    summary: updateLocalized(base.summary, locale, draft.summary.trim()),
+    principle: updateLocalized(base.principle, locale, draft.principle.trim()),
+    personaCode: draft.personaCode.trim(),
+    version: draft.version.trim(),
+    tags: tags.map((tag, index) => updateLocalized(base.tags[index] ?? localized(tag), locale, tag)),
+    styleDna: {
+      palette: draft.palette.split(",").map((color) => color.trim()).filter(Boolean),
+      typography: updateLocalized(base.styleDna.typography, locale, draft.typography.trim()),
+      composition: updateLocalized(base.styleDna.composition, locale, draft.composition.trim()),
+      texture: updateLocalized(base.styleDna.texture, locale, draft.texture.trim()),
+      ...(hasSignals ? { signals: {
+        contrast: percentageFromDraft(draft.contrast, previousSignals?.contrast),
+        darkAiriness: percentageFromDraft(draft.darkAiriness, previousSignals?.darkAiriness),
+        whitespace: percentageFromDraft(draft.whitespace, previousSignals?.whitespace),
+        grain: percentageFromDraft(draft.grain, previousSignals?.grain),
+        diffuseLight: percentageFromDraft(draft.diffuseLight, previousSignals?.diffuseLight),
+        typeFamily: updateLocalized(previousSignals?.typeFamily ?? localized(""), locale, draft.typeFamily.trim()),
+        typeWeight: updateLocalized(previousSignals?.typeWeight ?? localized(""), locale, draft.typeWeight.trim()),
+        tracking: updateLocalized(previousSignals?.tracking ?? localized(""), locale, draft.tracking.trim()),
+        compositionTopology: updateLocalized(previousSignals?.compositionTopology ?? localized(""), locale, draft.compositionTopology.trim()),
+        rendering: updateLocalized(previousSignals?.rendering ?? localized(""), locale, draft.rendering.trim()),
+      } } : {}),
+    },
+    negativeRules: negativeRules.map((rule, index) => updateLocalized(base.negativeRules[index] ?? localized(rule), locale, rule)),
+    artworkAssetId: undefined,
+    artworkUrl: "",
+  };
+};
 
 const designerArtworkPrompt = (profile: PersonaProfile): string => [
   "Create one original, stylized character portrait for a graphic designer profile.",
@@ -170,6 +229,7 @@ export const DesignerLibrary = ({
   const [artworkOptions, setArtworkOptions] = useState<ArtworkOption[]>([]);
   const [selectedArtworkAssetId, setSelectedArtworkAssetId] = useState<string>();
   const [artworkTaskId, setArtworkTaskId] = useState<string>();
+  const [artworkSubmitting, setArtworkSubmitting] = useState(false);
   const [publishedInSession, setPublishedInSession] = useState(false);
   const [creationError, setCreationError] = useState("");
   const [newDraft, setNewDraft] = useState<DesignerDraft>(emptyDraft);
@@ -296,6 +356,7 @@ export const DesignerLibrary = ({
     setArtworkOptions([]);
     setSelectedArtworkAssetId(undefined);
     setArtworkTaskId(undefined);
+    setArtworkSubmitting(false);
     setPublishedInSession(false);
     setCreationError("");
     setEditor({ mode: "new" });
@@ -497,7 +558,7 @@ export const DesignerLibrary = ({
   };
   const requestCandidateArtwork = async () => {
     if (!workspaceId || readOnly || !analysisProfile || !analysisDraft) return;
-    const profile = profileFromDraft(analysisDraft, analysisProfile);
+    const profile = profileFromDraft(analysisDraft, analysisProfile, locale);
     if (!profile.name.en) {
       setCreationError(t(locale, "请先填写设计师名称。", "Enter a designer name first."));
       return;
@@ -513,6 +574,10 @@ export const DesignerLibrary = ({
       );
       return;
     }
+    setWizardPhase("avatar");
+    setArtworkOptions([]);
+    setSelectedArtworkAssetId(undefined);
+    setArtworkSubmitting(true);
     setCreationError("");
     try {
       const task = await submit({
@@ -525,6 +590,7 @@ export const DesignerLibrary = ({
       });
       if (!task) throw new Error("DESIGNER_ARTWORK_UNAVAILABLE");
       if (await readArtworkOptions(task)) {
+        setArtworkSubmitting(false);
         notify(t(locale, "人物形象已生成", "Character artwork generated"));
         return;
       }
@@ -532,14 +598,9 @@ export const DesignerLibrary = ({
         throw new Error("DESIGNER_ARTWORK_FAILED");
       }
       setArtworkTaskId(task.id);
-      setCreationError(
-        t(
-          locale,
-          "人物形象正在生成，请稍后查看。",
-          "Character artwork is generating; check again shortly.",
-        ),
-      );
+      setArtworkSubmitting(false);
     } catch {
+      setArtworkSubmitting(false);
       setArtworkTaskId(undefined);
       setCreationError(
         t(
@@ -553,11 +614,9 @@ export const DesignerLibrary = ({
   useEffect(() => {
     if (!artworkTaskId || !workspaceId || !editor) return;
     let cancelled = false;
-    let attempts = 0;
     let timer: number | undefined;
     const poll = async (): Promise<void> => {
       if (cancelled) return;
-      attempts += 1;
       try {
         const listTasks = getDesktopApi().listTasks;
         if (!listTasks) throw new Error("TASK_LIST_UNAVAILABLE");
@@ -582,7 +641,7 @@ export const DesignerLibrary = ({
           }
           return;
         }
-        if (task?.state === "failed" || task?.state === "cancelled" || attempts >= 12) {
+        if (task?.state === "failed" || task?.state === "cancelled") {
           setArtworkTaskId(undefined);
           setCreationError(
             t(
@@ -621,7 +680,7 @@ export const DesignerLibrary = ({
     const option = artworkOptions.find((item) => item.assetId === selectedArtworkAssetId);
     if (!option) return;
     const published: PersonaProfile = {
-      ...profileFromDraft(analysisDraft, analysisProfile),
+      ...profileFromDraft(analysisDraft, analysisProfile, locale),
       id: `custom-${crypto.randomUUID()}`,
       status: "published",
       referenceCount: 0,
@@ -773,6 +832,7 @@ export const DesignerLibrary = ({
           wizardPhase={wizardPhase}
           analysisBusy={Boolean(analysisTaskId)}
           analysisDraft={analysisDraft}
+          analysisProfile={analysisProfile}
           rightsConfirmed={rightsConfirmed}
           portfolioUrl={portfolioUrl}
           portfolioInspection={portfolioInspection}
@@ -789,7 +849,7 @@ export const DesignerLibrary = ({
           onArtworkSelect={setSelectedArtworkAssetId}
           onRequestCandidates={requestCandidates}
           onGenerateArtwork={requestCandidateArtwork}
-          artworkBusy={Boolean(artworkTaskId)}
+          artworkBusy={artworkSubmitting || Boolean(artworkTaskId)}
           canGenerateArtwork={Boolean(workspaceId) && !readOnly}
           onPublish={publishPreview}
           onDraftChange={setActiveDraft}
@@ -914,6 +974,7 @@ const DesignerEditorModal = ({
           locale={locale}
           phase={wizardPhase}
           analysing={analysisBusy}
+          artworkBusy={artworkBusy}
           analysisDraft={analysisDraft}
           analysisProfile={analysisProfile}
           artworkOptions={artworkOptions}
@@ -1016,8 +1077,49 @@ const DesignerEditorModal = ({
   );
 };
 
+const AnalysisSection = ({
+  id,
+  icon,
+  title,
+  code,
+  children,
+}: {
+  id: string;
+  icon: string;
+  title: string;
+  code: string;
+  children: ReactNode;
+}) => <section className="portfolio-analysis-section" aria-labelledby={id}>
+  <header className="portfolio-analysis-section__header">
+    <span className="portfolio-analysis-section__icon"><Icon name={icon} size={15} /></span>
+    <h3 id={id}>{title}</h3>
+    <span className="portfolio-analysis-section__code">{code}</span>
+  </header>
+  {children}
+</section>;
+
+const AnalysisMetric = ({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}) => {
+  const numericValue = percentageFromDraft(value);
+  return <label className="portfolio-analysis-metric">
+    <span>{label}</span>
+    <span className="portfolio-analysis-metric__value">
+      <input type="number" min="0" max="100" step="1" aria-label={label} value={value} placeholder="--" onChange={onChange} />
+      <small>%</small>
+    </span>
+    <span className="portfolio-analysis-metric__track" aria-hidden="true"><i style={{ width: `${numericValue}%` }} /></span>
+  </label>;
+};
+
 const PortfolioCreationDrawer = ({
-  locale, phase, analysing, analysisDraft, analysisProfile, artworkOptions, selectedArtworkAssetId, selectionCount, publishedInSession,
+  locale, phase, analysing, artworkBusy, analysisDraft, analysisProfile, artworkOptions, selectedArtworkAssetId, selectionCount, publishedInSession,
   rightsConfirmed, portfolioUrl, portfolioInspection, selectedPortfolioSourceIds,
   error, onRightsConfirmed, onPortfolioUrlChange,
   onInspectPortfolioSources, onPortfolioSourceToggle, onArtworkSelect, onAnalysisDraftChange,
@@ -1025,6 +1127,7 @@ const PortfolioCreationDrawer = ({
   locale: Locale;
   phase: PortfolioWizardPhase;
   analysing: boolean;
+  artworkBusy: boolean;
   analysisDraft?: DesignerDraft;
   analysisProfile?: PersonaProfile;
   artworkOptions: ArtworkOption[];
@@ -1078,23 +1181,58 @@ const PortfolioCreationDrawer = ({
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
     ) : (analysing || (phase === "analyse" && !analysisDraft)) ? <PortfolioAnalysisLoading locale={locale} /> : phase === "analyse" && analysisDraft && analysisProfile ? <section className="portfolio-analysis-editor" aria-labelledby="portfolio-analysis-title">
-      <p className="section-kicker">{t(locale, "特征解构", "Feature analysis")}</p>
-      <h2 id="portfolio-analysis-title">{analysisDraft.name}</h2>
-      <p className="panel-note">{t(locale, `已汇总 ${selectionCount} 个作品来源。`, `${selectionCount} portfolio sources are included.`)}</p>
-      <div className="portfolio-analysis-editor__grid">
-        <Field label={t(locale, "设计师名称", "Designer name")}><input value={analysisDraft.name} onChange={setAnalysisField("name")} /></Field>
-        <Field label={t(locale, "署名", "Signature")}><input value={analysisDraft.signature} onChange={setAnalysisField("signature")} /></Field>
-        <Field label={t(locale, "风格说明", "Style summary")}><textarea rows={3} value={analysisDraft.summary} onChange={setAnalysisField("summary")} /></Field>
-        <Field label={t(locale, "创作原则", "Creative principle")}><textarea rows={3} value={analysisDraft.principle} onChange={setAnalysisField("principle")} /></Field>
-        <Field label={t(locale, "标签", "Tags")}><input value={analysisDraft.tags} onChange={setAnalysisField("tags")} /></Field>
-        <Field label={t(locale, "色板", "Palette")}><div className="portfolio-palette-input"><input value={analysisDraft.palette} onChange={setAnalysisField("palette")} /><span>{analysisDraft.palette.split(",").map((color) => <i key={color} style={{ backgroundColor: color.trim() }} />)}</span></div></Field>
-        <Field label={t(locale, "排版", "Typography")}><input value={analysisDraft.typography} onChange={setAnalysisField("typography")} /></Field>
-        <Field label={t(locale, "构图", "Composition")}><input value={analysisDraft.composition} onChange={setAnalysisField("composition")} /></Field>
-        <Field label={t(locale, "材质", "Texture")}><input value={analysisDraft.texture} onChange={setAnalysisField("texture")} /></Field>
-        <Field label={t(locale, "禁用规则", "Negative rules")}><textarea rows={3} value={analysisDraft.negativeRules} onChange={setAnalysisField("negativeRules")} /></Field>
+      <div className="portfolio-analysis-editor__intro">
+        <div><p className="section-kicker">{t(locale, "特征解构", "Feature analysis")}</p><h2 id="portfolio-analysis-title">{analysisDraft.name}</h2></div>
+        <span>{t(locale, `${selectionCount} 项来源 · AI 推断`, `${selectionCount} sources · AI inferred`)}</span>
       </div>
+      <p className="portfolio-analysis-editor__note">{t(locale, "百分比为基于可见作品的可编辑推断信号，不代表准确率或物理测量。", "Percentages are editable signals inferred from visible work, not accuracy scores or physical measurements.")}</p>
+      <AnalysisSection id="analysis-identity" icon="sparkles" title={t(locale, "身份与理念", "Identity and principle")} code="PROFILE">
+        <div className="portfolio-analysis-fields portfolio-analysis-fields--identity">
+          <Field label={t(locale, "设计师名称", "Designer name")}><input value={analysisDraft.name} onChange={setAnalysisField("name")} /></Field>
+          <Field label={t(locale, "署名", "Signature")}><input value={analysisDraft.signature} onChange={setAnalysisField("signature")} /></Field>
+          <Field label={t(locale, "风格说明", "Style summary")}><textarea rows={4} value={analysisDraft.summary} onChange={setAnalysisField("summary")} /></Field>
+          <Field label={t(locale, "创作原则", "Creative principle")}><textarea rows={4} value={analysisDraft.principle} onChange={setAnalysisField("principle")} /></Field>
+          <Field label={t(locale, "标签", "Tags")}><input value={analysisDraft.tags} onChange={setAnalysisField("tags")} /></Field>
+        </div>
+      </AnalysisSection>
+      <AnalysisSection id="analysis-color" icon="palette" title={t(locale, "色彩倾向与光影分布", "Colour and light distribution")} code="COLOR MATRIX">
+        <div className="portfolio-analysis-fields">
+          <Field label={t(locale, "主导色板", "Dominant palette")}><div className="portfolio-palette-input"><input value={analysisDraft.palette} onChange={setAnalysisField("palette")} /><span>{analysisDraft.palette.split(",").filter((color) => color.trim()).map((color) => <i key={color} title={color.trim()} style={{ backgroundColor: color.trim() }} />)}</span></div></Field>
+          <div className="portfolio-analysis-metrics">
+            <AnalysisMetric label={t(locale, "柔和低对比度", "Soft contrast")} value={analysisDraft.contrast} onChange={setAnalysisField("contrast")} />
+            <AnalysisMetric label={t(locale, "暗部透气率", "Shadow airiness")} value={analysisDraft.darkAiriness} onChange={setAnalysisField("darkAiriness")} />
+          </div>
+        </div>
+      </AnalysisSection>
+      <AnalysisSection id="analysis-type-composition" icon="type" title={t(locale, "排版韵律与构图骨架", "Typography and composition")} code="TYPE / GRID">
+        <div className="portfolio-analysis-fields portfolio-analysis-fields--split">
+          <Field label={t(locale, "排版特征", "Typography traits")}><textarea rows={5} value={analysisDraft.typography} onChange={setAnalysisField("typography")} /></Field>
+          <Field label={t(locale, "构图特征", "Composition traits")}><textarea rows={5} value={analysisDraft.composition} onChange={setAnalysisField("composition")} /></Field>
+          <Field label={t(locale, "字体倾向", "Type tendency")}><input value={analysisDraft.typeFamily} onChange={setAnalysisField("typeFamily")} /></Field>
+          <Field label={t(locale, "字重偏好", "Weight preference")}><input value={analysisDraft.typeWeight} onChange={setAnalysisField("typeWeight")} /></Field>
+          <Field label={t(locale, "字距节奏", "Tracking rhythm")}><input value={analysisDraft.tracking} onChange={setAnalysisField("tracking")} /></Field>
+          <Field label={t(locale, "构图拓扑", "Composition topology")}><input value={analysisDraft.compositionTopology} onChange={setAnalysisField("compositionTopology")} /></Field>
+          <AnalysisMetric label={t(locale, "留白占比", "Whitespace ratio")} value={analysisDraft.whitespace} onChange={setAnalysisField("whitespace")} />
+        </div>
+      </AnalysisSection>
+      <AnalysisSection id="analysis-texture" icon="layers" title={t(locale, "材质肌理与感知参数", "Texture and material perception")} code="TEXTURE / MAT">
+        <div className="portfolio-analysis-fields">
+          <Field label={t(locale, "材质特征", "Texture traits")}><textarea rows={5} value={analysisDraft.texture} onChange={setAnalysisField("texture")} /></Field>
+          <div className="portfolio-analysis-metrics">
+            <AnalysisMetric label={t(locale, "纹理颗粒度", "Grain")} value={analysisDraft.grain} onChange={setAnalysisField("grain")} />
+            <AnalysisMetric label={t(locale, "光影漫反射率", "Diffuse light")} value={analysisDraft.diffuseLight} onChange={setAnalysisField("diffuseLight")} />
+          </div>
+          <Field label={t(locale, "着色与材质描述", "Rendering and material")}><input value={analysisDraft.rendering} onChange={setAnalysisField("rendering")} /></Field>
+        </div>
+      </AnalysisSection>
+      <AnalysisSection id="analysis-negative" icon="circle-alert" title={t(locale, "否定规则", "Negative constraints")} code={`${analysisDraft.negativeRules.split("\n").filter((rule) => rule.trim()).length} RULES`}>
+        <div className="portfolio-analysis-fields">
+          <Field label={t(locale, "每行一条规则", "One rule per line")}><textarea rows={4} value={analysisDraft.negativeRules} onChange={setAnalysisField("negativeRules")} /></Field>
+          <div className="portfolio-analysis-rules" aria-label={t(locale, "生效规则", "Active rules")}>{analysisDraft.negativeRules.split("\n").filter((rule) => rule.trim()).map((rule) => <span key={rule}><Icon name="circle-alert" size={13} />{rule.trim()}</span>)}</div>
+        </div>
+      </AnalysisSection>
       {error && <p className="form-error" role="alert">{error}</p>}
-    </section> : phase === "avatar" ? <section className="candidate-review"><p className="section-kicker">{t(locale, "形象生成", "Artwork generation")}</p><h2>{t(locale, "选择设计师形象", "Choose designer artwork")}</h2><div className="persona-candidate-grid" role="group" aria-label={t(locale, "形象选项", "Artwork options")}>{artworkOptions.map((option, index) => <button type="button" key={option.assetId} className={`persona-candidate ${selectedArtworkAssetId === option.assetId ? "is-selected" : ""}`} aria-pressed={selectedArtworkAssetId === option.assetId} aria-label={`${t(locale, "形象", "Artwork")} ${index + 1}`} onClick={() => onArtworkSelect(option.assetId)}><img src={option.artworkUrl} alt="" /><strong>{t(locale, `形象 ${index + 1}`, `Artwork ${index + 1}`)}</strong></button>)}</div>{error && <p className="form-error" role="alert">{error}</p>}</section> : <section className="candidate-review"><p className="section-kicker">{t(locale, "预览发布", "Preview and publish")}</p><h2>{analysisDraft?.name}</h2><p>{analysisDraft?.summary}</p>{selectedArtworkAssetId && <img src={`designhub-artwork://${selectedArtworkAssetId}`} alt="" />}{publishedInSession && <p className="panel-note">{t(locale, "已发布。", "Published.")}</p>}{error && <p className="form-error" role="alert">{error}</p>}</section>}
+    </section> : phase === "avatar" ? artworkBusy ? <PortfolioArtworkLoading locale={locale} /> : <section className="candidate-review"><p className="section-kicker">{t(locale, "形象生成", "Artwork generation")}</p><h2>{t(locale, "选择设计师形象", "Choose designer artwork")}</h2><div className="persona-candidate-grid" role="group" aria-label={t(locale, "形象选项", "Artwork options")}>{artworkOptions.map((option, index) => <button type="button" key={option.assetId} className={`persona-candidate ${selectedArtworkAssetId === option.assetId ? "is-selected" : ""}`} aria-pressed={selectedArtworkAssetId === option.assetId} aria-label={`${t(locale, "形象", "Artwork")} ${index + 1}`} onClick={() => onArtworkSelect(option.assetId)}><img src={option.artworkUrl} alt="" /><strong>{t(locale, `形象 ${index + 1}`, `Artwork ${index + 1}`)}</strong></button>)}</div>{error && <p className="form-error" role="alert">{error}</p>}</section> : <section className="candidate-review"><p className="section-kicker">{t(locale, "预览发布", "Preview and publish")}</p><h2>{analysisDraft?.name}</h2><p>{analysisDraft?.summary}</p>{selectedArtworkAssetId && <img src={`designhub-artwork://${selectedArtworkAssetId}`} alt="" />}{publishedInSession && <p className="panel-note">{t(locale, "已发布。", "Published.")}</p>}{error && <p className="form-error" role="alert">{error}</p>}</section>}
   </section>;
 };
 
@@ -1106,6 +1244,18 @@ const PortfolioAnalysisLoading = ({ locale }: { locale: Locale }) => (
     <div className="portfolio-analysis-progress"><span /><small>{t(locale, "特征解构中", "Deconstructing features")}</small></div>
     <div className="portfolio-analysis-skeleton" data-testid="portfolio-analysis-skeleton" aria-hidden="true">
       <i /><i /><i /><i /><i /><i />
+    </div>
+  </section>
+);
+
+const PortfolioArtworkLoading = ({ locale }: { locale: Locale }) => (
+  <section className="portfolio-artwork-loading" aria-live="polite">
+    <p className="section-kicker">{t(locale, "角色拟合", "Character fitting")}</p>
+    <h2>{t(locale, "正在生成设计师形象", "Generating designer artwork")}</h2>
+    <p>{t(locale, "正在根据视觉 DNA 生成 3 个形象候选。", "Generating three artwork candidates from the visual DNA.")}</p>
+    <div className="portfolio-analysis-progress"><span /><small>{t(locale, "形象生成中", "Generating artwork")}</small></div>
+    <div className="portfolio-artwork-skeleton" data-testid="portfolio-artwork-skeleton" aria-hidden="true">
+      <i /><i /><i />
     </div>
   </section>
 );

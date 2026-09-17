@@ -27,6 +27,23 @@ const isPortfolioSheet = (value: unknown): boolean => isRecord(value)
   && isLocalizedText(value.title)
   && isLocalizedText(value.note);
 
+const isPercentage = (value: unknown): boolean => typeof value === 'number'
+  && Number.isFinite(value)
+  && value >= 0
+  && value <= 100;
+
+const isStyleDnaSignals = (value: unknown): boolean => isRecord(value)
+  && isPercentage(value.contrast)
+  && isPercentage(value.darkAiriness)
+  && isPercentage(value.whitespace)
+  && isPercentage(value.grain)
+  && isPercentage(value.diffuseLight)
+  && isLocalizedText(value.typeFamily)
+  && isLocalizedText(value.typeWeight)
+  && isLocalizedText(value.tracking)
+  && isLocalizedText(value.compositionTopology)
+  && isLocalizedText(value.rendering);
+
 const isPersonaProfile = (value: unknown): value is PersonaProfile => {
   if (!isRecord(value)) return false;
   const status = value.status;
@@ -53,6 +70,7 @@ const isPersonaProfile = (value: unknown): value is PersonaProfile => {
     && isLocalizedText(styleDna.typography)
     && isLocalizedText(styleDna.composition)
     && isLocalizedText(styleDna.texture)
+    && (styleDna.signals === undefined || isStyleDnaSignals(styleDna.signals))
     && Array.isArray(value.negativeRules)
     && value.negativeRules.every((rule) => isLocalizedText(rule))
     && Array.isArray(value.portfolioSheets)
