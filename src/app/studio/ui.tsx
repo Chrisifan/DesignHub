@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { Locale } from '../i18n';
 import type { Artwork } from './types';
+import { Tooltip } from './Tooltip';
 
 export const t = (locale: Locale, zh: string, en: string): string =>
   locale === 'zh-CN' ? zh : en;
@@ -51,16 +52,19 @@ export const IconButton = ({
   name: string;
   label: string;
 }) => (
-  <button
-    type="button"
-    className="icon-button"
-    title={label}
-    data-tooltip={label}
-    aria-label={label}
-    {...props}
-  >
-    <Icon name={name} />
-  </button>
+  <Tooltip content={label} asChild>
+    <button
+      type="button"
+      className="icon-button"
+      title={label}
+      data-tooltip={label}
+      data-tooltip-portal="true"
+      aria-label={label}
+      {...props}
+    >
+      <Icon name={name} />
+    </button>
+  </Tooltip>
 );
 export const Badge = ({
   children,

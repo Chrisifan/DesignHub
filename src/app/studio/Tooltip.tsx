@@ -1,10 +1,11 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 type TooltipProps = {
   content: ReactNode;
   children: ReactNode;
   className?: string;
+  asChild?: boolean;
 };
 
 type TooltipPosition = {
@@ -12,16 +13,24 @@ type TooltipPosition = {
   top: number;
 };
 
-export const Tooltip = ({ content, children, className = '' }: TooltipProps) => {
+let activeTooltipDismiss: (() => void) | null = null;
+
+export const Tooltip = ({ content, children, className = '', asChild = false }: TooltipProps) => {
   const id = useId();
-  const triggerRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<TooltipPosition | null>(null);
 
+  const hide = (): void => {
+    setOpen(false);
+    if (activeTooltipDismiss === hide) activeTooltipDismiss = null;
+  };
   const show = () => {
+    activeTooltipDismiss?.();
     setPosition(null);
     setOpen(true);
+    activeTooltipDismiss = hide;
   };
 
   useLayoutEffect(() => {
@@ -57,26 +66,47 @@ export const Tooltip = ({ content, children, className = '' }: TooltipProps) => 
       if (typeof tooltip.hidePopover === 'function' && tooltip.matches(':popover-open')) {
         tooltip.hidePopover();
       }
+      if (activeTooltipDismiss === hide) activeTooltipDismiss = null;
     };
   }, [open]);
 
-  return <>
-    <span
-      ref={triggerRef}
-      className={`ui-tooltip-trigger ${className}`}
-      tabIndex={0}
-      aria-describedby={open ? id : undefined}
-      onMouseEnter={show}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={show}
-      onBlur={() => setOpen(false)}
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape') return;
-        event.preventDefault();
-        event.stopPropagation();
-        setOpen(false);
-      }}
+  const dismissOnEscape = (event: KeyboardEvent<HTMLElement>): void => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    hide();
+  };
+  const childElement = asChild && isValidElement(children)
+    ? children as ReactElement<Record<string, unknown>>
+    : null;
+  const childClassName = typeof childElement?.props.className === 'string' ? childElement.props.className : '';
+  const trigger = childElement
+    ? cloneElement(childElement, {
+        ref: triggerRef,
+        className: `${childClassName} ui-tooltip-trigger ${className}`.trim(),
+        'aria-describedby': open ? id : undefined,
+        onMouseEnter: show,
+        onMouseLeave: hide,
+        onFocus: show,
+        onBlur: hide,
+        onKeyDown: dismissOnEscape,
+      })
+    : (
+      <span
+        ref={triggerRef}
+        className={`ui-tooltip-trigger ${className}`}
+        tabIndex={0}
+        aria-describedby={open ? id : undefined}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onKeyDown={dismissOnEscape}
     >{children}</span>
+    );
+
+  return <>
+    {trigger}
     {open && createPortal(
       <span
         ref={tooltipRef}

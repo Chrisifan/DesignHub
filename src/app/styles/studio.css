@@ -482,6 +482,9 @@ button:disabled {
   transition: opacity 120ms ease, transform 120ms ease;
   white-space: nowrap;
 }
+.icon-button[data-tooltip-portal]::after {
+  display: none;
+}
 .icon-button:hover::after,
 .icon-button:focus-visible::after {
   opacity: 1;

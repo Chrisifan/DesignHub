@@ -46,7 +46,12 @@ it('lays out the workbench around one canvas surface', () => {
   expect(document.querySelector('.workbench-body')).toHaveClass(
     'workbench-body--canvas-first',
   );
-  expect(screen.getByRole('button', { name: '放大' })).toHaveAttribute('data-tooltip', '放大');
+  const zoomIn = screen.getByRole('button', { name: '放大' });
+  expect(zoomIn).toHaveAttribute('data-tooltip', '放大');
+  fireEvent.mouseEnter(zoomIn);
+  expect(screen.getByRole('tooltip', { hidden: true })).toHaveTextContent('放大');
+  expect(zoomIn).toHaveAttribute('aria-describedby');
+  fireEvent.mouseLeave(zoomIn);
 });
 
 it('shows the conversation designer and keeps prompt actions adjacent', () => {

@@ -4,7 +4,7 @@ import type { Locale } from '../i18n';
 import { DesignerProfileCard } from './DesignerProfileCard';
 import { PageToolbarSlot } from './PageToolbar';
 import { localize, type PersonaProfile } from './personas';
-import { EmptyState, Icon, t } from './ui';
+import { EmptyState, Icon, IconButton, t } from './ui';
 
 /** User-facing filters intentionally omit the legacy status value. */
 export type PersonaStatusFilter = 'all' | Exclude<PersonaProfile['status'], 'built-in'>;
@@ -101,9 +101,7 @@ export const PersonaRepository = ({
             aria-label={t(locale, '搜索档案', 'Search profiles')}
           />
         </label>
-        {onCreate && <button type="button" className="icon-button" title={t(locale, '从作品集创建', 'Create from portfolio')} data-tooltip={t(locale, '从作品集创建', 'Create from portfolio')} aria-label={t(locale, '从作品集创建', 'Create from portfolio')} onClick={onCreate}>
-          <Icon name="plus" size={17} />
-        </button>}
+        {onCreate && <IconButton name="plus" label={t(locale, '从作品集创建', 'Create from portfolio')} onClick={onCreate} />}
       </PageToolbarSlot>
       {filteredProfiles.length ? (
         <div className="persona-repository__list">

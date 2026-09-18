@@ -114,12 +114,18 @@ for (const width of [1280, 1024]) {
             exact: true,
           }),
         ).toBeVisible();
-        await expect(
-          page.getByRole('button', {
-            name: english ? 'Grid' : '网格',
-            exact: true,
-          }),
-        ).toBeVisible();
+        const gridButton = page.getByRole('button', {
+          name: english ? 'Grid' : '网格',
+          exact: true,
+        });
+        await expect(gridButton).toBeVisible();
+        await gridButton.hover();
+        const gridTooltip = page.getByRole('tooltip');
+        await expect(gridTooltip).toHaveText(english ? 'Grid' : '网格');
+        const [gridButtonBox, gridTooltipBox] = await Promise.all([gridButton.boundingBox(), gridTooltip.boundingBox()]);
+        expect(gridButtonBox).not.toBeNull();
+        expect(gridTooltipBox).not.toBeNull();
+        expect(gridTooltipBox!.y + gridTooltipBox!.height).toBeLessThanOrEqual(gridButtonBox!.y);
         await page.getByRole('button', { name: english ? 'Layers' : '图层', exact: true }).click();
         const layersPanel = page.getByRole('complementary', { name: english ? 'Layers' : '图层', exact: true });
         await expect(layersPanel).toBeVisible();
