@@ -326,6 +326,48 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
   ).toBe(true);
 });
 
+test('designer rules stay on one line with app tooltips in the inspector and editor', async ({ page }, testInfo) => {
+  const longRule = '避免使用会破坏安全边距、信息层级与主体识别度的霓虹渐变、高强度装饰效果以及复杂背景纹理';
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await gotoTestWorkspace(page);
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '设计师', exact: true }).click();
+  await page.getByRole('button', { name: /纸感排版/ }).click();
+
+  const inspector = page.getByRole('dialog', { name: '设计师检查器' });
+  const inspectorRule = inspector.locator('.designer-profile-rule__text');
+  await expect(inspectorRule).toHaveText(longRule);
+  await expect(inspectorRule).not.toHaveAttribute('title');
+  await expect(inspectorRule).toHaveCSS('white-space', 'nowrap');
+  await expect(inspectorRule).toHaveCSS('text-overflow', 'ellipsis');
+  expect(await inspectorRule.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await inspectorRule.hover();
+  await expect(page.getByRole('tooltip')).toHaveText(longRule);
+  const inspectorTooltipBox = await page.getByRole('tooltip').boundingBox();
+  expect(inspectorTooltipBox).not.toBeNull();
+  expect(inspectorTooltipBox!.x).toBeGreaterThanOrEqual(0);
+  expect(inspectorTooltipBox!.x + inspectorTooltipBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.screenshot({ path: testInfo.outputPath('designer-inspector-rule-tooltip.png'), fullPage: true });
+
+  await inspector.getByRole('button', { name: '编辑', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑设计师' });
+  const editorRule = editor.locator('.designer-draft-rule__text');
+  await expect(editorRule).toHaveText(longRule);
+  await expect(editorRule).not.toHaveAttribute('title');
+  await expect(editorRule).toHaveCSS('white-space', 'nowrap');
+  await expect(editorRule).toHaveCSS('text-overflow', 'ellipsis');
+  expect(await editorRule.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await editorRule.hover();
+  const editorTooltip = page.getByRole('tooltip');
+  await expect(editorTooltip).toHaveText(longRule);
+  await expect(editorTooltip).toBeVisible();
+  expect(await editorTooltip.evaluate((element) => element.matches(':popover-open'))).toBe(true);
+  const editorTooltipBox = await editorTooltip.boundingBox();
+  expect(editorTooltipBox).not.toBeNull();
+  expect(editorTooltipBox!.x).toBeGreaterThanOrEqual(0);
+  expect(editorTooltipBox!.x + editorTooltipBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.screenshot({ path: testInfo.outputPath('designer-editor-rule-tooltip.png'), fullPage: true });
+});
+
 test('designer dossier cards keep a stable responsive grid', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);

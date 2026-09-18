@@ -37,7 +37,10 @@ export const gotoTestWorkspace = async (page: Page): Promise<void> => {
           rendering: { zh: '纸张漫反射', en: 'Paper diffusion' },
         },
       },
-      negativeRules: [{ zh: '不使用霓虹高饱和色', en: 'No neon saturation' }],
+      negativeRules: [{
+        zh: '避免使用会破坏安全边距、信息层级与主体识别度的霓虹渐变、高强度装饰效果以及复杂背景纹理',
+        en: 'Avoid neon gradients, intense decoration, and complex backgrounds that harm safe margins, hierarchy, or subject clarity',
+      }],
       portfolioSheets: [{
         id: 'e2e-sheet',
         artwork: 'market',

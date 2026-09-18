@@ -139,7 +139,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await expect(drawer.getByRole('region', { name: '否定规则' })).toBeAttached();
     await expect(drawer.getByRole('progressbar')).toHaveCount(5);
     const ruleText = drawer.getByText(longNegativeRule, { exact: true });
-    await expect(ruleText).toHaveAttribute('title', longNegativeRule);
+    await expect(ruleText).not.toHaveAttribute('title');
     const ruleLayout = await ruleText.evaluate((element) => ({
       scrollWidth: element.scrollWidth,
       clientWidth: element.clientWidth,
@@ -150,6 +150,9 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     expect(ruleLayout.clientWidth).toBeGreaterThan(100);
     expect(ruleLayout.whiteSpace).toBe('nowrap');
     expect(ruleLayout.textOverflow).toBe('ellipsis');
+    await ruleText.hover();
+    await expect(page.getByRole('tooltip')).toHaveText(longNegativeRule);
+    await page.screenshot({ path: testInfo.outputPath('portfolio-analysis-tooltip.png'), fullPage: true });
     const grainProgress = drawer.getByRole('progressbar', { name: '纹理颗粒度' });
     const grainPresentation = await grainProgress.evaluate((track) => {
       const fill = track.querySelector<HTMLElement>('i')!;
@@ -230,6 +233,14 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await expect(dossier.getByRole('region', { name: 'Style DNA' })).toBeVisible();
     await expect(dossier.getByRole('region', { name: '否定规则' })).toContainText(longNegativeRule);
     await expect(dossier.getByRole('progressbar')).toHaveCount(5);
+    const reviewRule = dossier.getByText(longNegativeRule, { exact: true });
+    await expect(reviewRule).not.toHaveAttribute('title');
+    await expect(reviewRule).toHaveCSS('white-space', 'nowrap');
+    await expect(reviewRule).toHaveCSS('text-overflow', 'ellipsis');
+    expect(await reviewRule.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+    await reviewRule.hover();
+    await expect(page.getByRole('tooltip')).toHaveText(longNegativeRule);
+    await page.screenshot({ path: testInfo.outputPath('portfolio-review-tooltip.png'), fullPage: true });
     const reviewArtworkBox = await dossier.locator('.designer-profile-card__review-artwork').boundingBox();
     expect(reviewArtworkBox).not.toBeNull();
     if (viewport.width <= 720) expect(reviewArtworkBox!.height).toBeLessThanOrEqual(240);
