@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 
 import { personaProfiles } from '../../../tests/fixtures/personas';
-import { DesignerProfileCard } from './DesignerProfileCard';
+import { DesignerDossier, DesignerProfileCard } from './DesignerProfileCard';
 import { localize, type LocalizedText, type PersonaProfile } from './personas';
 
 const profile: PersonaProfile = {
@@ -42,6 +42,29 @@ it('renders the full review dossier from profile data', () => {
   expect(within(dossier).getByRole('region', { name: '否定规则' })).toBeInTheDocument();
   expect(within(dossier).getByRole('progressbar', { name: '留白占比' })).toHaveAttribute('aria-valuenow', '38');
   expect(within(dossier).getByText('#F4EFE7')).toBeInTheDocument();
+});
+
+it('exposes the full dossier independently of its review facade', () => {
+  const { rerender } = render(<DesignerDossier locale="zh-CN" profile={profile} />);
+  const directOrder = [...screen.getByRole('region', { name: '纸感排版设计师档案' }).children]
+    .map((element) => element.className);
+
+  rerender(<DesignerProfileCard locale="zh-CN" profile={profile} mode="review" />);
+  const reviewOrder = [...screen.getByRole('region', { name: '纸感排版设计师档案' }).children]
+    .map((element) => element.className);
+
+  expect(reviewOrder).toEqual(directOrder);
+  expect(directOrder).toEqual([
+    'designer-profile-card__review-head',
+    'designer-profile-card__signals',
+    'designer-profile-card__dna',
+    'designer-profile-card__rules',
+  ]);
+});
+
+it('shows a localized empty state when the dossier has no negative rules', () => {
+  render(<DesignerDossier locale="zh-CN" profile={{ ...profile, negativeRules: [] }} />);
+  expect(screen.getByRole('region', { name: '否定规则' })).toHaveTextContent('未提取否定规则');
 });
 
 it('renders missing signals without fabricating percentages', () => {

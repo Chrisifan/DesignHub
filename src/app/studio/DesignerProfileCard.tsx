@@ -10,6 +10,11 @@ type DesignerProfileCardProps = {
   isDefault?: boolean;
 };
 
+type DesignerDossierProps = {
+  locale: Locale;
+  profile: PersonaProfile;
+};
+
 const metricValue = (value: number | undefined): number | undefined =>
   Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value!))) : undefined;
 
@@ -91,7 +96,7 @@ const LibraryProfile = ({ locale, profile, isDefault }: Omit<DesignerProfileCard
   );
 };
 
-const ReviewProfile = ({ locale, profile }: Omit<DesignerProfileCardProps, 'mode' | 'isDefault'>) => {
+export const DesignerDossier = ({ locale, profile }: DesignerDossierProps) => {
   const name = localize(locale, profile.name);
   const signals = profile.styleDna.signals;
   return (
@@ -176,4 +181,4 @@ const ReviewProfile = ({ locale, profile }: Omit<DesignerProfileCardProps, 'mode
 export const DesignerProfileCard = ({ locale, profile, mode, isDefault = false }: DesignerProfileCardProps) =>
   mode === 'library'
     ? <LibraryProfile locale={locale} profile={profile} isDefault={isDefault} />
-    : <ReviewProfile locale={locale} profile={profile} />;
+    : <DesignerDossier locale={locale} profile={profile} />;
