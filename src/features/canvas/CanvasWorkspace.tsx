@@ -3,7 +3,7 @@ import { Ellipse, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 're
 
 import { getMessages, type Locale } from '../../app/i18n';
 import { Drawer } from '../../app/studio/Drawer';
-import { Button } from '../../app/studio/ui';
+import { Button, IconButton } from '../../app/studio/ui';
 import { getDesktopApi } from '../../platform/runtime';
 import { Inspector } from './Inspector';
 import { LayerList } from './LayerList';
@@ -39,6 +39,12 @@ export type CanvasWorkspaceProps = {
   readOnly?: boolean;
   assetAction?: CanvasAssetAction;
   onAssetActionHandled?: (actionId: string) => void;
+  embedded?: boolean;
+  layersOpen?: boolean;
+  onLayersClose?: () => void;
+  inspectorRequestId?: number;
+  selectionRequest?: { id: number; type: SceneLayer['type'] };
+  zoomPercent?: number;
 };
 
 const initialViewport: ViewportState = { zoom: 1, offsetX: 0, offsetY: 0 };
@@ -79,15 +85,18 @@ const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void,
   return <Rect {...common} fill={layer.type === 'shape' ? layer.fill : '#d7dce5'} dash={layer.type === 'image' ? [8, 6] : undefined} />;
 };
 
-export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId, readOnly = false, assetAction, onAssetActionHandled }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId, readOnly = false, assetAction, onAssetActionHandled, embedded = false, layersOpen = false, onLayersClose, inspectorRequestId, selectionRequest, zoomPercent = 68 }: CanvasWorkspaceProps) => {
   const messages = getMessages(locale);
   const canvasReady = useMemo(canRenderCanvas, []);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [inspectorDismissed, setInspectorDismissed] = useState(false);
-  const [viewport, setViewport] = useState<ViewportState>(initialViewport);
+  const [viewport, setViewport] = useState<ViewportState>(() => embedded ? fitViewport(scene, stageDimensions) : initialViewport);
   const [assetImages, setAssetImages] = useState<Record<string, HTMLImageElement>>({});
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageSize, setStageSize] = useState(stageDimensions);
   const [sceneHydrated, setSceneHydrated] = useState(!workspaceId || !projectId || !documentId);
   const handledAssetAction = useRef<string | undefined>(undefined);
+  const handledSelectionRequest = useRef(0);
   const selectedLayer = useMemo(() => scene.layers.find((layer) => layer.id === selectedIds[0]), [scene.layers, selectedIds]);
   const selectedLayers = useMemo(() => scene.layers.filter((layer) => selectedIds.includes(layer.id)), [scene.layers, selectedIds]);
   useEffect(() => {
@@ -145,6 +154,36 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     select(applied.selectedIds);
     onAssetActionHandled?.(assetAction.id);
   }, [assetAction, onAssetActionHandled, scene, sceneHydrated, selectedIds]);
+  useEffect(() => {
+    if (embedded && inspectorRequestId !== undefined) setInspectorDismissed(false);
+  }, [embedded, inspectorRequestId]);
+  useEffect(() => {
+    if (!embedded || !selectionRequest || handledSelectionRequest.current >= selectionRequest.id) return;
+    handledSelectionRequest.current = selectionRequest.id;
+    const requestedLayer = scene.layers.find((layer) => layer.type === selectionRequest.type);
+    setSelectedIds(requestedLayer ? [requestedLayer.id] : []);
+    setInspectorDismissed(false);
+  }, [embedded, scene.layers, selectionRequest]);
+  useEffect(() => {
+    if (!embedded || !stageRef.current || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+        setStageSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+      }
+    });
+    observer.observe(stageRef.current);
+    return () => observer.disconnect();
+  }, [embedded]);
+  useEffect(() => {
+    if (!embedded) return;
+    const fit = fitViewport(scene, stageSize);
+    const nextZoom = fit.zoom * (zoomPercent / 68);
+    setViewport({
+      zoom: nextZoom,
+      offsetX: (stageSize.width - scene.width * nextZoom) / 2,
+      offsetY: (stageSize.height - scene.height * nextZoom) / 2,
+    });
+  }, [embedded, scene.height, scene.width, stageSize, zoomPercent]);
   const replace = (layer: SceneLayer): void => persist(replaceSceneLayer(scene, layer));
   const move = (layerId: string, direction: 'up' | 'down'): void => {
     const index = scene.layers.findIndex((layer) => layer.id === layerId);
@@ -188,24 +227,28 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   };
   return (
     <section
-      className="canvas-workspace"
+      className={`canvas-workspace${embedded ? ' canvas-workspace--embedded' : ''}`}
       aria-label={messages.canvasTitle}
       data-read-only={readOnly || undefined}
       onClick={(event) => {
         if (event.target === event.currentTarget) select([]);
       }}
     >
-      <header>
+      {!embedded && <header>
         <h1>{messages.canvasTitle}</h1>
         <div>
           <Button icon="maximize-2" onClick={() => setViewport(fitViewport(scene, stageDimensions))}>{messages.canvasFit}</Button>
           <Button icon="scan" onClick={() => setViewport(initialViewport)}>{messages.canvasReset}</Button>
         </div>
-      </header>
+      </header>}
       <div className="canvas-workspace__body">
-        <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} readOnly={readOnly} />
-        <div className="canvas-workspace__stage" style={{ overflow: 'auto' }}>
-          {canvasReady ? <Stage width={stageDimensions.width} height={stageDimensions.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
+        {!embedded && <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} readOnly={readOnly} />}
+        {embedded && layersOpen && <div className="canvas-layer-float">
+          <IconButton name="x" label={locale === 'zh-CN' ? '关闭图层' : 'Close layers'} onClick={onLayersClose} />
+          <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} readOnly={readOnly} />
+        </div>}
+        <div ref={stageRef} className="canvas-workspace__stage">
+          {canvasReady ? <Stage width={stageSize.width} height={stageSize.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
             <Layer>
               <Rect x={0} y={0} width={scene.width} height={scene.height} fill="#ffffff" listening={false} />
               {scene.layers.map((layer) => renderLayer(layer, selectedIds.includes(layer.id), () => select([layer.id]), updateLayer, layer.type === 'image' ? assetImages[layer.assetId] : undefined))}
@@ -213,7 +256,11 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
           </Stage> : <div className="canvas-workspace__fallback" role="img" aria-label={messages.canvasTitle}>{messages.canvasUnavailable}</div>}
         </div>
       </div>
-      <Drawer open={inspectorOpen} title={messages.canvasInspector} locale={locale} onClose={() => setInspectorDismissed(true)}>
+      {embedded && inspectorOpen && <div className="canvas-inspector-float">
+        <IconButton name="x" label={locale === 'zh-CN' ? '关闭检查器' : 'Close inspector'} onClick={() => setInspectorDismissed(true)} />
+        <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} readOnly={readOnly} />
+      </div>}
+      <Drawer open={!embedded && inspectorOpen} title={messages.canvasInspector} locale={locale} onClose={() => setInspectorDismissed(true)}>
         <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} readOnly={readOnly} />
       </Drawer>
     </section>

@@ -1,6 +1,25 @@
 import { expect, test } from 'playwright/test';
 import { gotoTestWorkspace } from './test-workspace';
 
+test('long floating layers remain scrollable within a compact canvas', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await gotoTestWorkspace(page, {
+    version: 1, id: 'many-layers', width: 1080, height: 1440,
+    layers: Array.from({ length: 30 }, (_, index) => ({
+      id: `layer-${index}`, type: 'text' as const, text: `Layer ${index}`, fontFamily: 'sans-serif', fontSize: 24, fontWeight: 'normal', align: 'left' as const, color: '#24262b', x: 100, y: 100 + index * 30, width: 800, height: 30, rotation: 0, opacity: 1, visible: true, locked: false,
+    })),
+  });
+  await page.getByRole('button', { name: '春间市集', exact: true }).click();
+  await page.getByRole('button', { name: '打开主海报', exact: true }).click();
+  await page.getByRole('button', { name: '图层', exact: true }).click();
+  const canvas = page.getByRole('region', { name: '设计画布', exact: true });
+  const panel = canvas.locator('.canvas-layer-float');
+  const [canvasBox, panelBox] = await Promise.all([canvas.boundingBox(), panel.boundingBox()]);
+  expect(Boolean(canvasBox && panelBox && panelBox.y + panelBox.height <= canvasBox.y + canvasBox.height)).toBe(true);
+  await panel.getByRole('button', { name: 'Layer 0', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '文字内容', exact: true })).toHaveValue('Layer 0');
+});
+
 for (const width of [1280, 1024]) {
   for (const theme of ['dark', 'light']) {
     for (const locale of ['zh-CN', 'en']) {
@@ -18,7 +37,13 @@ for (const width of [1280, 1024]) {
           },
           { mode: theme, language: locale },
         );
-        await gotoTestWorkspace(page);
+        await gotoTestWorkspace(page, {
+          version: 1, id: 'layout-scene', width: 1080, height: 1440,
+          layers: [
+            { id: 'layout-shape', type: 'shape', kind: 'rect', fill: '#b8ddd0', stroke: '#b8ddd0', strokeWidth: 0, x: 100, y: 420, width: 880, height: 720, rotation: 0, opacity: 1, visible: true, locked: false },
+            { id: 'layout-title', type: 'text', text: 'Spring Market', fontFamily: 'sans-serif', fontSize: 76, fontWeight: 'bold', align: 'left', color: '#24262b', x: 100, y: 180, width: 880, height: 120, rotation: 0, opacity: 1, visible: true, locked: false },
+          ],
+        });
         const english = locale === 'en';
         await expect(
           page.getByRole('heading', {
@@ -67,6 +92,16 @@ for (const width of [1280, 1024]) {
             exact: true,
           }),
         ).toBeVisible();
+        const canvas = page.getByRole('region', {
+          name: english ? 'Design canvas' : '设计画布',
+          exact: true,
+        });
+        await expect(canvas.locator('.workbench-ruler--horizontal')).toBeVisible();
+        await expect(canvas.locator('.workbench-ruler--vertical')).toBeVisible();
+        await expect(page.getByRole('toolbar', { name: english ? 'Canvas tools' : '画布工具' })).toBeVisible();
+        await expect(page.getByRole('toolbar', { name: english ? 'Context tools' : '上下文工具' })).toBeVisible();
+        await expect(page.getByRole('form', { name: english ? 'AI command dock' : 'AI 操作坞' })).toBeVisible();
+        await expect(canvas.locator('.workbench-command-dock')).toHaveCSS('position', 'absolute');
         await expect(
           page.getByRole('button', {
             name: english ? 'Back to project' : '返回项目',
@@ -85,6 +120,34 @@ for (const width of [1280, 1024]) {
             exact: true,
           }),
         ).toBeVisible();
+        await page.getByRole('button', { name: english ? 'Layers' : '图层', exact: true }).click();
+        const layersPanel = page.getByRole('complementary', { name: english ? 'Layers' : '图层', exact: true });
+        await expect(layersPanel).toBeVisible();
+        await layersPanel.getByRole('button', { name: 'Spring Market', exact: true }).click();
+        const inspector = page.getByRole('complementary', { name: english ? 'Inspector' : '检查器', exact: true });
+        await expect(inspector).toBeVisible();
+        await expect(inspector.getByRole('textbox', { name: english ? 'Text content' : '文字内容', exact: true })).toHaveValue('Spring Market');
+        const [stageBox, inspectorBox] = await Promise.all([canvas.boundingBox(), canvas.locator('.canvas-inspector-float').boundingBox()]);
+        expect(Boolean(stageBox && inspectorBox
+          && inspectorBox.x >= stageBox.x
+          && inspectorBox.x + inspectorBox.width <= stageBox.x + stageBox.width
+          && inspectorBox.y >= stageBox.y
+          && inspectorBox.y + inspectorBox.height <= stageBox.y + stageBox.height)).toBe(true);
+        expect(await canvas.locator('canvas').evaluate((element: HTMLCanvasElement) => {
+          const context = element.getContext('2d');
+          if (!context) return false;
+          const pixels = context.getImageData(0, 0, element.width, element.height).data;
+          return pixels.some((value, index) => index % 4 === 3 && value > 0);
+        })).toBe(true);
+        await page.getByRole('button', { name: english ? 'Conversation' : '对话', exact: true }).click();
+        await expect(page.getByRole('textbox', { name: english ? 'Edit request' : '修改说明' })).toBeFocused();
+        const [canvasBox, layersBox] = await Promise.all([canvas.boundingBox(), layersPanel.boundingBox()]);
+        const overlaysInsideCanvas = Boolean(canvasBox && layersBox
+          && layersBox.x >= canvasBox.x
+          && layersBox.x + layersBox.width <= canvasBox.x + canvasBox.width
+          && layersBox.y >= canvasBox.y
+          && layersBox.y + layersBox.height <= canvasBox.y + canvasBox.height);
+        expect(overlaysInsideCanvas).toBe(true);
         const overflow = await page.evaluate(
           () => document.documentElement.scrollWidth > window.innerWidth,
         );

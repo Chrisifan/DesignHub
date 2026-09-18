@@ -1,8 +1,9 @@
 import type { Page } from 'playwright/test';
+import type { DesignScene } from '../../src/features/canvas/scene';
 
 /** Opens an explicit test workspace; production has no equivalent seed path. */
-export const gotoTestWorkspace = async (page: Page): Promise<void> => {
-  await page.addInitScript(() => {
+export const gotoTestWorkspace = async (page: Page, scene: DesignScene | null = null): Promise<void> => {
+  await page.addInitScript((initialScene) => {
     const paper = {
       id: 'e2e-paper',
       name: { zh: '纸感排版', en: 'Paper & Type' },
@@ -77,11 +78,11 @@ export const gotoTestWorkspace = async (page: Page): Promise<void> => {
       listAssets: async () => [],
       listTasks: async () => [],
       hasCredential: async () => false,
-      loadDocumentScene: async () => null,
+      loadDocumentScene: async () => initialScene,
       loadDocumentRevisions: async () => ({ revisions: [], timeline: [], finalRevisionId: null }),
       saveDocumentScene: async () => true,
     } as never);
-  });
+  }, scene);
   await page.goto('/');
   await page.getByRole('button', { name: /打开工作区|Open workspace/ }).click();
   await page.getByRole('navigation', { name: /主导航|Main navigation/ }).waitFor();

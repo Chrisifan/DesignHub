@@ -34,6 +34,56 @@ const makeProps = (
   ...overrides,
 });
 
+it('lays out the workbench around one canvas surface', () => {
+  render(<Workbench {...makeProps()} />);
+
+  const canvas = screen.getByRole('region', { name: '设计画布' });
+  expect(canvas.querySelector('.workbench-ruler--horizontal')).toBeInTheDocument();
+  expect(canvas.querySelector('.workbench-ruler--vertical')).toBeInTheDocument();
+  expect(screen.getByRole('toolbar', { name: '画布工具' })).toBeInTheDocument();
+  expect(screen.getByRole('toolbar', { name: '上下文工具' })).toBeInTheDocument();
+  expect(screen.getByRole('form', { name: 'AI 操作坞' })).toBeInTheDocument();
+  expect(document.querySelector('.workbench-body')).toHaveClass(
+    'workbench-body--canvas-first',
+  );
+});
+
+it('routes command dock shortcuts to tasks and version history', () => {
+  const onTasks = vi.fn();
+  render(<Workbench {...makeProps({ onTasks })} />);
+  const dock = screen.getByRole('form', { name: 'AI 操作坞' });
+  fireEvent.click(within(dock).getByRole('button', { name: '模型任务' }));
+  expect(onTasks).toHaveBeenCalledOnce();
+  fireEvent.click(within(dock).getByRole('button', { name: '版本历史' }));
+  expect(screen.getByRole('dialog', { name: '历史' })).toBeInTheDocument();
+});
+
+it('opens layers and properties as floating canvas panels', () => {
+  render(<Workbench {...makeProps()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '图层' }));
+  expect(screen.getByRole('complementary', { name: '图层' })).toHaveClass(
+    'workbench-layers--expanded',
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: '属性' }));
+  expect(screen.getByRole('complementary', { name: '属性' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: '属性' })).not.toBeInTheDocument();
+});
+
+it('focuses the command dock for conversation and keeps detailed contexts in drawers', () => {
+  render(<Workbench {...makeProps()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  expect(screen.getByRole('textbox', { name: '修改说明' })).toHaveFocus();
+
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  expect(screen.getByRole('dialog', { name: '历史' })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  expect(screen.getByRole('dialog', { name: '工具' })).toBeInTheDocument();
+});
+
 it('opens a workbench context drawer without narrowing the canvas', () => {
   render(<Workbench {...makeProps()} />);
 
@@ -44,11 +94,12 @@ it('opens a workbench context drawer without narrowing the canvas', () => {
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
 });
 
-it('keeps conversation actions in the fixed drawer footer', () => {
+it('keeps conversation actions in the canvas command dock', () => {
   render(<Workbench {...makeProps()} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
-  const dialog = screen.getByRole('dialog', { name: '对话' });
-  expect(dialog.querySelector('.workbench-compose__actions')?.closest('.ui-drawer__footer')).toBeInTheDocument();
+  expect(screen.getByRole('form', { name: 'AI 操作坞' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '发送' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
 });
 
 it('keeps the workbench canvas clear until a context is selected', () => {
@@ -179,9 +230,7 @@ it('uses the select tool to reopen properties and the compact layer selector', (
 
   fireEvent.click(screen.getByRole('button', { name: '选择工具' }));
 
-  expect(
-    screen.getByRole('dialog', { name: '属性' }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole('complementary', { name: '属性' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '图层' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -193,14 +242,14 @@ it('keeps one context panel open and preserves a prompt when connection setup is
   render(<Workbench {...props} />);
 
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
-  const panel = screen.getByRole('dialog', { name: '对话' });
+  const panel = screen.getByRole('form', { name: 'AI 操作坞' });
   const prompt = within(panel).getByRole('textbox', { name: '修改说明' });
   fireEvent.change(prompt, { target: { value: '保留标题，只调整背景层次' } });
   fireEvent.click(within(panel).getByRole('button', { name: '发送' }));
 
   expect(props.onConnections).toHaveBeenCalledOnce();
   expect(prompt).toHaveValue('保留标题，只调整背景层次');
-  expect(within(panel).getByText('尚未连接模型')).toBeInTheDocument();
+  expect(within(panel).getByText('连接模型')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   expect(
@@ -215,7 +264,7 @@ it('submits a conversation through the active project service when provided', ()
   const onSubmitConversation = vi.fn();
   render(<Workbench {...makeProps({ onSubmitConversation })} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
-  const panel = screen.getByRole('dialog', { name: '对话' });
+  const panel = screen.getByRole('form', { name: 'AI 操作坞' });
   const prompt = within(panel).getByRole('textbox', { name: '修改说明' });
   fireEvent.change(prompt, { target: { value: '调整标题间距' } });
   fireEvent.click(within(panel).getByRole('button', { name: '发送' }));
@@ -227,7 +276,7 @@ it('submits a generation request through the active project service', async () =
   const onSubmitImageGeneration = vi.fn(async () => undefined);
   render(<Workbench {...makeProps({ onSubmitImageGeneration })} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
-  const panel = screen.getByRole('dialog', { name: '对话' });
+  const panel = screen.getByRole('form', { name: 'AI 操作坞' });
   fireEvent.change(within(panel).getByRole('textbox', { name: '修改说明' }), { target: { value: '生成春季市集主视觉' } });
   fireEvent.click(within(panel).getByRole('button', { name: '生成' }));
   await waitFor(() => expect(onSubmitImageGeneration).toHaveBeenCalledWith('生成春季市集主视觉', null));
@@ -357,10 +406,15 @@ it('keeps a read-only workspace from persisting edits or submitting tasks', asyn
   const onSubmitConversation = vi.fn();
   const onSubmitImageTask = vi.fn(async () => undefined);
   window.designhub = { chooseWorkspaceDirectory: async () => null, saveDocumentScene };
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', readOnly: true, onSubmitConversation, onSubmitImageTask })} />);
+  const scene = createScene({
+    id: 'scene-read-only', width: 1080, height: 1440,
+    layers: [{ id: 'title', type: 'text', text: '春间市集', fontFamily: 'Inter', fontSize: 96, fontWeight: 'bold', align: 'center', color: '#24262B', x: 120, y: 520, width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false }],
+  });
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene, readOnly: true, onSubmitConversation, onSubmitImageTask })} />);
 
-  fireEvent.click(screen.getByRole('button', { name: '属性' }));
-  expect(screen.getByRole('textbox', { name: '标题文字' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: '图层' }));
+  fireEvent.click(screen.getByRole('button', { name: '春间市集' }));
+  expect(screen.getByRole('spinbutton', { name: '横坐标' })).toBeDisabled();
   expect(saveDocumentScene).not.toHaveBeenCalled();
 
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
@@ -378,6 +432,7 @@ it('renders the persisted canvas workspace for a real project document', () => {
   render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
 
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '图层' }));
   expect(screen.getByRole('complementary', { name: '图层' })).toBeInTheDocument();
   expect(screen.queryByRole('dialog', { name: '检查器' })).not.toBeInTheDocument();
 });
@@ -390,12 +445,38 @@ it('persists property edits into the active document scene', async () => {
     layers: [{ id: 'title', type: 'text', text: '春间市集', fontFamily: 'Inter', fontSize: 96, fontWeight: 'bold', align: 'center', color: '#24262B', x: 120, y: 520, width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false }],
   });
   render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
-  fireEvent.click(screen.getByRole('button', { name: '属性' }));
-  fireEvent.change(screen.getByRole('textbox', { name: '标题文字' }), { target: { value: '新的标题' } });
+  fireEvent.click(screen.getByRole('button', { name: '图层' }));
+  fireEvent.click(screen.getByRole('button', { name: '春间市集' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '文字内容' }), { target: { value: '新的标题' } });
   await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({
     workspaceId: 'workspace-1', projectId: 'spring-market', documentId: 'doc-1',
     scene: expect.objectContaining({ layers: [expect.objectContaining({ text: '新的标题' })] }),
   })));
+});
+
+it('hydrates a saved document once without reloading on workbench renders', async () => {
+  const savedScene = createScene({
+    id: 'saved-scene', width: 1080, height: 1440,
+    layers: [{ id: 'saved-title', type: 'text', text: 'Saved title', fontFamily: 'sans-serif', fontSize: 72, fontWeight: 'bold', align: 'left', color: '#24262B', x: 100, y: 100, width: 880, height: 120, rotation: 0, opacity: 1, visible: true, locked: false }],
+  });
+  const loadDocumentScene = vi.fn().mockResolvedValueOnce(savedScene).mockResolvedValue(null);
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene };
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1' })} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '图层' }));
+  await screen.findByRole('button', { name: 'Saved title' });
+  fireEvent.click(screen.getByRole('button', { name: '放大' }));
+  expect(loadDocumentScene).toHaveBeenCalledOnce();
+});
+
+it('selects the real text layer when the text tool is chosen', () => {
+  const scene = createScene({
+    id: 'tool-scene', width: 1080, height: 1440,
+    layers: [{ id: 'real-title', type: 'text', text: 'Real title', fontFamily: 'sans-serif', fontSize: 72, fontWeight: 'bold', align: 'left', color: '#24262B', x: 100, y: 100, width: 880, height: 120, rotation: 0, opacity: 1, visible: true, locked: false }],
+  });
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  fireEvent.click(screen.getByRole('button', { name: '文本工具' }));
+  expect(screen.getByRole('textbox', { name: '文字内容' })).toHaveValue('Real title');
 });
 
 it('loads persisted revisions and saves a new version from the history panel', async () => {

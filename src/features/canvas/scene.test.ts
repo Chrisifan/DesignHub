@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import {
   createScene,
   applyAssetToScene,
+  fitViewport,
   isLayerInteractive,
   parseScene,
   reorderLayers,
@@ -13,6 +14,16 @@ import {
   setLayerLock,
   setLayerVisibility,
 } from './scene';
+
+it('centers a fitted scene inside the available stage', () => {
+  const scene = createScene({ id: 'portrait', width: 1080, height: 1440, layers: [] });
+
+  expect(fitViewport(scene, { width: 900, height: 620 })).toEqual({
+    zoom: 620 / 1440,
+    offsetX: (900 - 1080 * (620 / 1440)) / 2,
+    offsetY: 0,
+  });
+});
 
 const imageLayer = {
   id: 'image-1',

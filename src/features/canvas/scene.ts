@@ -240,5 +240,9 @@ export const applyAssetToScene = (scene: DesignScene, action: AssetSceneAction):
 export const fitViewport = (scene: DesignScene, available: { width: number; height: number }): ViewportState => {
   validateSize(available);
   const zoom = Math.min(available.width / scene.width, available.height / scene.height);
-  return { zoom, offsetX: 0, offsetY: 0 };
+  return {
+    zoom,
+    offsetX: (available.width - scene.width * zoom) / 2,
+    offsetY: (available.height - scene.height * zoom) / 2,
+  };
 };

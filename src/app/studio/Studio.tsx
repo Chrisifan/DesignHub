@@ -1061,6 +1061,7 @@ export const Studio = ({
                 onBack={() => setDocumentOpen(false)}
                 onExport={() => openDelivery({ ...project, documentId: project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId })}
                 onConnections={() => navigate('connections')}
+                onTasks={() => navigate('tasks')}
                 onSubmitConversation={(message) => submitProjectConversation(project, message)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}

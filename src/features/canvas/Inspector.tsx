@@ -46,6 +46,16 @@ export const Inspector = ({ locale, layer, selectedLayers = [], onChange, onChan
         <Field label={messages.canvasHeight}><input type="number" min="1" value={activeLayer.height} onChange={numeric('height')} disabled={readOnly || activeLayer.locked} /></Field>
         <Field label={messages.canvasOpacity}><input type="number" min="0" max="1" step="0.05" value={activeLayer.opacity} onChange={numeric('opacity')} disabled={readOnly || activeLayer.locked} /></Field>
         <Field label={messages.canvasLayerName}><input type="text" value={activeLayer.name ?? ''} onChange={(event) => onChange({ ...activeLayer, name: event.target.value.trim() || undefined } as SceneLayer)} disabled={readOnly || activeLayer.locked} /></Field>
+        {activeLayer.type === 'text' && (
+          <Field label={locale === 'zh-CN' ? '文字内容' : 'Text content'}>
+            <input
+              type="text"
+              value={activeLayer.text}
+              onChange={(event) => onChange({ ...activeLayer, text: event.target.value })}
+              disabled={readOnly || activeLayer.locked}
+            />
+          </Field>
+        )}
         <Field label={messages.canvasVisible}><input type="checkbox" checked={activeLayer.visible} onChange={(event) => update('visible', event.target.checked)} disabled={readOnly} /></Field>
         <Field label={messages.canvasLocked}><input type="checkbox" checked={activeLayer.locked} onChange={(event) => update('locked', event.target.checked)} disabled={readOnly} /></Field>
       </>}

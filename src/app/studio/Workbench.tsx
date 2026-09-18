@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type CSSProperties, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
 import type { Project } from './types';
@@ -65,6 +65,7 @@ export type WorkbenchProps = {
   onBack: () => void;
   onExport: () => void;
   onConnections: () => void;
+  onTasks?: () => void;
   onSubmitConversation?: (message: string) => void | Promise<void>;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
@@ -118,6 +119,7 @@ export const Workbench = ({
   onBack,
   onExport,
   onConnections,
+  onTasks,
   onSubmitConversation,
   onSubmitImageTask,
   onSubmitImageGeneration,
@@ -155,6 +157,9 @@ export const Workbench = ({
   const [toolRegion, setToolRegion] = useState<Region | undefined>();
   const [activeTool, setActiveTool] = useState<ImageTool | null>(null);
   const [toolParams, setToolParams] = useState<ToolParams>({});
+  const [canvasInspectorRequestId, setCanvasInspectorRequestId] = useState(0);
+  const [canvasSelectionRequest, setCanvasSelectionRequest] = useState<{ id: number; type: LayerId }>();
+  const promptRef = useRef<HTMLTextAreaElement>(null);
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
@@ -198,13 +203,17 @@ export const Workbench = ({
       if (request) void request.catch(() => undefined);
     }
   };
-  const syncTextState = (nextScene: DesignScene): void => {
+  const syncTextState = useCallback((nextScene: DesignScene): void => {
     const textLayer = nextScene.layers.find((layer): layer is TextLayer => layer.type === 'text');
     if (!textLayer) return;
     setTitle(textLayer.text);
     setPosition({ x: textLayer.x, y: textLayer.y });
     setOpacity(Math.round(textLayer.opacity * 100));
-  };
+  }, []);
+  const handleSceneChange = useCallback((nextScene: DesignScene): void => {
+    syncTextState(nextScene);
+    setScene(nextScene);
+  }, [syncTextState]);
   const updateTextLayer = (patch: Partial<Pick<TextLayer, 'text' | 'x' | 'y' | 'opacity'>>): void => {
     if (readOnly) return;
     const textLayer = scene.layers.find((layer): layer is TextLayer => layer.type === 'text');
@@ -344,6 +353,9 @@ export const Workbench = ({
     'history',
     'tools',
   ];
+  const detailedPanelOpen = panelOpen && (panel === 'history' || panel === 'tools');
+  const hasWorkspaceDocument = Boolean(workspaceId && documentId);
+  const propertiesOpen = !hasWorkspaceDocument && panelOpen && panel === 'properties';
   const canvasStyle = {
     '--workbench-zoom': zoom / 100,
     '--workbench-rotation': `${rotation}deg`,
@@ -368,10 +380,23 @@ export const Workbench = ({
   };
   const showPanel = (nextPanel: ContextPanel): void => {
     setPanel(nextPanel);
+    if (nextPanel === 'conversation') {
+      setPanelOpen(false);
+      promptRef.current?.focus();
+      return;
+    }
+    if (nextPanel === 'properties' && hasWorkspaceDocument) {
+      setPanelOpen(false);
+      setCanvasInspectorRequestId((current) => current + 1);
+      return;
+    }
     setPanelOpen(true);
   };
   const selectWorkbenchLayer = (layerId: LayerId): void => {
     setSelectedLayer(layerId);
+    if (hasWorkspaceDocument) {
+      setCanvasSelectionRequest((current) => ({ id: (current?.id ?? 0) + 1, type: layerId }));
+    }
     showPanel('properties');
   };
   const resetZoom = (): void => {
@@ -434,6 +459,84 @@ export const Workbench = ({
     setActiveTool(null);
     setToolRegion(undefined);
   };
+
+  const propertiesContent = (
+    <div className="workbench-context__content workbench-properties">
+      <div className="workbench-selection-summary">
+        <span className="workbench-layer-icon">
+          <Icon name={layerCopy[selectedLayer].icon} size={16} />
+        </span>
+        <div>
+          <strong>{layerCopy[selectedLayer].label}</strong>
+          <small>{layerCopy[selectedLayer].kind}</small>
+        </div>
+        <Badge>
+          {locked[selectedLayer]
+            ? t(locale, '已锁定', 'Locked')
+            : t(locale, '可编辑', 'Editable')}
+        </Badge>
+      </div>
+
+      {selectedLayer === 'text' ? (
+        <>
+          {locked.text && (
+            <div className="workbench-context-note workbench-lock-note">
+              <Icon name="lock" size={18} />
+              <div>
+                <strong>{t(locale, '解锁图层后可继续编辑', 'Unlock the layer to continue editing')}</strong>
+              </div>
+            </div>
+          )}
+          <Field
+            label={t(locale, '标题文字', 'Title text')}
+            hint={t(locale, '仅影响当前示例预览', 'Only affects this example preview')}
+          >
+            <input
+              aria-label={t(locale, '标题文字', 'Title text')}
+              value={title}
+              disabled={readOnly || locked.text}
+              onChange={(event) => { const value = event.target.value; setTitle(value); updateTextLayer({ text: value }); }}
+            />
+          </Field>
+          <div className="workbench-property-section">
+            <h3>{t(locale, '位置', 'Position')}</h3>
+            <div className="workbench-coordinate-grid">
+              <Field label={t(locale, 'X 坐标', 'X position')}>
+                <input type="number" min="-999" max="999" value={position.x} disabled={readOnly || locked.text} onChange={(event) => updatePosition('x', event.target.value)} />
+              </Field>
+              <Field label={t(locale, 'Y 坐标', 'Y position')}>
+                <input type="number" min="-999" max="999" value={position.y} disabled={readOnly || locked.text} onChange={(event) => updatePosition('y', event.target.value)} />
+              </Field>
+            </div>
+          </div>
+          <div className="workbench-property-section">
+            <div className="workbench-range-heading">
+              <h3>{t(locale, '不透明度', 'Opacity')}</h3>
+              <output>{opacity}%</output>
+            </div>
+            <input
+              className="workbench-range"
+              type="range"
+              min="0"
+              max="100"
+              value={opacity}
+              disabled={readOnly || locked.text}
+              aria-label={t(locale, '不透明度', 'Opacity')}
+              onChange={(event) => { const value = Number(event.target.value); setOpacity(value); updateTextLayer({ opacity: value / 100 }); }}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="workbench-context-note workbench-properties-note">
+          <Icon name="circle-alert" size={18} />
+          <div>
+            <strong>{t(locale, '此示例仅开放文字属性', 'Only text properties are editable in this example')}</strong>
+            <p>{t(locale, '仍可在图层面板切换显示或锁定。', 'Visibility and locking remain available in the layers panel.')}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <section
@@ -498,27 +601,13 @@ export const Workbench = ({
         </div>
 
         <div className="workbench-toolbar__actions">
-          <div
-            className="workbench-panel-switcher"
-            aria-label={t(locale, '上下文面板', 'Context panels')}
-          >
-            {panelOrder.map((panelId) => (
-              <IconButton
-                key={panelId}
-                name={panelCopy[panelId].icon}
-                label={panelCopy[panelId].label}
-                aria-pressed={panelOpen && panel === panelId}
-                onClick={() => showPanel(panelId)}
-              />
-            ))}
-          </div>
           <Button variant="primary" icon="download" onClick={onExport}>
             {t(locale, '导出', 'Export')}
           </Button>
         </div>
       </header>
 
-      <div className="workbench-body">
+      <div className="workbench-body workbench-body--canvas-first">
         <aside
           className="workbench-left"
           aria-label={t(locale, '画布工具与图层', 'Canvas tools and layers')}
@@ -563,9 +652,10 @@ export const Workbench = ({
             />
           </div>
 
-          <section
+          {!hasWorkspaceDocument && <section
             className={`workbench-layers ${layersExpanded ? 'workbench-layers--expanded' : ''}`}
             aria-labelledby={layersTitleId}
+            role="complementary"
           >
             <div className="workbench-panel-heading">
               <div>
@@ -629,7 +719,7 @@ export const Workbench = ({
                 );
               })}
             </div>
-          </section>
+          </section>}
         </aside>
 
         <section
@@ -641,16 +731,36 @@ export const Workbench = ({
           data-image-visible={visibility.image}
           style={canvasStyle}
         >
+          <div className="workbench-ruler workbench-ruler--horizontal" aria-hidden="true">
+            <span>0</span>
+            <span>480</span>
+            <span>960</span>
+            <strong>{documentMeta?.width ?? scene.width}</strong>
+            <span>1440</span>
+            <span>1920</span>
+          </div>
+          <div className="workbench-ruler workbench-ruler--vertical" aria-hidden="true">
+            <span>0</span>
+            <span>600</span>
+            <span>1200</span>
+            <span>1800</span>
+          </div>
           <div className="workbench-canvas__stage">
             {workspaceId && documentId ? (
               <CanvasWorkspace
                 locale={locale}
                 scene={scene}
-                onSceneChange={(nextScene) => { syncTextState(nextScene); setScene(nextScene); }}
+                onSceneChange={handleSceneChange}
                 readOnly={readOnly}
                 workspaceId={workspaceId}
                 projectId={project.id}
                 documentId={documentId}
+                embedded
+                layersOpen={layersExpanded}
+                onLayersClose={() => setLayersExpanded(false)}
+                inspectorRequestId={canvasInspectorRequestId}
+                selectionRequest={canvasSelectionRequest}
+                zoomPercent={zoom}
                 assetAction={assetAction}
                 onAssetActionHandled={onAssetActionHandled}
               />
@@ -694,21 +804,73 @@ export const Workbench = ({
             <span>{documentMeta?.width ?? scene.width} × {documentMeta?.height ?? scene.height} px</span>
             <span>sRGB</span>
           </div>
+          <div
+            className="workbench-context-tools"
+            role="toolbar"
+            aria-label={t(locale, '上下文工具', 'Context tools')}
+          >
+            {panelOrder.map((panelId) => (
+              <IconButton
+                key={panelId}
+                name={panelCopy[panelId].icon}
+                label={panelCopy[panelId].label}
+                aria-pressed={panelId !== 'conversation' && panelOpen && panel === panelId}
+                onClick={() => showPanel(panelId)}
+              />
+            ))}
+          </div>
+          {propertiesOpen && (
+            <aside className="workbench-properties-float" aria-label={panelCopy.properties.label}>
+              <div className="workbench-panel-heading">
+                <div>
+                  <p>{t(locale, '快速检查', 'Quick inspect')}</p>
+                  <h2>{panelCopy.properties.label}</h2>
+                </div>
+                <IconButton name="x" label={t(locale, '关闭属性', 'Close properties')} onClick={() => setPanelOpen(false)} />
+              </div>
+              {propertiesContent}
+            </aside>
+          )}
+          <form
+            className="workbench-command-dock"
+            aria-label={t(locale, 'AI 操作坞', 'AI command dock')}
+            onSubmit={submitPrompt}
+          >
+            <button type="button" className="workbench-command-dock__connection" onClick={onConnections} disabled={readOnly}>
+              <span className="workbench-model-dot" data-connected={modelConnected || undefined} aria-hidden="true" />
+              <span>{modelConnected ? t(locale, '模型已连接', 'Model connected') : t(locale, '连接模型', 'Connect model')}</span>
+            </button>
+            <textarea
+              ref={promptRef}
+              rows={1}
+              value={prompt}
+              disabled={readOnly}
+              aria-label={t(locale, '修改说明', 'Edit request')}
+              placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
+              onChange={(event) => setPrompt(event.target.value)}
+            />
+            <IconButton
+              name="list"
+              label={t(locale, '模型任务', 'Model tasks')}
+              onClick={() => onTasks?.()}
+            />
+            <IconButton
+              name="history"
+              label={t(locale, '版本历史', 'Version history')}
+              onClick={() => showPanel('history')}
+            />
+            <Button variant="ai" icon="arrow-up-right" onClick={submitPromptRequest} disabled={readOnly}>{t(locale, '发送', 'Send')}</Button>
+            <Button variant="ai" icon="sparkles" onClick={submitGeneration} disabled={readOnly}>{t(locale, '生成', 'Generate')}</Button>
+          </form>
         </section>
 
       </div>
       <Drawer
-        open={panelOpen}
+        open={detailedPanelOpen}
         title={panelCopy[panel].label}
         locale={locale}
         onClose={() => setPanelOpen(false)}
-        footer={panel === 'conversation' ? (
-          <div className="workbench-compose__actions">
-            <Button variant="secondary" icon="plug" onClick={onConnections} disabled={readOnly}>{t(locale, '连接', 'Connect')}</Button>
-            <Button variant="ai" icon="arrow-up-right" onClick={submitPromptRequest} disabled={readOnly}>{t(locale, '发送', 'Send')}</Button>
-            <Button variant="ai" icon="sparkles" onClick={submitGeneration} disabled={readOnly}>{t(locale, '生成', 'Generate')}</Button>
-          </div>
-        ) : panel === 'history' && workspaceId ? (
+        footer={panel === 'history' && workspaceId ? (
           <div className="workbench-compose__actions">
             <Button variant="secondary" icon="save" disabled={readOnly || revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>
           </div>
@@ -721,161 +883,6 @@ export const Workbench = ({
                 <h2>{panelCopy[panel].label}</h2>
               </div>
             </div>
-
-            {panel === 'properties' && (
-              <div className="workbench-context__content workbench-properties">
-                <div className="workbench-selection-summary">
-                  <span className="workbench-layer-icon">
-                    <Icon name={layerCopy[selectedLayer].icon} size={16} />
-                  </span>
-                  <div>
-                    <strong>{layerCopy[selectedLayer].label}</strong>
-                    <small>{layerCopy[selectedLayer].kind}</small>
-                  </div>
-                  <Badge>
-                    {locked[selectedLayer]
-                      ? t(locale, '已锁定', 'Locked')
-                      : t(locale, '可编辑', 'Editable')}
-                  </Badge>
-                </div>
-
-                {selectedLayer === 'text' ? (
-                  <>
-                    {locked.text && (
-                      <div className="workbench-context-note workbench-lock-note">
-                        <Icon name="lock" size={18} />
-                        <div>
-                          <strong>
-                            {t(
-                              locale,
-                              '解锁图层后可继续编辑',
-                              'Unlock the layer to continue editing',
-                            )}
-                          </strong>
-                        </div>
-                      </div>
-                    )}
-                    <Field
-                      label={t(locale, '标题文字', 'Title text')}
-                      hint={t(
-                        locale,
-                        '仅影响当前示例预览',
-                        'Only affects this example preview',
-                      )}
-                    >
-                      <input
-                        aria-label={t(locale, '标题文字', 'Title text')}
-                        value={title}
-                        disabled={readOnly || locked.text}
-                        onChange={(event) => { const value = event.target.value; setTitle(value); updateTextLayer({ text: value }); }}
-                      />
-                    </Field>
-                    <div className="workbench-property-section">
-                      <h3>{t(locale, '位置', 'Position')}</h3>
-                      <div className="workbench-coordinate-grid">
-                        <Field label={t(locale, 'X 坐标', 'X position')}>
-                          <input
-                            type="number"
-                            min="-999"
-                            max="999"
-                            value={position.x}
-                            disabled={readOnly || locked.text}
-                            onChange={(event) =>
-                              updatePosition('x', event.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field label={t(locale, 'Y 坐标', 'Y position')}>
-                          <input
-                            type="number"
-                            min="-999"
-                            max="999"
-                            value={position.y}
-                            disabled={readOnly || locked.text}
-                            onChange={(event) =>
-                              updatePosition('y', event.target.value)
-                            }
-                          />
-                        </Field>
-                      </div>
-                    </div>
-                    <div className="workbench-property-section">
-                      <div className="workbench-range-heading">
-                        <h3>{t(locale, '不透明度', 'Opacity')}</h3>
-                        <output>{opacity}%</output>
-                      </div>
-                      <input
-                        className="workbench-range"
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={opacity}
-                        disabled={readOnly || locked.text}
-                        aria-label={t(locale, '不透明度', 'Opacity')}
-                        onChange={(event) => { const value = Number(event.target.value); setOpacity(value); updateTextLayer({ opacity: value / 100 }); }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="workbench-context-note workbench-properties-note">
-                    <Icon name="circle-alert" size={18} />
-                    <div>
-                      <strong>
-                        {t(
-                          locale,
-                          '此示例仅开放文字属性',
-                          'Only text properties are editable in this example',
-                        )}
-                      </strong>
-                      <p>
-                        {t(
-                          locale,
-                          '仍可在图层面板切换显示或锁定。',
-                          'Visibility and locking remain available in the layers panel.',
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {panel === 'conversation' && (
-              <div className="workbench-context__content workbench-conversation">
-                <div className="workbench-context-note">
-                  <Icon name="plug" size={18} />
-                  <div>
-                    <strong>{modelConnected ? t(locale, '模型已连接', 'Model connected') : t(locale, '尚未连接模型', 'No model connected')}</strong>
-                    <p>
-                      {t(
-                        locale,
-                        modelConnected ? '输入会提交到当前连接。' : '发送时将前往模型连接，输入会保留。',
-                        modelConnected ? 'Your request will use the active connection.' : 'Sending opens model connections and keeps your draft.',
-                      )}
-                    </p>
-                  </div>
-                </div>
-                <div className="workbench-conversation__scope">
-                  <span>{t(locale, '目标', 'Target')}</span>
-                  <strong>{t(locale, '当前文档', 'Current document')}</strong>
-                </div>
-                <form className="workbench-compose" onSubmit={submitPrompt}>
-                  <Field label={t(locale, '修改说明', 'Edit request')}>
-                    <textarea
-                      rows={6}
-                      value={prompt}
-                      disabled={readOnly}
-                      placeholder={t(
-                        locale,
-                        '描述希望调整的内容…',
-                        'Describe the change…',
-                      )}
-                      onChange={(event) => setPrompt(event.target.value)}
-                    />
-                  </Field>
-                </form>
-              </div>
-            )}
 
             {panel === 'history' && (
               <div className="workbench-context__content workbench-history">

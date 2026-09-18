@@ -17,6 +17,34 @@ const editable = createScene({ id: 'scene-editable', width: 800, height: 600, la
   x: 10, y: 10, width: 200, height: 40, rotation: 0, opacity: 1, visible: true, locked: false,
 }] });
 
+it('renders an embedded stage without duplicate canvas chrome', () => {
+  render(<CanvasWorkspace locale="zh-CN" scene={editable} embedded />);
+
+  expect(screen.getByRole('region', { name: '画布' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '画布' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('complementary', { name: '图层' })).not.toBeInTheDocument();
+});
+
+it('keeps real scene layers and properties available as embedded overlays', () => {
+  const onLayersClose = vi.fn();
+  render(
+    <CanvasWorkspace
+      locale="zh-CN"
+      scene={editable}
+      embedded
+      layersOpen
+      onLayersClose={onLayersClose}
+    />,
+  );
+
+  expect(screen.getByRole('complementary', { name: '图层' })).toBeInTheDocument();
+  fireEvent.click(screen.getByText('标题'));
+  expect(screen.getByRole('complementary', { name: '检查器' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: '检查器' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '关闭图层' }));
+  expect(onLayersClose).toHaveBeenCalledOnce();
+});
+
 it('opens the inspector drawer for a selected layer and closes it when selection clears', () => {
   render(<CanvasWorkspace locale="zh-CN" scene={editable} />);
 
