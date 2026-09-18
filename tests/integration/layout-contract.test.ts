@@ -75,6 +75,25 @@ it('keeps designer library scrolling inside its content panels', () => {
   );
 });
 
+it('uses compositor-friendly continuous portfolio loading motion', () => {
+  const styles = readStyle('../../src/app/studio/library.css');
+  const skeletonRule = styles.match(/\.portfolio-analysis-skeleton i,\s*\.portfolio-artwork-skeleton i\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const shimmerRule = styles.match(/\.portfolio-analysis-skeleton i::after,\s*\.portfolio-artwork-skeleton i::after\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const progressRule = styles.match(/\.portfolio-analysis-progress > span::after\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const reducedMotion = styles.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+
+  expect(skeletonRule).toMatch(/position:\s*relative/);
+  expect(skeletonRule).toMatch(/overflow:\s*hidden/);
+  expect(shimmerRule).toMatch(/animation:\s*portfolio-skeleton\s+1\.8s\s+linear\s+infinite/);
+  expect(shimmerRule).toMatch(/will-change:\s*transform/);
+  expect(progressRule).toMatch(/animation:\s*portfolio-progress\s+1\.8s\s+linear\s+infinite/);
+  expect(progressRule).not.toMatch(/alternate/);
+  expect(styles).not.toMatch(/@keyframes portfolio-skeleton\s*\{[^}]*background-position/s);
+  expect(styles).toMatch(/@keyframes portfolio-skeleton\s*\{[\s\S]*translate3d/);
+  expect(reducedMotion).toMatch(/\.portfolio-analysis-skeleton i::after/);
+  expect(reducedMotion).toMatch(/animation:\s*none/);
+});
+
 it('prevents the designer page from creating document-level outer scroll', () => {
   const windowStyles = readStyle('../../src/app/styles/window.css');
   const studioStyles = readStyle('../../src/app/styles/studio.css');

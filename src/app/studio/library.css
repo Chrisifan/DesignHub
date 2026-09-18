@@ -900,7 +900,9 @@
   content: '';
   border-radius: inherit;
   background: linear-gradient(90deg, var(--primary), var(--secondary));
-  animation: portfolio-progress 1.3s ease-in-out infinite alternate;
+  transform: translate3d(-105%, 0, 0);
+  will-change: transform;
+  animation: portfolio-progress 1.8s linear infinite;
 }
 
 .portfolio-analysis-progress small {
@@ -914,13 +916,17 @@
   gap: 12px;
 }
 
-.portfolio-analysis-skeleton i {
+.portfolio-analysis-skeleton i,
+.portfolio-artwork-skeleton i {
+  position: relative;
   display: block;
+  overflow: hidden;
+  background: var(--surface-container);
+}
+
+.portfolio-analysis-skeleton i {
   min-height: 126px;
   border-radius: 7px;
-  background: linear-gradient(105deg, var(--surface-container) 20%, var(--surface-container-high) 38%, var(--surface-container) 56%);
-  background-size: 220% 100%;
-  animation: portfolio-skeleton 1.5s linear infinite;
 }
 
 .portfolio-analysis-skeleton i:nth-child(4),
@@ -935,13 +941,21 @@
 }
 
 .portfolio-artwork-skeleton i {
-  display: block;
   width: min(100%, 320px);
   aspect-ratio: 1;
   border-radius: 7px;
-  background: linear-gradient(105deg, var(--surface-container) 20%, var(--surface-container-high) 38%, var(--surface-container) 56%);
-  background-size: 220% 100%;
-  animation: portfolio-skeleton 1.5s linear infinite;
+}
+
+.portfolio-analysis-skeleton i::after,
+.portfolio-artwork-skeleton i::after {
+  position: absolute;
+  inset: 0 auto 0 -52%;
+  width: 48%;
+  content: '';
+  background: linear-gradient(105deg, transparent, var(--surface-container-high), transparent);
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  animation: portfolio-skeleton 1.8s linear infinite;
 }
 
 .portfolio-avatar-preview {
@@ -1242,11 +1256,11 @@
 }
 
 @keyframes portfolio-skeleton {
-  to { background-position: -120% 0; }
+  to { transform: translate3d(320%, 0, 0); }
 }
 
 @keyframes portfolio-progress {
-  to { transform: translateX(120%); }
+  to { transform: translate3d(325%, 0, 0); }
 }
 
 @media (max-width: 720px) {
@@ -1295,9 +1309,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   .portfolio-analysis-progress > span::after,
-  .portfolio-analysis-skeleton i,
-  .portfolio-artwork-skeleton i {
+  .portfolio-analysis-skeleton i::after,
+  .portfolio-artwork-skeleton i::after {
     animation: none;
+  }
+
+  .portfolio-analysis-skeleton i::after,
+  .portfolio-artwork-skeleton i::after {
+    display: none;
   }
 
   .portfolio-analysis-progress > span::after {
