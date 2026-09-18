@@ -1,6 +1,7 @@
 import type { Locale } from '../i18n';
 import { PersonaArtwork } from './PersonaArtwork';
 import { localize, type PersonaProfile } from './personas';
+import { Tooltip } from './Tooltip';
 import { Badge, Icon, t } from './ui';
 
 type DesignerProfileCardProps = {
@@ -168,9 +169,13 @@ export const DesignerDossier = ({ locale, profile }: DesignerDossierProps) => {
         </header>
         {profile.negativeRules.length > 0 ? (
           <ul>
-            {profile.negativeRules.map((rule) => (
-              <li key={`${rule.zh}-${rule.en}`}><Icon name="circle-alert" size={13} />{localize(locale, rule)}</li>
-            ))}
+            {profile.negativeRules.map((rule) => {
+              const label = localize(locale, rule);
+              return <li key={`${rule.zh}-${rule.en}`}>
+                <Icon name="circle-alert" size={13} />
+                <Tooltip content={label} className="designer-profile-rule__text">{label}</Tooltip>
+              </li>;
+            })}
           </ul>
         ) : <p>{t(locale, '未提取否定规则', 'No negative rules extracted')}</p>}
       </section>

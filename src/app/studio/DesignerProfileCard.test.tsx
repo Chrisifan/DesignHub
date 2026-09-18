@@ -67,6 +67,20 @@ it('shows a localized empty state when the dossier has no negative rules', () =>
   expect(screen.getByRole('region', { name: '否定规则' })).toHaveTextContent('未提取否定规则');
 });
 
+it('keeps dossier rules on one line and exposes full text with the shared tooltip', () => {
+  const rule = '避免使用会破坏安全边距、信息层级与主体识别度的复杂背景纹理';
+  render(<DesignerDossier locale="zh-CN" profile={{
+    ...profile,
+    negativeRules: [{ zh: rule, en: 'Avoid complex backgrounds that harm hierarchy' }],
+  }} />);
+
+  const trigger = screen.getByText(rule);
+  expect(trigger).toHaveClass('designer-profile-rule__text');
+  expect(trigger).not.toHaveAttribute('title');
+  fireEvent.mouseEnter(trigger);
+  expect(screen.getByRole('tooltip')).toHaveTextContent(rule);
+});
+
 it('renders missing signals without fabricating percentages', () => {
   render(
     <DesignerProfileCard

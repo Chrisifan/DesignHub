@@ -1222,22 +1222,30 @@
 
 .designer-profile-card__rules li {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 7px;
   min-width: 0;
+  overflow: hidden;
   padding: 8px 9px;
   border-left: 2px solid var(--error);
   color: var(--on-surface);
   background: color-mix(in srgb, var(--error) 6%, transparent);
   font-size: 10px;
   line-height: 16px;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .designer-profile-card__rules li .ui-icon {
   flex: 0 0 auto;
-  margin-top: 1px;
   color: var(--error);
+}
+
+.designer-profile-rule__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .designer-profile-card__rules > p {
