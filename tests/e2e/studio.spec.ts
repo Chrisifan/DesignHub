@@ -436,6 +436,14 @@ test('new project uses the review designer dossier without a top divider', async
   await expect(dossier.getByRole('region', { name: '核心指标' })).toBeVisible();
   await expect(dossier.getByRole('region', { name: 'Style DNA' })).toBeVisible();
   await expect(dossier.getByRole('region', { name: '否定规则' })).toBeVisible();
+  await expect(dossier).toHaveCSS('overflow-y', 'auto');
+  expect(await dossier.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  const pageContent = page.locator('.new-design-page');
+  const pageScrollTop = await pageContent.evaluate((element) => element.scrollTop);
+  await dossier.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  expect(await dossier.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  expect(await pageContent.evaluate((element) => element.scrollTop)).toBe(pageScrollTop);
+  await dossier.evaluate((element) => { element.scrollTop = 0; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('new-project-designer-dossier.png'), fullPage: true });
 

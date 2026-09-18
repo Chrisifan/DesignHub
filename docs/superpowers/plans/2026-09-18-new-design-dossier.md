@@ -43,7 +43,7 @@ Expected: PASS.
 
 - [ ] **Step 1: Write the failing end-to-end assertions**
 
-Open the new-project page and assert `.new-design-layout` has `border-top-width: 0px`, the dossier is visible, and document width does not exceed viewport width.
+Open the new-project page and assert `.new-design-layout` has `border-top-width: 0px`, the dossier is visible, the desktop dossier scrolls independently, and document width does not exceed viewport width.
 
 - [ ] **Step 2: Run the focused end-to-end test to verify it fails**
 
@@ -53,7 +53,7 @@ Expected: FAIL because the layout currently has a one-pixel top border.
 
 - [ ] **Step 3: Update the new-design layout styles**
 
-Remove the layout's top border, replace the direct-child hero selectors with `new-design-dossier` selectors, and add min-width, padding, and responsive rules that keep the dossier inside the page.
+Remove the layout's top border, replace the direct-child hero selectors with `new-design-dossier` selectors, and add min-width, padding, desktop internal scrolling, and responsive rules that keep the dossier inside the page.
 
 - [ ] **Step 4: Run the focused end-to-end test**
 
