@@ -32,6 +32,15 @@ type ContextPanel = 'properties' | 'conversation' | 'history' | 'tools';
 type LayerState = Record<LayerId, boolean>;
 type RevisionState = { revisions: RevisionRecord[]; timeline: RevisionTimelineEvent[]; finalRevisionId: string | null };
 
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+};
+
 const toolPrompt: Record<ImageTool, string> = {
   'remove-background': 'Remove the background and preserve the subject with clean edges',
   'replace-background': 'Replace the background while preserving the original subject',
@@ -164,7 +173,6 @@ export const Workbench = ({
   const [canvasSelectionRequest, setCanvasSelectionRequest] = useState<{ id: number; type: LayerId }>();
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
-  const conversationAttachmentsRef = useRef<Array<ConversationImageAttachment & { previewUrl: string }>>([]);
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
@@ -423,13 +431,8 @@ export const Workbench = ({
     submitPromptRequest();
   };
   const clearConversationAttachments = (): void => {
-    conversationAttachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
     setConversationAttachments([]);
   };
-  conversationAttachmentsRef.current = conversationAttachments;
-  useEffect(() => () => {
-    conversationAttachmentsRef.current.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
-  }, []);
   const addConversationFiles = (files: readonly File[]): void => {
     const imageFiles = files.filter((file) => file.type.startsWith('image/'));
     if (imageFiles.length !== files.length) notify(t(locale, '只能添加图片文件。', 'Only image files can be attached.'));
@@ -452,7 +455,7 @@ export const Workbench = ({
           name: file.name || `image-${Date.now()}.png`,
           mimeType: file.type || 'image/png',
           bytes: new Uint8Array(buffer),
-          previewUrl: URL.createObjectURL(file),
+          previewUrl: `data:${file.type || 'image/png'};base64,${bytesToBase64(new Uint8Array(buffer))}`,
         };
         setConversationAttachments((current) => [...current, attachment]);
       }).catch(() => notify(t(locale, '无法读取图片。', 'The image could not be read.')));
@@ -471,8 +474,6 @@ export const Workbench = ({
   };
   const removeConversationAttachment = (previewUrl: string): void => {
     setConversationAttachments((current) => {
-      const removed = current.find((attachment) => attachment.previewUrl === previewUrl);
-      if (removed) URL.revokeObjectURL(removed.previewUrl);
       return current.filter((attachment) => attachment.previewUrl !== previewUrl);
     });
     if (previewAttachment?.previewUrl === previewUrl) setPreviewAttachment(null);
@@ -911,63 +912,56 @@ export const Workbench = ({
             aria-label={t(locale, 'AI 操作坞', 'AI command dock')}
             onSubmit={submitPrompt}
           >
-            <button
-              type="button"
-              className="workbench-command-dock__connection"
-              onClick={onConnections}
-              disabled={readOnly}
-              title={t(locale, '对话设计师', 'Conversation designer')}
-            >
-              <PersonaArtwork
-                locale={locale}
-                personaId={conversationDesignerProfile.id}
-                profile={conversationDesignerProfile}
-                crop="avatar"
-              />
-              <span className="workbench-command-dock__designer">
-                <strong>{conversationDesigner}</strong>
-              </span>
-            </button>
+            {conversationAttachments.length > 0 && (
+              <div className="workbench-command-dock__attachments" aria-label={t(locale, '已添加图片', 'Attached images')}>
+                {conversationAttachments.map((attachment) => (
+                  <div className="workbench-command-dock__attachment" key={attachment.previewUrl}>
+                    <button type="button" className="workbench-command-dock__attachment-preview" aria-label={t(locale, `预览 ${attachment.name}`, `Preview ${attachment.name}`)} onClick={() => setPreviewAttachment(attachment)}>
+                      <img src={attachment.previewUrl} alt="" />
+                      <span>{attachment.name}</span>
+                    </button>
+                    <IconButton name="x" label={t(locale, `删除 ${attachment.name}`, `Remove ${attachment.name}`)} onClick={() => removeConversationAttachment(attachment.previewUrl)} />
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="workbench-command-dock__input-wrap">
-              {conversationAttachments.length > 0 && (
-                <div className="workbench-command-dock__attachments" aria-label={t(locale, '已添加图片', 'Attached images')}>
-                  {conversationAttachments.map((attachment) => (
-                    <div className="workbench-command-dock__attachment" key={attachment.previewUrl}>
-                      <button type="button" className="workbench-command-dock__attachment-preview" aria-label={t(locale, `预览 ${attachment.name}`, `Preview ${attachment.name}`)} onClick={() => setPreviewAttachment(attachment)}>
-                        <img src={attachment.previewUrl} alt="" />
-                      </button>
-                      <IconButton name="x" label={t(locale, `删除 ${attachment.name}`, `Remove ${attachment.name}`)} onClick={() => removeConversationAttachment(attachment.previewUrl)} />
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="workbench-command-dock__input-row">
-                <textarea
-                  ref={promptRef}
-                  rows={1}
-                  value={prompt}
-                  disabled={readOnly}
-                  aria-label={t(locale, '修改说明', 'Edit request')}
-                  placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  onPaste={onPromptPaste}
-                />
+              <textarea
+                ref={promptRef}
+                rows={2}
+                value={prompt}
+                disabled={readOnly}
+                aria-label={t(locale, '修改说明', 'Edit request')}
+                placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
+                onChange={(event) => setPrompt(event.target.value)}
+                onPaste={onPromptPaste}
+              />
+            </div>
+            <div className="workbench-command-dock__toolbar">
+              <div className="workbench-command-dock__toolbar-leading">
                 <input ref={attachmentInputRef} type="file" accept="image/*" multiple hidden onChange={onAttachmentInputChange} />
-                <IconButton name="file-image" label={t(locale, '添加图片', 'Add image')} disabled={readOnly} onClick={() => attachmentInputRef.current?.click()} />
+                <IconButton name="plus" label={t(locale, '添加图片', 'Add image')} disabled={readOnly} onClick={() => attachmentInputRef.current?.click()} />
+                <span className="workbench-command-dock__shortcut" aria-hidden="true">/</span>
+              </div>
+              <div className="workbench-command-dock__toolbar-actions">
+                <button
+                  type="button"
+                  className="workbench-command-dock__connection"
+                  onClick={onConnections}
+                  disabled={readOnly}
+                  aria-label={t(locale, `设计师：${conversationDesigner}`, `Designer: ${conversationDesigner}`)}
+                  data-tooltip={t(locale, `设计师：${conversationDesigner}`, `Designer: ${conversationDesigner}`)}
+                  title={t(locale, '对话设计师', 'Conversation designer')}
+                >
+                  <PersonaArtwork locale={locale} personaId={conversationDesignerProfile.id} profile={conversationDesignerProfile} crop="avatar" />
+                  <span className="workbench-command-dock__designer"><strong>{conversationDesigner}</strong></span>
+                </button>
+                <IconButton name="list" label={t(locale, '模型任务', 'Model tasks')} onClick={() => onTasks?.()} />
+                <IconButton name="history" label={t(locale, '版本历史', 'Version history')} onClick={() => showPanel('history')} />
+                <IconButton name="sparkles" label={t(locale, '生成', 'Generate')} disabled={readOnly} onClick={submitGeneration} />
+                <IconButton name="arrow-up-right" label={t(locale, '发送', 'Send')} disabled={readOnly} onClick={submitPromptRequest} />
               </div>
             </div>
-            <Button variant="ai" icon="arrow-up-right" onClick={submitPromptRequest} disabled={readOnly}>{t(locale, '发送', 'Send')}</Button>
-            <Button variant="ai" icon="sparkles" onClick={submitGeneration} disabled={readOnly}>{t(locale, '生成', 'Generate')}</Button>
-            <IconButton
-              name="list"
-              label={t(locale, '模型任务', 'Model tasks')}
-              onClick={() => onTasks?.()}
-            />
-            <IconButton
-              name="history"
-              label={t(locale, '版本历史', 'Version history')}
-              onClick={() => showPanel('history')}
-            />
           </form>
           {previewAttachment && (
             <Modal locale={locale} title={previewAttachment.name} onClose={() => setPreviewAttachment(null)} wide>

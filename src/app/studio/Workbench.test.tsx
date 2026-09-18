@@ -59,8 +59,9 @@ it('shows the conversation designer and keeps prompt actions adjacent', () => {
   expect(within(dock).queryByText('当前对话设计师')).not.toBeInTheDocument();
   expect(within(dock).queryByText('模型已连接')).not.toBeInTheDocument();
   const controls = Array.from(dock.querySelectorAll('textarea, button')).map((element) => element.getAttribute('aria-label') ?? element.textContent?.trim());
-  expect(controls.indexOf('发送')).toBe(3);
-  expect(controls.indexOf('生成')).toBe(4);
+  expect(controls.indexOf('发送')).toBeGreaterThan(controls.indexOf('生成'));
+  expect(dock.querySelector('.workbench-command-dock__toolbar')).toBeInTheDocument();
+  expect(dock.querySelector('.workbench-command-dock__input-wrap')).toBeInTheDocument();
   expect(within(dock).getByRole('button', { name: '模型任务' })).toHaveAttribute('data-tooltip', '模型任务');
 });
 
@@ -289,9 +290,6 @@ it('submits a conversation through the active project service when provided', ()
 });
 
 it('adds pasted images above the prompt and supports preview and removal', async () => {
-  const previewUrl = 'blob:conversation-preview';
-  const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue(previewUrl);
-  const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
   const image = new File([new Uint8Array([137, 80, 78, 71])], 'reference.png', { type: 'image/png' });
   const onSubmitConversation = vi.fn();
   render(<Workbench {...makeProps({ onSubmitConversation })} />);
@@ -300,6 +298,7 @@ it('adds pasted images above the prompt and supports preview and removal', async
   fireEvent.paste(prompt, { clipboardData: { files: [image] } });
   const attachment = await screen.findByRole('button', { name: '预览 reference.png' });
   expect(attachment.closest('.workbench-command-dock__attachments')).toBeInTheDocument();
+  expect(attachment.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,iVBORw==');
   expect(screen.getByRole('button', { name: '添加图片' })).toHaveAttribute('data-tooltip', '添加图片');
   fireEvent.click(attachment);
   expect(screen.getByRole('dialog', { name: 'reference.png' })).toBeInTheDocument();
@@ -317,8 +316,7 @@ it('adds pasted images above the prompt and supports preview and removal', async
   await screen.findByRole('button', { name: '删除 reference.png' });
   fireEvent.click(screen.getByRole('button', { name: '删除 reference.png' }));
   expect(screen.queryByRole('button', { name: '预览 reference.png' })).not.toBeInTheDocument();
-  expect(createObjectURL).toHaveBeenCalledWith(image);
-  expect(revokeObjectURL).toHaveBeenCalledWith(previewUrl);
+  expect(screen.queryByRole('dialog', { name: 'reference.png' })).not.toBeInTheDocument();
 });
 
 it('submits a generation request through the active project service', async () => {
