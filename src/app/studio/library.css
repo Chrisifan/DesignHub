@@ -339,11 +339,24 @@
   line-height: 18px;
 }
 
-.draft-rule span {
+.draft-rule__label {
   display: block;
   margin-bottom: 4px;
   color: var(--on-surface-variant);
   font-size: 10px;
+}
+
+.designer-draft-rule__text,
+.designer-draft-rule__empty {
+  display: block;
+}
+
+.designer-draft-rule__text {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .designer-draft-preview > small {

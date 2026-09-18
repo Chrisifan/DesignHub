@@ -13,6 +13,7 @@ import { Drawer } from "./Drawer";
 import { DesignerProfileCard } from "./DesignerProfileCard";
 import { PersonaInspector } from "./PersonaInspector";
 import { PortfolioUploader } from "./PortfolioUploader";
+import { Tooltip } from "./Tooltip";
 import {
   PersonaRepository,
   type PersonaStatusFilter,
@@ -1056,8 +1057,12 @@ const DesignerEditorModal = ({
                 )}
             </p>
             <div className="draft-rule">
-              <span>{t(locale, "规则", "Rules")}</span>
-              {draft.negativeRules || t(locale, "尚未填写", "Not provided")}
+              <span className="draft-rule__label">{t(locale, "规则", "Rules")}</span>
+              {draft.negativeRules ? (
+                <Tooltip content={draft.negativeRules} className="designer-draft-rule__text">
+                  {draft.negativeRules.replace(/\s*\n\s*/gu, " · ")}
+                </Tooltip>
+              ) : <span className="designer-draft-rule__empty">{t(locale, "尚未填写", "Not provided")}</span>}
             </div>
             <small>
               {t(
@@ -1232,7 +1237,7 @@ const PortfolioAnalysisReport = ({
         ? <ul className="portfolio-analysis-rules" aria-label={t(locale, "生效规则", "Active rules")}>
           {negativeRules.map((rule) => <li key={rule}>
             <Icon name="circle-alert" size={13} />
-            <span className="portfolio-analysis-rule__text" title={rule}>{rule}</span>
+            <Tooltip content={rule} className="portfolio-analysis-rule__text">{rule}</Tooltip>
           </li>)}
         </ul>
         : <p className="portfolio-analysis-empty">{t(locale, "未提取否定规则", "Negative constraints not extracted")}</p>}

@@ -40,6 +40,24 @@ it("opens a selected persona in the inspector drawer and filters the repository"
   expect(screen.queryByRole("dialog", { name: "设计师检查器" })).not.toBeInTheDocument();
 });
 
+it("shows complete edit-preview rules through the shared tooltip", () => {
+  const rule = "避免使用会破坏安全边距与信息层级的复杂背景纹理";
+  const edited = {
+    ...personaProfiles[0]!,
+    negativeRules: [{ zh: rule, en: "Avoid complex backgrounds" }],
+  };
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={[edited]} />);
+
+  fireEvent.click(screen.getByRole("button", { name: /纸感排版/ }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+  const editor = screen.getByRole("dialog", { name: "编辑设计师" });
+  const previewRule = within(editor).getByText(rule);
+  expect(previewRule).toHaveClass("designer-draft-rule__text");
+  expect(previewRule).not.toHaveAttribute("title");
+  fireEvent.mouseEnter(previewRule);
+  expect(screen.getByRole("tooltip")).toHaveTextContent(rule);
+});
+
 it("opens new designer creation with portfolio analysis only", () => {
   render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} preview initialProfiles={personaProfiles} />);
 
@@ -388,8 +406,10 @@ it("renders a completed portfolio candidate as a read-only analysis report", asy
   expect(within(report).getByText(candidate.styleDna.texture.zh)).toBeInTheDocument();
   expect(within(report).getByText("柔和纸张漫反射")).toBeInTheDocument();
   const negativeRule = within(report).getByText("避免霓虹渐变");
-  expect(negativeRule).toHaveAttribute("title", "避免霓虹渐变");
+  expect(negativeRule).not.toHaveAttribute("title");
   expect(negativeRule).toHaveClass("portfolio-analysis-rule__text");
+  fireEvent.mouseEnter(negativeRule);
+  expect(screen.getByRole("tooltip")).toHaveTextContent("避免霓虹渐变");
   expect(within(report).getAllByRole("progressbar")).toHaveLength(5);
   expect(within(report).queryByRole("textbox")).not.toBeInTheDocument();
   expect(within(report).queryByRole("spinbutton")).not.toBeInTheDocument();
