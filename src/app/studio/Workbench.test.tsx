@@ -46,6 +46,20 @@ it('lays out the workbench around one canvas surface', () => {
   expect(document.querySelector('.workbench-body')).toHaveClass(
     'workbench-body--canvas-first',
   );
+  expect(screen.getByRole('button', { name: '放大' })).toHaveAttribute('data-tooltip', '放大');
+});
+
+it('shows the conversation designer and keeps prompt actions adjacent', () => {
+  render(<Workbench {...makeProps({
+    project: { ...project, designerSnapshot: { name: { zh: '顾言', en: 'Gu Yan' } } },
+  })} />);
+  const dock = screen.getByRole('form', { name: 'AI 操作坞' });
+  expect(within(dock).getByText('顾言')).toBeInTheDocument();
+  expect(within(dock).queryByText('模型已连接')).not.toBeInTheDocument();
+  const controls = Array.from(dock.querySelectorAll('textarea, button')).map((element) => element.getAttribute('aria-label') ?? element.textContent?.trim());
+  expect(controls.indexOf('发送')).toBe(2);
+  expect(controls.indexOf('生成')).toBe(3);
+  expect(within(dock).getByRole('button', { name: '模型任务' })).toHaveAttribute('data-tooltip', '模型任务');
 });
 
 it('routes command dock shortcuts to tasks and version history', () => {
@@ -249,7 +263,7 @@ it('keeps one context panel open and preserves a prompt when connection setup is
 
   expect(props.onConnections).toHaveBeenCalledOnce();
   expect(prompt).toHaveValue('保留标题，只调整背景层次');
-  expect(within(panel).getByText('连接模型')).toBeInTheDocument();
+  expect(within(panel).getByText('林夏')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   expect(
@@ -285,7 +299,8 @@ it('submits a generation request through the active project service', async () =
 it('shows a connected model state when the host confirms a credential', () => {
   render(<Workbench {...makeProps({ modelConnected: true })} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
-  expect(screen.getByText('模型已连接')).toBeInTheDocument();
+  expect(screen.getByText('林夏')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '林夏当前对话设计师' }).querySelector('[data-connected="true"]')).toBeInTheDocument();
 });
 
 it('updates preview zoom and grid without changing the document', () => {

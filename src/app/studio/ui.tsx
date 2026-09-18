@@ -55,6 +55,7 @@ export const IconButton = ({
     type="button"
     className="icon-button"
     title={label}
+    data-tooltip={label}
     aria-label={label}
     {...props}
   >

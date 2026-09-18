@@ -101,7 +101,7 @@ export const PersonaRepository = ({
             aria-label={t(locale, '搜索档案', 'Search profiles')}
           />
         </label>
-        {onCreate && <button type="button" className="icon-button" title={t(locale, '从作品集创建', 'Create from portfolio')} aria-label={t(locale, '从作品集创建', 'Create from portfolio')} onClick={onCreate}>
+        {onCreate && <button type="button" className="icon-button" title={t(locale, '从作品集创建', 'Create from portfolio')} data-tooltip={t(locale, '从作品集创建', 'Create from portfolio')} aria-label={t(locale, '从作品集创建', 'Create from portfolio')} onClick={onCreate}>
           <Icon name="plus" size={17} />
         </button>}
       </PageToolbarSlot>

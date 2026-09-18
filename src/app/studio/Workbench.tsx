@@ -356,6 +356,10 @@ export const Workbench = ({
   const detailedPanelOpen = panelOpen && (panel === 'history' || panel === 'tools');
   const hasWorkspaceDocument = Boolean(workspaceId && documentId);
   const propertiesOpen = !hasWorkspaceDocument && panelOpen && panel === 'properties';
+  const designerSnapshot = project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
+  const conversationDesigner = designerSnapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en']
+    ?? project.designers[0]
+    ?? t(locale, '未设置设计师', 'No designer selected');
   const canvasStyle = {
     '--workbench-zoom': zoom / 100,
     '--workbench-rotation': `${rotation}deg`,
@@ -836,9 +840,18 @@ export const Workbench = ({
             aria-label={t(locale, 'AI 操作坞', 'AI command dock')}
             onSubmit={submitPrompt}
           >
-            <button type="button" className="workbench-command-dock__connection" onClick={onConnections} disabled={readOnly}>
+            <button
+              type="button"
+              className="workbench-command-dock__connection"
+              onClick={onConnections}
+              disabled={readOnly}
+              title={t(locale, '当前对话设计师与模型连接', 'Conversation designer and model connection')}
+            >
               <span className="workbench-model-dot" data-connected={modelConnected || undefined} aria-hidden="true" />
-              <span>{modelConnected ? t(locale, '模型已连接', 'Model connected') : t(locale, '连接模型', 'Connect model')}</span>
+              <span className="workbench-command-dock__designer">
+                <strong>{conversationDesigner}</strong>
+                <small>{t(locale, '当前对话设计师', 'Conversation designer')}</small>
+              </span>
             </button>
             <textarea
               ref={promptRef}
@@ -849,6 +862,8 @@ export const Workbench = ({
               placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
               onChange={(event) => setPrompt(event.target.value)}
             />
+            <Button variant="ai" icon="arrow-up-right" onClick={submitPromptRequest} disabled={readOnly}>{t(locale, '发送', 'Send')}</Button>
+            <Button variant="ai" icon="sparkles" onClick={submitGeneration} disabled={readOnly}>{t(locale, '生成', 'Generate')}</Button>
             <IconButton
               name="list"
               label={t(locale, '模型任务', 'Model tasks')}
@@ -859,8 +874,6 @@ export const Workbench = ({
               label={t(locale, '版本历史', 'Version history')}
               onClick={() => showPanel('history')}
             />
-            <Button variant="ai" icon="arrow-up-right" onClick={submitPromptRequest} disabled={readOnly}>{t(locale, '发送', 'Send')}</Button>
-            <Button variant="ai" icon="sparkles" onClick={submitGeneration} disabled={readOnly}>{t(locale, '生成', 'Generate')}</Button>
           </form>
         </section>
 
