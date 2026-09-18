@@ -413,6 +413,9 @@ test('designer rules stay on one line with app tooltips in the inspector and edi
   await expect(page.getByRole('tooltip')).toHaveText(longRule);
   const inspectorTooltipBox = await page.getByRole('tooltip').boundingBox();
   expect(inspectorTooltipBox).not.toBeNull();
+  const inspectorRuleBox = await inspectorRule.boundingBox();
+  expect(inspectorRuleBox).not.toBeNull();
+  expect(inspectorTooltipBox!.y + inspectorTooltipBox!.height).toBeLessThanOrEqual(inspectorRuleBox!.y);
   expect(inspectorTooltipBox!.x).toBeGreaterThanOrEqual(0);
   expect(inspectorTooltipBox!.x + inspectorTooltipBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   await page.screenshot({ path: testInfo.outputPath('designer-inspector-rule-tooltip.png'), fullPage: true });
@@ -432,6 +435,9 @@ test('designer rules stay on one line with app tooltips in the inspector and edi
   expect(await editorTooltip.evaluate((element) => element.matches(':popover-open'))).toBe(true);
   const editorTooltipBox = await editorTooltip.boundingBox();
   expect(editorTooltipBox).not.toBeNull();
+  const editorRuleBox = await editorRule.boundingBox();
+  expect(editorRuleBox).not.toBeNull();
+  expect(editorTooltipBox!.y + editorTooltipBox!.height).toBeLessThanOrEqual(editorRuleBox!.y);
   expect(editorTooltipBox!.x).toBeGreaterThanOrEqual(0);
   expect(editorTooltipBox!.x + editorTooltipBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   await page.screenshot({ path: testInfo.outputPath('designer-editor-rule-tooltip.png'), fullPage: true });

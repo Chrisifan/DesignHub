@@ -41,10 +41,10 @@ export const Tooltip = ({ content, children, className = '' }: TooltipProps) => 
         window.innerWidth - tooltipBounds.width - margin,
         Math.max(margin, trigger.left + trigger.width / 2 - tooltipBounds.width / 2),
       );
-      const below = trigger.bottom + gap;
-      const top = below + tooltipBounds.height <= window.innerHeight - margin
-        ? below
-        : Math.max(margin, trigger.top - tooltipBounds.height - gap);
+      const above = trigger.top - tooltipBounds.height - gap;
+      const top = above >= margin
+        ? above
+        : Math.min(window.innerHeight - tooltipBounds.height - margin, trigger.bottom + gap);
       setPosition({ left, top });
     };
 
