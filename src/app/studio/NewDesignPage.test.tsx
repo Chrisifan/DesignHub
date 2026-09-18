@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { expect, it, vi } from 'vitest';
 
@@ -43,9 +43,19 @@ it('shows only the manual project brief flow', () => {
   expect(screen.getByLabelText('新建设计的当前设计师')).toHaveTextContent(
     '清晰商业',
   );
+  const dossier = screen.getByRole('region', { name: '清晰商业设计师档案' });
+  expect(
+    within(dossier).getByRole('region', { name: '核心指标' }),
+  ).toBeInTheDocument();
+  expect(
+    within(dossier).getByRole('region', { name: 'Style DNA' }),
+  ).toBeInTheDocument();
+  expect(
+    within(dossier).getByRole('region', { name: '否定规则' }),
+  ).toHaveTextContent('不遮挡商品主体');
 });
 
-it('uses a persisted custom persona in the new-design hero and selector', () => {
+it('uses a persisted custom persona in the new-design dossier and selector', () => {
   const custom: PersonaProfile = {
     id: 'custom-new', name: { zh: '新建人物', en: 'New persona' }, signature: { zh: '署名', en: 'Signature' }, summary: { zh: '摘要', en: 'Summary' }, principle: { zh: '原则', en: 'Principle' }, personaCode: 'NEW', version: 'v1.0', status: 'published', artworkUrl: '/new-persona.png', artworkAlt: { zh: '新建人物', en: 'New persona' }, tags: [], referenceCount: 0, styleDna: { palette: [], typography: { zh: '', en: '' }, composition: { zh: '', en: '' }, texture: { zh: '', en: '' } }, negativeRules: [], portfolioSheets: [],
   };

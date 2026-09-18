@@ -424,6 +424,28 @@ test('designer dossier cards keep a stable responsive grid', async ({ page }, te
   await page.screenshot({ path: testInfo.outputPath('designer-dossier-grid-narrow.png'), fullPage: true });
 });
 
+test('new project uses the review designer dossier without a top divider', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await gotoTestWorkspace(page);
+  await page.getByRole('button', { name: '新建项目', exact: true }).first().click();
+
+  const layout = page.locator('.new-design-layout');
+  const dossier = page.getByLabel('新建设计的当前设计师');
+  await expect(layout).toHaveCSS('border-top-width', '0px');
+  await expect(dossier.locator('.designer-profile-card--review')).toBeVisible();
+  await expect(dossier.getByRole('region', { name: '核心指标' })).toBeVisible();
+  await expect(dossier.getByRole('region', { name: 'Style DNA' })).toBeVisible();
+  await expect(dossier.getByRole('region', { name: '否定规则' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('new-project-designer-dossier.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await dossier.scrollIntoViewIfNeeded();
+  expect(await layout.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('new-project-designer-dossier-narrow.png'), fullPage: true });
+});
+
 test('native dialog restores focus and retains a cancelled draft', async ({
   page,
 }) => {

@@ -2,7 +2,7 @@ import { useEffect, useRef, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
 import { localize, type PersonaProfile } from './personas';
-import { DesignerHero } from './DesignerHero';
+import { DesignerDossier } from './DesignerProfileCard';
 import { Button, Field, Icon, Select, t } from './ui';
 import type { NewDesignDraft } from './types';
 import { documentSizePresets } from '../../features/projects/size';
@@ -40,6 +40,7 @@ export const NewDesignPage = ({
   const setPersona = (personaId: string) =>
     onDraftChange({ ...draft, personaId });
   const personas = profiles ?? [];
+  const selectedPersona = personas.find((persona) => persona.id === draft.personaId);
   return (
     <section className="page-content new-design-page" aria-labelledby="new-design-title">
       <header className="new-design-heading">
@@ -70,7 +71,14 @@ export const NewDesignPage = ({
           {!persisted && <p className="inline-notice"><Icon name="circle-help" size={16} />{t(locale, '此处创建预览草稿，仅本次会话可见，不写入磁盘。', 'Creates a session-only preview draft. Nothing is written to disk.')}</p>}
           <div className="dialog-actions"><Button type="submit" variant="primary" icon="plus" disabled={!draft.name.trim()}>{persisted ? t(locale, '创建项目', 'Create project') : t(locale, '创建预览', 'Create preview')}</Button></div>
         </form>
-        <DesignerHero personaId={draft.personaId} profile={personas.find((persona) => persona.id === draft.personaId)} locale={locale} label={t(locale, '新建设计的当前设计师', 'New design active designer')} />
+        {selectedPersona && (
+          <aside
+            className="new-design-dossier"
+            aria-label={t(locale, '新建设计的当前设计师', 'New design active designer')}
+          >
+            <DesignerDossier locale={locale} profile={selectedPersona} />
+          </aside>
+        )}
       </div>
     </section>
   );

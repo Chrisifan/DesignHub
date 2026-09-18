@@ -292,7 +292,6 @@
   grid-template-columns: minmax(0, 1fr) minmax(300px, 38%);
   min-width: 0;
   min-height: 0;
-  border-top: 1px solid var(--border-subtle);
 }
 
 .new-design-form {
@@ -300,11 +299,9 @@
   padding: 24px 24px 32px 0;
 }
 
-.new-design-layout > .designer-hero {
-  min-height: calc(100dvh - 210px);
-  border-top: 0;
-  border-bottom: 0;
-  border-radius: 0;
+.new-design-dossier {
+  min-width: 0;
+  padding: 24px 0 32px 24px;
 }
 
 .ai-intro--left {
@@ -682,10 +679,8 @@
     padding-right: 0;
   }
 
-  .new-design-layout > .designer-hero {
-    min-height: 148px;
-    border-top: 1px solid var(--border-subtle);
-    border-bottom: 1px solid var(--border-subtle);
+  .new-design-dossier {
+    padding: 0 0 32px;
   }
 }
 
