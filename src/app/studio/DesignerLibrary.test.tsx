@@ -27,7 +27,7 @@ it("opens a selected persona in the inspector drawer and filters the repository"
   expect(dialog).toBeInTheDocument();
   expect(dialog.querySelector('.persona-inspector__actions')?.closest('.ui-drawer__footer')).toBeInTheDocument();
   expect(screen.getByText("Style DNA")).toBeInTheDocument();
-  expect(screen.getByText("禁用规则")).toBeInTheDocument();
+  expect(screen.getByText("否定规则")).toBeInTheDocument();
   expect(screen.getByText("精选作品")).toBeInTheDocument();
   fireEvent.change(screen.getByRole("searchbox", { name: "搜索档案" }), {
     target: { value: "商品" },

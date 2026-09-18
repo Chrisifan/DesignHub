@@ -1,7 +1,7 @@
 import type { Locale } from '../i18n';
-import { PersonaArtwork } from './PersonaArtwork';
+import { DesignerDossier } from './DesignerProfileCard';
 import { localize, type PersonaProfile } from './personas';
-import { ArtworkPreview, Badge, Button, Icon, t } from './ui';
+import { ArtworkPreview, Button, Icon, t } from './ui';
 
 type PersonaInspectorProps = {
   locale: Locale;
@@ -20,13 +20,6 @@ type PersonaInspectorProps = {
   canUseForNew?: boolean;
   showActions?: boolean;
 };
-
-const DetailRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div className="detail-row">
-    <dt>{label}</dt>
-    <dd>{children}</dd>
-  </div>
-);
 
 export const PersonaInspector = ({
   locale,
@@ -53,7 +46,6 @@ export const PersonaInspector = ({
     );
   }
   const sessionDefault = isSessionDefault ?? isDefault;
-  const status = profile.status === 'published' || profile.status === 'built-in' ? t(locale, '已发布', 'Published') : profile.status === 'archived' ? t(locale, '已归档', 'Archived') : t(locale, '草稿', 'Draft');
   const actions = (
     <div className="persona-inspector__actions">
       {onEdit && <Button variant="primary" icon="settings" onClick={onEdit} disabled={readOnly}>{t(locale, '编辑', 'Edit')}</Button>}
@@ -64,53 +56,21 @@ export const PersonaInspector = ({
   );
   return (
     <div className="details-panel persona-inspector">
-      <header className="persona-inspector__head">
-        <div>
-          <p className="section-kicker">{t(locale, 'PROFILE INSPECTOR', 'PROFILE INSPECTOR')}</p>
-          <span className="persona-inspector__path mono"><span className="persona-inspector__path-label">{t(locale, '创意代号', 'Persona code')}</span> · {profile.personaCode} / {profile.version}</span>
-        </div>
-        <Badge tone={profile.status === 'published' ? 'success' : profile.status === 'draft' ? 'ai' : ''}>{status}</Badge>
-      </header>
-      <div className="persona-inspector__hero">
-        <div className="persona-inspector__portrait"><PersonaArtwork locale={locale} personaId={profile.id} profile={profile} crop="half" /><span className="persona-inspector__portrait-index mono">{profile.referenceCount.toString().padStart(2, '0')}</span></div>
-        <div className="persona-inspector__identity">
-          <p className="persona-inspector__archetype">{t(locale, 'ARCHETYPE', 'ARCHETYPE')}</p>
-          <h2>{localize(locale, profile.name)}</h2>
-          <p className="persona-inspector__signature">{localize(locale, profile.signature)}</p>
-          <p className="persona-inspector__code mono">{profile.personaCode} <span>/</span> {profile.version}</p>
-          <p className="persona-inspector__summary">{localize(locale, profile.summary)}</p>
-        </div>
-      </div>
+      <DesignerDossier locale={locale} profile={profile} />
       {showActions ? actions : null}
-      <div className="persona-inspector__principle">
-        <Icon name="sparkles" size={16} />
-        <span><strong>{t(locale, '创作原则', 'Creative principle')}</strong>{localize(locale, profile.principle)}</span>
-      </div>
-      <div className="persona-inspector__metrics" aria-label={t(locale, '档案指标', 'Profile metrics')}>
-        <div><span className="mono">{profile.referenceCount.toString().padStart(2, '0')}</span><small>{t(locale, '项目引用', 'Project refs')}</small></div>
-        <div><span className="mono">{profile.portfolioSheets.length.toString().padStart(2, '0')}</span><small>{t(locale, '作品样张', 'Portfolio')}</small></div>
-        <div><span className="mono">{sessionDefault ? 'ON' : 'OFF'}</span><small>{t(locale, '会话默认', 'Session default')}</small></div>
-      </div>
-      <div className="persona-inspector__detail-grid">
-      <section className="inspector-section inspector-section--dna" aria-label={t(locale, '风格 DNA', 'Style DNA')}>
-        <div className="section-title"><h3>{t(locale, 'Style DNA', 'Style DNA')}</h3><span className="mono">{t(locale, '结构化偏好', 'Structured preferences')}</span></div>
-        <div className="style-palette" aria-label={t(locale, '色板', 'Palette')}>
-          {profile.styleDna.palette.map((color) => <span key={color} style={{ backgroundColor: color }} title={color}><small className="mono">{color}</small></span>)}
-        </div>
-        <dl className="details-list details-list--compact">
-          <DetailRow label={t(locale, '排版', 'Typography')}>{localize(locale, profile.styleDna.typography)}</DetailRow>
-          <DetailRow label={t(locale, '构图', 'Composition')}>{localize(locale, profile.styleDna.composition)}</DetailRow>
-          <DetailRow label={t(locale, '材质', 'Texture')}>{localize(locale, profile.styleDna.texture)}</DetailRow>
-        </dl>
-      </section>
-      <section className="inspector-section inspector-section--rules" aria-label={t(locale, '禁用规则', 'Negative rules')}>
-        <div className="section-title"><h3>{t(locale, '禁用规则', 'Negative Rules')}</h3><span className="mono">{profile.negativeRules.length.toString().padStart(2, '0')}</span></div>
-        <ul className="negative-rules">{profile.negativeRules.map((rule) => <li key={rule.zh}>{localize(locale, rule)}</li>)}</ul>
-      </section>
-      </div>
-      <section className="inspector-section" aria-label={t(locale, '精选作品', 'Curated portfolio')}>
+      <section className="persona-inspector__portfolio" aria-label={t(locale, '精选作品', 'Curated portfolio')}>
         <div className="section-title"><h3>{t(locale, '精选作品', 'Curated Portfolio Sheets')}</h3><span className="mono">{profile.portfolioSheets.length.toString().padStart(2, '0')}</span></div>
-        <div className="portfolio-strip">{profile.portfolioSheets.map((sheet) => <div className="portfolio-item" key={sheet.id}><ArtworkPreview kind={sheet.artwork} /><strong>{localize(locale, sheet.title)}</strong><small>{localize(locale, sheet.note)}</small></div>)}</div>
+        {profile.portfolioSheets.length > 0 ? (
+          <div className="portfolio-strip">
+            {profile.portfolioSheets.map((sheet) => (
+              <div className="portfolio-item" key={sheet.id}>
+                <ArtworkPreview kind={sheet.artwork} />
+                <strong title={localize(locale, sheet.title)}>{localize(locale, sheet.title)}</strong>
+                <small title={localize(locale, sheet.note)}>{localize(locale, sheet.note)}</small>
+              </div>
+            ))}
+          </div>
+        ) : <p className="persona-inspector__empty">{t(locale, '暂无精选作品', 'No curated work yet')}</p>}
       </section>
       {(readOnly || !workspaceId) && <p className="panel-note"><Icon name="hard-drive" size={15} />{readOnly ? t(locale, '当前工作区只读。', 'Current workspace is read-only.') : t(locale, '档案保存到当前工作区。', 'Profiles are saved to the current workspace.')}</p>}
     </div>
