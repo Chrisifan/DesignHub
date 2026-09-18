@@ -55,7 +55,7 @@ it("shows complete edit-preview rules through the shared tooltip", () => {
   expect(previewRule).toHaveClass("designer-draft-rule__text");
   expect(previewRule).not.toHaveAttribute("title");
   fireEvent.mouseEnter(previewRule);
-  expect(screen.getByRole("tooltip")).toHaveTextContent(rule);
+  expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent(rule);
 });
 
 it("opens new designer creation with portfolio analysis only", () => {
@@ -409,7 +409,7 @@ it("renders a completed portfolio candidate as a read-only analysis report", asy
   expect(negativeRule).not.toHaveAttribute("title");
   expect(negativeRule).toHaveClass("portfolio-analysis-rule__text");
   fireEvent.mouseEnter(negativeRule);
-  expect(screen.getByRole("tooltip")).toHaveTextContent("避免霓虹渐变");
+  expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent("避免霓虹渐变");
   expect(within(report).getAllByRole("progressbar")).toHaveLength(5);
   expect(within(report).queryByRole("textbox")).not.toBeInTheDocument();
   expect(within(report).queryByRole("spinbutton")).not.toBeInTheDocument();

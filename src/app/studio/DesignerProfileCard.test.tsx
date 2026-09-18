@@ -78,7 +78,7 @@ it('keeps dossier rules on one line and exposes full text with the shared toolti
   expect(trigger).toHaveClass('designer-profile-rule__text');
   expect(trigger).not.toHaveAttribute('title');
   fireEvent.mouseEnter(trigger);
-  expect(screen.getByRole('tooltip')).toHaveTextContent(rule);
+  expect(screen.getByRole('tooltip', { hidden: true })).toHaveTextContent(rule);
 });
 
 it('renders missing signals without fabricating percentages', () => {

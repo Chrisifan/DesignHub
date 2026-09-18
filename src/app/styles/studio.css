@@ -858,8 +858,10 @@ button:disabled {
 }
 .ui-tooltip {
   position: fixed;
+  inset: auto;
   z-index: 1000;
   display: block;
+  margin: 0;
   max-inline-size: min(320px, calc(100vw - 16px));
   padding: 7px 9px;
   border: 1px solid var(--outline-variant);

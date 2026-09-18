@@ -11,7 +11,7 @@ it('shows complete content on hover without a native title', () => {
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 
   fireEvent.mouseEnter(trigger);
-  const tooltip = screen.getByRole('tooltip');
+  const tooltip = screen.getByRole('tooltip', { hidden: true });
   expect(tooltip).toHaveTextContent('完整规则');
   expect(trigger).toHaveAttribute('aria-describedby', tooltip.id);
 
@@ -24,7 +24,7 @@ it('supports keyboard focus and Escape dismissal', () => {
   const trigger = screen.getByText('省略规则');
 
   fireEvent.focus(trigger);
-  expect(screen.getByRole('tooltip')).toHaveTextContent('完整规则');
+  expect(screen.getByRole('tooltip', { hidden: true })).toHaveTextContent('完整规则');
 
   fireEvent.keyDown(trigger, { key: 'Escape' });
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();

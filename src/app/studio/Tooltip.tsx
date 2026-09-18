@@ -26,20 +26,25 @@ export const Tooltip = ({ content, children, className = '' }: TooltipProps) => 
 
   useLayoutEffect(() => {
     if (!open) return undefined;
+    const tooltip = tooltipRef.current;
+    if (!tooltip) return undefined;
+    if (typeof tooltip.showPopover === 'function' && !tooltip.matches(':popover-open')) {
+      tooltip.showPopover();
+    }
     const update = () => {
       const trigger = triggerRef.current?.getBoundingClientRect();
-      const tooltip = tooltipRef.current?.getBoundingClientRect();
-      if (!trigger || !tooltip) return;
+      const tooltipBounds = tooltip.getBoundingClientRect();
+      if (!trigger) return;
       const margin = 8;
       const gap = 8;
       const left = Math.min(
-        window.innerWidth - tooltip.width - margin,
-        Math.max(margin, trigger.left + trigger.width / 2 - tooltip.width / 2),
+        window.innerWidth - tooltipBounds.width - margin,
+        Math.max(margin, trigger.left + trigger.width / 2 - tooltipBounds.width / 2),
       );
       const below = trigger.bottom + gap;
-      const top = below + tooltip.height <= window.innerHeight - margin
+      const top = below + tooltipBounds.height <= window.innerHeight - margin
         ? below
-        : Math.max(margin, trigger.top - tooltip.height - gap);
+        : Math.max(margin, trigger.top - tooltipBounds.height - gap);
       setPosition({ left, top });
     };
 
@@ -49,6 +54,9 @@ export const Tooltip = ({ content, children, className = '' }: TooltipProps) => 
     return () => {
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
+      if (typeof tooltip.hidePopover === 'function' && tooltip.matches(':popover-open')) {
+        tooltip.hidePopover();
+      }
     };
   }, [open]);
 
@@ -74,6 +82,7 @@ export const Tooltip = ({ content, children, className = '' }: TooltipProps) => 
         ref={tooltipRef}
         id={id}
         role="tooltip"
+        popover="manual"
         className="ui-tooltip"
         style={{
           left: position?.left ?? 0,
