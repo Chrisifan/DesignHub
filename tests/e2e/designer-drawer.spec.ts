@@ -45,8 +45,21 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
           previewUrl: '',
         }],
       });
-      api.submitPortfolioSelection = async () => ({ id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'completed', cancelRequested: false, attempt: 1, result: { text: JSON.stringify({ candidates: [candidate] }) } });
-      (window as typeof window & { artworkRequests: number }).artworkRequests = 0;
+      const completedAnalysis = { id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'completed', cancelRequested: false, attempt: 1, result: { text: JSON.stringify({ candidates: [candidate] }) } };
+      const testHost = window as typeof window & {
+        artworkRequests: number;
+        portfolioAnalysisRequests: number;
+        resolvePortfolioAnalysis?: () => void;
+      };
+      testHost.portfolioAnalysisRequests = 0;
+      api.submitPortfolioSelection = async () => {
+        testHost.portfolioAnalysisRequests += 1;
+        if (testHost.portfolioAnalysisRequests > 1) return completedAnalysis;
+        return new Promise((resolve) => {
+          testHost.resolvePortfolioAnalysis = () => resolve(completedAnalysis);
+        });
+      };
+      testHost.artworkRequests = 0;
       api.submitDesignerArtworkGeneration = async () => {
         const host = window as typeof window & { artworkRequests: number };
         host.artworkRequests += 1;
@@ -96,6 +109,28 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await page.getByRole('button', { name: '开始分析' }).click();
 
     await expect(drawer).toHaveClass(/ui-drawer--portfolio/);
+    const skeleton = drawer.getByTestId('portfolio-analysis-skeleton');
+    await expect(skeleton).toBeVisible();
+    const motion = await skeleton.locator('i').first().evaluate((element) => {
+      const base = getComputedStyle(element);
+      const shimmer = getComputedStyle(element, '::after');
+      return {
+        baseAnimation: base.animationName,
+        shimmerAnimation: shimmer.animationName,
+        shimmerWillChange: shimmer.willChange,
+        width: element.getBoundingClientRect().width,
+        height: element.getBoundingClientRect().height,
+      };
+    });
+    expect(motion.baseAnimation).toBe('none');
+    expect(motion.shimmerAnimation).toBe('portfolio-skeleton');
+    expect(motion.shimmerWillChange).toContain('transform');
+    expect(motion.width).toBeGreaterThan(0);
+    expect(motion.height).toBeGreaterThan(0);
+    await page.screenshot({ path: testInfo.outputPath('portfolio-analysis-loading.png'), fullPage: true });
+    await page.evaluate(() => {
+      (window as typeof window & { resolvePortfolioAnalysis?: () => void }).resolvePortfolioAnalysis?.();
+    });
     await expect(drawer.getByRole('region', { name: '纸间秩序的视觉 DNA 分析' })).toBeVisible();
     await expect(drawer.getByRole('region', { name: '色彩倾向与光影分布' })).toBeVisible();
     await expect(drawer.getByRole('region', { name: '排版韵律与构图骨架' })).toBeAttached();

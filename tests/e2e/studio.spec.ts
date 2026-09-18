@@ -250,14 +250,61 @@ test('reduced-transparency shell uses solid surfaces without blur', async ({
   }
 });
 
-test('persona-led creation keeps the selected designer across pages', async ({ page }) => {
-  await page.setViewportSize({ width: 1024, height: 720 });
+test('persona-led creation keeps the selected designer across pages', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
   const navigation = page.getByRole('navigation', { name: '主导航' });
   await navigation.getByRole('button', { name: '设计师', exact: true }).click();
   await expect(page.getByRole('heading', { name: '设计师', exact: true })).toBeAttached();
   await page.getByRole('button', { name: /清晰商业/ }).click();
-  await expect(page.getByLabel('设计师检查器')).toContainText('清晰商业');
+  const inspector = page.getByRole('dialog', { name: '设计师检查器' });
+  const dossier = inspector.getByRole('region', { name: '清晰商业设计师档案' });
+  await expect(dossier).toContainText('清晰商业');
+  await expect(dossier.getByRole('region', { name: '核心指标' })).toBeVisible();
+  await expect(dossier.getByRole('region', { name: 'Style DNA' })).toBeAttached();
+  await expect(dossier.getByRole('region', { name: '否定规则' })).toBeAttached();
+  await expect(inspector.getByRole('region', { name: '精选作品' })).toContainText('春生特刊');
+  await expect(inspector.getByText('项目引用')).toHaveCount(0);
+  const assertInspectorLayout = async () => {
+    const drawerBox = await inspector.boundingBox();
+    const hostBox = await page.locator('[data-drawer-host]').boundingBox();
+    const footerBox = await inspector.locator('.ui-drawer__footer').boundingBox();
+    expect(drawerBox).not.toBeNull();
+    expect(hostBox).not.toBeNull();
+    expect(footerBox).not.toBeNull();
+    expect(Math.abs(drawerBox!.width - Math.min(520, page.viewportSize()!.width * 0.92, hostBox!.width))).toBeLessThanOrEqual(1);
+    await expect.poll(async () => {
+      const settledDrawer = await inspector.boundingBox();
+      const settledHost = await page.locator('[data-drawer-host]').boundingBox();
+      return settledDrawer!.x + settledDrawer!.width - (settledHost!.x + settledHost!.width);
+    }).toBeLessThanOrEqual(1);
+    const settledDrawer = await inspector.boundingBox();
+    expect(settledDrawer!.x).toBeGreaterThanOrEqual(hostBox!.x);
+    expect(Math.abs(footerBox!.y + footerBox!.height - (drawerBox!.y + drawerBox!.height))).toBeLessThanOrEqual(1);
+    const overflow = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('body *')]
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return { className: element.className, left: rect.left, right: rect.right, width: rect.width, display: style.display, visibility: style.visibility };
+      })
+      .filter((entry) => entry.right > window.innerWidth + 1
+        && entry.left < window.innerWidth
+        && entry.width > 0
+        && entry.display !== 'none'
+        && entry.visibility !== 'hidden'));
+    expect(overflow).toEqual([]);
+  };
+  await assertInspectorLayout();
+  await page.screenshot({ path: testInfo.outputPath('designer-inspector.png'), fullPage: true });
+  await inspector.locator('.ui-drawer__content').evaluate((content) => { content.scrollTop = content.scrollHeight; });
+  await expect(inspector.getByRole('region', { name: '精选作品' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('designer-inspector-bottom.png'), fullPage: true });
+  await inspector.locator('.ui-drawer__content').evaluate((content) => { content.scrollTop = 0; });
+
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await assertInspectorLayout();
+  await expect(inspector.getByRole('button', { name: '用于新建', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('designer-inspector-narrow.png'), fullPage: true });
   expect(
     await page.evaluate(
       () =>
