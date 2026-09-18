@@ -171,6 +171,7 @@ it('opens a project document and returns to that project', () => {
   fireEvent.click(screen.getByRole('button', { name: /春间市集/ }));
   fireEvent.click(screen.getByRole('button', { name: '打开主海报' }));
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
+  expect(document.querySelector('.studio')).toHaveClass('studio--compact');
   fireEvent.click(screen.getByRole('button', { name: '返回项目' }));
   expect(screen.getByRole('heading', { name: '春间市集' })).toBeInTheDocument();
 });

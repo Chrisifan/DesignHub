@@ -533,10 +533,11 @@ export const Studio = ({
     setSelected(project);
     setActiveDocumentId(documentId ?? project.documentEntries?.[0]?.id ?? project.documentId ?? null);
     setDocumentOpen(true);
+    setCollapsed(true);
     setSurface('projects');
     setView('projects');
   };
-  const submitProjectConversation = async (project: Project, message: string): Promise<void> => {
+  const submitProjectConversation = async (project: Project, message: string, attachments: import('../../features/agent/task-service').ConversationImageAttachment[] = []): Promise<void> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return;
@@ -548,6 +549,7 @@ export const Studio = ({
         ...(project.documentId ? { documentId: project.documentId } : {}),
         connectionId: 'openai-compatible',
         message,
+        ...(attachments.length ? { attachments } : {}),
       });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
@@ -1062,7 +1064,7 @@ export const Studio = ({
                 onExport={() => openDelivery({ ...project, documentId: project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId })}
                 onConnections={() => navigate('connections')}
                 onTasks={() => navigate('tasks')}
-                onSubmitConversation={(message) => submitProjectConversation(project, message)}
+                onSubmitConversation={(message, attachments) => submitProjectConversation(project, message, attachments)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
                 assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}

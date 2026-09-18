@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
 import type { Project } from './types';
 import { Drawer } from './Drawer';
+import { PersonaArtwork } from './PersonaArtwork';
 import { CanvasWorkspace, type CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import type { Region } from '../../features/canvas/selection';
 import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
@@ -10,6 +11,7 @@ import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
 import { defaultToolParams, validateToolParams, type ImageTool, type ToolParams } from '../../features/image-tools/target';
 import { ToolInspector } from '../../features/image-tools/ToolInspector';
+import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
 import type { TaskCandidate, TaskRecord } from '../../features/tasks/state';
 import { CompareRevisions } from '../../features/revisions/CompareRevisions';
@@ -66,7 +68,7 @@ export type WorkbenchProps = {
   onExport: () => void;
   onConnections: () => void;
   onTasks?: () => void;
-  onSubmitConversation?: (message: string) => void | Promise<void>;
+  onSubmitConversation?: (message: string, attachments: ConversationImageAttachment[]) => void | Promise<void>;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
@@ -124,7 +126,6 @@ export const Workbench = ({
   onSubmitImageTask,
   onSubmitImageGeneration,
   operatorName = '',
-  modelConnected = false,
   readOnly = false,
   notify,
   assetAction,
@@ -154,12 +155,16 @@ export const Workbench = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
   const [prompt, setPrompt] = useState('');
+  const [conversationAttachments, setConversationAttachments] = useState<Array<ConversationImageAttachment & { previewUrl: string }>>([]);
+  const [previewAttachment, setPreviewAttachment] = useState<(ConversationImageAttachment & { previewUrl: string }) | null>(null);
   const [toolRegion, setToolRegion] = useState<Region | undefined>();
   const [activeTool, setActiveTool] = useState<ImageTool | null>(null);
   const [toolParams, setToolParams] = useState<ToolParams>({});
   const [canvasInspectorRequestId, setCanvasInspectorRequestId] = useState(0);
   const [canvasSelectionRequest, setCanvasSelectionRequest] = useState<{ id: number; type: LayerId }>();
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const conversationAttachmentsRef = useRef<Array<ConversationImageAttachment & { previewUrl: string }>>([]);
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
@@ -356,10 +361,16 @@ export const Workbench = ({
   const detailedPanelOpen = panelOpen && (panel === 'history' || panel === 'tools');
   const hasWorkspaceDocument = Boolean(workspaceId && documentId);
   const propertiesOpen = !hasWorkspaceDocument && panelOpen && panel === 'properties';
-  const designerSnapshot = project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
+  const designerSnapshot = project.designerSnapshot as { id?: string; name?: { zh?: string; en?: string }; artworkUrl?: string; artworkAlt?: { zh?: string; en?: string } } | undefined;
   const conversationDesigner = designerSnapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en']
     ?? project.designers[0]
     ?? t(locale, '未设置设计师', 'No designer selected');
+  const conversationDesignerProfile = {
+    id: designerSnapshot?.id ?? project.activeDesignerVersionId ?? conversationDesigner,
+    name: { zh: conversationDesigner, en: conversationDesigner },
+    artworkUrl: designerSnapshot?.artworkUrl ?? '',
+    artworkAlt: designerSnapshot?.artworkAlt ?? { zh: conversationDesigner, en: conversationDesigner },
+  } as import('./personas').PersonaProfile;
   const canvasStyle = {
     '--workbench-zoom': zoom / 100,
     '--workbench-rotation': `${rotation}deg`,
@@ -411,6 +422,61 @@ export const Workbench = ({
     event.preventDefault();
     submitPromptRequest();
   };
+  const clearConversationAttachments = (): void => {
+    conversationAttachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
+    setConversationAttachments([]);
+  };
+  conversationAttachmentsRef.current = conversationAttachments;
+  useEffect(() => () => {
+    conversationAttachmentsRef.current.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
+  }, []);
+  const addConversationFiles = (files: readonly File[]): void => {
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
+    if (imageFiles.length !== files.length) notify(t(locale, '只能添加图片文件。', 'Only image files can be attached.'));
+    const remaining = Math.max(0, 8 - conversationAttachments.length);
+    imageFiles.slice(0, remaining).forEach((file) => {
+      if (file.size > 8 * 1024 * 1024) {
+        notify(t(locale, '图片不能超过 8 MiB。', 'Images must be 8 MiB or smaller.'));
+        return;
+      }
+      const bytes = typeof file.arrayBuffer === 'function'
+        ? file.arrayBuffer()
+        : new Promise<ArrayBuffer>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => reader.result instanceof ArrayBuffer ? resolve(reader.result) : reject(new Error('IMAGE_READ_FAILED'));
+            reader.onerror = () => reject(new Error('IMAGE_READ_FAILED'));
+            reader.readAsArrayBuffer(file);
+          });
+      void bytes.then((buffer) => {
+        const attachment = {
+          name: file.name || `image-${Date.now()}.png`,
+          mimeType: file.type || 'image/png',
+          bytes: new Uint8Array(buffer),
+          previewUrl: URL.createObjectURL(file),
+        };
+        setConversationAttachments((current) => [...current, attachment]);
+      }).catch(() => notify(t(locale, '无法读取图片。', 'The image could not be read.')));
+    });
+  };
+  const onAttachmentInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    addConversationFiles(Array.from(event.target.files ?? []));
+    event.currentTarget.value = '';
+  };
+  const onPromptPaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
+    const files = Array.from(event.clipboardData.files);
+    if (files.length > 0) {
+      event.preventDefault();
+      addConversationFiles(files);
+    }
+  };
+  const removeConversationAttachment = (previewUrl: string): void => {
+    setConversationAttachments((current) => {
+      const removed = current.find((attachment) => attachment.previewUrl === previewUrl);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((attachment) => attachment.previewUrl !== previewUrl);
+    });
+    if (previewAttachment?.previewUrl === previewUrl) setPreviewAttachment(null);
+  };
   const submitPromptRequest = (): void => {
     if (readOnly) return;
     if (!prompt.trim()) {
@@ -418,8 +484,13 @@ export const Workbench = ({
       return;
     }
     if (onSubmitConversation) {
-      onSubmitConversation(prompt.trim());
+      onSubmitConversation(prompt.trim(), conversationAttachments.map((attachment) => ({
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        bytes: attachment.bytes,
+      })));
       setPrompt('');
+      clearConversationAttachments();
       return;
     }
     onConnections();
@@ -845,23 +916,46 @@ export const Workbench = ({
               className="workbench-command-dock__connection"
               onClick={onConnections}
               disabled={readOnly}
-              title={t(locale, '当前对话设计师与模型连接', 'Conversation designer and model connection')}
+              title={t(locale, '对话设计师', 'Conversation designer')}
             >
-              <span className="workbench-model-dot" data-connected={modelConnected || undefined} aria-hidden="true" />
+              <PersonaArtwork
+                locale={locale}
+                personaId={conversationDesignerProfile.id}
+                profile={conversationDesignerProfile}
+                crop="avatar"
+              />
               <span className="workbench-command-dock__designer">
                 <strong>{conversationDesigner}</strong>
-                <small>{t(locale, '当前对话设计师', 'Conversation designer')}</small>
               </span>
             </button>
-            <textarea
-              ref={promptRef}
-              rows={1}
-              value={prompt}
-              disabled={readOnly}
-              aria-label={t(locale, '修改说明', 'Edit request')}
-              placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
-              onChange={(event) => setPrompt(event.target.value)}
-            />
+            <div className="workbench-command-dock__input-wrap">
+              {conversationAttachments.length > 0 && (
+                <div className="workbench-command-dock__attachments" aria-label={t(locale, '已添加图片', 'Attached images')}>
+                  {conversationAttachments.map((attachment) => (
+                    <div className="workbench-command-dock__attachment" key={attachment.previewUrl}>
+                      <button type="button" className="workbench-command-dock__attachment-preview" aria-label={t(locale, `预览 ${attachment.name}`, `Preview ${attachment.name}`)} onClick={() => setPreviewAttachment(attachment)}>
+                        <img src={attachment.previewUrl} alt="" />
+                      </button>
+                      <IconButton name="x" label={t(locale, `删除 ${attachment.name}`, `Remove ${attachment.name}`)} onClick={() => removeConversationAttachment(attachment.previewUrl)} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="workbench-command-dock__input-row">
+                <textarea
+                  ref={promptRef}
+                  rows={1}
+                  value={prompt}
+                  disabled={readOnly}
+                  aria-label={t(locale, '修改说明', 'Edit request')}
+                  placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  onPaste={onPromptPaste}
+                />
+                <input ref={attachmentInputRef} type="file" accept="image/*" multiple hidden onChange={onAttachmentInputChange} />
+                <IconButton name="file-image" label={t(locale, '添加图片', 'Add image')} disabled={readOnly} onClick={() => attachmentInputRef.current?.click()} />
+              </div>
+            </div>
             <Button variant="ai" icon="arrow-up-right" onClick={submitPromptRequest} disabled={readOnly}>{t(locale, '发送', 'Send')}</Button>
             <Button variant="ai" icon="sparkles" onClick={submitGeneration} disabled={readOnly}>{t(locale, '生成', 'Generate')}</Button>
             <IconButton
@@ -875,6 +969,11 @@ export const Workbench = ({
               onClick={() => showPanel('history')}
             />
           </form>
+          {previewAttachment && (
+            <Modal locale={locale} title={previewAttachment.name} onClose={() => setPreviewAttachment(null)} wide>
+              <img className="workbench-command-dock__attachment-full" src={previewAttachment.previewUrl} alt={previewAttachment.name} />
+            </Modal>
+          )}
         </section>
 
       </div>

@@ -10,7 +10,7 @@ import type { TaskRecord } from '../features/tasks/state';
 import type { TaskSource } from '../features/tasks/state';
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
 import type { BrandLibraryState } from '../features/brands/constraints';
-import type { ConversationTestResult, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestResult } from '../features/agent/task-service';
+import type { ConversationImageAttachment, ConversationTestResult, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestResult } from '../features/agent/task-service';
 import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
@@ -56,6 +56,7 @@ export type ConversationTaskInput = {
   baseRevisionId?: string | null;
   connectionId: string;
   message: string;
+  attachments?: ConversationImageAttachment[];
 };
 
 export type ExportDocumentInput = {

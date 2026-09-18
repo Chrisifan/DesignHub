@@ -14,6 +14,13 @@ export type ConversationInput = {
   baseRevisionId?: string | null;
   connectionId: string;
   message: string;
+  attachments?: ConversationImageAttachment[];
+};
+
+export type ConversationImageAttachment = {
+  name: string;
+  mimeType: string;
+  bytes: Uint8Array;
 };
 
 export type ImageGenerationInput = {
@@ -168,7 +175,16 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const execution = (async (): Promise<void> => {
       try {
         const adapter = await options.resolveAdapter(input.connectionId);
-        const response = await adapter.chat({ messages: [{ role: 'user', content: input.message }] }, controller.signal);
+        const content = input.attachments?.length
+          ? [
+              { type: 'text' as const, text: input.message },
+              ...input.attachments.map((attachment) => ({
+                type: 'image_url' as const,
+                image_url: { url: `data:${attachment.mimeType};base64,${Buffer.from(attachment.bytes).toString('base64')}` },
+              })),
+            ]
+          : input.message;
+        const response = await adapter.chat({ messages: [{ role: 'user', content }] }, controller.signal);
         await options.runtime.complete(task.id, { text: response.text, cost: response.cost });
       } catch (error) {
         if (controller.signal.aborted) {

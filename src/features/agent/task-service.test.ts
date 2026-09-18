@@ -34,6 +34,25 @@ it('runs a conversation task and stores the assistant result', async () => {
   expect(runtime.get(task.id)).toMatchObject({ state: 'completed', result: { text: '好的，已整理简报' } });
 });
 
+it('sends conversation image attachments as multimodal chat content', async () => {
+  const runtime = createTaskRuntime();
+  const chat = vi.fn(async () => ({ text: '已参考图片', cost: null }));
+  const service = createAgentTaskService({ runtime, resolveAdapter: async () => ({ chat }) });
+
+  await service.submitConversation({
+    projectId: 'project-1',
+    connectionId: 'provider-1',
+    message: '按参考图调整',
+    attachments: [{ name: 'reference.png', mimeType: 'image/png', bytes: new Uint8Array([137, 80, 78, 71]) }],
+  });
+  await service.flush();
+
+  expect(chat).toHaveBeenCalledWith({ messages: [{ role: 'user', content: [
+    { type: 'text', text: '按参考图调整' },
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw==' } },
+  ] }] }, expect.any(AbortSignal));
+});
+
 it('tests image generation through the resolved adapter without creating a task', async () => {
   const runtime = createTaskRuntime();
   const generateImage = vi.fn(async (request: { prompt: string; model?: string; size?: string; count?: number }) => ({

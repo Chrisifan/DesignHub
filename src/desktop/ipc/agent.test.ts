@@ -23,6 +23,18 @@ it('accepts a conversation only from the active trusted workspace', async () => 
   await expect(submit(fixture.event, { workspaceId: 'workspace-2', projectId: 'project-1', connectionId: 'provider-1', message: 'hello' })).resolves.toBeNull();
 });
 
+it('accepts bounded image attachments on a conversation', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1' } };
+  const attachments = [{ name: 'reference.png', mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3]) }];
+  const submit = createConversationHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
+    expect(input.attachments).toEqual(attachments);
+    return task;
+  });
+  await expect(submit(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', message: 'hello', attachments })).resolves.toEqual(task);
+  await expect(submit(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', message: 'hello', attachments: [{ ...attachments[0], mimeType: 'text/plain' }] })).resolves.toBeNull();
+});
+
 it('accepts conversation connection tests only from the active trusted workspace', async () => {
   const fixture = makeFixture('http://localhost:5173/?preview=1');
   const workspace = { workspace: { workspaceId: 'workspace-1' } };

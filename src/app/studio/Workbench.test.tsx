@@ -51,14 +51,16 @@ it('lays out the workbench around one canvas surface', () => {
 
 it('shows the conversation designer and keeps prompt actions adjacent', () => {
   render(<Workbench {...makeProps({
-    project: { ...project, designerSnapshot: { name: { zh: '顾言', en: 'Gu Yan' } } },
+    project: { ...project, activeDesignerVersionId: 'gu-yan', designerSnapshot: { id: 'gu-yan', name: { zh: '顾言', en: 'Gu Yan' }, artworkUrl: '/gu-yan.png', artworkAlt: { zh: '顾言', en: 'Gu Yan' } } },
   })} />);
   const dock = screen.getByRole('form', { name: 'AI 操作坞' });
   expect(within(dock).getByText('顾言')).toBeInTheDocument();
+  expect(within(dock).getByRole('img', { name: '顾言的人物形象' })).toBeInTheDocument();
+  expect(within(dock).queryByText('当前对话设计师')).not.toBeInTheDocument();
   expect(within(dock).queryByText('模型已连接')).not.toBeInTheDocument();
   const controls = Array.from(dock.querySelectorAll('textarea, button')).map((element) => element.getAttribute('aria-label') ?? element.textContent?.trim());
-  expect(controls.indexOf('发送')).toBe(2);
-  expect(controls.indexOf('生成')).toBe(3);
+  expect(controls.indexOf('发送')).toBe(3);
+  expect(controls.indexOf('生成')).toBe(4);
   expect(within(dock).getByRole('button', { name: '模型任务' })).toHaveAttribute('data-tooltip', '模型任务');
 });
 
@@ -282,8 +284,41 @@ it('submits a conversation through the active project service when provided', ()
   const prompt = within(panel).getByRole('textbox', { name: '修改说明' });
   fireEvent.change(prompt, { target: { value: '调整标题间距' } });
   fireEvent.click(within(panel).getByRole('button', { name: '发送' }));
-  expect(onSubmitConversation).toHaveBeenCalledWith('调整标题间距');
+  expect(onSubmitConversation).toHaveBeenCalledWith('调整标题间距', []);
   expect(prompt).toHaveValue('');
+});
+
+it('adds pasted images above the prompt and supports preview and removal', async () => {
+  const previewUrl = 'blob:conversation-preview';
+  const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue(previewUrl);
+  const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+  const image = new File([new Uint8Array([137, 80, 78, 71])], 'reference.png', { type: 'image/png' });
+  const onSubmitConversation = vi.fn();
+  render(<Workbench {...makeProps({ onSubmitConversation })} />);
+  const prompt = screen.getByRole('textbox', { name: '修改说明' });
+
+  fireEvent.paste(prompt, { clipboardData: { files: [image] } });
+  const attachment = await screen.findByRole('button', { name: '预览 reference.png' });
+  expect(attachment.closest('.workbench-command-dock__attachments')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '添加图片' })).toHaveAttribute('data-tooltip', '添加图片');
+  fireEvent.click(attachment);
+  expect(screen.getByRole('dialog', { name: 'reference.png' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+
+  fireEvent.change(prompt, { target: { value: '参考这张图调整版式' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  await waitFor(() => expect(onSubmitConversation).toHaveBeenCalledWith('参考这张图调整版式', [expect.objectContaining({
+    name: 'reference.png',
+    mimeType: 'image/png',
+    bytes: new Uint8Array([137, 80, 78, 71]),
+  })]));
+
+  fireEvent.paste(prompt, { clipboardData: { files: [image] } });
+  await screen.findByRole('button', { name: '删除 reference.png' });
+  fireEvent.click(screen.getByRole('button', { name: '删除 reference.png' }));
+  expect(screen.queryByRole('button', { name: '预览 reference.png' })).not.toBeInTheDocument();
+  expect(createObjectURL).toHaveBeenCalledWith(image);
+  expect(revokeObjectURL).toHaveBeenCalledWith(previewUrl);
 });
 
 it('submits a generation request through the active project service', async () => {
@@ -300,7 +335,8 @@ it('shows a connected model state when the host confirms a credential', () => {
   render(<Workbench {...makeProps({ modelConnected: true })} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
   expect(screen.getByText('林夏')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '林夏当前对话设计师' }).querySelector('[data-connected="true"]')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /林夏/ })).toBeInTheDocument();
+  expect(screen.queryByText('当前对话设计师')).not.toBeInTheDocument();
 });
 
 it('updates preview zoom and grid without changing the document', () => {

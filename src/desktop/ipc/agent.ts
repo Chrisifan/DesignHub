@@ -1,7 +1,7 @@
 import type { TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import type { AgentTaskService, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
+import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
@@ -28,6 +28,7 @@ export type ConversationInput = {
   baseRevisionId?: string | null;
   connectionId: string;
   message: string;
+  attachments?: ConversationImageAttachment[];
 };
 export type ConversationBridgeInput = ConversationInput & { workspaceId: string };
 export type ConversationTestBridgeInput = ConversationTestInput & { workspaceId: string };
@@ -44,6 +45,14 @@ const isTaskSource = (value: unknown): value is TaskSource => value !== null
     || (value as Record<string, unknown>).kind === 'creation-draft'
     || (value as Record<string, unknown>).kind === 'designer-draft')
   && isNonEmpty((value as Record<string, unknown>).id);
+const isConversationAttachment = (value: unknown): value is ConversationImageAttachment => {
+  if (!value || typeof value !== 'object') return false;
+  const attachment = value as Record<string, unknown>;
+  const bytes = attachment.bytes;
+  return isNonEmpty(attachment.name) && attachment.name.length <= 255
+    && typeof attachment.mimeType === 'string' && /^image\/[a-z0-9.+-]+$/iu.test(attachment.mimeType)
+    && bytes instanceof Uint8Array && bytes.byteLength > 0 && bytes.byteLength <= 8 * 1024 * 1024;
+};
 const isConversationInput = (value: unknown): value is ConversationBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
@@ -53,7 +62,8 @@ const isConversationInput = (value: unknown): value is ConversationBridgeInput =
   return isNonEmpty(input.workspaceId) && hasBinding && sourceValid && projectValid && isNonEmpty(input.connectionId) && isNonEmpty(input.message)
     && (input.documentId === undefined || isNonEmpty(input.documentId))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
-    && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId));
+    && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
+    && (input.attachments === undefined || (Array.isArray(input.attachments) && input.attachments.length <= 8 && input.attachments.every(isConversationAttachment)));
 };
 const isConversationTestInput = (value: unknown): value is ConversationTestBridgeInput => {
   if (!value || typeof value !== 'object') return false;
