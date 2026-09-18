@@ -1,5 +1,6 @@
 import { expect, test } from 'playwright/test';
 
+import type { TaskRecord } from '../../src/features/tasks/state';
 import { gotoTestWorkspace } from './test-workspace';
 
 const longFilename = 'portfolio-reference-2026-final-approved-editorial-grid-material-lighting-typography-composition-texture-art-direction-presentation-cover-detail-archive-version-18.png';
@@ -45,7 +46,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
           previewUrl: '',
         }],
       });
-      const completedAnalysis = { id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'completed', cancelRequested: false, attempt: 1, result: { text: JSON.stringify({ candidates: [candidate] }) } };
+      const completedAnalysis: TaskRecord = { id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'completed', cancelRequested: false, attempt: 1, result: { text: JSON.stringify({ candidates: [candidate] }) } };
       const testHost = window as typeof window & {
         artworkRequests: number;
         portfolioAnalysisRequests: number;
