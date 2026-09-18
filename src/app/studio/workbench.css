@@ -1021,17 +1021,19 @@
   position: absolute;
   z-index: 8;
   width: min(620px, calc(100% - 40px));
-  bottom: 18px;
+  bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
   min-width: 0;
   display: grid;
   gap: 0;
   padding: 12px 14px 9px;
-  border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--border-subtle));
+  border: 1px solid color-mix(in srgb, var(--primary) 38%, var(--border-subtle));
   border-radius: 22px;
-  background: var(--surface-container-low);
-  box-shadow: var(--shadow-overlay);
+  background: color-mix(in srgb, var(--surface-container-low) 74%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--shadow-color, #000) 28%, transparent);
 }
 
 .workbench-command-dock__connection {
@@ -1260,5 +1262,13 @@
   .workbench-command-dock__attachment {
     flex-basis: 124px;
     width: 124px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .workbench-command-dock {
+    background: var(--surface-container-low);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }

@@ -266,6 +266,12 @@ for (const [theme, expectedTint] of [
     await page.getByRole('button', { name: /春间市集|Spring in bloom/ }).click();
     await page.getByRole('button', { name: '打开主海报', exact: true }).click();
     await expect(page.locator('.studio-sidebar')).toHaveCSS('width', '64px');
+    const dockStyle = await page.locator('.workbench-command-dock').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { bottom: style.bottom, backdropFilter: style.backdropFilter };
+    });
+    expect(dockStyle.bottom).toBe('8px');
+    expect(dockStyle.backdropFilter === 'none' || dockStyle.backdropFilter.includes('blur(')).toBe(true);
   });
 }
 
