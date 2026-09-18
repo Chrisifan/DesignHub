@@ -141,35 +141,29 @@ it('fills library regions and keeps sibling content aligned', () => {
   );
 });
 
-it('fills the model connection columns while keeping the right panel scrollable', () => {
+it('fills the model connection status and keeps the capability matrix below it', () => {
   const libraryStyles = readStyle('../../src/app/studio/library.css');
 
   expect(libraryStyles).toMatch(
     /\.connection-layout\s*\{[\s\S]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\);/,
   );
   expect(libraryStyles).toMatch(
+    /\.connection-layout--status-first\s*\{[\s\S]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto;/,
+  );
+  expect(libraryStyles).toMatch(
     /\.library-page\s*>\s*\.connection-layout\s*\{[\s\S]*min-height:\s*0;[\s\S]*overflow:\s*hidden;/,
   );
   expect(libraryStyles).toMatch(
-    /\.connection-layout\s*>\s*\.empty-state\s*\{[\s\S]*grid-column:\s*1;[\s\S]*grid-row:\s*1;[\s\S]*align-self:\s*stretch;/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.connection-layout\s*>\s*\.provider-settings\s*\{[\s\S]*grid-column:\s*2;[\s\S]*grid-row:\s*1\s*\/\s*span\s*2;/,
+    /\.connection-layout\s*>\s*\.page-empty-state\s*\{[\s\S]*grid-column:\s*1;[\s\S]*grid-row:\s*1;[\s\S]*align-self:\s*stretch;[\s\S]*border-bottom:\s*1px\s+solid\s+var\(--border-subtle\);/,
   );
   expect(libraryStyles).toMatch(
     /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*grid-column:\s*1;[\s\S]*grid-row:\s*2;/,
   );
   expect(libraryStyles).toMatch(
-    /\.connection-layout\s*>\s*\.provider-settings\s*\{[\s\S]*overflow-y:\s*auto;/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*border-right:\s*1px\s+solid\s+var\(--border-subtle\);/,
+    /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*padding:\s*24px\s+40px\s+28px;[\s\S]*border-right:\s*0;/,
   );
   expect(libraryStyles).toMatch(
     /\.matrix-heading,\s*\.matrix-row\s*\{[\s\S]*margin-inline:\s*0;/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.connection-layout\s*>\s*\.capability-matrix\s*\{[\s\S]*padding:\s*28px\s+40px;/,
   );
 });
 
