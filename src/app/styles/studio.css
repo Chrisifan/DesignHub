@@ -848,6 +848,30 @@ button:disabled {
 .ui-drawer__footer > :where(.dialog-actions, .asset-detail-actions, .persona-inspector__actions, .provider-profile-actions-row, .workbench-compose__actions, .export-bar) {
   width: 100%;
 }
+.ui-tooltip-trigger {
+  outline: none;
+}
+.ui-tooltip-trigger:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.ui-tooltip {
+  position: fixed;
+  z-index: 1000;
+  display: block;
+  max-inline-size: min(320px, calc(100vw - 16px));
+  padding: 7px 9px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  color: var(--on-surface);
+  background: var(--surface-container-highest);
+  box-shadow: var(--shadow-overlay);
+  font-size: 11px;
+  line-height: 17px;
+  white-space: pre-line;
+  pointer-events: none;
+}
 .dialog-heading {
   display: flex;
   align-items: center;
