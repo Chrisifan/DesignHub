@@ -388,8 +388,11 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
     ),
   ).toBe(true);
   await page.getByRole('button', { name: '用于新建', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '新建设计', exact: true })).toBeAttached();
-  await expect(page.getByLabel('新建设计的当前设计师')).toContainText('清晰商业');
+  const projectDrawer = page.getByRole('dialog', { name: '新建项目' });
+  await expect(projectDrawer).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '设计师检查器' })).toHaveCount(0);
+  await expect(projectDrawer.getByRole('button', { name: '清晰商业' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(projectDrawer.getByLabel('新建设计的当前设计师')).toHaveCount(0);
   expect(
     await page.evaluate(
       () =>
@@ -508,37 +511,91 @@ test('designer dossier cards keep a stable responsive grid', async ({ page }, te
   await page.screenshot({ path: testInfo.outputPath('designer-dossier-grid-narrow.png'), fullPage: true });
 });
 
-test('new project uses the review designer dossier without a top divider', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+test('project cards align cover title and designer rows without a brief or designer', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
+
   await page.getByRole('button', { name: '新建项目', exact: true }).first().click();
+  const drawer = page.getByRole('dialog', { name: '新建项目' });
+  await drawer.getByRole('textbox', { name: '项目名称' }).fill('空简介项目');
+  await drawer.getByRole('button', { name: '创建项目', exact: true }).click();
+  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '项目库', exact: true }).click();
 
-  const layout = page.locator('.new-design-layout');
-  const dossier = page.getByLabel('新建设计的当前设计师');
-  await expect(layout).toHaveCSS('border-top-width', '0px');
-  await expect(dossier.locator('.designer-profile-card--review')).toBeVisible();
-  await expect(dossier.getByRole('region', { name: '核心指标' })).toBeVisible();
-  await expect(dossier.getByRole('region', { name: 'Style DNA' })).toBeVisible();
-  await expect(dossier.getByRole('region', { name: '否定规则' })).toBeVisible();
-  await expect(dossier).toHaveCSS('overflow-y', 'auto');
-  expect(await dossier.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
-  const pageContent = page.locator('.new-design-page');
-  const pageScrollTop = await pageContent.evaluate((element) => element.scrollTop);
-  await dossier.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-  expect(await dossier.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  expect(await pageContent.evaluate((element) => element.scrollTop)).toBe(pageScrollTop);
-  await dossier.evaluate((element) => { element.scrollTop = 0; });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('new-project-designer-dossier.png'), fullPage: true });
+  const metrics = await page.locator('.project-card').evaluateAll((cards) => cards.map((card) => {
+    const readRect = (selector: string) => {
+      const bounds = card.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
+      return { top: bounds.top, height: bounds.height };
+    };
+    return {
+      cover: readRect('.project-cover'),
+      title: readRect('.project-title-line'),
+      metadata: readRect('.project-meta'),
+    };
+  }));
 
-  await page.setViewportSize({ width: 1024, height: 720 });
-  await dossier.scrollIntoViewIfNeeded();
-  expect(await layout.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('new-project-designer-dossier-narrow.png'), fullPage: true });
+  expect(metrics).toHaveLength(2);
+  expect(new Set(metrics.map(({ cover }) => cover.top)).size).toBe(1);
+  expect(new Set(metrics.map(({ title }) => title.top)).size).toBe(1);
+  expect(new Set(metrics.map(({ metadata }) => metadata.top)).size).toBe(1);
+  expect(metrics.every(({ metadata }) => metadata.height === 24)).toBe(true);
 });
 
-test('native dialog restores focus and retains a cancelled draft', async ({
+test('project detail uses the cover-led responsive console layout', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await gotoTestWorkspace(page);
+  await page.getByRole('button', { name: '春间市集', exact: true }).click();
+
+  const detail = page.getByTestId('project-detail-page');
+  const layout = page.getByTestId('project-detail-layout');
+  await expect(detail).toBeVisible();
+  await expect(page.getByTestId('project-detail-hero')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '春间市集', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '设计文档', exact: true })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: '项目信息', exact: true })).toBeVisible();
+  expect(await layout.evaluate((element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length)).toBe(2);
+  expect(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('project-detail-wide.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  expect(await layout.evaluate((element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length)).toBe(1);
+  expect(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('project-detail-narrow.png'), fullPage: true });
+
+  await page.getByRole('button', { name: '打开画布', exact: true }).first().click();
+  await expect(page.getByRole('region', { name: '设计画布', exact: true })).toBeVisible();
+});
+
+test('new project uses a focused drawer without the duplicate callout or designer dossier', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await gotoTestWorkspace(page);
+  await expect(page.getByText('下一次创作，从这里开始')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '开始创作' })).toHaveCount(0);
+  await page.getByRole('button', { name: '新建项目', exact: true }).first().click();
+
+  const drawer = page.getByRole('dialog', { name: '新建项目' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole('textbox', { name: '项目名称' })).toBeFocused();
+  await expect(drawer.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', '/project-default-cover.png');
+  await expect(drawer.getByRole('textbox', { name: '设计目标' })).toBeVisible();
+  await expect(drawer.getByRole('group', { name: '选择设计师' })).toBeVisible();
+  await expect(drawer.getByRole('combobox', { name: '文档尺寸' })).toBeVisible();
+  await expect(drawer.getByLabel('新建设计的当前设计师')).toHaveCount(0);
+  await expect(drawer.locator('.designer-profile-card--review')).toHaveCount(0);
+  await expect(drawer.getByRole('button', { name: '取消' }).locator('xpath=../..')).toHaveClass(/ui-drawer__footer/);
+  await expect(drawer.getByRole('button', { name: '创建项目' }).locator('xpath=../..')).toHaveClass(/ui-drawer__footer/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('new-project-drawer.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await drawer.scrollIntoViewIfNeeded();
+  expect(await drawer.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('new-project-drawer-narrow.png'), fullPage: true });
+});
+
+test('new-project drawer restores focus and retains a cancelled draft', async ({
   page,
 }) => {
   await gotoTestWorkspace(page);
@@ -547,6 +604,13 @@ test('native dialog restores focus and retains a cancelled draft', async ({
     .first();
   await trigger.click();
   await expect(page.getByRole('textbox', { name: '项目名称' })).toBeFocused();
+  const drawer = page.getByRole('dialog', { name: '新建项目' });
+  await drawer.getByLabel('选择项目封面').setInputFiles({
+    name: 'project-cover.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xw2X7wAAAABJRU5ErkJggg==', 'base64'),
+  });
+  await expect(drawer.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', /^blob:/u);
   await page
     .getByRole('textbox', { name: '项目名称' })
     .fill('秋日漫游 / An unexpectedly long campaign title');
@@ -557,13 +621,17 @@ test('native dialog restores focus and retains a cancelled draft', async ({
   await expect(page.getByRole('textbox', { name: '项目名称' })).toHaveValue(
     '秋日漫游 / An unexpectedly long campaign title',
   );
+  await expect(page.getByRole('dialog', { name: '新建项目' }).getByRole('img', { name: '项目封面', exact: true })).toHaveAttribute('src', /^blob:/u);
   await page.getByRole('button', { name: '创建项目', exact: true }).click();
   await expect(
     page.getByRole('heading', {
       name: '秋日漫游 / An unexpectedly long campaign title',
     }),
   ).toBeAttached();
-  await expect(page.getByText('进行中', { exact: true })).toBeVisible();
+  await expect(page.locator('.project-detail-summary__status')).toHaveText('进行中');
+  await page.getByRole('button', { name: '项目库', exact: true }).click();
+  const createdCard = page.getByRole('button', { name: '秋日漫游 / An unexpectedly long campaign title', exact: true });
+  await expect(createdCard.getByRole('img', { name: '秋日漫游 / An unexpectedly long campaign title项目封面' })).toHaveAttribute('src', /^blob:/u);
 });
 
 test('preferences survive reload and empty search can be cleared', async ({

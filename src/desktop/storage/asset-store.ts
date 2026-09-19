@@ -147,7 +147,9 @@ const writeManagedBytes = async (projectDirectory: string, bytes: Uint8Array, me
 const listAssetsForProject = async (handle: WorkspaceHandle, input: AssetStoreInput): Promise<ManagedAsset[]> => {
   const directory = resolveProjectDirectory(handle, input, false);
   const manifest = await readContentManifest(directory, input.projectId);
-  return manifest.assets.map((asset) => toManagedAsset(asset));
+  return manifest.assets
+    .filter((asset) => input.includeContextAssets === true || (asset.metadata as Record<string, unknown> | undefined)?.purpose !== 'conversation-reference')
+    .map((asset) => toManagedAsset(asset));
 };
 
 const importAssetsForProject = async (handle: WorkspaceHandle, input: AssetImportInput): Promise<AssetImportResult[]> => {

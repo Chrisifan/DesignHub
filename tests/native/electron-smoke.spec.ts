@@ -52,6 +52,7 @@ test('launches the welcome shell with only the DesignHub bridge', async () => {
       'saveProviderConfig',
       'listTasks',
       'submitConversation',
+      'submitDesignGeneration',
       'testConversation',
       'inspectPortfolioSources',
       'submitPortfolioSelection',

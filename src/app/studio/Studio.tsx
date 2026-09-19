@@ -2,10 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { getMessages, type Locale } from '../i18n';
 import { WindowBar } from '../shell/WindowBar';
 import { LibraryPages } from './LibraryPages';
-import { DesignerHero } from './DesignerHero';
-import { NewDesignPage } from './NewDesignPage';
+import { NewProjectForm } from './NewDesignPage';
+import { Drawer } from './Drawer';
 import { PageToolbarHost, PageToolbarProvider } from './PageToolbar';
 import { PersonaArtwork } from './PersonaArtwork';
+import { ProjectCoverImage } from './ProjectCoverImage';
+import { ProjectDetailPage } from './ProjectDetailPage';
 import { localize, type PersonaProfile } from './personas';
 import { legacySeededDesignerIds } from '../../features/designers/persistence';
 import { Workbench } from './Workbench';
@@ -14,8 +16,6 @@ import type { WorkspaceDescriptor } from '../../features/workspace/open-workspac
 import type { ActiveProject } from '../../features/workspace/project-store';
 import { getDesktopApi } from '../../platform/runtime';
 import {
-  ArtworkPreview,
-  Badge,
   Button,
   EmptyState,
   Field,
@@ -23,7 +23,6 @@ import {
   IconButton,
   Modal,
   PageHeader,
-  Select,
   t,
 } from './ui';
 import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
@@ -76,6 +75,7 @@ const toStudioProject = (entry: ActiveProject, workspaceId: string): Project => 
     contributorDesignerVersionIds: entry.contributorDesignerVersionIds,
     designerSnapshot: entry.designerSnapshot,
     brandSnapshot: entry.brandSnapshot,
+    coverAssetId: entry.coverAssetId,
     artwork: 'blank',
     documents: documentEntries?.length ?? 0,
     documentEntries,
@@ -129,7 +129,7 @@ export const Studio = ({
   const [dialog, setDialog] = useState<'workspace' | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [notice, setNotice] = useState('');
-  const newDesignReturnFocus = useRef<HTMLElement | null>(null);
+  const [newProjectDrawerOpen, setNewProjectDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<NewDesignDraft>({
     name: '',
     goal: '',
@@ -138,6 +138,7 @@ export const Studio = ({
     size: '1080 × 1440',
     mode: 'manual',
   });
+  const previewCoverUrls = useRef(new Set<string>());
   const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
   const [relatedDialog, setRelatedDialog] = useState(false);
   const [relatedName, setRelatedName] = useState('');
@@ -148,6 +149,10 @@ export const Studio = ({
   const [modelConnected, setModelConnected] = useState(false);
   const [operatorName, setOperatorName] = useState(readOperatorName);
   const [pendingAssetAction, setPendingAssetAction] = useState<(CanvasAssetAction & { projectId?: string }) | null>(null);
+  useEffect(() => () => {
+    previewCoverUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewCoverUrls.current.clear();
+  }, []);
   const updateOperatorName = (value: string): void => {
     const next = value.slice(0, 80);
     setOperatorName(next);
@@ -180,6 +185,7 @@ export const Studio = ({
     setSelected(null);
     setDocumentOpen(false);
     setActiveDocumentId(null);
+    setNewProjectDrawerOpen(false);
     setView('projects');
     setSurface('projects');
     return () => { cancelled = true; };
@@ -210,7 +216,7 @@ export const Studio = ({
         ...current,
         personaId: profiles.some((profile) => profile.id === current.personaId)
           ? current.personaId
-          : profiles[0]?.id ?? '',
+          : '',
       }));
     }).catch(() => undefined);
     return () => { cancelled = true; };
@@ -254,6 +260,7 @@ export const Studio = ({
         activeDesignerVersionId: metadata.activeDesignerVersionId,
         contributorDesignerVersionIds: metadata.contributorDesignerVersionIds,
         designerSnapshot: metadata.designerSnapshot,
+        coverAssetId: metadata.coverAssetId,
       } : project));
       setSelected((current) => current ? {
         ...current,
@@ -267,6 +274,7 @@ export const Studio = ({
         activeDesignerVersionId: metadata.activeDesignerVersionId,
         contributorDesignerVersionIds: metadata.contributorDesignerVersionIds,
         designerSnapshot: metadata.designerSnapshot,
+        coverAssetId: metadata.coverAssetId,
       } : current);
       notify(t(locale, patch.name ? '项目已重命名' : '项目已归档', patch.name ? 'Project renamed' : 'Project archived'));
     } catch {
@@ -429,6 +437,7 @@ export const Studio = ({
     }
     if (workspace?.openMode === 'writable') {
       const selectedDesigner = designerOptions.find((profile) => profile.id === draft.personaId);
+      const submittedCover = draft.cover;
       const created = await getDesktopApi().createProjectContainer?.({
         workspaceId: workspace.workspaceId,
         operationId: crypto.randomUUID(),
@@ -441,6 +450,33 @@ export const Studio = ({
         notify(t(locale, '无法保存项目，请检查工作区。', 'Could not save the project. Check the workspace.'));
         return;
       }
+      let coverAssetId: string | undefined;
+      let coverSaveFailed = false;
+      if (submittedCover) {
+        try {
+          const results = await getDesktopApi().importAssets?.({
+            workspaceId: workspace.workspaceId,
+            projectId: created.projectId,
+            items: [{
+              name: submittedCover.name,
+              mimeType: submittedCover.mimeType,
+              data: submittedCover.bytes,
+              metadata: { purpose: 'project-cover' },
+            }],
+          });
+          const imported = results?.find((result) => result.status === 'success');
+          if (!imported) throw new Error('PROJECT_COVER_IMPORT_FAILED');
+          const metadata = await getDesktopApi().updateProjectMetadata?.({
+            workspaceId: workspace.workspaceId,
+            projectId: created.projectId,
+            patch: { coverAssetId: imported.asset.id },
+          });
+          if (!metadata?.coverAssetId) throw new Error('PROJECT_COVER_UPDATE_FAILED');
+          coverAssetId = metadata.coverAssetId;
+        } catch {
+          coverSaveFailed = true;
+        }
+      }
       const project: Project = {
         id: created.projectId,
         workspaceId: workspace.workspaceId,
@@ -451,18 +487,23 @@ export const Studio = ({
         enDescription: draft.goal,
         designers: selectedDesigner ? [localize(locale, selectedDesigner.name)] : [],
         ...(selectedDesigner ? { activeDesignerVersionId: selectedDesigner.id, designerSnapshot: structuredClone(selectedDesigner) } : {}),
+        ...(coverAssetId ? { coverAssetId } : {}),
         artwork: 'blank',
         documents: 1,
         documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
       };
       setProjects((previous) => [project, ...previous]);
+      setNewProjectDrawerOpen(false);
       setSurface('projects');
       setSelected(project);
       setView('projects');
       setQuery('');
       setFilter('active');
+      if (submittedCover?.previewUrl) URL.revokeObjectURL(submittedCover.previewUrl);
       setDraft({ name: '', goal: '', brief: '', personaId: '', size: '1080 × 1440', mode: 'manual' });
-      notify(t(locale, '项目已保存到本地工作区。', 'Project saved to the local workspace.'));
+      notify(coverSaveFailed
+        ? t(locale, '项目已创建，但封面保存失败，已使用默认封面。', 'Project created, but the cover could not be saved. The default cover is being used.')
+        : t(locale, '项目已保存到本地工作区。', 'Project saved to the local workspace.'));
       return;
     }
     if (workspace) {
@@ -478,11 +519,14 @@ export const Studio = ({
         t(locale, '本次预览中的项目草稿', 'A project draft for this preview'),
       enDescription: draft.goal || 'A project draft for this preview',
       designers: designerOptions.find((profile) => profile.id === draft.personaId) ? [localize(locale, designerOptions.find((profile) => profile.id === draft.personaId)!.name)] : [],
+      ...(draft.cover?.previewUrl ? { coverPreviewUrl: draft.cover.previewUrl } : {}),
       artwork: 'blank',
       documents: 1,
       documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
     };
+    if (draft.cover?.previewUrl) previewCoverUrls.current.add(draft.cover.previewUrl);
     setProjects((previous) => [project, ...previous]);
+    setNewProjectDrawerOpen(false);
     setSurface('projects');
     setSelected(project);
     setView('projects');
@@ -537,27 +581,61 @@ export const Studio = ({
     setSurface('projects');
     setView('projects');
   };
-  const submitProjectConversation = async (project: Project, message: string, attachments: import('../../features/agent/task-service').ConversationImageAttachment[] = []): Promise<void> => {
+  const submitProjectConversation = async (project: Project, message: string, attachments: import('../../features/agent/task-service').ConversationImageAttachment[] = [], context: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] } = {}): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
-      return;
+      return null;
     }
     try {
+      const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
       const task = await getDesktopApi().submitConversation?.({
         workspaceId: workspace.workspaceId,
         projectId: project.id,
-        ...(project.documentId ? { documentId: project.documentId } : {}),
+        ...(documentId ? { documentId } : {}),
         connectionId: 'openai-compatible',
         message,
+        ...context,
         ...(attachments.length ? { attachments } : {}),
       });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
-        return;
+        return null;
       }
       notify(t(locale, '任务已排队。', 'Task queued.'));
+      return task;
     } catch {
       notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
+      return null;
+    }
+  };
+  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null): Promise<import('../../features/tasks/state').TaskRecord | null> => {
+    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+      notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return null;
+    }
+    const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
+    if (!documentId) {
+      notify(t(locale, '请先打开文档。', 'Open a document first.'));
+      return null;
+    }
+    try {
+      const task = await getDesktopApi().submitDesignGeneration?.({
+        workspaceId: workspace.workspaceId,
+        projectId: project.id,
+        documentId,
+        conversationTaskId,
+        baseRevisionId,
+        connectionId: 'openai-compatible',
+      });
+      if (!task) {
+        notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
+        return null;
+      }
+      notify(t(locale, '设计稿生成任务已排队。', 'Design draft generation queued.'));
+      return task;
+    } catch {
+      notify(t(locale, '设计稿生成失败，请重试。', 'Design draft generation failed; try again.'));
+      return null;
     }
   };
   const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: { x: number; y: number; width: number; height: number } }): Promise<void> => {
@@ -618,32 +696,17 @@ export const Studio = ({
     }
   };
   const openNewDesign = (personaId?: string) => {
-    newDesignReturnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setDraft((previous) => ({
       ...previous,
       mode: 'manual',
       personaId: personaId ?? previous.personaId,
     }));
-    setSurface('new-design');
-    setView('projects');
-    setSelected(null);
-    setDocumentOpen(false);
-  };
-  const backFromNewDesign = () => {
-    setSurface('projects');
-    window.requestAnimationFrame(() => {
-      const projectCreateButton = Array.from(
-        document.querySelectorAll<HTMLButtonElement>('.studio-toolbar .toolbar-actions button'),
-      ).find((button) => button.getAttribute('aria-label') === t(locale, '新建项目', 'New project'));
-      (projectCreateButton ?? newDesignReturnFocus.current)?.focus({ preventScroll: true });
-    });
+    setNewProjectDrawerOpen(true);
   };
   const breadcrumbTitle =
-    surface === 'new-design'
-      ? t(locale, '新建设计', 'New design')
-      : selected
-        ? projectName(selected)
-        : t(locale, title.zh, title.en);
+    selected
+      ? projectName(selected)
+      : t(locale, title.zh, title.en);
   const toolbarActions =
     surface === 'projects' && view === 'projects' && !documentOpen && !selected ? (
       <>
@@ -786,13 +849,6 @@ export const Studio = ({
               label={t(locale, '切换侧栏', 'Toggle sidebar')}
               onClick={() => setCollapsed(!collapsed)}
             />
-            {surface === 'new-design' && (
-              <IconButton
-                name="arrow-left"
-                label={t(locale, '返回', 'Back')}
-                onClick={backFromNewDesign}
-              />
-            )}
             <span className="toolbar-divider" />
             <span className="toolbar-workspace">
               {workspace?.name ?? t(locale, '我的设计空间', 'My design studio')}
@@ -805,17 +861,6 @@ export const Studio = ({
           <PageToolbarHost>{toolbarActions}</PageToolbarHost>
         </header>
         <div className="studio-body">
-          {surface === 'new-design' && (
-            <NewDesignPage
-              locale={locale}
-              draft={draft}
-              onDraftChange={setDraft}
-              onCreate={createProject}
-              onBack={backFromNewDesign}
-              profiles={designerOptions}
-              persisted={workspace?.openMode === 'writable'}
-            />
-          )}
           {surface === 'projects' && view === 'projects' && !selected && (
             <section className="page-content projects-page">
               <PageHeader
@@ -839,7 +884,13 @@ export const Studio = ({
                       aria-label={projectName(project)}
                     >
                       <div className="project-cover">
-                        <ArtworkPreview kind={project.artwork} />
+                        <ProjectCoverImage
+                          workspaceId={project.workspaceId}
+                          projectId={project.id}
+                          coverAssetId={project.coverAssetId}
+                          previewUrl={project.coverPreviewUrl}
+                          alt={t(locale, `${projectName(project)}项目封面`, `${projectName(project)} project cover`)}
+                        />
                         <span className="project-open">
                           <Icon name="arrow-up-right" size={20} />
                         </span>
@@ -852,7 +903,7 @@ export const Studio = ({
                           <h2>{projectName(project)}</h2>
                           <Icon name="arrow-up-right" size={16} />
                         </div>
-                        <p>
+                        <p className="project-card-description">
                           {t(
                             locale,
                             project.description,
@@ -899,150 +950,35 @@ export const Studio = ({
                   </EmptyState>
                 </div>
               )}
-              <div className="creation-note">
-                <span className="creation-note-symbol">
-                  <Icon name="sparkles" size={22} />
-                </span>
-                <div>
-                  <h2>
-                    {t(
-                      locale,
-                      '下一次创作，从这里开始',
-                      'Start your next creative direction',
-                    )}
-                  </h2>
-                  <p>
-                    {t(
-                      locale,
-                      '选择设计师、整理简报，或直接打开空白文档。',
-                      'Choose a designer, write a brief, or start with a blank document.',
-                    )}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  icon="arrow-right"
-                  onClick={() => openNewDesign()}
-                >
-                  {t(locale, '开始创作', 'Start creating')}
-                </Button>
-              </div>
             </section>
           )}
           {surface === 'projects' && view === 'projects' && selected && !documentOpen && (
-            <section className="page-content project-detail">
-              <PageHeader
-                title={projectName(selected)}
-                description={t(
+            <ProjectDetailPage
+              locale={locale}
+              project={selected}
+              profiles={designerOptions}
+              writable={workspace?.openMode === 'writable' && Boolean(selected.workspaceId)}
+              projectTitle={projectName(selected)}
+              activeDesignerId={projectPersonaId(selected)}
+              designerLabel={projectDesignerLabel(selected)}
+              contributorIds={projectContributorIds(selected)}
+              contributorLabel={projectContributorLabel(selected)}
+              onOpenDocument={(documentId, index) => {
+                if (documentId || index === 0) {
+                  openDocument(selected, documentId);
+                  return;
+                }
+                notify(t(
                   locale,
-                  selected.description,
-                  selected.enDescription,
-                )}
-                eyebrow={t(
-                  locale,
-                  selected.workspaceId ? '设计项目 / 本地' : '设计项目 / 未保存',
-                  selected.workspaceId ? 'DESIGN PROJECT / LOCAL' : 'DESIGN PROJECT / UNSAVED',
-                )}
-              />
-              <DesignerHero
-                personaId={projectPersonaId(selected)}
-                profile={designerOptions.find((profile) => profile.id === projectPersonaId(selected))}
-                locale={locale}
-                label={t(locale, '当前设计师', 'Active designer')}
-              />
-              {projectContributorIds(selected).length > 1 && <p className="project-credit-summary" aria-label={t(locale, '版本署名', 'Revision credits')}>
-                <span>{t(locale, '版本署名', 'Revision credits')}</span>
-                <strong>{projectContributorLabel(selected)}</strong>
-              </p>}
-              {workspace?.openMode === 'writable' && selected.workspaceId && <Field label={t(locale, '设计师', 'Designer')}>
-                <Select ariaLabel={t(locale, '设计师', 'Designer')} value={projectPersonaId(selected)} onChange={(value) => { void switchProjectDesigner(value); }} options={designerOptions.filter((profile) => profile.status !== 'archived').map((profile) => ({ value: profile.id, label: `${localize(locale, profile.name)} · ${profile.version}` }))} />
-              </Field>}
-              {workspace?.openMode === 'writable' && selected.workspaceId && <fieldset className="project-contributors">
-                <legend>{t(locale, '版本署名', 'Revision credits')}</legend>
-                <p className="muted">{t(locale, '可为同一版本添加多位设计师。当前设计师始终作为主署名。', 'Add multiple designers to the same revision. The active designer remains the lead credit.')}</p>
-                <div className="project-contributors__list">
-                  {designerOptions.filter((profile) => profile.status !== 'archived').map((profile) => {
-                    const contributorIds = selected.contributorDesignerVersionIds ?? (selected.activeDesignerVersionId ? [selected.activeDesignerVersionId] : []);
-                    return <label key={profile.id} className="project-contributor-option">
-                      <input type="checkbox" checked={contributorIds.includes(profile.id)} disabled={profile.id === selected.activeDesignerVersionId} onChange={() => { void toggleProjectContributor(profile.id); }} />
-                      <span>{localize(locale, profile.name)} · {profile.version}</span>
-                    </label>;
-                  })}
-                </div>
-              </fieldset>}
-              <div className="project-context">
-                <div>
-                  <small>{t(locale, '活跃版本', 'ACTIVE VERSION')}</small>
-                  <strong>{(selected.designerSnapshot as { version?: string } | undefined)?.version ?? t(locale, '未设置', 'Not set')}</strong>
-                </div>
-                <div>
-                  <small>{t(locale, '项目状态', 'PROJECT STATUS')}</small>
-                    <strong>{selected.workspaceId ? t(locale, '进行中', 'Active') : t(locale, '未保存草稿', 'Unsaved draft')}</strong>
-                </div>
-                <div>
-                  <small>{t(locale, '品牌上下文', 'BRAND CONTEXT')}</small>
-                  <strong>
-                    {t(locale, '未附加品牌包', 'No brand kit attached')}
-                  </strong>
-                </div>
-                <div>
-                  <small>{t(locale, '内容保留', 'RETENTION')}</small>
-                  <strong>
-                    {selected.workspaceId ? t(locale, '本地保存', 'Saved locally') : t(locale, '仅当前会话', 'This session only')}
-                  </strong>
-                </div>
-              </div>
-              <div className="section-title">
-                <h2>{t(locale, '设计文档', 'Design documents')}</h2>
-                <div className="section-title__actions">
-                  <span>
-                    {selected.documents} {t(locale, '份物料', 'deliverables')}
-                  </span>
-                  {workspace?.openMode === 'writable' && selected.workspaceId && (
-                    <Button icon="plus" onClick={openRelatedDialog}>
-                      {t(locale, '新建尺寸', 'New size')}
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="document-collection">
-                {selected.workspaceId && !selected.documentEntries?.length ? <EmptyState icon="file-image" title={t(locale, '暂无设计文档', 'No design documents yet')} description={t(locale, '创建文档后会显示在这里。', 'Create a document to see it here.')} /> : (selected.documentEntries ?? Array.from({ length: selected.documents }, () => undefined)).map((entry, index) => {
-                  return <button
-                    className="document-card"
-                    key={entry?.id ?? index}
-                    onClick={() => {
-                      if (entry?.id || index === 0) openDocument(selected, entry?.id);
-                      else notify(t(locale, '当前可打开主海报预览，其他尺寸稿将在文档能力接入后提供。', 'Open the main poster preview. Other sizes will be available with document storage.'));
-                    }}
-                    aria-label={index === 0 ? t(locale, '打开主海报', 'Open main poster') : t(locale, `查看尺寸稿 ${index}`, `View size variant ${index}`)}
-                  >
-                    <div
-                      className={`document-cover document-cover--${index % 3}`}
-                    >
-                      <ArtworkPreview kind={selected.artwork} />
-                    </div>
-                    <div className="document-card-body">
-                      <h3>{entry?.name ?? t(locale, '主海报', 'Main poster')}</h3>
-                      <span>
-                        {entry ? `${entry.width} × ${entry.height}` : '1080 × 1440'}{' '}
-                        px <Badge>{selected.workspaceId ? t(locale, '本地', 'Local') : t(locale, '未保存', 'Unsaved')}</Badge>
-                      </span>
-                    </div>
-                  </button>
-                })}
-              </div>
-              <div className="brief-summary">
-                <h2>{t(locale, '设计简报', 'Design brief')}</h2>
-                <p>{t(locale, selected.description, selected.enDescription)}</p>
-                <p className="muted">
-                  {t(
-                    locale,
-                    '参考素材、固定文案和设计约束会随正式项目一同保留。',
-                    'Reference assets, fixed copy and creative constraints will be retained with a real project.',
-                  )}
-                </p>
-              </div>
-            </section>
+                  '当前可打开主海报预览，其他尺寸稿将在文档能力接入后提供。',
+                  'Open the main poster preview. Other sizes will be available with document storage.',
+                ));
+              }}
+              onExport={() => openDelivery(selected)}
+              onCreateDocument={openRelatedDialog}
+              onSwitchDesigner={(designerId) => { void switchProjectDesigner(designerId); }}
+              onToggleContributor={(designerId) => { void toggleProjectContributor(designerId); }}
+            />
           )}
           {projects.map((project) => (
             <div
@@ -1064,7 +1000,8 @@ export const Studio = ({
                 onExport={() => openDelivery({ ...project, documentId: project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId })}
                 onConnections={() => navigate('connections')}
                 onTasks={() => navigate('tasks')}
-                onSubmitConversation={(message, attachments) => submitProjectConversation(project, message, attachments)}
+                onSubmitConversation={(message, attachments, context) => submitProjectConversation(project, message, attachments, context)}
+                onSubmitDesignGeneration={(conversationTaskId, baseRevisionId) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
                 assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}
@@ -1150,6 +1087,37 @@ export const Studio = ({
           />
         </div>
       )}
+      <Drawer
+        open={newProjectDrawerOpen}
+        title={t(locale, '新建项目', 'New project')}
+        locale={locale}
+        initialFocusSelector="[data-drawer-initial-focus]"
+        onClose={() => setNewProjectDrawerOpen(false)}
+        footer={(
+          <div className="dialog-actions">
+            <Button onClick={() => setNewProjectDrawerOpen(false)}>{t(locale, '取消', 'Cancel')}</Button>
+            <Button
+              type="submit"
+              form="new-project-form"
+              variant="primary"
+              icon="plus"
+              disabled={!draft.name.trim()}
+            >
+              {workspace?.openMode === 'writable' ? t(locale, '创建项目', 'Create project') : t(locale, '创建预览', 'Create preview')}
+            </Button>
+          </div>
+        )}
+      >
+        <NewProjectForm
+          locale={locale}
+          formId="new-project-form"
+          draft={draft}
+          onDraftChange={setDraft}
+          onCreate={createProject}
+          profiles={designerOptions}
+          persisted={workspace?.openMode === 'writable'}
+        />
+      </Drawer>
       {dialog === 'workspace' && (
         <Modal
           title={t(locale, '切换工作区', 'Switch workspace')}

@@ -227,7 +227,12 @@ const AssetsPage = ({
     setAssetsLoadFailed(false);
     const request = getDesktopApi().listAssets?.({ workspaceId, projectId });
     if (!request) { setAssetsLoadFailed(true); return () => { cancelled = true; }; }
-    void request?.then((result) => { if (!cancelled && result) setManagedAssets(result); }).catch(() => { if (!cancelled) { setAssetsLoadFailed(true); notify?.(t(locale, '素材读取失败', 'Could not load assets')); } });
+    void request?.then((result) => {
+      if (!cancelled && result) {
+        const hiddenPurposes = new Set(['conversation-reference', 'project-cover']);
+        setManagedAssets(result.filter((asset) => !hiddenPurposes.has(String(asset.metadata?.purpose ?? ''))));
+      }
+    }).catch(() => { if (!cancelled) { setAssetsLoadFailed(true); notify?.(t(locale, '素材读取失败', 'Could not load assets')); } });
     return () => { cancelled = true; };
   }, [locale, notify, projectId, workspaceId]);
   const importFiles = async (files: FileList | File[] | null): Promise<void> => {

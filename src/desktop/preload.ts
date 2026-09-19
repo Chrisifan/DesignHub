@@ -6,7 +6,7 @@ import { designerArtworkReadChannel, designerLoadChannel, designerSaveChannel } 
 import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/assets';
 import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
 import { taskListChannel } from './ipc/tasks';
-import { conversationSubmitChannel, conversationTestChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
+import { conversationSubmitChannel, conversationTestChannel, designGenerationSubmitChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
 import { exportDocumentChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
@@ -61,6 +61,7 @@ const api: DesktopApi = {
   saveProviderConfig: (input) => ipcRenderer.invoke(providerConfigSaveChannel, input),
   listTasks: (workspaceId) => ipcRenderer.invoke(taskListChannel, workspaceId),
   submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
+  submitDesignGeneration: (input) => ipcRenderer.invoke(designGenerationSubmitChannel, input),
   testConversation: (input) => ipcRenderer.invoke(conversationTestChannel, input),
   inspectPortfolioSources: (input) => ipcRenderer.invoke(portfolioInspectChannel, input),
   submitPortfolioSelection: (input) => ipcRenderer.invoke(portfolioSelectChannel, input),

@@ -525,6 +525,7 @@ const initializeProject = (
     contributorDesignerVersionIds: input.contributorDesignerVersionIds,
     designerSnapshot: input.designerSnapshot,
     brandSnapshot: input.brandSnapshot,
+    coverAssetId: input.coverAssetId,
     documents: input.documents,
     createdAt,
     updatedAt: createdAt,
@@ -550,7 +551,7 @@ const initializeProject = (
     name,
     formatVersion: projectFormatVersion,
     createdAt,
-    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.contributorDesignerVersionIds !== undefined || input.designerSnapshot !== undefined || input.brandSnapshot !== undefined || input.documents !== undefined ? { metadata } : {}),
+    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.contributorDesignerVersionIds !== undefined || input.designerSnapshot !== undefined || input.brandSnapshot !== undefined || input.coverAssetId !== undefined || input.documents !== undefined ? { metadata } : {}),
   };
   writeFileSync(join(temporaryDirectory, projectManifestName), `${JSON.stringify(projectManifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
   writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ formatVersion: projectFormatVersion, projectId: operation.projectId, assets: [] }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
@@ -762,6 +763,7 @@ const duplicateProject = async (handle: WorkspaceHandle, input: DuplicateProject
     contributorDesignerVersionIds: sourceMetadata.contributorDesignerVersionIds,
     designerSnapshot: sourceMetadata.designerSnapshot,
     brandSnapshot: sourceMetadata.brandSnapshot,
+    coverAssetId: sourceMetadata.coverAssetId,
     documents: sourceMetadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
       id,
       name,
@@ -902,6 +904,7 @@ export const importProjectPackageToWorkspace = async (
     contributorDesignerVersionIds: sourceMetadata?.contributorDesignerVersionIds,
     designerSnapshot: sourceMetadata?.designerSnapshot,
     brandSnapshot: sourceMetadata?.brandSnapshot,
+    coverAssetId: sourceMetadata?.coverAssetId,
     documents,
   });
   return created;

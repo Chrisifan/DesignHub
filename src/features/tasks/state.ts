@@ -10,6 +10,9 @@ export type TaskCandidate = {
   baseRevisionId: string | null;
   assetIds: string[];
   sceneAssetId?: string;
+  analysisThreadId?: string;
+  parentConversationTaskId?: string;
+  designerVersionId?: string;
   createdAt: string;
 };
 
@@ -68,7 +71,8 @@ export const taskRecordKeys = new Set<keyof TaskRecord>([
   'id', 'requestId', 'requestText', 'state', 'cancelRequested', 'attempt', 'source', 'documentId',
   'sourceAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
   'portfolio', 'model', 'size', 'count', 'tool', 'toolParams', 'region', 'createdAt', 'updatedAt',
-  'errorCode', 'providerFailure', 'analysisDiagnostic', 'result',
+  'errorCode', 'providerFailure', 'analysisDiagnostic', 'result', 'parentConversationTaskId', 'contextAssetIds', 'contextVersion', 'designContext',
+  'analysisThreadId', 'conversationParentTaskId', 'progressText',
 ]);
 
 export type TaskRecord = {
@@ -86,6 +90,16 @@ export type TaskRecord = {
   designerVersionId?: string;
   providerId?: string;
   capability?: string;
+  parentConversationTaskId?: string;
+  /** Stable identifier for the temporary multi-turn analysis thread. */
+  analysisThreadId?: string;
+  /** Previous conversation task in the same analysis thread. */
+  conversationParentTaskId?: string;
+  /** Incremental analysis text while a conversation task is running. */
+  progressText?: string;
+  contextAssetIds?: string[];
+  contextVersion?: number;
+  designContext?: import('../agent/context').DesignGenerationContext;
   portfolio?: PortfolioTaskMetadata;
   model?: string;
   size?: string;

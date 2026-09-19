@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 
 import * as agentIpc from './agent';
-import { createConversationHandler, cancelTaskHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, retryTaskHandler, createPortfolioAnalysisHandler } from './agent';
+import { createConversationHandler, cancelTaskHandler, createDesignGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, retryTaskHandler, createPortfolioAnalysisHandler } from './agent';
 import type { TaskRecord } from '../../features/tasks/state';
 
 const makeFixture = (url: string) => {
@@ -33,6 +33,18 @@ it('accepts bounded image attachments on a conversation', async () => {
   });
   await expect(submit(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', message: 'hello', attachments })).resolves.toEqual(task);
   await expect(submit(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', message: 'hello', attachments: [{ ...attachments[0], mimeType: 'text/plain' }] })).resolves.toBeNull();
+});
+
+it('accepts design generation only for a writable active workspace', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1', openMode: 'writable' } };
+  const submit = createDesignGenerationHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
+    expect(input.conversationTaskId).toBe('conversation-1');
+    return task;
+  });
+  await expect(submit(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1', baseRevisionId: null })).resolves.toEqual(task);
+  await expect(submit(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1', baseRevisionId: null })).resolves.toEqual(task);
+  await expect(submit(fixture.event, { workspaceId: 'workspace-2', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1' })).resolves.toBeNull();
 });
 
 it('accepts conversation connection tests only from the active trusted workspace', async () => {

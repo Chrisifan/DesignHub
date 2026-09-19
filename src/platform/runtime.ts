@@ -40,6 +40,7 @@ const unavailableDesktopApi: DesktopApi = {
   saveProviderConfig: async () => false,
   listTasks: async () => null,
   submitConversation: async () => null,
+  submitDesignGeneration: async () => null,
   testConversation: async () => null,
   inspectPortfolioSources: async () => null,
   submitPortfolioSelection: async () => null,

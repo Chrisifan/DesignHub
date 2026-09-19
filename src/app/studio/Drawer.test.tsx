@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { expect, it, vi } from 'vitest';
 
 import { Drawer } from './Drawer';
@@ -102,4 +103,32 @@ it('focuses the requested field when the drawer opens', () => {
   );
 
   expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveFocus();
+});
+
+it('restores focus after a closed drawer opens inside a portal host', () => {
+  const Harness = () => {
+    const [open, setOpen] = useState(false);
+    return (
+      <div data-drawer-host>
+        <button type="button" onClick={() => setOpen(true)}>新建项目</button>
+        <Drawer
+          open={open}
+          title="新建项目"
+          initialFocusSelector="[data-drawer-initial-focus]"
+          onClose={() => setOpen(false)}
+        >
+          <input aria-label="项目名称" data-drawer-initial-focus />
+        </Drawer>
+      </div>
+    );
+  };
+  render(<Harness />);
+
+  const trigger = screen.getByRole('button', { name: '新建项目' });
+  trigger.focus();
+  fireEvent.click(trigger);
+  expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveFocus();
+  fireEvent.keyDown(document, { key: 'Escape' });
+
+  expect(trigger).toHaveFocus();
 });

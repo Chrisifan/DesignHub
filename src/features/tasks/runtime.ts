@@ -13,6 +13,7 @@ export type TaskRuntime = {
   cancel: (taskId: string) => TaskRecord | undefined;
   complete: (taskId: string, result?: TaskResult) => Promise<TaskRecord>;
   fail: (taskId: string, errorCode: string, providerFailure?: TaskProviderFailure, analysisDiagnostic?: PortfolioAnalysisDiagnostic) => Promise<TaskRecord>;
+  updateProgress: (taskId: string, progressText: string) => TaskRecord | undefined;
   retry: (taskId: string) => TaskRecord | undefined;
   finish: (taskId: string, result: TaskResult, revisionStore: RevisionStore) => Promise<TaskRecord>;
   flush: () => Promise<void>;
@@ -36,11 +37,22 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     tasks.set(task.id, structuredClone(task));
   });
   let persistence = Promise.resolve();
+  let progressTimer: ReturnType<typeof setTimeout> | undefined;
+  let progressDirty = false;
   const snapshot = (): TaskRecord[] => [...tasks.values()].map((task) => structuredClone(task));
   const schedulePersistence = (): void => {
     if (!options.persist) return;
     const next = snapshot();
     persistence = persistence.then(() => options.persist!(next));
+  };
+  const scheduleProgressPersistence = (): void => {
+    if (!options.persist || progressTimer) return;
+    progressTimer = setTimeout(() => {
+      progressTimer = undefined;
+      if (!progressDirty) return;
+      progressDirty = false;
+      schedulePersistence();
+    }, 80);
   };
   if (recoveredInterruptedTask) schedulePersistence();
   const get = (taskId: string): TaskRecord | undefined => {
@@ -93,6 +105,15 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     await persistence;
     return structuredClone(failed);
   };
+  const updateProgress = (taskId: string, progressText: string): TaskRecord | undefined => {
+    const task = tasks.get(taskId);
+    if (!task || task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled') return task ? structuredClone(task) : undefined;
+    const updated = { ...task, progressText, updatedAt: new Date().toISOString() };
+    tasks.set(taskId, updated);
+    progressDirty = true;
+    scheduleProgressPersistence();
+    return structuredClone(updated);
+  };
   const retry = (taskId: string): TaskRecord | undefined => {
     const task = tasks.get(taskId);
     if (!task) return undefined;
@@ -131,6 +152,16 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     await persistence;
     return structuredClone(completed);
   };
-  const flush = async (): Promise<void> => persistence;
-  return { get, list, start, run, cancel, complete, fail, retry, finish, flush };
+  const flush = async (): Promise<void> => {
+    if (progressTimer) {
+      clearTimeout(progressTimer);
+      progressTimer = undefined;
+    }
+    if (progressDirty) {
+      progressDirty = false;
+      schedulePersistence();
+    }
+    await persistence;
+  };
+  return { get, list, start, run, cancel, complete, fail, updateProgress, retry, finish, flush };
 };

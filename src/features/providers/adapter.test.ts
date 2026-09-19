@@ -151,6 +151,40 @@ describe('OpenAI-compatible provider adapter', () => {
     });
   });
 
+  it('includes reference images in Responses image generation requests', async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      const payload = JSON.parse(String(init?.body)) as { input: Array<{ content: Array<{ type: string; image_url?: string }> }> };
+      expect(payload.input[0]?.content).toEqual([
+        { type: 'input_image', image_url: 'data:image/png;base64,b25l' },
+        { type: 'input_image', image_url: 'data:image/jpeg;base64,dHdv' },
+        { type: 'input_text', text: 'Compose the supplied references' },
+      ]);
+      return response({ output: [{ type: 'image_generation_call', result: pngBase64 }] });
+    });
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://gateway.example.test/v1', apiKey: 'secret-key', imageTransport: 'responses', fetch: fetcher });
+
+    await expect(adapter.generateImage({
+      prompt: 'Compose the supplied references',
+      referenceImages: [new Blob(['one'], { type: 'image/png' }), new Blob(['two'], { type: 'image/jpeg' })],
+    })).resolves.toMatchObject({ images: [{ base64: pngBase64 }] });
+  });
+
+  it('uses the multi-image edit endpoint for references with the Images transport', async () => {
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('https://gateway.example.test/v1/images/edits');
+      const form = init?.body as FormData;
+      expect(form.get('prompt')).toBe('Compose the supplied references');
+      expect(form.getAll('image[]')).toHaveLength(2);
+      return response({ data: [{ b64_json: 'generated' }] });
+    });
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://gateway.example.test/v1', apiKey: 'secret-key', fetch: fetcher });
+
+    await expect(adapter.generateImage({
+      prompt: 'Compose the supplied references',
+      referenceImages: [new Blob(['one'], { type: 'image/png' }), new Blob(['two'], { type: 'image/png' })],
+    })).resolves.toEqual({ images: [{ base64: 'generated' }], cost: null });
+  });
+
   it('uses input images and explicit edit guidance with the Responses transport', async () => {
     const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe('https://gateway.example.test/v1/responses');

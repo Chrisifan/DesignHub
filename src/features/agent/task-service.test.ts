@@ -47,10 +47,237 @@ it('sends conversation image attachments as multimodal chat content', async () =
   });
   await service.flush();
 
-  expect(chat).toHaveBeenCalledWith({ messages: [{ role: 'user', content: [
+  expect(chat).toHaveBeenCalledWith({ messages: [{ role: 'user', content: expect.arrayContaining([
     { type: 'text', text: '按参考图调整' },
     { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw==' } },
-  ] }] }, expect.any(AbortSignal));
+  ]) }] }, expect.any(AbortSignal));
+});
+
+it('merges a conversation thread in order and streams analysis progress', async () => {
+  const runtime = createTaskRuntime();
+  const requests: Array<{ messages: unknown[] }> = [];
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: 'fallback', cost: null }),
+      streamChat: (request) => {
+        requests.push(request);
+        const events = [{ text: '流式' }, { text: '分析' }];
+        let index = 0;
+        return { [Symbol.asyncIterator]: () => ({ next: async () => index < events.length ? { done: false as const, value: events[index++]! } : { done: true as const, value: undefined } }) };
+      },
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId ?? 'workspace-1', projectId: input.projectId!, documentId: input.documentId!,
+      brief: '固定 brief', document: { width: 100, height: 200, currentImageAssetIds: [] }, attachmentAssetIds,
+      userMessage: input.message, designerSnapshot: { styleDna: { palette: ['#111'] }, negativeRules: ['avoid neon'] }, baseRevisionId: null,
+    }),
+    persistConversationAttachments: async ({ attachments }) => attachments.map((attachment) => attachment.name),
+    loadContextImage: async ({ assetId }) => ({ name: assetId, mimeType: 'image/png', bytes: new Uint8Array([1, 2, 3]) }),
+  });
+  const first = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: '第一轮', attachments: [{ name: 'one.png', mimeType: 'image/png', bytes: new Uint8Array([1]) }] });
+  await service.flush();
+  const second = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', analysisThreadId: first.analysisThreadId, conversationParentTaskId: first.id, connectionId: 'provider-1', message: '第二轮', referencedAssetIds: ['candidate.png'] });
+  await service.flush();
+
+  expect(runtime.get(second.id)).toMatchObject({ analysisThreadId: first.analysisThreadId, conversationParentTaskId: first.id, progressText: '流式分析' });
+  const secondRequest = requests[1]!;
+  const messages = secondRequest.messages as Array<{ content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }>;
+  expect(messages.map((message) => typeof message.content === 'string' ? message.content : message.content[0]?.type === 'text' ? message.content[0].text : undefined)).toEqual(expect.arrayContaining(['第一轮', '第二轮']));
+  expect(messages.at(-1)?.content).toEqual(expect.arrayContaining([{ type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } }]));
+});
+
+it('uses a completed conversation context to create a design candidate', async () => {
+  const runtime = createTaskRuntime();
+  const chat = vi.fn(async () => ({ text: 'Use a calm editorial composition.', cost: null }));
+  const generateImage = vi.fn(async (request: { prompt: string; model?: string; size?: string; count?: number }) => ({
+    images: [{ base64: 'generated-bytes' }], cost: null, request,
+  }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat, generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      workspaceId: input.workspaceId ?? 'workspace-1',
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: 'Spring market poster',
+      document: { width: 1080, height: 1440, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      designerSnapshot: { id: 'designer-v1', styleDna: { palette: ['#fff'] }, negativeRules: [{ en: 'Avoid neon' }] },
+      baseRevisionId: input.baseRevisionId ?? null,
+    }),
+    persistConversationAttachments: async () => ['reference-asset'],
+    loadContextImage: async () => null,
+    persistGeneratedImages: async () => ['asset-generated'],
+  });
+
+  const conversation = await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1',
+    connectionId: 'provider-1', message: 'Make a calm poster', attachments: [],
+  });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1',
+    conversationTaskId: conversation.id, connectionId: 'provider-1', baseRevisionId: null,
+  });
+  await service.flush();
+
+  expect(generateImage).toHaveBeenCalledWith(expect.objectContaining({
+    prompt: expect.stringContaining('Avoid neon'), size: '1080x1440', count: 1,
+  }), expect.any(AbortSignal));
+  expect(runtime.get(generation.id)).toMatchObject({ capability: 'design-generation', parentConversationTaskId: conversation.id, result: { candidate: { assetIds: ['asset-generated'], baseRevisionId: null } } });
+});
+
+it('passes persisted conversation references to image generation', async () => {
+  const runtime = createTaskRuntime();
+  const generateImage = vi.fn(async (request: { referenceImages?: Blob[] }) => {
+    expect(request.referenceImages).toHaveLength(2);
+    return { images: [{ base64: 'generated-bytes' }], cost: null };
+  });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'Use the supplied references.', cost: null }), generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      workspaceId: input.workspaceId ?? 'workspace-1',
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: 'Reference-led poster',
+      document: { width: 1080, height: 1440, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: null,
+    }),
+    persistConversationAttachments: async ({ attachments }) => attachments.map((_attachment, index) => `reference-${index + 1}`),
+    loadContextImage: async ({ assetId }) => ({ name: assetId, mimeType: 'image/png', bytes: new Uint8Array([assetId.endsWith('1') ? 1 : 2]) }),
+    persistGeneratedImages: async () => ['asset-generated'],
+  });
+
+  const conversation = await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1',
+    message: 'Use both reference images',
+    attachments: [
+      { name: 'one.png', mimeType: 'image/png', bytes: new Uint8Array([1]) },
+      { name: 'two.png', mimeType: 'image/png', bytes: new Uint8Array([2]) },
+    ],
+  });
+  await service.flush();
+  await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
+  await service.flush();
+
+  expect(generateImage).toHaveBeenCalledWith(expect.objectContaining({
+    referenceImages: [expect.any(Blob), expect.any(Blob)],
+  }), expect.any(AbortSignal));
+});
+
+it('generates without carrying designer style when the project has no designer', async () => {
+  const runtime = createTaskRuntime();
+  const generateImage = vi.fn(async () => ({ images: [{ base64: 'generated-bytes' }], cost: null }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'Use the project brief only.', cost: null }), generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      workspaceId: input.workspaceId ?? 'workspace-1',
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: 'Unstyled project brief',
+      document: { width: 1080, height: 1440, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: null,
+    }),
+    persistGeneratedImages: async () => ['asset-generated'],
+  });
+
+  const conversation = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Create a poster' });
+  await service.flush();
+  await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
+  await service.flush();
+
+  expect(generateImage).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.not.stringContaining('Designer profile') }), expect.any(AbortSignal));
+  expect(generateImage).toHaveBeenCalledWith(expect.objectContaining({ prompt: expect.not.stringContaining('negative rules') }), expect.any(AbortSignal));
+});
+
+it('sends the immutable designer context as a system message', async () => {
+  const runtime = createTaskRuntime();
+  const chat = vi.fn(async () => ({ text: 'brief', cost: null }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      workspaceId: input.workspaceId ?? 'workspace-1',
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: 'Project brief',
+      document: { width: 100, height: 200, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      designerSnapshot: { name: { en: 'Paper & Type' }, styleDna: { palette: ['#fff'] }, negativeRules: [{ en: 'Avoid neon' }] },
+      baseRevisionId: null,
+    }),
+  });
+  await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Make a poster' });
+  await service.flush();
+  expect(chat).toHaveBeenCalledWith(expect.objectContaining({ messages: [
+    { role: 'system', content: expect.stringContaining('Avoid neon') },
+    { role: 'user', content: expect.arrayContaining([{ type: 'text', text: 'Make a poster' }]) },
+  ] }), expect.any(AbortSignal));
+});
+
+it('uses the current canvas image as the edit source for a design draft', async () => {
+  const runtime = createTaskRuntime();
+  const editImage = vi.fn(async () => ({ images: [{ base64: 'edited-bytes' }], cost: null }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }), editImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      workspaceId: input.workspaceId ?? 'workspace-1', projectId: input.projectId!, documentId: input.documentId!,
+      brief: 'Existing poster', document: { width: 100, height: 200, currentImageAssetIds: ['canvas-asset'] },
+      attachmentAssetIds, userMessage: input.message, baseRevisionId: null,
+      designerSnapshot: { id: 'designer-v1', styleDna: { palette: ['#111'] } },
+    }),
+    loadSourceImage: async () => new Blob(['canvas']),
+    persistGeneratedImages: async () => ['asset-edited'],
+  });
+  const conversation = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Refine this poster' });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
+  await service.flush();
+  expect(editImage).toHaveBeenCalledWith(expect.objectContaining({ image: expect.any(Blob), prompt: expect.stringContaining('Existing poster') }), expect.any(AbortSignal));
+  expect(runtime.get(generation.id)?.result?.candidate?.assetIds).toEqual(['asset-edited']);
+});
+
+it('rejects generation when a persisted context asset is no longer available', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }), generateImage: async () => ({ images: [{ base64: 'generated' }], cost: null }) }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      workspaceId: input.workspaceId ?? 'workspace-1',
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: 'Brief',
+      document: { width: 100, height: 200, currentImageAssetIds: ['missing-canvas'] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: null,
+    }),
+    loadContextImage: async () => null,
+  });
+  const conversation = await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Use the canvas',
+  });
+  await service.flush();
+
+  await expect(service.submitDesignGeneration({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1',
+  })).rejects.toThrow('CONTEXT_ASSET_MISSING');
 });
 
 it('tests image generation through the resolved adapter without creating a task', async () => {

@@ -18,6 +18,7 @@ export type ProjectMetadata = {
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
+  coverAssetId?: string;
   documents: ProjectDocumentMetadata[];
   archived: boolean;
   createdAt: string;
@@ -33,13 +34,14 @@ export type ProjectMetadataInput = {
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
+  coverAssetId?: string;
   documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
   archived?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
 
-export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'activeDesignerVersionId' | 'contributorDesignerVersionIds' | 'designerSnapshot' | 'brandSnapshot' | 'archived'>> & {
+export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'activeDesignerVersionId' | 'contributorDesignerVersionIds' | 'designerSnapshot' | 'brandSnapshot' | 'coverAssetId' | 'archived'>> & {
   documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
 };
 
@@ -83,6 +85,7 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
     ...(normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) ? { contributorDesignerVersionIds: normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) } : {}),
     ...(input.designerSnapshot === undefined ? {} : { designerSnapshot: clone(input.designerSnapshot) }),
     ...(input.brandSnapshot === undefined ? {} : { brandSnapshot: clone(input.brandSnapshot) }),
+    ...(input.coverAssetId === undefined ? {} : { coverAssetId: input.coverAssetId }),
     documents: (() => {
       const documents = input.documents ?? [];
       validateDocumentList(documents);
@@ -118,6 +121,7 @@ export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectM
     })(),
     ...(patch.designerSnapshot === undefined ? {} : { designerSnapshot: clone(patch.designerSnapshot) }),
     ...(patch.brandSnapshot === undefined ? {} : { brandSnapshot: clone(patch.brandSnapshot) }),
+    ...(patch.coverAssetId === undefined ? {} : { coverAssetId: patch.coverAssetId }),
     documents: clone(nextDocuments),
     ...(patch.archived === undefined ? {} : { archived: patch.archived }),
     updatedAt,

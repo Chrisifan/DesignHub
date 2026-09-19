@@ -97,8 +97,10 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   const [sceneHydrated, setSceneHydrated] = useState(!workspaceId || !projectId || !documentId);
   const handledAssetAction = useRef<string | undefined>(undefined);
   const handledSelectionRequest = useRef(0);
+  const panRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const selectedLayer = useMemo(() => scene.layers.find((layer) => layer.id === selectedIds[0]), [scene.layers, selectedIds]);
   const selectedLayers = useMemo(() => scene.layers.filter((layer) => selectedIds.includes(layer.id)), [scene.layers, selectedIds]);
+  const hasVisibleImage = useMemo(() => scene.layers.some((layer) => layer.type === 'image' && layer.assetId !== 'placeholder' && layer.visible), [scene.layers]);
   useEffect(() => {
     if (!workspaceId || !projectId) return undefined;
     let cancelled = false;
@@ -155,8 +157,14 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     onAssetActionHandled?.(assetAction.id);
   }, [assetAction, onAssetActionHandled, scene, sceneHydrated, selectedIds]);
   useEffect(() => {
-    if (embedded && inspectorRequestId !== undefined) setInspectorDismissed(false);
-  }, [embedded, inspectorRequestId]);
+    if (!embedded || !inspectorRequestId || inspectorRequestId < 1) return;
+    setSelectedIds((current) => {
+      if (current.some((id) => scene.layers.some((layer) => layer.id === id && isLayerInteractive(layer)))) return current;
+      const firstInteractive = scene.layers.find(isLayerInteractive);
+      return firstInteractive ? [firstInteractive.id] : [];
+    });
+    setInspectorDismissed(false);
+  }, [embedded, inspectorRequestId, scene.layers]);
   useEffect(() => {
     if (!embedded || !selectionRequest || handledSelectionRequest.current >= selectionRequest.id) return;
     handledSelectionRequest.current = selectionRequest.id;
@@ -248,9 +256,25 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
           <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} readOnly={readOnly} />
         </div>}
         <div ref={stageRef} className="canvas-workspace__stage">
-          {canvasReady ? <Stage width={stageSize.width} height={stageSize.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY} onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}>
+          {canvasReady ? <Stage width={stageSize.width} height={stageSize.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY}
+            onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}
+            onMouseDown={(event) => {
+              if (event.target !== event.target.getStage()) return;
+              const pointer = event.target.getStage()?.getPointerPosition();
+              if (pointer) panRef.current = { x: pointer.x, y: pointer.y, offsetX: viewport.offsetX, offsetY: viewport.offsetY };
+            }}
+            onMouseMove={(event) => {
+              const pan = panRef.current;
+              if (!pan) return;
+              const pointer = event.target.getStage()?.getPointerPosition();
+              if (!pointer) return;
+              setViewport((current) => ({ ...current, offsetX: pan.offsetX + pointer.x - pan.x, offsetY: pan.offsetY + pointer.y - pan.y }));
+            }}
+            onMouseUp={() => { panRef.current = null; }}
+            onMouseLeave={() => { panRef.current = null; }}
+          >
             <Layer>
-              <Rect x={0} y={0} width={scene.width} height={scene.height} fill="#ffffff" listening={false} />
+              {hasVisibleImage && <Rect data-testid="canvas-surface" x={0} y={0} width={scene.width} height={scene.height} fill="#ffffff" listening={false} />}
               {scene.layers.map((layer) => renderLayer(layer, selectedIds.includes(layer.id), () => select([layer.id]), updateLayer, layer.type === 'image' ? assetImages[layer.assetId] : undefined))}
             </Layer>
           </Stage> : <div className="canvas-workspace__fallback" role="img" aria-label={messages.canvasTitle}>{messages.canvasUnavailable}</div>}

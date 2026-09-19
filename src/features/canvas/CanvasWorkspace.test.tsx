@@ -25,6 +25,27 @@ it('renders an embedded stage without duplicate canvas chrome', () => {
   expect(screen.queryByRole('complementary', { name: '图层' })).not.toBeInTheDocument();
 });
 
+it('does not render a blank white artboard when no image layer exists', () => {
+  render(<CanvasWorkspace locale="zh-CN" scene={initial} embedded />);
+
+  expect(screen.queryByTestId('canvas-surface')).not.toBeInTheDocument();
+});
+
+it('renders the artboard surface when a visible managed image exists', () => {
+  const imageScene = createScene({ id: 'scene-image-surface', width: 800, height: 600, layers: [{ id: 'image-1', type: 'image', assetId: 'asset-1', x: 0, y: 0, width: 800, height: 600, rotation: 0, opacity: 1, visible: true, locked: false }] });
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  const userAgent = window.navigator.userAgent;
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', { configurable: true, value: () => ({}) });
+  Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: 'test-browser' });
+  try {
+    render(<CanvasWorkspace locale="zh-CN" scene={imageScene} embedded />);
+    expect(screen.getByTestId('canvas-surface')).toBeInTheDocument();
+  } finally {
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', { configurable: true, value: getContext });
+    Object.defineProperty(window.navigator, 'userAgent', { configurable: true, value: userAgent });
+  }
+});
+
 it('keeps real scene layers and properties available as embedded overlays', () => {
   const onLayersClose = vi.fn();
   render(
@@ -43,6 +64,20 @@ it('keeps real scene layers and properties available as embedded overlays', () =
   expect(screen.queryByRole('dialog', { name: '检查器' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '关闭图层' }));
   expect(onLayersClose).toHaveBeenCalledOnce();
+});
+
+it('selects the first interactive layer when the embedded inspector is requested without a selection', () => {
+  render(
+    <CanvasWorkspace
+      locale="zh-CN"
+      scene={editable}
+      embedded
+      inspectorRequestId={1}
+    />,
+  );
+
+  expect(screen.getByRole('complementary', { name: '检查器' })).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: '文字内容' })).toHaveValue('标题');
 });
 
 it('opens the inspector drawer for a selected layer and closes it when selection clears', () => {

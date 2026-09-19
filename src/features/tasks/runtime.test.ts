@@ -58,6 +58,17 @@ it('completes text tasks without creating an image revision', async () => {
   expect(completed.result).toEqual({ text: 'drafted brief' });
 });
 
+it('updates progress in memory and persists it as a coalesced snapshot', async () => {
+  const writes: Array<readonly TaskRecord[]> = [];
+  const runtime = createTaskRuntime({ persist: async (tasks) => { writes.push(tasks); } });
+  runtime.start(baseTask);
+  runtime.updateProgress('task-1', '分析中');
+  runtime.updateProgress('task-1', '分析中。');
+  expect(runtime.get('task-1')?.progressText).toBe('分析中。');
+  await runtime.flush();
+  expect(writes.at(-1)?.[0]?.progressText).toBe('分析中。');
+});
+
 it('marks provider failures and keeps a retryable task record', async () => {
   const runtime = createTaskRuntime();
   runtime.start(baseTask);

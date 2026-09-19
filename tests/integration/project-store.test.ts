@@ -10,6 +10,7 @@ import Database from 'better-sqlite3';
 import { afterEach, expect, it } from 'vitest';
 
 import { createProjectStore, projectContentManifestName, projectDatabaseName, projectManifestName, workspaceProjectIndexName } from '../../src/desktop/storage/project-store';
+import { createAssetStore } from '../../src/desktop/storage/asset-store';
 import { createWorkspace, openWorkspace, workspaceManifestName } from '../../src/desktop/storage/workspace-store';
 
 const temporaryDirectories: string[] = [];
@@ -85,6 +86,54 @@ it('duplicates a project with a new identity while retaining documents and manag
     await expect(store.listActiveProjects()).resolves.toHaveLength(2);
   } finally {
     workspace.close();
+  }
+});
+
+it('retains a managed project cover across restart and duplication', async () => {
+  const { workspace, store } = await createWritableStore();
+  let activeWorkspace = workspace;
+  try {
+    const project = await store.createProjectContainer({
+      workspaceId: workspace.workspace.workspaceId,
+      operationId: 'cover-source',
+      name: 'Cover source',
+    });
+    const [imported] = await createAssetStore(workspace).importAssets({
+      workspaceId: workspace.workspace.workspaceId,
+      projectId: project.projectId,
+      items: [{ name: 'cover.png', mimeType: 'image/png', data: new Uint8Array([1, 2, 3]), metadata: { purpose: 'project-cover' } }],
+    });
+    expect(imported.status).toBe('success');
+    if (imported.status !== 'success') return;
+    await store.updateProjectMetadata({
+      workspaceId: workspace.workspace.workspaceId,
+      projectId: project.projectId,
+      patch: { coverAssetId: imported.asset.id },
+    });
+
+    activeWorkspace.close();
+    activeWorkspace = await openWorkspace(workspace.workspace.directory);
+    const reopenedStore = createProjectStore(activeWorkspace);
+    await expect(reopenedStore.getProjectMetadata(project.projectId)).resolves.toMatchObject({ coverAssetId: imported.asset.id });
+    await expect(createAssetStore(activeWorkspace).readAsset({
+      workspaceId: activeWorkspace.workspace.workspaceId,
+      projectId: project.projectId,
+      assetId: imported.asset.id,
+    })).resolves.toEqual(new Uint8Array([1, 2, 3]));
+
+    const duplicate = await reopenedStore.duplicateProject({
+      workspaceId: activeWorkspace.workspace.workspaceId,
+      sourceProjectId: project.projectId,
+      operationId: 'cover-copy',
+    });
+    await expect(reopenedStore.getProjectMetadata(duplicate.projectId)).resolves.toMatchObject({ coverAssetId: imported.asset.id });
+    await expect(createAssetStore(activeWorkspace).readAsset({
+      workspaceId: activeWorkspace.workspace.workspaceId,
+      projectId: duplicate.projectId,
+      assetId: imported.asset.id,
+    })).resolves.toEqual(new Uint8Array([1, 2, 3]));
+  } finally {
+    activeWorkspace.close();
   }
 });
 

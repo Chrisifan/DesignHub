@@ -10,7 +10,7 @@ import type { TaskRecord } from '../features/tasks/state';
 import type { TaskSource } from '../features/tasks/state';
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../features/revisions/model';
 import type { BrandLibraryState } from '../features/brands/constraints';
-import type { ConversationImageAttachment, ConversationTestResult, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestResult } from '../features/agent/task-service';
+import type { ConversationImageAttachment, ConversationTestResult, DesignerArtworkGenerationInput, DesignGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestResult } from '../features/agent/task-service';
 import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
@@ -52,6 +52,9 @@ export type ConversationTaskInput = {
   projectId?: string;
   source?: TaskSource;
   documentId?: string;
+  analysisThreadId?: string;
+  conversationParentTaskId?: string;
+  referencedAssetIds?: string[];
   designerVersionId?: string;
   baseRevisionId?: string | null;
   connectionId: string;
@@ -115,6 +118,7 @@ export type DesktopApi = {
   saveProviderConfig?: (input: ProviderConfigSaveInput) => Promise<boolean>;
   listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
+  submitDesignGeneration?: (input: DesignGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
   testConversation?: (input: { workspaceId: string; connectionId: string; model?: string }) => Promise<ConversationTestResult | null>;
   inspectPortfolioSources?: (input: { workspaceId: string; request: PortfolioInspectionRequest }) => Promise<PortfolioInspection | null>;
   submitPortfolioSelection?: (input: PortfolioSelectionInput) => Promise<TaskRecord | null>;

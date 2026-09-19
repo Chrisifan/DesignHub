@@ -48,7 +48,7 @@ import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import type { GeneratedImage } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createConversationTestHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, conversationSubmitChannel, conversationTestChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel } from './ipc/agent';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createConversationTestHandler, createDesignGenerationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, conversationSubmitChannel, conversationTestChannel, designGenerationSubmitChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { createPortfolioDiscardHandler, createPortfolioInspectionHandler, createPortfolioSelectionHandler, portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
 import { createPortfolioSourceInspector } from './portfolio-source-inspector';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
@@ -208,6 +208,8 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         await saveTaskState(workspace, workspace.workspace.workspaceId, tasks);
       },
     });
+    const projectStore = createProjectStore(workspace);
+    const assetStore = createAssetStore(workspace);
     const service = createAgentTaskService({
       runtime,
       persistGeneratedImages: async ({ projectId, images }) => {
@@ -216,7 +218,7 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
           const extension = generated.mimeType === 'image/jpeg' ? 'jpg' : generated.mimeType === 'image/webp' ? 'webp' : 'png';
           return { name: `generated-${index + 1}.${extension}`, mimeType: generated.mimeType, data: generated.bytes };
         }));
-        const imported = await createAssetStore(workspace).importAssets({ workspaceId: workspace.workspace.workspaceId, projectId, items });
+        const imported = await assetStore.importAssets({ workspaceId: workspace.workspace.workspaceId, projectId, items });
         const failures = imported.filter((result) => result.status === 'error');
         if (failures.length > 0) throw new Error(failures[0].error);
         return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
@@ -233,8 +235,50 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         return saved.map((item) => item.artworkId);
       },
       loadSourceImage: async ({ projectId, assetId }) => {
-        const bytes = await createAssetStore(workspace).readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
+        const bytes = await assetStore.readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
         return bytes ? new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }) : null;
+      },
+      persistConversationAttachments: async ({ projectId, attachments }) => {
+        const imported = await assetStore.importAssets({
+          workspaceId: workspace.workspace.workspaceId,
+          projectId,
+          items: attachments.map((attachment) => ({
+            name: attachment.name,
+            mimeType: attachment.mimeType,
+            data: attachment.bytes,
+            metadata: { purpose: 'conversation-reference' },
+          })),
+        });
+        const failures = imported.filter((result) => result.status === 'error');
+        if (failures.length > 0) throw new Error(failures[0].error);
+        return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
+      },
+      loadContextImage: async ({ projectId, assetId }) => {
+        const assets = await assetStore.listAssets({ workspaceId: workspace.workspace.workspaceId, projectId, includeContextAssets: true });
+        const asset = assets.find((candidate) => candidate.id === assetId);
+        const bytes = await assetStore.readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
+        return asset && bytes ? { name: asset.name, mimeType: asset.mimeType, bytes } : null;
+      },
+      resolveDesignContext: async ({ input, attachmentAssetIds }) => {
+        if (!input.projectId || !input.documentId || !input.workspaceId) throw new Error('DESIGN_CONTEXT_BINDING_REQUIRED');
+        const metadata = await projectStore.getProjectMetadata(input.projectId);
+        if (!metadata || metadata.workspaceId !== input.workspaceId) throw new Error('PROJECT_NOT_FOUND');
+        const scene = await loadDocumentScene(workspace, input.workspaceId, input.projectId, input.documentId);
+        const document = metadata.documents.find((entry) => entry.id === input.documentId);
+        const currentImageAssetIds = scene?.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder').map((layer) => layer.assetId) ?? [];
+        return {
+          version: 1 as const,
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          documentId: input.documentId,
+          brief: metadata.brief ?? '',
+          document: { width: document?.width ?? scene?.width ?? 1080, height: document?.height ?? scene?.height ?? 1440, currentImageAssetIds },
+          attachmentAssetIds: [...attachmentAssetIds],
+          userMessage: input.message,
+          ...(metadata.designerSnapshot && typeof metadata.designerSnapshot === 'object' ? { designerSnapshot: structuredClone(metadata.designerSnapshot) as Record<string, unknown> } : {}),
+          ...(metadata.brandSnapshot && typeof metadata.brandSnapshot === 'object' ? { brandSnapshot: structuredClone(metadata.brandSnapshot) as Record<string, unknown> } : {}),
+          baseRevisionId: input.baseRevisionId ?? null,
+        };
       },
       resolveAdapter: async (connectionId) => {
         if (connectionId !== 'openai-compatible') throw new Error('PROVIDER_NOT_CONFIGURED');
@@ -435,9 +479,37 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(conversationSubmitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createConversationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, conversation) => {
+    return createConversationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, conversation) => {
+      if (conversation.projectId) {
+        const projectStore = createProjectStore(workspace);
+        const metadata = await projectStore.getProjectMetadata(conversation.projectId);
+        if (!metadata || metadata.workspaceId !== conversation.workspaceId) throw new Error('PROJECT_NOT_FOUND');
+        if (conversation.documentId && !metadata.documents.some((document) => document.id === conversation.documentId)) throw new Error('DOCUMENT_NOT_FOUND');
+        if (conversation.referencedAssetIds?.length) {
+          const assetStore = createAssetStore(workspace);
+        const assets = await assetStore.listAssets({ workspaceId: conversation.workspaceId, projectId: conversation.projectId, includeContextAssets: true });
+          const available = new Set(assets.map((asset) => asset.id));
+          if (conversation.referencedAssetIds.some((assetId) => !available.has(assetId))) throw new Error('CONTEXT_ASSET_MISSING');
+        }
+      }
       const service = await getAgentTaskService();
       return service.submitConversation(conversation);
+    })(event, input);
+  });
+  ipcMain.handle(designGenerationSubmitChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createDesignGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, generationInput) => {
+      const projectStore = createProjectStore(_workspace);
+      const metadata = await projectStore.getProjectMetadata(generationInput.projectId);
+      if (!metadata || metadata.workspaceId !== generationInput.workspaceId || !metadata.documents.some((document) => document.id === generationInput.documentId)) {
+        throw new Error('DOCUMENT_NOT_FOUND');
+      }
+      if (generationInput.baseRevisionId) {
+        const revisions = await loadDocumentRevisions(_workspace, generationInput.workspaceId, generationInput.projectId, generationInput.documentId);
+        if (!revisions.revisions.some((revision) => revision.revisionId === generationInput.baseRevisionId)) throw new Error('REVISION_NOT_FOUND');
+      }
+      const service = await getAgentTaskService();
+      return service.submitDesignGeneration(generationInput);
     })(event, input);
   });
   ipcMain.handle(conversationTestChannel, async (event, input) => {

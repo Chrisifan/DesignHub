@@ -54,6 +54,26 @@ it('lays out the workbench around one canvas surface', () => {
   fireEvent.mouseLeave(zoomIn);
 });
 
+it('centers the current draft when the canvas first opens on a wide viewport', async () => {
+  const scrollTo = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo });
+  const rect = (left: number, top: number, width: number, height: number): DOMRect => ({
+    left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
+  });
+  const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+  rectSpy.mockImplementation(() => {
+    const element = rectSpy.mock.contexts.at(-1) as HTMLElement;
+    if (element.classList.contains('workbench-canvas__stage')) return rect(0, 0, 1440, 900);
+    if (element.dataset.draftRole === 'current') return rect(720, 450, 280, 373);
+    return rect(0, 0, 0, 0);
+  });
+
+  render(<Workbench {...makeProps()} />);
+
+  await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ left: 140, top: 186.5, behavior: 'smooth' }));
+  rectSpy.mockRestore();
+});
+
 it('shows the conversation designer and keeps prompt actions adjacent', () => {
   render(<Workbench {...makeProps({
     project: { ...project, activeDesignerVersionId: 'gu-yan', designerSnapshot: { id: 'gu-yan', name: { zh: '顾言', en: 'Gu Yan' }, artworkUrl: '/gu-yan.png', artworkAlt: { zh: '顾言', en: 'Gu Yan' } } },
@@ -294,6 +314,40 @@ it('submits a conversation through the active project service when provided', ()
   expect(prompt).toHaveValue('');
 });
 
+it('chains a completed conversation into design generation', async () => {
+  const scrollTo = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo });
+  const rect = (left: number, top: number, width: number, height: number): DOMRect => ({
+    left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
+  });
+  const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+  rectSpy.mockImplementation(() => {
+    const element = rectSpy.mock.contexts.at(-1) as HTMLElement;
+    if (element.classList.contains('workbench-canvas__stage')) return rect(0, 0, 800, 600);
+    if (element.classList.contains('workbench-candidate-card') && element.dataset.taskId === 'design-1') return rect(1200, 900, 280, 373);
+    return rect(0, 0, 0, 0);
+  });
+  const onSubmitConversation = vi.fn(async () => ({ id: 'conversation-1', requestId: 'request-1', state: 'completed' as const, cancelRequested: false, attempt: 1, capability: 'conversation', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' }, result: { text: 'Use a calm editorial hierarchy.' } }));
+  const onSubmitDesignGeneration = vi.fn(async () => ({ id: 'design-1', requestId: 'request-2', state: 'running' as const, cancelRequested: false, attempt: 1, capability: 'design-generation' }));
+  render(<Workbench {...makeProps({ onSubmitConversation, onSubmitDesignGeneration })} />);
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成一张安静的主视觉' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  await waitFor(() => expect(screen.getAllByRole('status').some((element) => element.textContent?.includes('对话理解完成'))).toBe(true));
+  expect(screen.getByRole('complementary', { name: '设计分析' })).toBeInTheDocument();
+  const conversationButton = screen.getByRole('button', { name: '对话' });
+  expect(conversationButton).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(conversationButton);
+  expect(screen.queryByRole('complementary', { name: '设计分析' })).not.toBeInTheDocument();
+  fireEvent.click(conversationButton);
+  expect(screen.getByRole('complementary', { name: '设计分析' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  await waitFor(() => expect(onSubmitDesignGeneration).toHaveBeenCalledWith('conversation-1', null));
+  expect(document.querySelector('.workbench-canvas-world .workbench-candidate-board')).toBeInTheDocument();
+  await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ left: 940, top: 786.5, behavior: 'smooth' }));
+  rectSpy.mockRestore();
+});
+
 it('adds pasted images above the prompt and supports preview and removal', async () => {
   const image = new File([new Uint8Array([137, 80, 78, 71])], 'reference.png', { type: 'image/png' });
   const onSubmitConversation = vi.fn();
@@ -343,15 +397,43 @@ it('shows a connected model state when the host confirms a credential', () => {
 });
 
 it('updates preview zoom and grid without changing the document', () => {
+  const scrollTo = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo });
+  const rect = (left: number, top: number, width: number, height: number): DOMRect => ({
+    left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
+  });
+  const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+  rectSpy.mockImplementation(() => {
+    const element = rectSpy.mock.contexts.at(-1) as HTMLElement;
+    if (element.classList.contains('workbench-canvas__stage')) return rect(0, 0, 800, 600);
+    if (element.dataset.draftRole === 'current') return rect(1200, 900, 280, 373);
+    return rect(0, 0, 0, 0);
+  });
   render(<Workbench {...makeProps()} />);
   const canvas = screen.getByRole('region', { name: '设计画布' });
+  const draft = document.querySelector('.workbench-design-card');
+  expect(draft).toHaveStyle({ width: '280px', flexBasis: '280px' });
 
   fireEvent.click(screen.getByRole('button', { name: '放大' }));
   expect(screen.getByText('76%')).toBeInTheDocument();
+  expect(draft).toHaveStyle({ width: '313px', flexBasis: '313px' });
   fireEvent.click(screen.getByRole('button', { name: '网格' }));
   expect(canvas).toHaveAttribute('data-grid-visible', 'true');
   fireEvent.click(screen.getByRole('button', { name: '重置缩放' }));
   expect(screen.getByText('68%')).toBeInTheDocument();
+  expect(draft).toHaveStyle({ width: '280px', flexBasis: '280px' });
+  expect(scrollTo).toHaveBeenCalledWith({ left: 940, top: 786.5, behavior: 'smooth' });
+  rectSpy.mockRestore();
+});
+
+it('reports an empty workspace document when properties cannot inspect a layer', () => {
+  const notify = vi.fn();
+  const emptyScene = createScene({ id: 'empty-scene', width: 1080, height: 1440, layers: [] });
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene: emptyScene, notify })} />);
+
+  fireEvent.click(screen.getByRole('button', { name: '属性' }));
+
+  expect(notify).toHaveBeenCalledWith('当前没有可编辑图层');
 });
 
 it('applies an offline canvas resize through the tools panel', () => {

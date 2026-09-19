@@ -21,8 +21,8 @@ export type ChatResponse = { text: string; usage?: ChatUsage; cost: number | nul
 export type ChatStreamEvent = { text: string; finishReason?: string | null };
 export type VisionImage = { url: string } | { base64: string; mimeType?: string };
 export type VisionRequest = { prompt: string; images: VisionImage[] };
-export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number };
-export type ImageEditRequest = { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: string; toolParams?: ToolParams; region?: { x: number; y: number; width: number; height: number } };
+export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number; referenceImages?: Blob[] };
+export type ImageEditRequest = { prompt: string; image: Blob; referenceImages?: Blob[]; mask?: Blob; model?: string; size?: string; tool?: string; toolParams?: ToolParams; region?: { x: number; y: number; width: number; height: number } };
 export type GeneratedImage = { url?: string; base64?: string; mimeType?: string };
 export type ImageResponse = { images: GeneratedImage[]; cost: number | null };
 
@@ -178,6 +178,19 @@ const editInstruction = (request: ImageEditRequest): string => [
   ...(request.toolParams ? [`Tool parameters: ${JSON.stringify(request.toolParams)}.`] : []),
   ...(request.region ? [`Target region: ${JSON.stringify(request.region)}.`] : []),
 ].join('\n\n');
+
+const imageResponse = (payload: Record<string, unknown>): ImageResponse => ({
+  images: Array.isArray(payload.data) ? payload.data.map((entry) => {
+    const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+    return { ...(typeof item.url === 'string' ? { url: item.url } : {}), ...(typeof item.b64_json === 'string' ? { base64: item.b64_json } : {}) };
+  }) : [],
+  cost: null,
+});
+
+const appendImages = (form: FormData, images: readonly Blob[]): void => {
+  const field = images.length > 1 ? 'image[]' : 'image';
+  images.forEach((image) => form.append(field, image));
+};
 
 const contentText = (value: unknown): string => {
   if (typeof value === 'string') return value;
@@ -352,9 +365,16 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     if (imageTransport === 'responses') {
       if (request.count !== undefined && request.count !== 1) throw new Error('RESPONSES_IMAGE_COUNT_UNSUPPORTED');
       const model = configuredModel('image-generation', request.model);
+      const referenceImages = request.referenceImages ?? [];
       const payload = await postJson('/responses', {
         ...(model ? { model } : {}),
-        input: [{ role: 'user', content: [{ type: 'input_text', text: request.prompt }] }],
+        input: [{
+          role: 'user',
+          content: [
+            ...await Promise.all(referenceImages.map(async (image) => ({ type: 'input_image', image_url: await blobDataUrl(image) }))),
+            { type: 'input_text', text: request.prompt },
+          ],
+        }],
         tools: [{ type: 'image_generation', ...(request.size ? { size: request.size } : {}) }],
         tool_choice: { type: 'image_generation' },
       }, signal);
@@ -362,12 +382,33 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
       if (images.length === 0) throw toError('Provider returned no hosted image result.', 'invalid_response');
       return { images, cost: null };
     }
+    if (request.referenceImages?.length) {
+      const form = new FormData();
+      form.append('prompt', request.prompt);
+      appendImages(form, request.referenceImages);
+      const model = configuredModel('image-generation', request.model);
+      if (model) form.append('model', model);
+      if (request.size) form.append('size', request.size);
+      if (request.count !== undefined) form.append('n', String(request.count));
+      let response: Response;
+      try {
+        response = await fetcher(`${baseUrl}/images/edits`, { method: 'POST', headers: { authorization: `Bearer ${apiKey}` }, body: form, signal });
+      } catch (cause) {
+        if (signal?.aborted || (cause instanceof DOMException && cause.name === 'AbortError')) throw toError('Provider request cancelled locally.', 'cancelled');
+        throw networkError(cause, redact);
+      }
+      if (!response.ok) throw await createHttpError(response, redact);
+      return imageResponse(await readJson(response));
+    }
     const model = configuredModel('image-generation', request.model);
     const payload = await postJson('/images/generations', { prompt: request.prompt, ...(model ? { model } : {}), ...(request.size ? { size: request.size } : {}), ...(request.count === undefined ? {} : { n: request.count }) }, signal);
-    return { images: Array.isArray(payload.data) ? payload.data.map((entry) => {
-      const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
-      return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { base64: redact(item.b64_json) } : {}) };
-    }) : [], cost: null };
+    return imageResponse({
+      ...payload,
+      data: Array.isArray(payload.data) ? payload.data.map((entry) => {
+        const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+        return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { b64_json: redact(item.b64_json) } : {}) };
+      }) : [],
+    });
   };
   const editImage = async (request: ImageEditRequest, signal?: AbortSignal): Promise<ImageResponse> => {
     if (imageTransport === 'responses') {
@@ -378,6 +419,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
           role: 'user',
           content: [
             { type: 'input_image', image_url: await blobDataUrl(request.image) },
+            ...await Promise.all((request.referenceImages ?? []).map(async (image) => ({ type: 'input_image', image_url: await blobDataUrl(image) }))),
             ...(request.mask ? [{ type: 'input_image', image_url: await blobDataUrl(request.mask) }] : []),
             { type: 'input_text', text: editInstruction(request) },
           ],
@@ -391,7 +433,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     }
     const form = new FormData();
     form.append('prompt', request.prompt);
-    form.append('image', request.image);
+    appendImages(form, [request.image, ...(request.referenceImages ?? [])]);
     if (request.mask) form.append('mask', request.mask);
     if (request.tool) form.append('tool', request.tool);
     if (request.toolParams) form.append('tool_params', JSON.stringify(request.toolParams));
@@ -408,10 +450,13 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     }
     if (!response.ok) throw await createHttpError(response, redact);
     const payload = await readJson(response);
-    return { images: Array.isArray(payload.data) ? payload.data.map((entry) => {
-      const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
-      return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { base64: redact(item.b64_json) } : {}) };
-    }) : [], cost: null };
+    return imageResponse({
+      ...payload,
+      data: Array.isArray(payload.data) ? payload.data.map((entry) => {
+        const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+        return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { b64_json: redact(item.b64_json) } : {}) };
+      }) : [],
+    });
   };
   return { capabilities: providerCapabilities, chat, streamChat, analyzeVision, generateImage, editImage };
 };

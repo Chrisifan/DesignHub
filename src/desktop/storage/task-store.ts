@@ -37,6 +37,22 @@ const isProviderFailure = (value: unknown): value is TaskProviderFailure => isRe
 const isRegion = (value: unknown): boolean => isRecord(value)
   && ['x', 'y', 'width', 'height'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0)
   && Number(value.width) > 0 && Number(value.height) > 0;
+const isDesignContext = (value: unknown): boolean => isRecord(value)
+  && value.version === 1
+  && typeof value.workspaceId === 'string' && value.workspaceId.trim().length > 0
+  && typeof value.projectId === 'string' && value.projectId.trim().length > 0
+  && typeof value.documentId === 'string' && value.documentId.trim().length > 0
+  && typeof value.brief === 'string'
+  && isRecord(value.document)
+  && Number.isInteger(value.document.width) && Number(value.document.width) > 0
+  && Number.isInteger(value.document.height) && Number(value.document.height) > 0
+  && Array.isArray(value.document.currentImageAssetIds) && value.document.currentImageAssetIds.every((id) => typeof id === 'string')
+  && Array.isArray(value.attachmentAssetIds) && value.attachmentAssetIds.every((id) => typeof id === 'string')
+  && typeof value.userMessage === 'string'
+  && (value.assistantBrief === undefined || typeof value.assistantBrief === 'string')
+  && (value.designerSnapshot === undefined || isRecord(value.designerSnapshot))
+  && (value.brandSnapshot === undefined || isRecord(value.brandSnapshot))
+  && (value.baseRevisionId === null || typeof value.baseRevisionId === 'string');
 const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> => {
   if (!isRecord(value)) return false;
   const candidate = value.candidate;
@@ -45,6 +61,9 @@ const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> =>
     && (candidate.baseRevisionId === null || typeof candidate.baseRevisionId === 'string')
     && Array.isArray(candidate.assetIds) && candidate.assetIds.every((id) => typeof id === 'string')
     && (candidate.sceneAssetId === undefined || typeof candidate.sceneAssetId === 'string')
+    && (candidate.analysisThreadId === undefined || typeof candidate.analysisThreadId === 'string')
+    && (candidate.parentConversationTaskId === undefined || typeof candidate.parentConversationTaskId === 'string')
+    && (candidate.designerVersionId === undefined || typeof candidate.designerVersionId === 'string')
     && typeof candidate.createdAt === 'string');
   return (value.text === undefined || typeof value.text === 'string')
     && (value.sceneAssetId === undefined || typeof value.sceneAssetId === 'string')
@@ -63,6 +82,13 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && Number.isInteger(value.attempt) && Number(value.attempt) > 0
   && (value.source === undefined || isTaskSource(value.source))
   && (value.documentId === undefined || typeof value.documentId === 'string')
+  && (value.parentConversationTaskId === undefined || typeof value.parentConversationTaskId === 'string')
+  && (value.analysisThreadId === undefined || typeof value.analysisThreadId === 'string')
+  && (value.conversationParentTaskId === undefined || typeof value.conversationParentTaskId === 'string')
+  && (value.progressText === undefined || typeof value.progressText === 'string')
+  && (value.contextAssetIds === undefined || (Array.isArray(value.contextAssetIds) && value.contextAssetIds.every((id) => typeof id === 'string')))
+  && (value.contextVersion === undefined || value.contextVersion === 1)
+  && (value.designContext === undefined || isDesignContext(value.designContext))
   && (value.sourceAssetId === undefined || typeof value.sourceAssetId === 'string')
   && (value.hasMask === undefined || typeof value.hasMask === 'boolean')
   && (value.baseRevisionId === undefined || value.baseRevisionId === null || typeof value.baseRevisionId === 'string')

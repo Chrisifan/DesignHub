@@ -5,9 +5,14 @@ import type { TaskRuntime } from '../tasks/runtime';
 import type { Region } from '../canvas/selection';
 import { validateToolParams, type ImageTool, type ToolParams } from '../image-tools/target';
 import { analyzePortfolio, type PortfolioImageSource } from './analyze-portfolio';
+import { buildDesignContextPrompt, type DesignGenerationContext } from './context';
 
 export type ConversationInput = {
+  workspaceId?: string;
   projectId?: string;
+  analysisThreadId?: string;
+  conversationParentTaskId?: string;
+  referencedAssetIds?: string[];
   source?: TaskSource;
   documentId?: string;
   designerVersionId?: string;
@@ -15,6 +20,15 @@ export type ConversationInput = {
   connectionId: string;
   message: string;
   attachments?: ConversationImageAttachment[];
+};
+
+export type DesignGenerationInput = {
+  workspaceId: string;
+  projectId: string;
+  documentId: string;
+  conversationTaskId: string;
+  baseRevisionId?: string | null;
+  connectionId: string;
 };
 
 export type ConversationImageAttachment = {
@@ -91,13 +105,15 @@ export type ImageGenerationTestResult = {
 
 type ConversationAdapter = {
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
+  streamChat?: (request: ChatRequest, signal?: AbortSignal) => AsyncIterable<{ text: string; finishReason?: string | null }>;
   analyzeVision?: (request: VisionRequest, signal?: AbortSignal) => Promise<ChatResponse>;
-  generateImage?: (request: { prompt: string; model?: string; size?: string; count?: number }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
-  editImage?: (request: { prompt: string; image: Blob; mask?: Blob; model?: string; size?: string; tool?: ImageTool; toolParams?: ToolParams; region?: Region }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
+  generateImage?: (request: { prompt: string; model?: string; size?: string; count?: number; referenceImages?: Blob[] }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
+  editImage?: (request: { prompt: string; image: Blob; referenceImages?: Blob[]; mask?: Blob; model?: string; size?: string; tool?: ImageTool; toolParams?: ToolParams; region?: Region }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
 };
 
 export type AgentTaskService = {
   submitConversation: (input: ConversationInput) => Promise<TaskRecord>;
+  submitDesignGeneration: (input: DesignGenerationInput) => Promise<TaskRecord>;
   submitPortfolioAnalysis: (input: PortfolioAnalysisInput) => Promise<TaskRecord>;
   submitImageGeneration: (input: ImageGenerationInput) => Promise<TaskRecord>;
   submitDesignerArtworkGeneration: (input: DesignerArtworkGenerationInput) => Promise<TaskRecord>;
@@ -115,10 +131,14 @@ export type AgentTaskServiceOptions = {
   persistGeneratedImages?: (input: { projectId: string; images: GeneratedImage[] }) => Promise<string[]>;
   persistDesignerArtwork?: (input: { designerDraftId: string; images: GeneratedImage[] }) => Promise<string[]>;
   loadSourceImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
+  resolveDesignContext?: (input: { input: ConversationInput; attachmentAssetIds: string[] }) => Promise<DesignGenerationContext>;
+  persistConversationAttachments?: (input: { projectId: string; attachments: ConversationImageAttachment[] }) => Promise<string[]>;
+  loadContextImage?: (input: { projectId: string; assetId: string }) => Promise<ConversationImageAttachment | null>;
 };
 
 const taskId = (): string => `conversation-${crypto.randomUUID()}`;
 const requestId = (): string => `request-${crypto.randomUUID()}`;
+const designTaskId = (): string => `design-generation-${crypto.randomUUID()}`;
 const errorCode = (error: unknown): string => {
   if (error && typeof error === 'object' && 'kind' in error && typeof error.kind === 'string') return error.kind;
   if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return 'CANCELLED';
@@ -166,6 +186,12 @@ const containsSourceData = (value: unknown, sources: readonly string[]): boolean
   return Boolean(value && typeof value === 'object' && Object.values(value).some((item) => containsSourceData(item, sources)));
 };
 
+const generationPrompt = (context: DesignGenerationContext, assistantBrief?: string): string => [
+  'Generate a polished design draft for the current DesignHub canvas.',
+  buildDesignContextPrompt({ ...context, ...(assistantBrief ? { assistantBrief } : {}) }),
+  context.designerSnapshot && Object.keys(context.designerSnapshot).length > 0 ? 'The result must follow the designer profile and avoid every negative rule.' : '',
+].filter(Boolean).join('\n\n');
+
 export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentTaskService => {
   const controllers = new Map<string, AbortController>();
   const pending = new Set<Promise<unknown>>();
@@ -175,17 +201,45 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const execution = (async (): Promise<void> => {
       try {
         const adapter = await options.resolveAdapter(input.connectionId);
-        const content = input.attachments?.length
-          ? [
-              { type: 'text' as const, text: input.message },
-              ...input.attachments.map((attachment) => ({
-                type: 'image_url' as const,
-                image_url: { url: `data:${attachment.mimeType};base64,${Buffer.from(attachment.bytes).toString('base64')}` },
-              })),
-            ]
-          : input.message;
-        const response = await adapter.chat({ messages: [{ role: 'user', content }] }, controller.signal);
-        await options.runtime.complete(task.id, { text: response.text, cost: response.cost });
+        const loadAssets = async (assetIds: readonly string[]): Promise<ConversationImageAttachment[]> => task.source?.kind === 'project' && options.loadContextImage
+          ? (await Promise.all(assetIds.map((assetId) => options.loadContextImage!({ projectId: task.source!.id, assetId })))).filter((attachment): attachment is ConversationImageAttachment => Boolean(attachment))
+          : [];
+        const imagePart = (attachment: ConversationImageAttachment) => ({
+          type: 'image_url' as const,
+          image_url: { url: `data:${attachment.mimeType};base64,${Buffer.from(attachment.bytes).toString('base64')}` },
+        });
+        const threadTasks = task.analysisThreadId
+          ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === task.analysisThreadId && candidate.source?.id === task.source?.id && candidate.documentId === task.documentId && candidate.id !== task.id).sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id))
+          : [];
+        const messages: ChatRequest['messages'] = task.designContext
+          ? [{ role: 'system', content: buildDesignContextPrompt(task.designContext) }]
+          : [];
+        for (const historicalTask of threadTasks) {
+          const historicalAttachments = historicalTask.contextAssetIds?.length ? await loadAssets(historicalTask.contextAssetIds) : [];
+          messages.push({ role: 'user', content: [{ type: 'text', text: historicalTask.requestText ?? '' }, ...historicalAttachments.map(imagePart)] });
+        }
+        const currentAssetIds = [...new Set([...(task.contextAssetIds ?? []), ...(task.designContext?.document.currentImageAssetIds ?? [])])];
+        const storedAttachments = currentAssetIds.length ? await loadAssets(currentAssetIds) : [];
+        const rawAttachments = input.attachments?.length ? input.attachments : [];
+        const currentAttachments = [...rawAttachments, ...storedAttachments.filter((stored) => !rawAttachments.some((raw) => raw.name === stored.name))];
+        messages.push({ role: 'user', content: [{ type: 'text', text: input.message }, ...currentAttachments.map(imagePart)] });
+        const request = { messages };
+        let text = '';
+        let cost: number | null = null;
+        if (adapter.streamChat) {
+          for await (const event of adapter.streamChat(request, controller.signal)) {
+            if (event.text) {
+              text += event.text;
+              options.runtime.updateProgress(task.id, text);
+            }
+          }
+        } else {
+          const response = await adapter.chat(request, controller.signal);
+          text = response.text;
+          cost = response.cost;
+          options.runtime.updateProgress(task.id, text);
+        }
+        await options.runtime.complete(task.id, { text, cost });
       } catch (error) {
         if (controller.signal.aborted) {
           await options.runtime.complete(task.id);
@@ -289,6 +343,8 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
               baseRevisionId: task.baseRevisionId ?? null,
               assetIds: [...assetIds],
               ...(assetIds[0] ? { sceneAssetId: assetIds[0] } : {}),
+              ...(task.parentConversationTaskId ? { parentConversationTaskId: task.parentConversationTaskId } : {}),
+              ...(task.designerVersionId ? { designerVersionId: task.designerVersionId } : {}),
               createdAt: new Date().toISOString(),
             },
           } : {}),
@@ -304,6 +360,30 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   const submitConversation = async (input: ConversationInput): Promise<TaskRecord> => {
     const source = input.source ?? (input.projectId?.trim() ? { kind: 'project' as const, id: input.projectId.trim() } : undefined);
     if (!source?.id.trim() || !input.connectionId.trim() || !input.message.trim()) throw new Error('CONVERSATION_BINDING_REQUIRED');
+    const existingThreadTasks = input.analysisThreadId
+      ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === input.analysisThreadId)
+      : [];
+    const parent = input.conversationParentTaskId
+      ? options.runtime.get(input.conversationParentTaskId)
+      : existingThreadTasks.filter((candidate) => candidate.state === 'completed').sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
+    if (parent && (parent.source?.kind !== source.kind || parent.source.id !== source.id || (input.documentId && parent.documentId !== input.documentId))) throw new Error('CONVERSATION_CONTEXT_MISMATCH');
+    if (parent?.analysisThreadId && input.analysisThreadId && parent.analysisThreadId !== input.analysisThreadId) throw new Error('CONVERSATION_CONTEXT_MISMATCH');
+    const analysisThreadId = input.analysisThreadId ?? parent?.analysisThreadId ?? `analysis-${crypto.randomUUID()}`;
+    if (options.runtime.list().some((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === analysisThreadId && (candidate.state === 'queued' || candidate.state === 'running'))) throw new Error('CONVERSATION_THREAD_BUSY');
+    const attachmentAssetIds = source.kind === 'project' && options.persistConversationAttachments && input.attachments?.length
+      ? await options.persistConversationAttachments({ projectId: source.id, attachments: input.attachments })
+      : [];
+    const referencedAssetIds = [...new Set(input.referencedAssetIds ?? [])];
+    if (referencedAssetIds.length && options.loadContextImage) {
+      const referenced = await Promise.all(referencedAssetIds.map((assetId) => options.loadContextImage!({ projectId: source.id, assetId })));
+      if (referenced.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');
+    }
+    const designContext = parent?.designContext
+      ? structuredClone(parent.designContext)
+      : source.kind === 'project' && options.resolveDesignContext
+        ? await options.resolveDesignContext({ input, attachmentAssetIds })
+        : undefined;
+    const contextAssetIds = [...new Set([...attachmentAssetIds, ...referencedAssetIds])];
     const task = options.runtime.start({
       id: taskId(),
       requestId: requestId(),
@@ -311,12 +391,119 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       source,
       ...(input.documentId ? { documentId: input.documentId } : {}),
       ...(input.baseRevisionId === undefined ? {} : { baseRevisionId: input.baseRevisionId }),
-      ...(input.designerVersionId ? { designerVersionId: input.designerVersionId } : {}),
+      analysisThreadId,
+      ...(parent ? { conversationParentTaskId: parent.id } : {}),
+      ...((input.designerVersionId ?? (designContext?.designerSnapshot?.id as string | undefined)) ? { designerVersionId: input.designerVersionId ?? designContext?.designerSnapshot?.id as string } : {}),
+      ...(contextAssetIds.length ? { contextAssetIds } : {}),
+      ...(designContext ? { contextVersion: designContext.version, designContext } : {}),
       providerId: input.connectionId,
       capability: 'conversation',
       createdAt: new Date().toISOString(),
     });
     await executeTask(task, input);
+    return task;
+  };
+  const executeDesignGeneration = async (task: TaskRecord, input: DesignGenerationInput, parent: TaskRecord): Promise<void> => {
+    const controller = new AbortController();
+    controllers.set(task.id, controller);
+    const execution = (async (): Promise<void> => {
+      try {
+        const context = task.designContext ?? parent.designContext;
+        if (!context) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
+        const adapter = await options.resolveAdapter(input.connectionId);
+        const prompt = generationPrompt(context, parent.result?.text);
+        const sourceAssetId = context.document.currentImageAssetIds[0];
+        const sourceImage = sourceAssetId && options.loadSourceImage
+          ? await options.loadSourceImage({ projectId: input.projectId, assetId: sourceAssetId })
+          : null;
+        const referenceAssetIds = [...new Set([
+          ...(task.contextAssetIds ?? context.attachmentAssetIds),
+          ...context.document.currentImageAssetIds,
+        ])].filter((assetId) => assetId !== sourceAssetId);
+        const loadedReferences = options.loadContextImage && referenceAssetIds.length
+          ? await Promise.all(referenceAssetIds.map((assetId) => options.loadContextImage!({ projectId: input.projectId, assetId })))
+          : [];
+        if (loadedReferences.some((attachment) => !attachment)) throw new Error('CONTEXT_ASSET_MISSING');
+        const referenceImages = loadedReferences
+          .filter((attachment): attachment is ConversationImageAttachment => Boolean(attachment))
+          .map((attachment) => new Blob([new Uint8Array(attachment.bytes).buffer as ArrayBuffer], { type: attachment.mimeType }));
+        const response = sourceImage && adapter.editImage
+          ? await adapter.editImage({ prompt, image: sourceImage, ...(referenceImages.length ? { referenceImages } : {}), size: `${context.document.width}x${context.document.height}` }, controller.signal)
+          : (adapter.generateImage ? await adapter.generateImage({ prompt, ...(referenceImages.length ? { referenceImages } : {}), size: `${context.document.width}x${context.document.height}`, count: 1 }, controller.signal) : undefined);
+        if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
+        if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
+        const assetIds = options.persistGeneratedImages ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images }) : [];
+        await options.runtime.complete(task.id, {
+          assetIds,
+          imageCount: response.images.length,
+          cost: response.cost,
+          candidate: {
+            id: `candidate-${task.id}`,
+            baseRevisionId: task.baseRevisionId ?? null,
+            assetIds: [...assetIds],
+            ...(assetIds[0] ? { sceneAssetId: assetIds[0] } : {}),
+            parentConversationTaskId: input.conversationTaskId,
+            ...(task.analysisThreadId ? { analysisThreadId: task.analysisThreadId } : {}),
+            ...(task.designerVersionId ? { designerVersionId: task.designerVersionId } : {}),
+            createdAt: new Date().toISOString(),
+          },
+        });
+      } catch (error) {
+        if (controller.signal.aborted) await options.runtime.complete(task.id);
+        else await failTask(options.runtime, task.id, error);
+      } finally { controllers.delete(task.id); }
+    })();
+    pending.add(execution);
+    void execution.finally(() => pending.delete(execution));
+  };
+  const submitDesignGeneration = async (input: DesignGenerationInput): Promise<TaskRecord> => {
+    if (!input.projectId.trim() || !input.documentId.trim() || !input.conversationTaskId.trim() || !input.connectionId.trim()) throw new Error('DESIGN_GENERATION_BINDING_REQUIRED');
+    const parent = options.runtime.get(input.conversationTaskId);
+    if (!parent || parent.state !== 'completed' || parent.capability !== 'conversation' || parent.source?.kind !== 'project' || parent.source.id !== input.projectId || parent.documentId !== input.documentId) throw new Error('CONVERSATION_CONTEXT_REQUIRED');
+    if (parent.analysisThreadId) {
+      const latest = options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && candidate.documentId === input.documentId && candidate.state === 'completed').sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
+      if (!latest || latest.id !== parent.id) throw new Error('CONVERSATION_CONTEXT_STALE');
+    }
+    if (!parent.designContext) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
+    if (parent.designContext.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_CONTEXT_MISMATCH');
+    const threadCandidates = parent.analysisThreadId
+      ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && candidate.documentId === input.documentId)
+      : [parent];
+    const threadAssetIds = [...new Set([
+      ...threadCandidates.flatMap((candidate) => candidate.contextAssetIds ?? []),
+      ...parent.designContext.document.currentImageAssetIds,
+    ])];
+    const threadUserMessage = threadCandidates
+      .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id))
+      .map((candidate) => candidate.requestText?.trim())
+      .filter((message): message is string => Boolean(message))
+      .join('\n');
+    if (options.loadContextImage && threadAssetIds.length) {
+      const contextAssets = await Promise.all(threadAssetIds.map((assetId) => options.loadContextImage!({ projectId: input.projectId, assetId })));
+      if (contextAssets.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');
+    }
+    const task = options.runtime.start({
+      id: designTaskId(),
+      requestId: requestId(),
+      requestText: generationPrompt({ ...parent.designContext, ...(threadUserMessage ? { userMessage: threadUserMessage } : {}) }, parent.result?.text),
+      source: { kind: 'project', id: input.projectId },
+      documentId: input.documentId,
+      baseRevisionId: input.baseRevisionId ?? parent.baseRevisionId ?? null,
+      ...(parent.designerVersionId ? { designerVersionId: parent.designerVersionId } : {}),
+      ...(threadAssetIds.length ? { contextAssetIds: threadAssetIds } : {}),
+      ...(parent.analysisThreadId ? { analysisThreadId: parent.analysisThreadId } : {}),
+      ...(parent.contextVersion ? { contextVersion: parent.contextVersion } : {}),
+      designContext: {
+        ...parent.designContext,
+        ...(threadUserMessage ? { userMessage: threadUserMessage } : {}),
+        ...(parent.result?.text ? { assistantBrief: parent.result.text } : {}),
+      },
+      parentConversationTaskId: input.conversationTaskId,
+      providerId: input.connectionId,
+      capability: 'design-generation',
+      createdAt: new Date().toISOString(),
+    });
+    await executeDesignGeneration(task, input, parent);
     return task;
   };
   const submitPortfolioAnalysis = async (input: PortfolioAnalysisInput): Promise<TaskRecord> => {
@@ -434,18 +621,39 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       await executeImageTask(running, input, 'generate');
       return running;
     }
+    if (previous.capability === 'design-generation') {
+      if (!previous.parentConversationTaskId || previous.source.kind !== 'project' || !previous.documentId) return undefined;
+      const parent = options.runtime.get(previous.parentConversationTaskId);
+      if (!parent) return undefined;
+      const retried = options.runtime.retry(taskId);
+      if (!retried) return undefined;
+      const running = options.runtime.run(retried.id);
+      if (!running) return undefined;
+      await executeDesignGeneration(running, {
+        workspaceId: previous.designContext?.workspaceId ?? '',
+        projectId: previous.source.id,
+        documentId: previous.documentId,
+        conversationTaskId: previous.parentConversationTaskId,
+        baseRevisionId: previous.baseRevisionId ?? null,
+        connectionId: previous.providerId,
+      }, parent);
+      return running;
+    }
     if (previous.capability !== 'conversation') return undefined;
     const retried = options.runtime.retry(taskId);
     if (!retried) return undefined;
     const running = options.runtime.run(retried.id);
     if (!running) return undefined;
     await executeTask(running, {
+      workspaceId: previous.designContext?.workspaceId,
       source: previous.source,
       ...(previous.documentId ? { documentId: previous.documentId } : {}),
       ...(previous.baseRevisionId === undefined ? {} : { baseRevisionId: previous.baseRevisionId }),
       ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
       connectionId: previous.providerId,
       message: previous.requestText,
+      ...(previous.analysisThreadId ? { analysisThreadId: previous.analysisThreadId } : {}),
+      ...(previous.conversationParentTaskId ? { conversationParentTaskId: previous.conversationParentTaskId } : {}),
     });
     return running;
   };
@@ -457,5 +665,5 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await Promise.all([...pending]);
     await options.runtime.flush();
   };
-  return { submitConversation, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testConversation, testImageGeneration, retry, cancel, flush };
+  return { submitConversation, submitDesignGeneration, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testConversation, testImageGeneration, retry, cancel, flush };
 };

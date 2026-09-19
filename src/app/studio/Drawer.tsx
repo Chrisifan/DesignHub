@@ -47,13 +47,16 @@ export const Drawer = ({
   useEffect(() => {
     if (!open) {
       const returnFocus = returnFocusRef.current;
+      returnFocusRef.current = null;
       if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
       return undefined;
     }
 
-    returnFocusRef.current = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
+    if (!returnFocusRef.current) {
+      returnFocusRef.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const initialFocus = initialFocusSelector

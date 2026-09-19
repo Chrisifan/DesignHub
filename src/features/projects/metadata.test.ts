@@ -72,5 +72,18 @@ it('moves a switched active designer to the lead without dropping existing contr
   expect(updated.contributorDesignerVersionIds).toEqual(['designer-c', 'designer-a', 'designer-b']);
 });
 
+it('preserves an optional managed cover asset id', () => {
+  const created = createProjectMetadata({
+    projectId: 'project-1',
+    workspaceId: 'workspace-1',
+    name: '项目',
+    coverAssetId: 'asset-0123456789abcdef',
+  });
+
+  expect(created.coverAssetId).toBe('asset-0123456789abcdef');
+  expect(createProjectMetadata({ projectId: 'project-2', workspaceId: 'workspace-1', name: '旧项目' })).not.toHaveProperty('coverAssetId');
+  expect(updateProjectMetadata(created, { coverAssetId: 'asset-fedcba9876543210' }).coverAssetId).toBe('asset-fedcba9876543210');
+});
+
 const _typeCheck = (value: ProjectMetadata): ProjectMetadata => value;
 void _typeCheck;

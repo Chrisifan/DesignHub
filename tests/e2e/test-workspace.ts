@@ -66,16 +66,38 @@ export const gotoTestWorkspace = async (page: Page, scene: DesignScene | null = 
       documents: [{ id: 'doc-e2e', name: '主海报', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }],
       archived: false,
     };
+    let createdProjectInput: { name: string; documents?: Array<{ id: string; name: string; width: number; height: number }> } | undefined;
+    let projectCoverBytes: Uint8Array | undefined;
+    const projectCoverAssetId = 'asset-0123456789abcdef';
     (window as typeof window & { designhub?: unknown }).designhub = ({
       chooseWorkspaceDirectory: async () => '/tmp/designhub-e2e',
       openWorkspace: async () => ({ workspaceId: 'workspace-e2e', name: '测试工作区', directory: '/tmp/designhub-e2e', formatVersion: 1, openMode: 'writable' }),
       listActiveProjects: async () => [project],
-      createProjectContainer: async () => ({ projectId: 'project-created' }),
+      createProjectContainer: async (input: typeof createdProjectInput) => {
+        createdProjectInput = input;
+        return { projectId: 'project-created' };
+      },
+      importAssets: async (input: { items: Array<{ name: string; mimeType?: string; data?: Uint8Array }> }) => {
+        const item = input.items[0];
+        projectCoverBytes = item?.data instanceof Uint8Array ? item.data.slice() : undefined;
+        return item ? [{ status: 'success', asset: { id: projectCoverAssetId, name: item.name, format: 'PNG', mimeType: item.mimeType ?? 'image/png', contentHash: '0'.repeat(64), managed: true } }] : [];
+      },
+      updateProjectMetadata: async (input: { projectId: string; patch: { coverAssetId?: string } }) => ({
+        projectId: input.projectId,
+        workspaceId: 'workspace-e2e',
+        name: createdProjectInput?.name ?? project.name,
+        ...input.patch,
+        documents: (createdProjectInput?.documents ?? []).map((document) => ({ ...document, updatedAt: '2026-09-19T00:00:00.000Z' })),
+        archived: false,
+        createdAt: '2026-09-19T00:00:00.000Z',
+        updatedAt: '2026-09-19T00:00:00.000Z',
+      }),
       loadDesignerState: async () => ({ profiles: [paper, commerce], defaultId: 'e2e-paper', drafts: {} }),
       inspectPortfolioSources: async () => ({ id: 'inspection-e2e', candidates: [{ id: 'source-e2e', label: '作品集封面', description: '作品集封面', origin: 'local-image', previewUrl: '' }] }),
       submitPortfolioSelection: async () => ({ id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'running', cancelRequested: false, attempt: 1 }),
       loadBrandState: async () => ({ brands: [] }),
       listAssets: async () => [],
+      readAsset: async (input: { assetId: string }) => input.assetId === projectCoverAssetId ? projectCoverBytes ?? null : null,
       listTasks: async () => [],
       hasCredential: async () => false,
       loadDocumentScene: async () => initialScene,

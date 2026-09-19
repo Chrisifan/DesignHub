@@ -215,6 +215,19 @@ it('loads managed asset bytes for the selected workspace preview', async () => {
   await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-managed' }));
 });
 
+it('hides internal conversation and project cover assets from the material library', async () => {
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => [
+    { id: 'asset-visible', name: '公开素材', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true },
+    { id: 'asset-conversation', name: '对话附件', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'b'.repeat(64), managed: true, metadata: { purpose: 'conversation-reference' } },
+    { id: 'asset-cover', name: '项目封面文件', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'c'.repeat(64), managed: true, metadata: { purpose: 'project-cover' } },
+  ]) };
+  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+
+  expect(await screen.findByRole('button', { name: /公开素材/ })).toBeInTheDocument();
+  expect(screen.queryByText('对话附件')).not.toBeInTheDocument();
+  expect(screen.queryByText('项目封面文件')).not.toBeInTheDocument();
+});
+
 it('imports dropped files for a workspace project', async () => {
   const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'asset-drop', name: 'drop.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'd'.repeat(64), managed: true } }]);
   window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => []), importAssets };

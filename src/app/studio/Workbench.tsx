@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type FormEvent } from 'react';
 
 import type { Locale } from '../i18n';
 import type { Project } from './types';
 import { Drawer } from './Drawer';
 import { PersonaArtwork } from './PersonaArtwork';
 import { CanvasWorkspace, type CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
+import { AnalysisPanel } from './AnalysisPanel';
+import { CandidateBoard } from './CandidateBoard';
 import type { Region } from '../../features/canvas/selection';
-import { createScene, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
+import { createScene, isLayerInteractive, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
 import { resizeScene } from '../../features/image-tools/local-transform';
 import { defaultToolParams, validateToolParams, type ImageTool, type ToolParams } from '../../features/image-tools/target';
@@ -77,7 +79,8 @@ export type WorkbenchProps = {
   onExport: () => void;
   onConnections: () => void;
   onTasks?: () => void;
-  onSubmitConversation?: (message: string, attachments: ConversationImageAttachment[]) => void | Promise<void>;
+  onSubmitConversation?: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
+  onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
@@ -132,6 +135,7 @@ export const Workbench = ({
   onConnections,
   onTasks,
   onSubmitConversation,
+  onSubmitDesignGeneration,
   onSubmitImageTask,
   onSubmitImageGeneration,
   operatorName = '',
@@ -156,7 +160,7 @@ export const Workbench = ({
   const [panelOpen, setPanelOpen] = useState(false);
   const [layersExpanded, setLayersExpanded] = useState(false);
   const [zoom, setZoom] = useState(68);
-  const [gridVisible, setGridVisible] = useState(false);
+  const [gridVisible] = useState(true);
   const [title, setTitle] = useState(
     locale === 'zh-CN' ? project.name : project.enName,
   );
@@ -173,6 +177,7 @@ export const Workbench = ({
   const [canvasSelectionRequest, setCanvasSelectionRequest] = useState<{ id: number; type: LayerId }>();
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const canvasStageRef = useRef<HTMLDivElement>(null);
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
@@ -182,7 +187,14 @@ export const Workbench = ({
   const [revisionBaseId, setRevisionBaseId] = useState<string | null>(null);
   const [compareRevisionId, setCompareRevisionId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [pendingConversationTaskId, setPendingConversationTaskId] = useState<string | null>(null);
+  const [analysisThreadId, setAnalysisThreadId] = useState<string | undefined>();
+  const [analysisMessage, setAnalysisMessage] = useState('');
+  const [analysisAttachments, setAnalysisAttachments] = useState<Array<ConversationImageAttachment & { previewUrl: string }>>([]);
+  const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [candidatePreviewId, setCandidatePreviewId] = useState<string | null>(null);
+  const [viewportFocusRequest, setViewportFocusRequest] = useState({ id: 0, candidateId: null as string | null });
 
   useEffect(() => {
     if (!workspaceId || !documentId) return undefined;
@@ -195,17 +207,30 @@ export const Workbench = ({
   useEffect(() => {
     if (!workspaceId) return undefined;
     let cancelled = false;
-    const request = getDesktopApi().listTasks?.(workspaceId);
-    void request?.then((loaded) => { if (!cancelled && loaded) setTasks(loaded.filter((task) => task.documentId === documentId)); }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [documentId, workspaceId]);
+    const refresh = (): void => {
+      const request = getDesktopApi().listTasks?.(workspaceId);
+      void request?.then((loaded) => { if (!cancelled && loaded) setTasks(loaded.filter((task) => task.documentId === documentId)); }).catch(() => undefined);
+    };
+    refresh();
+    const interval = window.setInterval(refresh, pendingConversationTaskId ? 750 : 2_000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, [documentId, pendingConversationTaskId, workspaceId]);
 
   const currentRevisionId = revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? revisionState.finalRevisionId ?? null;
+  const pendingConversationTask = pendingConversationTaskId ? tasks.find((task) => task.id === pendingConversationTaskId) : undefined;
+  const conversationReadyForGeneration = pendingConversationTask?.state === 'completed';
+  const generating = tasks.some((task) => task.capability === 'design-generation' && task.analysisThreadId === analysisThreadId && (task.state === 'queued' || task.state === 'running'));
+  const hasPendingAnalysis = Boolean(pendingConversationTask && (pendingConversationTask.state === 'queued' || pendingConversationTask.state === 'running'));
   const candidateFor = (candidateId: string): { task: TaskRecord; candidate: TaskCandidate } | undefined => {
     for (const task of tasks) {
       if (task.result?.candidate?.id === candidateId) return { task, candidate: task.result.candidate };
     }
     return undefined;
+  };
+  const selectCandidate = (candidateId: string, assetId: string): void => {
+    setSelectedCandidateId(candidateId);
+    setReferencedAssetIds((current) => current.includes(assetId) ? current : [...current, assetId]);
+    notify(t(locale, '候选已加入下一轮对话', 'Candidate added to the next conversation'));
   };
 
   const persistScene = (nextScene: DesignScene): void => {
@@ -282,31 +307,63 @@ export const Workbench = ({
   const finalizeCandidate = async (candidateId: string): Promise<void> => {
     const entry = candidateFor(candidateId);
     if (readOnly || !workspaceId || !documentId || !entry || revisionBusy || entry.candidate.assetIds.length === 0) return;
+    const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
+      ? true
+      : window.confirm(t(locale, '确认后其他候选稿将移除。是否定稿？', 'Other candidate drafts will be removed after finalizing. Continue?'));
+    if (confirmed === false) return;
     setRevisionBusy(true);
     try {
-      const contribution = revisionContributions('revision');
+      const contribution = entry.candidate.designerVersionId
+        ? [{ designerVersionId: entry.candidate.designerVersionId, role: 'revision' as const }]
+        : revisionContributions('revision');
       const imageLayer = scene.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image');
+      const selectedAssetId = entry.candidate.sceneAssetId ?? entry.candidate.assetIds[0]!;
+      const contentLayerId = (() => {
+        const base = `content-${selectedAssetId}`;
+        let id = base;
+        let suffix = 2;
+        while (scene.layers.some((layer) => layer.id === id)) id = `${base}-${suffix++}`;
+        return id;
+      })();
       const candidateScene = imageLayer
-        ? replaceSceneLayer(scene, { ...imageLayer, assetId: entry.candidate.sceneAssetId ?? entry.candidate.assetIds[0]! })
-        : undefined;
+        ? replaceSceneLayer(scene, { ...imageLayer, assetId: selectedAssetId, role: 'content' })
+        : createScene({ ...scene, layers: [...scene.layers, {
+          id: contentLayerId,
+          type: 'image',
+          assetId: selectedAssetId,
+          role: 'content',
+          x: 0,
+          y: 0,
+          width: scene.width,
+          height: scene.height,
+          rotation: 0,
+          opacity: 1,
+          visible: true,
+          locked: false,
+        }] });
       const committed = await getDesktopApi().commitDocumentRevision?.({
         workspaceId,
         projectId: project.id,
         documentId,
         baseRevisionId: entry.candidate.baseRevisionId,
         operationId: `candidate-${entry.candidate.id}`,
-        sceneAssetId: entry.candidate.sceneAssetId ?? entry.candidate.assetIds[0]!,
+        sceneAssetId: selectedAssetId,
         assetIds: [...entry.candidate.assetIds],
         contributions: contribution,
         ...(operatorName.trim() ? { operatorName: operatorName.trim() } : {}),
-        ...(candidateScene ? { scene: candidateScene } : {}),
+        scene: candidateScene,
       });
       if (!committed) return;
-      await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId: committed.revisionId });
-      if (candidateScene) persistScene(candidateScene);
+      const finalized = await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId: committed.revisionId });
+      if (finalized === false || finalized === null) throw new Error('FINALIZE_FAILED');
+      persistScene(candidateScene);
       const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
       if (loaded) setRevisionState(loaded);
       notify(t(locale, '候选已定稿', 'Candidate finalized'));
+      setSelectedCandidateId(null);
+      setAnalysisThreadId(undefined);
+      setPendingConversationTaskId(null);
+      onBack();
     } catch { notify(t(locale, '候选定稿失败', 'Could not finalize candidate')); }
     finally { setRevisionBusy(false); }
   };
@@ -380,9 +437,38 @@ export const Workbench = ({
     artworkAlt: designerSnapshot?.artworkAlt ?? { zh: conversationDesigner, en: conversationDesigner },
   } as import('./personas').PersonaProfile;
   const canvasStyle = {
-    '--workbench-zoom': zoom / 100,
     '--workbench-rotation': `${rotation}deg`,
   } as CSSProperties;
+  const draftDisplayWidth = Math.round(280 * zoom / 68);
+  const hasSceneImage = scene.layers.some((layer) => layer.type === 'image' && layer.assetId !== 'placeholder');
+  const centerDraft = useCallback((element: HTMLElement): void => {
+    const container = canvasStageRef.current;
+    if (!container || typeof container.scrollTo !== 'function') return;
+    const containerRect = container.getBoundingClientRect();
+    const elementRect = element.getBoundingClientRect();
+    const left = Math.max(0, container.scrollLeft + elementRect.left - containerRect.left + elementRect.width / 2 - containerRect.width / 2);
+    const top = Math.max(0, container.scrollTop + elementRect.top - containerRect.top + elementRect.height / 2 - containerRect.height / 2);
+    container.scrollTo({ left, top, behavior: 'smooth' });
+  }, []);
+  const focusPreferredDraft = useCallback((candidateId: string | null): void => {
+    const stage = canvasStageRef.current;
+    if (!stage) return;
+    const selected = candidateId
+      ? Array.from(stage.querySelectorAll<HTMLElement>('.workbench-candidate-card[data-candidate-id]')).find((element) => element.dataset.candidateId === candidateId)
+      : undefined;
+    const running = Array.from(stage.querySelectorAll<HTMLElement>('.workbench-candidate-card[data-task-id]')).at(-1);
+    const current = stage.querySelector<HTMLElement>('[data-draft-role="current"]');
+    const target = selected ?? running ?? current;
+    if (target) centerDraft(target);
+  }, [centerDraft]);
+
+  useLayoutEffect(() => {
+    if (viewportFocusRequest.id > 0) focusPreferredDraft(viewportFocusRequest.candidateId);
+  }, [focusPreferredDraft, viewportFocusRequest]);
+
+  useLayoutEffect(() => {
+    focusPreferredDraft(selectedCandidateId);
+  }, [focusPreferredDraft, selectedCandidateId, zoom]);
 
   const updateVisibility = (layer: LayerId): void => {
     if (readOnly) return;
@@ -402,14 +488,20 @@ export const Workbench = ({
     }
   };
   const showPanel = (nextPanel: ContextPanel): void => {
-    setPanel(nextPanel);
     if (nextPanel === 'conversation') {
-      setPanelOpen(false);
-      promptRef.current?.focus();
+      const shouldOpen = panel !== 'conversation' || !panelOpen;
+      setPanel('conversation');
+      setPanelOpen(shouldOpen);
+      if (shouldOpen) promptRef.current?.focus();
       return;
     }
+    setPanel(nextPanel);
     if (nextPanel === 'properties' && hasWorkspaceDocument) {
       setPanelOpen(false);
+      if (!scene.layers.some(isLayerInteractive)) {
+        notify(t(locale, '当前没有可编辑图层', 'There are no editable layers in the current document'));
+        return;
+      }
       setCanvasInspectorRequestId((current) => current + 1);
       return;
     }
@@ -424,6 +516,7 @@ export const Workbench = ({
   };
   const resetZoom = (): void => {
     setZoom(68);
+    setViewportFocusRequest((current) => ({ id: current.id + 1, candidateId: selectedCandidateId }));
     notify(t(locale, '缩放已重置', 'Preview zoom reset'));
   };
   const submitPrompt = (event: FormEvent<HTMLFormElement>): void => {
@@ -485,28 +578,73 @@ export const Workbench = ({
       return;
     }
     if (onSubmitConversation) {
-      onSubmitConversation(prompt.trim(), conversationAttachments.map((attachment) => ({
+      const message = prompt.trim();
+      const attachments = conversationAttachments.map((attachment) => ({
         name: attachment.name,
         mimeType: attachment.mimeType,
         bytes: attachment.bytes,
-      })));
+      }));
+      const context = {
+        ...(analysisThreadId ? { analysisThreadId } : {}),
+        ...(pendingConversationTaskId ? { conversationParentTaskId: pendingConversationTaskId } : {}),
+        ...(referencedAssetIds.length ? { referencedAssetIds } : {}),
+      };
+      setAnalysisMessage(message);
+      setAnalysisAttachments(conversationAttachments);
+      setAnalysisThreadId((current) => current ?? `analysis-${crypto.randomUUID()}`);
+      setPanel('conversation');
+      setPanelOpen(true);
       setPrompt('');
       clearConversationAttachments();
+      setPendingConversationTaskId(null);
+      const submitted = Object.keys(context).length > 0
+        ? onSubmitConversation(message, attachments, context)
+        : onSubmitConversation(message, attachments);
+      if (submitted === undefined) {
+        setReferencedAssetIds([]);
+      } else {
+        void Promise.resolve(submitted).then((task) => {
+          if (!task) return;
+          setPendingConversationTaskId(task.id);
+          setAnalysisThreadId(task.analysisThreadId ?? analysisThreadId ?? `analysis-${task.id}`);
+          setTasks((current) => [...current.filter((entry) => entry.id !== task.id), task]);
+          setReferencedAssetIds([]);
+        }).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+      }
       return;
     }
     onConnections();
   };
   const submitGeneration = (): void => {
     if (readOnly) return;
-    if (!prompt.trim()) {
-      notify(t(locale, '请输入生成说明', 'Enter a generation prompt'));
+    if (onSubmitDesignGeneration && pendingConversationTaskId) {
+      if (!conversationReadyForGeneration) {
+        notify(t(locale, '请等待对话理解完成。', 'Wait for conversation analysis to finish.'));
+        return;
+      }
+      void Promise.resolve(onSubmitDesignGeneration(pendingConversationTaskId, currentRevisionId)).then((task) => {
+        if (!task) return;
+        const threadTask = task.analysisThreadId || !analysisThreadId
+          ? task
+          : { ...task, analysisThreadId };
+        setTasks((current) => [...current.filter((entry) => entry.id !== task.id), threadTask]);
+      }).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
       return;
     }
-    if (!onSubmitImageGeneration) {
-      onConnections();
+    if (onSubmitImageGeneration && prompt.trim()) {
+      void Promise.resolve(onSubmitImageGeneration(prompt.trim(), currentRevisionId)).then(() => setPrompt('')).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
       return;
     }
-    void Promise.resolve(onSubmitImageGeneration(prompt.trim(), currentRevisionId)).then(() => setPrompt('')).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+    notify(t(locale, '请先发送一轮对话分析。', 'Send a conversation analysis first.'));
+  };
+  const retryPendingConversation = (): void => {
+    if (!workspaceId || !pendingConversationTaskId) return;
+    void getDesktopApi().retryTask?.(workspaceId, pendingConversationTaskId).then((task) => {
+      if (!task) return;
+      setTasks((current) => [...current.filter((entry) => entry.id !== task.id), task]);
+      setPendingConversationTaskId(task.id);
+      setAnalysisThreadId(task.analysisThreadId ?? analysisThreadId);
+    }).catch(() => notify(t(locale, '重试失败', 'Retry failed')));
   };
   const submitImageTask = (tool: ImageTool, taskPrompt: string, params: ToolParams, region?: Region): void => {
     if (readOnly) return;
@@ -672,11 +810,18 @@ export const Workbench = ({
             name="layout-grid"
             label={t(locale, '网格', 'Grid')}
             aria-pressed={gridVisible}
-            onClick={() => setGridVisible((value) => !value)}
+            disabled
+            onClick={() => undefined}
           />
         </div>
 
         <div className="workbench-toolbar__actions">
+          <IconButton
+            name="check-circle"
+            label={t(locale, '定稿所选候选', 'Finalize selected candidate')}
+            disabled={readOnly || revisionBusy || !selectedCandidateId}
+            onClick={() => { if (selectedCandidateId) void finalizeCandidate(selectedCandidateId); }}
+          />
           <Button variant="primary" icon="download" onClick={onExport}>
             {t(locale, '导出', 'Export')}
           </Button>
@@ -821,61 +966,91 @@ export const Workbench = ({
             <span>1200</span>
             <span>1800</span>
           </div>
-          <div className="workbench-canvas__stage">
-            {workspaceId && documentId ? (
-              <CanvasWorkspace
-                locale={locale}
-                scene={scene}
-                onSceneChange={handleSceneChange}
-                readOnly={readOnly}
-                workspaceId={workspaceId}
-                projectId={project.id}
-                documentId={documentId}
-                embedded
-                layersOpen={layersExpanded}
-                onLayersClose={() => setLayersExpanded(false)}
-                inspectorRequestId={canvasInspectorRequestId}
-                selectionRequest={canvasSelectionRequest}
-                zoomPercent={zoom}
-                assetAction={assetAction}
-                onAssetActionHandled={onAssetActionHandled}
-              />
-            ) : (
-              <>
-            <div
-              className={`workbench-preview ${!visibility.text ? 'workbench-preview--text-hidden' : ''} ${!visibility.shape ? 'workbench-preview--shape-hidden' : ''} ${!visibility.image ? 'workbench-preview--image-hidden' : ''}`}
-            >
-              <ArtworkPreview
-                kind={project.artwork}
-                className="workbench-artwork"
-              />
-              <span
-                className="workbench-artwork__title-overlay"
-                style={{
-                  opacity: opacity / 100,
-                  transform: `translate(${position.x}px, ${position.y}px)`,
-                }}
-              >
-                {title}
-              </span>
-              {selectedLayer === 'text' && visibility.text && (
-                <span
-                  className="workbench-selection"
-                  aria-hidden="true"
-                  style={{
-                    transform: `translate(${position.x}px, ${position.y}px)`,
-                  }}
-                >
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              )}
+          <div ref={canvasStageRef} className="workbench-canvas__stage">
+            <div className="workbench-canvas-world">
+              <div className="workbench-canvas-world__row">
+                {workspaceId && documentId ? (
+                  <div data-draft-role="current" className={`workbench-design-card${hasSceneImage ? '' : ' workbench-design-card--empty'}`} style={{ aspectRatio: `${scene.width} / ${scene.height}`, ...(hasSceneImage ? { width: draftDisplayWidth, flexBasis: draftDisplayWidth } : {}) }}>
+                    <CanvasWorkspace
+                      locale={locale}
+                      scene={scene}
+                      onSceneChange={handleSceneChange}
+                      readOnly={readOnly}
+                      workspaceId={workspaceId}
+                      projectId={project.id}
+                      documentId={documentId}
+                      embedded
+                      layersOpen={layersExpanded}
+                      onLayersClose={() => setLayersExpanded(false)}
+                      inspectorRequestId={canvasInspectorRequestId}
+                      selectionRequest={canvasSelectionRequest}
+                      zoomPercent={68}
+                      assetAction={assetAction}
+                      onAssetActionHandled={onAssetActionHandled}
+                    />
+                  </div>
+                ) : (
+                  <div data-draft-role="current" className="workbench-design-card" style={{ width: draftDisplayWidth, flexBasis: draftDisplayWidth, aspectRatio: `${scene.width} / ${scene.height}` }}>
+                    <div
+                      className={`workbench-preview ${!visibility.text ? 'workbench-preview--text-hidden' : ''} ${!visibility.shape ? 'workbench-preview--shape-hidden' : ''} ${!visibility.image ? 'workbench-preview--image-hidden' : ''}`}
+                    >
+                      <ArtworkPreview
+                        kind={project.artwork}
+                        className="workbench-artwork"
+                      />
+                      <span
+                        className="workbench-artwork__title-overlay"
+                        style={{
+                          opacity: opacity / 100,
+                          transform: `translate(${position.x}px, ${position.y}px)`,
+                        }}
+                      >
+                        {title}
+                      </span>
+                      {selectedLayer === 'text' && visibility.text && (
+                        <span
+                          className="workbench-selection"
+                          aria-hidden="true"
+                          style={{
+                            transform: `translate(${position.x}px, ${position.y}px)`,
+                          }}
+                        >
+                          <i />
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <CandidateBoard
+                  locale={locale}
+                  tasks={tasks}
+                  workspaceId={workspaceId}
+                  projectId={project.id}
+                  analysisThreadId={analysisThreadId}
+                  width={scene.width}
+                  height={scene.height}
+                  displayWidth={draftDisplayWidth}
+                  selectedCandidateId={selectedCandidateId}
+                  onSelect={selectCandidate}
+                  onRequestFocus={centerDraft}
+                />
+              </div>
             </div>
-              </>
-            )}
           </div>
+          {analysisThreadId && panel === 'conversation' && panelOpen && (
+            <AnalysisPanel
+              locale={locale}
+              message={analysisMessage}
+              attachments={analysisAttachments}
+              task={pendingConversationTask}
+              canGenerate={Boolean(conversationReadyForGeneration && !generating && !hasPendingAnalysis)}
+              onGenerate={submitGeneration}
+              onRetry={pendingConversationTask?.state === 'failed' ? retryPendingConversation : undefined}
+            />
+          )}
           <div className="workbench-canvas__meta" aria-hidden="true">
             <span>{documentMeta?.width ?? scene.width} × {documentMeta?.height ?? scene.height} px</span>
             <span>sRGB</span>
@@ -890,7 +1065,7 @@ export const Workbench = ({
                 key={panelId}
                 name={panelCopy[panelId].icon}
                 label={panelCopy[panelId].label}
-                aria-pressed={panelId !== 'conversation' && panelOpen && panel === panelId}
+                aria-pressed={panelOpen && panel === panelId}
                 onClick={() => showPanel(panelId)}
               />
             ))}
@@ -923,6 +1098,12 @@ export const Workbench = ({
                     <IconButton name="x" label={t(locale, `删除 ${attachment.name}`, `Remove ${attachment.name}`)} onClick={() => removeConversationAttachment(attachment.previewUrl)} />
                   </div>
                 ))}
+              </div>
+            )}
+            {referencedAssetIds.length > 0 && (
+              <div className="workbench-command-dock__references" aria-label={t(locale, '候选参考图', 'Candidate references')}>
+                <Icon name="image" size={14} />
+                <span>{referencedAssetIds.length} {t(locale, '张候选图将用于下一轮对话', 'candidate image(s) referenced in the next conversation')}</span>
               </div>
             )}
             <div className="workbench-command-dock__input-wrap">
@@ -958,7 +1139,7 @@ export const Workbench = ({
                 </button>
                 <IconButton name="list" label={t(locale, '模型任务', 'Model tasks')} onClick={() => onTasks?.()} />
                 <IconButton name="history" label={t(locale, '版本历史', 'Version history')} onClick={() => showPanel('history')} />
-                <IconButton name="sparkles" label={t(locale, '生成', 'Generate')} disabled={readOnly} onClick={submitGeneration} />
+                {!analysisThreadId && <IconButton name="sparkles" label={t(locale, '生成', 'Generate')} disabled={readOnly || Boolean(onSubmitDesignGeneration && pendingConversationTaskId)} onClick={submitGeneration} />}
                 <IconButton name="arrow-up-right" label={t(locale, '发送', 'Send')} disabled={readOnly} onClick={submitPromptRequest} />
               </div>
             </div>

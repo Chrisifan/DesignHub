@@ -48,6 +48,37 @@ it('keeps resource cards at one shared fixed width without stretching the last r
   expect(libraryStyles).toMatch(/\.asset-collection--list\s*\{[\s\S]*display:\s*flex/);
 });
 
+it('keeps the project detail page responsive without horizontal overflow', () => {
+  const styles = readStyle('../../src/app/studio/project-detail.css');
+
+  expect(styles).toMatch(/\.project-detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*2fr\)\s+minmax\(280px,\s*1fr\)/);
+  expect(styles).toMatch(/@media \(max-width:\s*1100px\)[\s\S]*?\.project-detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-document-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?overflow-x:\s*clip/);
+});
+
+it('reserves two lines for every project description and clamps overflow', () => {
+  const styles = readStyle('../../src/app/styles/studio.css');
+  const descriptionRule = styles.match(/\.project-card-description\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const cardRule = styles.match(/\.project-card\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const bodyRule = styles.match(/\.project-card-body\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const metadataRule = styles.match(/\.project-meta\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+
+  expect(descriptionRule).toMatch(/display:\s*-webkit-box/);
+  expect(descriptionRule).toMatch(/min-height:\s*32px/);
+  expect(descriptionRule).toMatch(/line-height:\s*16px/);
+  expect(descriptionRule).toMatch(/overflow:\s*hidden/);
+  expect(descriptionRule).toMatch(/white-space:\s*normal/);
+  expect(descriptionRule).toMatch(/-webkit-box-orient:\s*vertical/);
+  expect(descriptionRule).toMatch(/-webkit-line-clamp:\s*2/);
+  expect(cardRule).toMatch(/display:\s*grid/);
+  expect(cardRule).toMatch(/grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/);
+  expect(bodyRule).toMatch(/display:\s*flex/);
+  expect(bodyRule).toMatch(/flex-direction:\s*column/);
+  expect(metadataRule).toMatch(/min-height:\s*24px/);
+  expect(metadataRule).toMatch(/margin-top:\s*auto/);
+});
+
 it('keeps regular studio pages on one scroll owner and styles compact toolbar actions', () => {
   const styles = readStyle('../../src/app/styles/studio.css');
   const libraryStyles = readStyle('../../src/app/studio/library.css');

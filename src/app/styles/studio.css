@@ -578,6 +578,8 @@ button:disabled {
   gap: 20px;
 }
 .project-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   position: relative;
   padding: 0;
   min-width: 0;
@@ -603,7 +605,16 @@ button:disabled {
 .project-cover > .artwork {
   transition: transform 220ms ease-out;
 }
-.project-card:hover .project-cover > .artwork {
+.project-cover__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transition: transform 220ms ease-out;
+}
+.project-card:hover .project-cover > .artwork,
+.project-card:hover .project-cover__image {
   transform: scale(1.025);
 }
 .project-open {
@@ -635,6 +646,9 @@ button:disabled {
   border-radius: 3px;
 }
 .project-card-body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   padding: 16px;
 }
 .project-title-line {
@@ -655,21 +669,28 @@ button:disabled {
 .project-title-line > .ui-icon {
   color: var(--on-surface-variant);
 }
-.project-card-body > p {
+.project-card-description {
+  display: -webkit-box;
+  min-height: 32px;
+  margin: 6px 0 16px;
+  overflow: hidden;
   color: var(--on-surface-variant);
   font-size: 11px;
   line-height: 16px;
-  margin: 6px 0 16px;
-  white-space: nowrap;
+  white-space: normal;
   text-overflow: ellipsis;
-  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .project-meta {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 10px;
+  min-height: 24px;
   min-width: 0;
+  margin-top: auto;
   color: var(--on-surface-variant);
 }
 .project-meta > span:nth-child(2) {
@@ -699,38 +720,6 @@ button:disabled {
 .designer-dot--type {
   background: var(--art-blue);
   color: var(--art-dark);
-}
-.creation-note {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 24px 0;
-  margin-top: 28px;
-  border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.creation-note-symbol {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  color: var(--secondary);
-  flex-shrink: 0;
-}
-.creation-note h2 {
-  font-size: 13px;
-  font-weight: 500;
-  margin: 0 0 4px;
-}
-.creation-note p {
-  font-size: 11px;
-  color: var(--on-surface-variant);
-  margin: 0;
-}
-.creation-note .ui-button {
-  margin-left: auto;
 }
 .example-footnote {
   display: flex;
@@ -1674,10 +1663,6 @@ button:disabled {
     font-size: 20px;
     line-height: 26px;
   }
-  .new-design-heading h1 {
-    font-size: 20px;
-    line-height: 26px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .page-content,
@@ -1743,8 +1728,7 @@ button:disabled {
 }
 
 /* The toolbar owns the visible page context; keep headings for screen readers. */
-.page-heading,
-.new-design-heading {
+.page-heading {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1755,7 +1739,4 @@ button:disabled {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
-}
-.new-design-heading > .ui-button {
-  display: none;
 }

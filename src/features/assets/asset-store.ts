@@ -3,6 +3,8 @@ import type { AssetImportItem, AssetImportResult, ManagedAsset } from './import-
 export type AssetStoreInput = {
   workspaceId: string;
   projectId: string;
+  /** Internal task recovery may opt into temporary conversation references. */
+  includeContextAssets?: boolean;
 };
 
 export type AssetImportInput = AssetStoreInput & {

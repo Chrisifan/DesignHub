@@ -1,12 +1,13 @@
 import type { TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
+import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, DesignGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const conversationSubmitChannel = 'agent:conversation-submit';
+export const designGenerationSubmitChannel = 'agent:design-generation-submit';
 export const conversationTestChannel = 'agent:conversation-test';
 export const taskCancelChannel = 'agent:task-cancel';
 export const taskRetryChannel = 'agent:task-retry';
@@ -24,6 +25,9 @@ export type ConversationInput = {
   projectId?: string;
   source?: TaskSource;
   documentId?: string;
+  analysisThreadId?: string;
+  conversationParentTaskId?: string;
+  referencedAssetIds?: string[];
   designerVersionId?: string;
   baseRevisionId?: string | null;
   connectionId: string;
@@ -31,6 +35,7 @@ export type ConversationInput = {
   attachments?: ConversationImageAttachment[];
 };
 export type ConversationBridgeInput = ConversationInput & { workspaceId: string };
+export type DesignGenerationBridgeInput = DesignGenerationInput;
 export type ConversationTestBridgeInput = ConversationTestInput & { workspaceId: string };
 export type ImageGenerationBridgeInput = ImageGenerationInput & { workspaceId: string };
 export type ImageGenerationTestBridgeInput = ImageGenerationTestInput & { workspaceId: string };
@@ -61,6 +66,9 @@ const isConversationInput = (value: unknown): value is ConversationBridgeInput =
   const hasBinding = isNonEmpty(input.projectId) || isTaskSource(input.source);
   return isNonEmpty(input.workspaceId) && hasBinding && sourceValid && projectValid && isNonEmpty(input.connectionId) && isNonEmpty(input.message)
     && (input.documentId === undefined || isNonEmpty(input.documentId))
+    && (input.analysisThreadId === undefined || isNonEmpty(input.analysisThreadId))
+    && (input.conversationParentTaskId === undefined || isNonEmpty(input.conversationParentTaskId))
+    && (input.referencedAssetIds === undefined || (Array.isArray(input.referencedAssetIds) && input.referencedAssetIds.length <= 32 && input.referencedAssetIds.every(isNonEmpty)))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
     && (input.attachments === undefined || (Array.isArray(input.attachments) && input.attachments.length <= 8 && input.attachments.every(isConversationAttachment)));
@@ -70,6 +78,13 @@ const isConversationTestInput = (value: unknown): value is ConversationTestBridg
   const input = value as Record<string, unknown>;
   return isNonEmpty(input.workspaceId) && isNonEmpty(input.connectionId)
     && (input.model === undefined || isNonEmpty(input.model));
+};
+const isDesignGenerationInput = (value: unknown): value is DesignGenerationBridgeInput => {
+  if (!value || typeof value !== 'object') return false;
+  const input = value as Record<string, unknown>;
+  return isNonEmpty(input.workspaceId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId)
+    && isNonEmpty(input.conversationTaskId) && isNonEmpty(input.connectionId)
+    && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId));
 };
 const isPortfolioImage = (value: unknown): value is PortfolioImageSource['image'] => {
   if (!value || typeof value !== 'object') return false;
@@ -176,6 +191,18 @@ export const createConversationTestHandler = (
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isConversationTestInput(input)) return null;
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return submit(workspace, input);
+};
+
+export const createDesignGenerationHandler = (
+  window: AgentWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  submit: (workspace: WorkspaceHandle, input: DesignGenerationBridgeInput) => Promise<TaskRecord>,
+) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignGenerationInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
   return submit(workspace, input);
 };
 

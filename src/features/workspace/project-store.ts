@@ -9,6 +9,7 @@ export type CreateProjectContainerInput = {
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
+  coverAssetId?: string;
   documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
 };
 
@@ -41,6 +42,7 @@ export type ActiveProject = {
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
+  coverAssetId?: string;
   documents?: ProjectDocumentMetadata[];
   archived?: boolean;
   createdAt?: string;

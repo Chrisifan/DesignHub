@@ -1,4 +1,5 @@
 import type { Locale } from '../i18n';
+import type { ProjectCoverFile } from './project-cover';
 export type View =
   | 'projects'
   | 'designers'
@@ -12,7 +13,8 @@ export type View =
 export type Theme = 'system' | 'dark' | 'light';
 export type Artwork = 'market' | 'objects' | 'type' | 'blank';
 export type CreationMode = 'manual';
-export type StudioSurface = View | 'new-design';
+export type StudioSurface = View;
+export type ProjectCoverDraft = ProjectCoverFile & { previewUrl: string };
 export type NewDesignDraft = {
   name: string;
   goal: string;
@@ -20,6 +22,7 @@ export type NewDesignDraft = {
   personaId: string;
   size: '1080 × 1440' | '1080 × 1080' | '1920 × 1080';
   mode: CreationMode;
+  cover?: ProjectCoverDraft;
 };
 export type Project = {
   id: string;
@@ -34,6 +37,8 @@ export type Project = {
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
+  coverAssetId?: string;
+  coverPreviewUrl?: string;
   artwork: Artwork;
   documents: number;
   documentEntries?: Array<{ id: string; name: string; width: number; height: number; sourceDocumentId?: string; sourceRevisionId?: string | null; finalizedRevisionId?: string | null }>;
