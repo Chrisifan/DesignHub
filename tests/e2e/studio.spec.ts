@@ -462,8 +462,8 @@ test('designer dossier cards keep a stable responsive grid', async ({ page }, te
     cardWidths: [...grid.querySelectorAll<HTMLElement>('.persona-repository-card-button')]
       .map((card) => card.getBoundingClientRect().width),
   }));
-  expect(desktopLayout.columns).toBeGreaterThan(1);
-  expect(desktopLayout.cardWidths.every((width) => Math.abs(width - 280) <= 1)).toBe(true);
+  expect(desktopLayout.columns).toBeGreaterThanOrEqual(4);
+  expect(desktopLayout.cardWidths.every((width) => Math.abs(width - 216) <= 1)).toBe(true);
 
   const firstCard = cards.first();
   await firstCard.locator('.designer-profile-card__identity strong').evaluate((element) => {
