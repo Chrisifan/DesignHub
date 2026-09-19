@@ -22,6 +22,7 @@ export type DrawerProps = {
   footer?: ReactNode;
   locale?: Locale;
   contentScrollKey?: string | number;
+  initialFocusSelector?: string;
 };
 
 export const Drawer = ({
@@ -33,6 +34,7 @@ export const Drawer = ({
   footer,
   locale = 'zh-CN',
   contentScrollKey,
+  initialFocusSelector,
 }: DrawerProps) => {
   const titleId = useId();
   const panelRef = useRef<HTMLElement>(null);
@@ -54,7 +56,11 @@ export const Drawer = ({
       : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    panelRef.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+    const initialFocus = initialFocusSelector
+      ? panelRef.current?.querySelector<HTMLElement>(initialFocusSelector)
+      : null;
+    (initialFocus ?? panelRef.current?.querySelector<HTMLElement>('button:not(:disabled)'))
+      ?.focus({ preventScroll: true });
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
@@ -81,7 +87,7 @@ export const Drawer = ({
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [onClose, open]);
+  }, [initialFocusSelector, onClose, open]);
 
   useLayoutEffect(() => {
     if (!open) return;

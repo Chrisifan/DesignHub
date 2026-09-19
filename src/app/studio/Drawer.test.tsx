@@ -88,3 +88,18 @@ it('restores focus to the trigger after close', () => {
 
   expect(screen.getByRole('button', { name: '春间标志' })).toHaveFocus();
 });
+
+it('focuses the requested field when the drawer opens', () => {
+  render(
+    <Drawer
+      open
+      title="新建项目"
+      initialFocusSelector="[data-drawer-initial-focus]"
+      onClose={() => undefined}
+    >
+      <input aria-label="项目名称" data-drawer-initial-focus />
+    </Drawer>,
+  );
+
+  expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveFocus();
+});
