@@ -778,7 +778,10 @@ export const DesignerLibrary = ({
             <Button variant="primary" icon="settings" onClick={openEdit} disabled={readOnly || loading || loadFailed}>{t(locale, "编辑", "Edit")}</Button>
             <Button icon="plus" onClick={() => {
               if (loading || loadFailed) return;
-              if (onUseForNew) onUseForNew(selected.id);
+              if (onUseForNew) {
+                setInspectorOpen(false);
+                onUseForNew(selected.id);
+              }
               else notify(t(locale, "请从项目库新建", "Start a new design from Projects"));
             }} disabled={loading || loadFailed}>{t(locale, "用于新建", "Use for new")}</Button>
             <Button icon="star" onClick={() => {

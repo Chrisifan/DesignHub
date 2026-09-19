@@ -87,7 +87,7 @@ export const Drawer = ({
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [initialFocusSelector, onClose, open]);
+  }, [initialFocusSelector, onClose, open, portalTarget]);
 
   useLayoutEffect(() => {
     if (!open) return;

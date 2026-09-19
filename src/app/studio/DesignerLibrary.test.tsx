@@ -129,6 +129,7 @@ it("supports default and use-for-new actions without a direct derivative-creatio
   expect(screen.getByRole("button", { name: "当前默认" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "用于新建" }));
   expect(onUseForNew).toHaveBeenCalledWith("clear-commerce");
+  expect(screen.queryByRole("dialog", { name: "设计师检查器" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "派生" })).not.toBeInTheDocument();
 });
 
