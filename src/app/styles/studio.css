@@ -570,7 +570,11 @@ button:disabled {
 }
 .project-collection {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, var(--library-card-width)), var(--library-card-width))
+  );
+  justify-content: start;
   gap: 20px;
 }
 .project-card {

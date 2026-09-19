@@ -157,7 +157,11 @@
 /* Designer library */
 .profile-library {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, var(--library-card-width)), var(--library-card-width))
+  );
+  justify-content: start;
   align-content: start;
   gap: 16px;
   padding: 20px;
@@ -1365,7 +1369,11 @@
 
 .asset-collection--grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, var(--library-card-width)), var(--library-card-width))
+  );
+  justify-content: start;
   gap: 12px;
 }
 .asset-collection--empty {
@@ -2431,11 +2439,6 @@
 }
 
 @media (max-width: 1120px) {
-  .profile-library,
-  .asset-collection--grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .delivery-layout {
     grid-template-columns: minmax(240px, 0.68fr) minmax(380px, 1.32fr);
   }
@@ -2502,7 +2505,6 @@
 }
 
 @media (max-width: 620px) {
-  .profile-library,
   .asset-collection--grid,
   .config-grid,
   .provider-model-grid,

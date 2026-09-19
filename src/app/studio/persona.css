@@ -783,7 +783,11 @@
 
 .persona-repository__list {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(100%, var(--library-card-width)), var(--library-card-width))
+  );
+  justify-content: start;
   align-content: start;
   gap: 12px;
   flex: 1 1 auto;

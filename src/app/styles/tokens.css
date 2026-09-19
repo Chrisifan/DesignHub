@@ -220,6 +220,7 @@
   --content-card-radius: 0;
   --content-card-shadow: none;
   --content-panel-min-height: 520px;
+  --library-card-width: 280px;
   --scrollbar-size: 6px;
   --scrollbar-radius: 999px;
   --scrollbar-track: color-mix(

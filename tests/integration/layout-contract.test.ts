@@ -25,6 +25,24 @@ it('defines shared layout tokens for compact toolbar controls and unframed main 
   expect(tokens).toMatch(/--scrollbar-thumb-hover:/);
 });
 
+it('keeps resource cards at one shared fixed width without stretching the last row', () => {
+  const tokens = readStyle('../../src/app/styles/tokens.css');
+  const studioStyles = readStyle('../../src/app/styles/studio.css');
+  const libraryStyles = readStyle('../../src/app/studio/library.css');
+  const personaStyles = readStyle('../../src/app/studio/persona.css');
+  const fixedColumns = /grid-template-columns:\s*repeat\(\s*auto-fill,\s*minmax\(min\(100%,\s*var\(--library-card-width\)\),\s*var\(--library-card-width\)\)\s*\)/;
+
+  expect(tokens).toMatch(/--library-card-width:\s*280px/);
+  expect(studioStyles.match(/\.project-collection\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(fixedColumns);
+  expect(studioStyles.match(/\.project-collection\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(/justify-content:\s*start/);
+  expect(libraryStyles.match(/\.asset-collection--grid\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(fixedColumns);
+  expect(libraryStyles.match(/\.asset-collection--grid\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(/justify-content:\s*start/);
+  expect(personaStyles.match(/\.persona-repository__list\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(fixedColumns);
+  expect(personaStyles.match(/\.persona-repository__list\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(/justify-content:\s*start/);
+  expect(studioStyles).toMatch(/\.project-collection--list\s*\{[\s\S]*grid-template-columns:\s*1fr/);
+  expect(libraryStyles).toMatch(/\.asset-collection--list\s*\{[\s\S]*display:\s*flex/);
+});
+
 it('keeps regular studio pages on one scroll owner and styles compact toolbar actions', () => {
   const styles = readStyle('../../src/app/styles/studio.css');
   const libraryStyles = readStyle('../../src/app/studio/library.css');
