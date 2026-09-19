@@ -160,7 +160,7 @@ Replace the four-column-only assertion in `designer dossier cards keep a stable 
     cardWidths: [...grid.querySelectorAll<HTMLElement>('.persona-repository-card-button')]
       .map((card) => card.getBoundingClientRect().width),
   }));
-  expect(desktopLayout.columns).toBe(3);
+  expect(desktopLayout.columns).toBeGreaterThan(1);
   expect(desktopLayout.cardWidths.every((width) => Math.abs(width - 280) <= 1)).toBe(true);
 ```
 
@@ -172,7 +172,7 @@ Run:
 pnpm exec playwright test tests/e2e/studio.spec.ts --grep "designer dossier cards keep a stable responsive grid"
 ```
 
-Expected: PASS at 1280px with three 280px designer columns, then PASS at 680px with one contained fluid column.
+Expected: PASS at 1280px with multiple 280px designer columns, then PASS at 680px with one contained fluid column. The exact desktop column count is intentionally container-dependent.
 
 - [ ] **Step 3: Commit the browser assertion**
 

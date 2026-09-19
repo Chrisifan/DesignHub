@@ -457,10 +457,13 @@ test('designer dossier cards keep a stable responsive grid', async ({ page }, te
   const repository = page.getByLabel('设计师档案库');
   const cards = repository.locator('.designer-profile-card--library');
   await expect(cards).toHaveCount(2);
-  const desktopColumns = await repository.locator('.persona-repository__list').evaluate(
-    (grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length,
-  );
-  expect(desktopColumns).toBe(4);
+  const desktopLayout = await repository.locator('.persona-repository__list').evaluate((grid) => ({
+    columns: getComputedStyle(grid).gridTemplateColumns.split(' ').length,
+    cardWidths: [...grid.querySelectorAll<HTMLElement>('.persona-repository-card-button')]
+      .map((card) => card.getBoundingClientRect().width),
+  }));
+  expect(desktopLayout.columns).toBeGreaterThan(1);
+  expect(desktopLayout.cardWidths.every((width) => Math.abs(width - 280) <= 1)).toBe(true);
 
   const firstCard = cards.first();
   await firstCard.locator('.designer-profile-card__identity strong').evaluate((element) => {
