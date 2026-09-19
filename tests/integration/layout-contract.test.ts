@@ -31,8 +31,13 @@ it('keeps resource cards at one shared fixed width without stretching the last r
   const libraryStyles = readStyle('../../src/app/studio/library.css');
   const personaStyles = readStyle('../../src/app/studio/persona.css');
   const fixedColumns = /grid-template-columns:\s*repeat\(\s*auto-fill,\s*minmax\(min\(100%,\s*var\(--library-card-width\)\),\s*var\(--library-card-width\)\)\s*\)/;
+  const largeWindowStyles = studioStyles.match(
+    /@media \(min-width: 1440px\)\s*\{([\s\S]*?)\n\}\n@media \(max-width: 1279px\)/u,
+  )?.[1] ?? '';
 
-  expect(tokens).toMatch(/--library-card-width:\s*280px/);
+  expect(tokens).toMatch(/--library-card-width:\s*216px/);
+  expect(studioStyles.match(/\.project-cover\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(/height:\s*192px/);
+  expect(largeWindowStyles).not.toMatch(/\.project-cover/);
   expect(studioStyles.match(/\.project-collection\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(fixedColumns);
   expect(studioStyles.match(/\.project-collection\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(/justify-content:\s*start/);
   expect(libraryStyles.match(/\.asset-collection--grid\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(fixedColumns);

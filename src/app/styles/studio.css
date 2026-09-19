@@ -596,7 +596,7 @@ button:disabled {
     color-mix(in srgb, var(--surface-container-lowest) 40%, transparent);
 }
 .project-cover {
-  height: 256px;
+  height: 192px;
   position: relative;
   overflow: hidden;
 }
@@ -1597,9 +1597,6 @@ button:disabled {
 @media (min-width: 1440px) {
   .studio:not(.studio--compact) {
     grid-template-columns: 280px minmax(0, 1fr);
-  }
-  .project-cover {
-    height: 296px;
   }
   .page-content {
     padding: 28px 32px 24px;
