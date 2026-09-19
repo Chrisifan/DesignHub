@@ -183,9 +183,11 @@ it('shows the cover-led project detail without the duplicate design brief', () =
   enter();
   fireEvent.click(screen.getByRole('button', { name: '春间市集' }));
 
+  const header = screen.getByTestId('project-detail-header');
   expect(screen.getByTestId('project-detail-page')).toBeInTheDocument();
-  expect(screen.getByTestId('project-detail-hero')).toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: '春间市集' })).toBeInTheDocument();
+  expect(header).toContainElement(screen.getByTestId('project-detail-hero'));
+  expect(header).toContainElement(screen.getByRole('heading', { name: '春间市集' }));
+  expect(screen.getAllByRole('button', { name: '打开画布' })).toHaveLength(1);
   expect(screen.getByText('设计文档')).toBeInTheDocument();
   expect(screen.getByText('项目上下文')).toBeInTheDocument();
   expect(screen.getByText('设计协作')).toBeInTheDocument();
