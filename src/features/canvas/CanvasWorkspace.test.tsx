@@ -11,7 +11,9 @@ vi.mock('react-konva', () => {
 });
 
 const initial = createScene({ id: 'scene-initial', width: 800, height: 600, layers: [] });
-const stored = createScene({ id: 'scene-stored', width: 1080, height: 1440, layers: [] });
+const stored = createScene({ id: 'scene-stored', width: 1080, height: 1440, layers: [{
+  id: 'content-final', type: 'image', role: 'content', assetId: 'asset-final', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false,
+}] });
 const editable = createScene({ id: 'scene-editable', width: 800, height: 600, layers: [{
   id: 'text-1', type: 'text', text: '标题', fontFamily: 'sans-serif', fontSize: 24, fontWeight: '400', align: 'left', color: '#111111',
   x: 10, y: 10, width: 200, height: 40, rotation: 0, opacity: 1, visible: true, locked: false,
@@ -89,15 +91,17 @@ it('opens the inspector drawer for a selected layer and closes it when selection
   expect(screen.queryByRole('dialog', { name: '检查器' })).not.toBeInTheDocument();
 });
 
-it('hydrates a workspace document scene through the desktop bridge', async () => {
+it('hydrates a finalized workspace scene without overwriting it with the initial scene', async () => {
   const loadDocumentScene = vi.fn(async () => stored);
+  const saveDocumentScene = vi.fn(async () => true);
   const onSceneChange = vi.fn();
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene };
+  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, saveDocumentScene };
 
   render(<CanvasWorkspace locale="zh-CN" scene={initial} workspaceId="workspace-1" projectId="project-1" documentId="doc-1" onSceneChange={onSceneChange} />);
 
   await waitFor(() => expect(loadDocumentScene).toHaveBeenCalledWith('workspace-1', 'project-1', 'doc-1'));
   await waitFor(() => expect(onSceneChange).toHaveBeenCalledWith(stored));
+  expect(saveDocumentScene).not.toHaveBeenCalled();
   expect(screen.getByRole('region', { name: '画布' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('region', { name: '画布' }));
 });
