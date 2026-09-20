@@ -16,6 +16,22 @@ export type TaskCandidate = {
   createdAt: string;
 };
 
+export const designGenerationSlotIds = ['primary', 'composition', 'expressive'] as const;
+export type DesignGenerationSlotId = typeof designGenerationSlotIds[number];
+export type DesignGenerationSlotState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export type DesignGenerationSlot = {
+  id: DesignGenerationSlotId;
+  direction: string;
+  state: DesignGenerationSlotState;
+  attempt: number;
+  assetId?: string;
+  candidateId?: string;
+  errorCode?: string;
+  providerFailure?: TaskProviderFailure;
+  cost?: number | null;
+};
+
 export type PortfolioTaskMetadata = {
   sourceIds: string[];
   rightsConfirmed: boolean;
@@ -30,6 +46,19 @@ export type TaskProviderFailure = {
   providerCode?: string;
   retryAfterSeconds?: number;
 };
+
+const designGenerationDirections: Record<DesignGenerationSlotId, string> = {
+  primary: '主方案：准确落实用户需求、内容层级、品牌约束和设计师风格。',
+  composition: '构图探索：保持内容、品牌和风格约束，明显改变构图、视觉动线和信息层级。',
+  expressive: '视觉突破：保持核心需求和可用性，采用更大胆但仍可交付的视觉表达。',
+};
+
+export const createDesignGenerationSlots = (): DesignGenerationSlot[] => designGenerationSlotIds.map((id) => ({
+  id,
+  direction: designGenerationDirections[id],
+  state: 'queued',
+  attempt: 1,
+}));
 
 export const portfolioAnalysisDiagnostics = [
   'payload.invalid_json',
@@ -72,7 +101,7 @@ export const taskRecordKeys = new Set<keyof TaskRecord>([
   'sourceAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
   'portfolio', 'model', 'size', 'count', 'tool', 'toolParams', 'region', 'createdAt', 'updatedAt',
   'errorCode', 'providerFailure', 'analysisDiagnostic', 'result', 'parentConversationTaskId', 'contextAssetIds', 'contextVersion', 'designContext',
-  'analysisThreadId', 'conversationParentTaskId', 'progressText',
+  'analysisThreadId', 'conversationParentTaskId', 'progressText', 'generationSlots',
 ]);
 
 export type TaskRecord = {
@@ -97,6 +126,7 @@ export type TaskRecord = {
   conversationParentTaskId?: string;
   /** Incremental analysis text while a conversation task is running. */
   progressText?: string;
+  generationSlots?: DesignGenerationSlot[];
   contextAssetIds?: string[];
   contextVersion?: number;
   designContext?: import('../agent/context').DesignGenerationContext;
@@ -119,6 +149,7 @@ export type TaskRecord = {
     imageCount?: number;
     cost?: number | null;
     candidate?: TaskCandidate;
+    candidates?: TaskCandidate[];
   };
 };
 
