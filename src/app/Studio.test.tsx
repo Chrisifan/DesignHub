@@ -671,6 +671,43 @@ it('routes asset actions from the library into the selected project canvas', asy
   await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-assets', documentId: 'doc-main', scene: expect.objectContaining({ layers: expect.arrayContaining([expect.objectContaining({ assetId: 'asset-action' })]) }) })));
 });
 
+it('creates an independent blank design document without a finalized source', async () => {
+  const listActiveProjects = vi.fn(async () => [{
+    projectId: 'project-blank-document',
+    name: '空白设计稿项目',
+    documents: [{ id: 'doc-main', name: '主海报', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }],
+  }]);
+  const updateProjectMetadata = vi.fn(async ({ patch }: UpdateProjectMetadataInput): Promise<ProjectMetadata> => ({
+    projectId: 'project-blank-document',
+    workspaceId: 'workspace-1',
+    name: '空白设计稿项目',
+    documents: (patch.documents ?? []).map((document) => ({ ...document, updatedAt: '2026-09-13T00:00:00.000Z' })),
+    archived: false,
+    createdAt: '2026-09-12T00:00:00.000Z',
+    updatedAt: '2026-09-13T00:00:00.000Z',
+  }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, updateProjectMetadata };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+
+  fireEvent.click(await screen.findByRole('button', { name: '空白设计稿项目' }));
+  fireEvent.click(screen.getByRole('button', { name: '新建设计稿' }));
+  expect(screen.getByRole('button', { name: '空白设计稿' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: '尺寸变体' })).toBeDisabled();
+  expect(screen.getByText('项目中还没有已定稿的设计稿，暂时不能创建尺寸变体。')).toBeInTheDocument();
+  fireEvent.change(screen.getByRole('textbox', { name: '文档名称' }), { target: { value: '发布会邀请函' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '1600' } });
+  fireEvent.change(screen.getByRole('spinbutton', { name: '高度' }), { target: { value: '900' } });
+  fireEvent.click(screen.getByRole('button', { name: '创建设计稿' }));
+
+  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledOnce());
+  const documents = updateProjectMetadata.mock.calls[0]?.[0].patch.documents ?? [];
+  const created = documents.find((document) => document.name === '发布会邀请函');
+  expect(created).toMatchObject({ id: expect.stringMatching(/^doc-/), width: 1600, height: 900, finalizedRevisionId: null });
+  expect(created).not.toHaveProperty('sourceDocumentId');
+  expect(created).not.toHaveProperty('sourceRevisionId');
+  expect((await screen.findAllByText('发布会邀请函')).length).toBeGreaterThan(0);
+});
+
 it('creates a related-size document from a finalized source revision', async () => {
   const listActiveProjects = vi.fn(async () => [{
     projectId: 'project-related',
@@ -700,11 +737,12 @@ it('creates a related-size document from a finalized source revision', async () 
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: '关联尺寸项目' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: '关联尺寸项目' }));
-  fireEvent.click(screen.getByRole('button', { name: '新建尺寸' }));
+  fireEvent.click(screen.getByRole('button', { name: '新建设计稿' }));
+  fireEvent.click(screen.getByRole('button', { name: '尺寸变体' }));
   fireEvent.change(screen.getByRole('textbox', { name: '文档名称' }), { target: { value: '社媒方图' } });
   fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '1080' } });
   fireEvent.change(screen.getByRole('spinbutton', { name: '高度' }), { target: { value: '1080' } });
-  fireEvent.click(screen.getByRole('button', { name: '创建尺寸' }));
+  fireEvent.click(screen.getByRole('button', { name: '创建设计稿' }));
   await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({
     projectId: 'project-related',
     patch: expect.objectContaining({
@@ -730,12 +768,36 @@ it('copies and scales the finalized source scene into a related-size document', 
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: '场景关联项目' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: '场景关联项目' }));
-  fireEvent.click(screen.getByRole('button', { name: '新建尺寸' }));
+  fireEvent.click(screen.getByRole('button', { name: '新建设计稿' }));
+  fireEvent.click(screen.getByRole('button', { name: '尺寸变体' }));
   fireEvent.change(screen.getByRole('textbox', { name: '文档名称' }), { target: { value: '方图' } });
   fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '500' } });
   fireEvent.change(screen.getByRole('spinbutton', { name: '高度' }), { target: { value: '500' } });
-  fireEvent.click(screen.getByRole('button', { name: '创建尺寸' }));
+  fireEvent.click(screen.getByRole('button', { name: '创建设计稿' }));
   await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project-related-scene', documentId: expect.stringMatching(/^doc-/), scene: expect.objectContaining({ width: 500, height: 500, layers: [expect.objectContaining({ x: 50, y: 50, width: 200, height: 60 })] }) })));
+});
+
+it('keeps a created size variant and reports when its scene conversion cannot be saved', async () => {
+  const listActiveProjects = vi.fn(async () => [{
+    projectId: 'project-variant-save-failure',
+    name: '变体保存失败项目',
+    documents: [{ id: 'doc-main', name: '主海报', width: 1000, height: 500, finalizedRevisionId: 'revision-final', updatedAt: '2026-09-12T00:00:00.000Z' }],
+  }]);
+  const sourceScene = createScene({ id: 'scene-final', width: 1000, height: 500, layers: [] });
+  const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-final', projectId: 'project-variant-save-failure', documentId: 'doc-main', parentRevisionId: null, operationId: 'op-final', sceneAssetId: 'scene-final', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z', scene: sourceScene }], timeline: [], finalRevisionId: 'revision-final' }));
+  const updateProjectMetadata = vi.fn(async ({ patch }: UpdateProjectMetadataInput): Promise<ProjectMetadata> => ({ projectId: 'project-variant-save-failure', workspaceId: 'workspace-1', name: '变体保存失败项目', documents: (patch.documents ?? []).map((document) => ({ ...document, updatedAt: '2026-09-13T00:00:00.000Z' })), archived: false, createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-13T00:00:00.000Z' }));
+  const saveDocumentScene = vi.fn(async () => { throw new Error('disk full'); });
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDocumentRevisions, updateProjectMetadata, saveDocumentScene };
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+
+  fireEvent.click(await screen.findByRole('button', { name: '变体保存失败项目' }));
+  fireEvent.click(screen.getByRole('button', { name: '新建设计稿' }));
+  fireEvent.click(screen.getByRole('button', { name: '尺寸变体' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '文档名称' }), { target: { value: '空白回退稿' } });
+  fireEvent.click(screen.getByRole('button', { name: '创建设计稿' }));
+
+  expect(await screen.findByText('布局转换失败，已创建空白尺寸稿')).toBeInTheDocument();
+  expect((await screen.findAllByText('空白回退稿')).length).toBeGreaterThan(0);
 });
 
 it('exposes only manual project creation from the projects page', async () => {

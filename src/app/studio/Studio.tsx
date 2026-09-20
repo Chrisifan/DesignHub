@@ -156,10 +156,12 @@ export const Studio = ({
   });
   const previewCoverUrls = useRef(new Set<string>());
   const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
-  const [relatedDialog, setRelatedDialog] = useState(false);
-  const [relatedName, setRelatedName] = useState('');
-  const [relatedWidth, setRelatedWidth] = useState('1080');
-  const [relatedHeight, setRelatedHeight] = useState('1080');
+  const [documentDialog, setDocumentDialog] = useState(false);
+  const [documentMode, setDocumentMode] = useState<'blank' | 'variant'>('blank');
+  const [documentName, setDocumentName] = useState('');
+  const [documentWidth, setDocumentWidth] = useState('1080');
+  const [documentHeight, setDocumentHeight] = useState('1080');
+  const [documentSourceId, setDocumentSourceId] = useState('');
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(initialDesignerOptions);
   const [modelConnected, setModelConnected] = useState(false);
@@ -259,16 +261,22 @@ export const Studio = ({
     notify(t(locale, input.mode === 'replace' ? '已准备替换图像' : input.mode === 'reference' ? '已准备参考图层' : '已准备放入画布', input.mode === 'replace' ? 'Ready to replace the selected image' : input.mode === 'reference' ? 'Ready to add a reference layer' : 'Ready to place on canvas'));
   };
   const notify = (message: string) => setNotice(message);
-  const updateProject = async (patch: ProjectMetadataPatch): Promise<void> => {
-    if (!workspace || !selected || workspace.openMode !== 'writable') return;
+  const updateProject = async (patch: ProjectMetadataPatch): Promise<ProjectMetadata | null> => {
+    if (!workspace || !selected || workspace.openMode !== 'writable') return null;
     try {
       const metadata = await getDesktopApi().updateProjectMetadata?.({ workspaceId: workspace.workspaceId, projectId: selected.id, patch });
-      if (!metadata) return;
+      if (!metadata) {
+        notify(t(locale, '项目更新失败，请重试', 'Project update failed; try again'));
+        return null;
+      }
       setProjects((current) => current.map((project) => project.id === selected.id ? mergeProjectMetadata(project, metadata) : project));
       setSelected((current) => current ? mergeProjectMetadata(current, metadata) : current);
-      notify(t(locale, patch.name ? '项目已重命名' : '项目已归档', patch.name ? 'Project renamed' : 'Project archived'));
+      if (patch.name) notify(t(locale, '项目已重命名', 'Project renamed'));
+      else if (patch.archived) notify(t(locale, '项目已归档', 'Project archived'));
+      return metadata;
     } catch {
       notify(t(locale, '项目更新失败，请重试', 'Project update failed; try again'));
+      return null;
     }
   };
   const finalizeProjectDocument = async (project: Project, input: { documentId: string; revisionId: string }): Promise<void> => {
@@ -294,25 +302,28 @@ export const Studio = ({
     setProjects((current) => current.map((entry) => entry.id === project.id ? mergeProjectMetadata(entry, metadata) : entry));
     setSelected((current) => current?.id === project.id ? mergeProjectMetadata(current, metadata) : current);
   };
-  const openRelatedDialog = (): void => {
+  const openDocumentDialog = (): void => {
     if (!workspace || workspace.openMode !== 'writable' || !selected) return;
-    const source = selected.documentEntries?.find((entry) => entry.id === (activeDocumentId ?? selected.documentId)) ?? selected.documentEntries?.[0];
-    if (!source?.finalizedRevisionId) {
-      notify(t(locale, '请先定稿源文档', 'Finalize the source document first'));
-      return;
-    }
-    setRelatedName('');
-    setRelatedWidth('1080');
-    setRelatedHeight('1080');
-    setRelatedDialog(true);
+    const activeDocument = selected.documentEntries?.find((entry) => entry.id === (activeDocumentId ?? selected.documentId)) ?? selected.documentEntries?.[0];
+    const preferredSource = activeDocument?.finalizedRevisionId
+      ? activeDocument
+      : selected.documentEntries?.find((entry) => Boolean(entry.finalizedRevisionId));
+    setDocumentMode('blank');
+    setDocumentName('');
+    setDocumentWidth(String(activeDocument?.width ?? 1080));
+    setDocumentHeight(String(activeDocument?.height ?? 1080));
+    setDocumentSourceId(preferredSource?.id ?? '');
+    setDocumentDialog(true);
   };
-  const createRelatedSize = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+  const createDocument = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     if (!workspace || workspace.openMode !== 'writable' || !selected) return;
-    const source = selected.documentEntries?.find((entry) => entry.id === (activeDocumentId ?? selected.documentId)) ?? selected.documentEntries?.[0];
-    const width = Number(relatedWidth);
-    const height = Number(relatedHeight);
-    if (!source?.finalizedRevisionId || !relatedName.trim() || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    const source = documentMode === 'variant'
+      ? selected.documentEntries?.find((entry) => entry.id === documentSourceId && Boolean(entry.finalizedRevisionId))
+      : undefined;
+    const width = Number(documentWidth);
+    const height = Number(documentHeight);
+    if (!documentName.trim() || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || (documentMode === 'variant' && !source?.finalizedRevisionId)) {
       notify(t(locale, '尺寸信息无效', 'Enter a valid document name and size'));
       return;
     }
@@ -325,22 +336,34 @@ export const Studio = ({
       ...(entry.sourceRevisionId ? { sourceRevisionId: entry.sourceRevisionId } : {}),
       ...(entry.finalizedRevisionId ? { finalizedRevisionId: entry.finalizedRevisionId } : {}),
     }));
-    const relatedDocumentId = `doc-${crypto.randomUUID()}`;
-    documents.push({ id: relatedDocumentId, name: relatedName.trim(), width, height, sourceDocumentId: source.id, sourceRevisionId: source.finalizedRevisionId, finalizedRevisionId: null });
-    await updateProject({ documents });
-    const sourceRevisions = await getDesktopApi().loadDocumentRevisions?.(workspace.workspaceId, selected.id, source.id);
-    const sourceRevision = sourceRevisions?.revisions.find((revision) => revision.revisionId === source.finalizedRevisionId);
-    if (sourceRevision?.scene) {
+    const documentId = `doc-${crypto.randomUUID()}`;
+    documents.push({
+      id: documentId,
+      name: documentName.trim(),
+      width,
+      height,
+      finalizedRevisionId: null,
+      ...(source?.finalizedRevisionId ? { sourceDocumentId: source.id, sourceRevisionId: source.finalizedRevisionId } : {}),
+    });
+    const metadata = await updateProject({ documents });
+    if (!metadata) return;
+    let conversionFailed = false;
+    if (source?.finalizedRevisionId) {
       try {
-        const converted = resizeScene(sourceRevision.scene, { width, height });
-        await getDesktopApi().saveDocumentScene?.({ workspaceId: workspace.workspaceId, projectId: selected.id, documentId: relatedDocumentId, scene: { ...converted, id: relatedDocumentId } });
+        const sourceRevisions = await getDesktopApi().loadDocumentRevisions?.(workspace.workspaceId, selected.id, source.id);
+        const sourceRevision = sourceRevisions?.revisions.find((revision) => revision.revisionId === source.finalizedRevisionId);
+        if (sourceRevision?.scene) {
+          const converted = resizeScene(sourceRevision.scene, { width, height });
+          await getDesktopApi().saveDocumentScene?.({ workspaceId: workspace.workspaceId, projectId: selected.id, documentId, scene: { ...converted, id: documentId } });
+        }
       } catch {
+        conversionFailed = true;
         notify(t(locale, '布局转换失败，已创建空白尺寸稿', 'Layout conversion failed; an empty size document was created'));
       }
     }
-    setRelatedDialog(false);
-    setActiveDocumentId(relatedDocumentId);
-    notify(t(locale, '关联尺寸已创建', 'Related size created'));
+    setDocumentDialog(false);
+    setActiveDocumentId(documentId);
+    if (!conversionFailed) notify(t(locale, documentMode === 'variant' ? '尺寸变体已创建' : '设计稿已创建', documentMode === 'variant' ? 'Size variant created' : 'Design created'));
   };
   const switchProjectDesigner = async (designerId: string): Promise<void> => {
     if (!selected || !workspace || workspace.openMode !== 'writable') return;
@@ -988,7 +1011,7 @@ export const Studio = ({
                 ));
               }}
               onExport={() => openDelivery(selected)}
-              onCreateDocument={openRelatedDialog}
+              onCreateDocument={openDocumentDialog}
               onSwitchDesigner={(designerId) => { void switchProjectDesigner(designerId); }}
               onToggleContributor={(designerId) => { void toggleProjectContributor(designerId); }}
             />
@@ -1204,24 +1227,62 @@ export const Studio = ({
           </div>
         </Modal>
       )}
-      {relatedDialog && selected && (
-        <Modal title={t(locale, '创建关联尺寸', 'Create related size')} locale={locale} onClose={() => setRelatedDialog(false)}>
-          <form onSubmit={(event) => { void createRelatedSize(event); }}>
+      {documentDialog && selected && (
+        <Modal title={t(locale, '新建设计稿', 'New design')} locale={locale} onClose={() => setDocumentDialog(false)}>
+          <form className="document-create-form" onSubmit={(event) => { void createDocument(event); }}>
+            <div className="document-create-mode" role="group" aria-label={t(locale, '创建方式', 'Creation method')}>
+              <Button
+                className={documentMode === 'blank' ? 'is-active' : ''}
+                aria-pressed={documentMode === 'blank'}
+                icon="file-image"
+                onClick={() => setDocumentMode('blank')}
+              >
+                {t(locale, '空白设计稿', 'Blank design')}
+              </Button>
+              <Button
+                className={documentMode === 'variant' ? 'is-active' : ''}
+                aria-pressed={documentMode === 'variant'}
+                icon="git-branch"
+                disabled={!selected.documentEntries?.some((entry) => Boolean(entry.finalizedRevisionId))}
+                onClick={() => setDocumentMode('variant')}
+              >
+                {t(locale, '尺寸变体', 'Size variant')}
+              </Button>
+            </div>
+            {!selected.documentEntries?.some((entry) => Boolean(entry.finalizedRevisionId)) && (
+              <p className="document-create-hint">
+                {t(locale, '项目中还没有已定稿的设计稿，暂时不能创建尺寸变体。', 'This project has no finalized design yet, so a size variant cannot be created.')}
+              </p>
+            )}
+            {documentMode === 'variant' && (
+              <Field label={t(locale, '源定稿', 'Finalized source')}>
+                <select value={documentSourceId} onChange={(event) => setDocumentSourceId(event.target.value)}>
+                  {(selected.documentEntries ?? []).filter((entry) => Boolean(entry.finalizedRevisionId)).map((entry) => (
+                    <option key={entry.id} value={entry.id}>{entry.name || t(locale, '未命名设计稿', 'Untitled design')} · {entry.width} × {entry.height}</option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <Field label={t(locale, '文档名称', 'Document name')}>
-              <input autoFocus value={relatedName} onChange={(event) => setRelatedName(event.target.value)} />
+              <input autoFocus value={documentName} onChange={(event) => setDocumentName(event.target.value)} />
             </Field>
             <div className="form-grid form-grid--two">
               <Field label={t(locale, '宽度', 'Width')}>
-                <input type="number" min="1" step="1" value={relatedWidth} onChange={(event) => setRelatedWidth(event.target.value)} />
+                <input type="number" min="1" step="1" value={documentWidth} onChange={(event) => setDocumentWidth(event.target.value)} />
               </Field>
               <Field label={t(locale, '高度', 'Height')}>
-                <input type="number" min="1" step="1" value={relatedHeight} onChange={(event) => setRelatedHeight(event.target.value)} />
+                <input type="number" min="1" step="1" value={documentHeight} onChange={(event) => setDocumentHeight(event.target.value)} />
               </Field>
             </div>
-            <p className="inline-notice"><Icon name="git-branch" size={16} />{t(locale, '新文档会记录源文档与定稿版本，但拥有独立画布。', 'The new document records its source and final revision while keeping an independent canvas.')}</p>
+            <p className="inline-notice">
+              <Icon name={documentMode === 'variant' ? 'git-branch' : 'file-image'} size={16} />
+              {documentMode === 'variant'
+                ? t(locale, '复制源定稿并按新尺寸缩放，同时保留来源关系。', 'Copy and resize the finalized source while preserving its origin.')
+                : t(locale, '创建一份独立空白画布，不影响项目中的其他设计稿。', 'Create an independent blank canvas without changing other designs.')}
+            </p>
             <div className="dialog-actions">
-              <Button type="button" onClick={() => setRelatedDialog(false)}>{t(locale, '取消', 'Cancel')}</Button>
-              <Button type="submit" variant="primary" icon="check" disabled={!relatedName.trim()}>{t(locale, '创建尺寸', 'Create size')}</Button>
+              <Button type="button" onClick={() => setDocumentDialog(false)}>{t(locale, '取消', 'Cancel')}</Button>
+              <Button type="submit" variant="primary" icon="check" disabled={!documentName.trim() || (documentMode === 'variant' && !documentSourceId)}>{t(locale, '创建设计稿', 'Create design')}</Button>
             </div>
           </form>
         </Modal>

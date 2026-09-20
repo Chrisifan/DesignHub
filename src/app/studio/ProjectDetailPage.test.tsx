@@ -164,7 +164,7 @@ describe('ProjectDetailPage', () => {
   it('shows editing controls only for a writable saved project', () => {
     const { props } = renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '新建尺寸' }));
+    fireEvent.click(screen.getByRole('button', { name: '新建设计稿' }));
     expect(props.onCreateDocument).toHaveBeenCalledOnce();
     expect(screen.getByLabelText('设计师')).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /周野/ })).toBeInTheDocument();
@@ -173,7 +173,7 @@ describe('ProjectDetailPage', () => {
   it('hides editing controls for a read-only project', () => {
     renderPage({ writable: false });
 
-    expect(screen.queryByRole('button', { name: '新建尺寸' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '新建设计稿' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('设计师')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
   });

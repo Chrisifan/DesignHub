@@ -931,6 +931,29 @@ button:disabled {
   gap: 8px;
   margin-top: 24px;
 }
+.document-create-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.document-create-mode .ui-button {
+  justify-content: flex-start;
+  min-height: 44px;
+  border-color: var(--border-subtle);
+  background: var(--surface-container);
+}
+.document-create-mode .ui-button.is-active {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border-subtle));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface-container));
+  color: var(--primary);
+}
+.document-create-hint {
+  margin: -10px 0 16px;
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  line-height: 17px;
+}
 .ui-field {
   display: flex;
   flex-direction: column;

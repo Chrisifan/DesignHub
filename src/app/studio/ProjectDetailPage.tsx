@@ -163,7 +163,7 @@ export const ProjectDetailPage = ({
             </div>
             {writable && (
               <Button icon="plus" onClick={onCreateDocument}>
-                {t(locale, '新建尺寸', 'New size')}
+                {t(locale, '新建设计稿', 'New design')}
               </Button>
             )}
           </div>
