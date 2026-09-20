@@ -150,7 +150,10 @@ it('uses a completed conversation context to create a design candidate', async (
 it('starts three differentiated count-one generation requests concurrently', async () => {
   const runtime = createTaskRuntime();
   const responses = [deferred<ImageResponse>(), deferred<ImageResponse>(), deferred<ImageResponse>()];
-  const generateImage = vi.fn((_request: { prompt: string; count?: number }) => responses[generateImage.mock.calls.length - 1]!.promise);
+  const generateImage = vi.fn((request: { prompt: string; count?: number }) => {
+    void request;
+    return responses[generateImage.mock.calls.length - 1]!.promise;
+  });
   const service = createAgentTaskService({
     runtime,
     resolveAdapter: async () => ({ chat: async () => ({ text: 'analysis brief', cost: null }), generateImage }),
@@ -416,7 +419,10 @@ it('sends the immutable designer context as a system message', async () => {
 
 it('uses the current canvas image as the edit source for a design draft', async () => {
   const runtime = createTaskRuntime();
-  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[]; size?: string }) => ({ images: [{ base64: 'edited-bytes' }], cost: null }));
+  const editImage = vi.fn(async (request: { prompt: string; image: Blob; referenceImages?: Blob[]; size?: string }) => {
+    void request;
+    return { images: [{ base64: 'edited-bytes' }], cost: null };
+  });
   const service = createAgentTaskService({
     runtime,
     resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }), editImage }),
