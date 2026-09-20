@@ -26,7 +26,7 @@ import {
   t,
 } from './ui';
 import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
-import type { ProjectDocumentMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
+import type { ProjectDocumentMetadata, ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool, ToolParams } from '../../features/image-tools/target';
 import { resizeScene } from '../../features/image-tools/local-transform';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
@@ -82,6 +82,22 @@ const toStudioProject = (entry: ActiveProject, workspaceId: string): Project => 
     archived: entry.archived,
   };
 };
+
+const mergeProjectMetadata = (current: Project, metadata: ProjectMetadata): Project => ({
+  ...current,
+  name: metadata.name,
+  enName: metadata.name,
+  description: metadata.brief ?? current.description,
+  enDescription: metadata.brief ?? current.enDescription,
+  documents: metadata.documents.length || current.documents,
+  documentEntries: metadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
+  archived: metadata.archived,
+  activeDesignerVersionId: metadata.activeDesignerVersionId,
+  contributorDesignerVersionIds: metadata.contributorDesignerVersionIds,
+  designerSnapshot: metadata.designerSnapshot,
+  brandSnapshot: metadata.brandSnapshot,
+  coverAssetId: metadata.coverAssetId,
+});
 
 type StudioProps = {
   locale: Locale;
@@ -248,38 +264,35 @@ export const Studio = ({
     try {
       const metadata = await getDesktopApi().updateProjectMetadata?.({ workspaceId: workspace.workspaceId, projectId: selected.id, patch });
       if (!metadata) return;
-      setProjects((current) => current.map((project) => project.id === selected.id ? {
-        ...project,
-        name: metadata.name,
-        enName: metadata.name,
-        description: metadata.brief ?? project.description,
-        enDescription: metadata.brief ?? project.enDescription,
-        documents: metadata.documents.length || project.documents,
-        documentEntries: metadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
-        archived: metadata.archived,
-        activeDesignerVersionId: metadata.activeDesignerVersionId,
-        contributorDesignerVersionIds: metadata.contributorDesignerVersionIds,
-        designerSnapshot: metadata.designerSnapshot,
-        coverAssetId: metadata.coverAssetId,
-      } : project));
-      setSelected((current) => current ? {
-        ...current,
-        name: metadata.name,
-        enName: metadata.name,
-        description: metadata.brief ?? current.description,
-        enDescription: metadata.brief ?? current.enDescription,
-        documents: metadata.documents.length || current.documents,
-        documentEntries: metadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
-        archived: metadata.archived,
-        activeDesignerVersionId: metadata.activeDesignerVersionId,
-        contributorDesignerVersionIds: metadata.contributorDesignerVersionIds,
-        designerSnapshot: metadata.designerSnapshot,
-        coverAssetId: metadata.coverAssetId,
-      } : current);
+      setProjects((current) => current.map((project) => project.id === selected.id ? mergeProjectMetadata(project, metadata) : project));
+      setSelected((current) => current ? mergeProjectMetadata(current, metadata) : current);
       notify(t(locale, patch.name ? '项目已重命名' : '项目已归档', patch.name ? 'Project renamed' : 'Project archived'));
     } catch {
       notify(t(locale, '项目更新失败，请重试', 'Project update failed; try again'));
     }
+  };
+  const finalizeProjectDocument = async (project: Project, input: { documentId: string; revisionId: string }): Promise<void> => {
+    if (!workspace || workspace.openMode !== 'writable') throw new Error('WORKSPACE_NOT_WRITABLE');
+    if (!project.documentEntries?.some((entry) => entry.id === input.documentId)) throw new Error('DOCUMENT_NOT_FOUND');
+    const documents: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>> = project.documentEntries.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      width: entry.width,
+      height: entry.height,
+      ...(entry.sourceDocumentId ? { sourceDocumentId: entry.sourceDocumentId } : {}),
+      ...(entry.sourceRevisionId !== undefined ? { sourceRevisionId: entry.sourceRevisionId } : {}),
+      ...(entry.id === input.documentId
+        ? { finalizedRevisionId: input.revisionId }
+        : entry.finalizedRevisionId !== undefined ? { finalizedRevisionId: entry.finalizedRevisionId } : {}),
+    }));
+    const metadata = await getDesktopApi().updateProjectMetadata?.({
+      workspaceId: workspace.workspaceId,
+      projectId: project.id,
+      patch: { documents },
+    });
+    if (!metadata) throw new Error('PROJECT_METADATA_UPDATE_FAILED');
+    setProjects((current) => current.map((entry) => entry.id === project.id ? mergeProjectMetadata(entry, metadata) : entry));
+    setSelected((current) => current?.id === project.id ? mergeProjectMetadata(current, metadata) : current);
   };
   const openRelatedDialog = (): void => {
     if (!workspace || workspace.openMode !== 'writable' || !selected) return;
@@ -1004,6 +1017,7 @@ export const Studio = ({
                 onSubmitDesignGeneration={(conversationTaskId, baseRevisionId) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
+                onCandidateFinalized={({ documentId, revisionId }) => finalizeProjectDocument(project, { documentId, revisionId })}
                 assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}
                 onAssetActionHandled={(actionId) => setPendingAssetAction((current) => current?.id === actionId ? null : current)}
                 operatorName={operatorName}

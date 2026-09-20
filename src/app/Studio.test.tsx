@@ -493,6 +493,69 @@ it('submits project conversation through the desktop task bridge', async () => {
   await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', projectId: 'project-1', connectionId: 'openai-compatible', message: '调整标题' })));
 });
 
+it('stores the finalized revision id before returning to project details', async () => {
+  const now = '2026-09-20T00:00:00.000Z';
+  const document = { id: 'doc-1', name: '主海报', width: 1080, height: 1440, updatedAt: now };
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-finalize', name: '定稿项目', documents: [document] }]);
+  const conversationTask = {
+    id: 'conversation-finalize', requestId: 'request-conversation-finalize', state: 'completed' as const, cancelRequested: false, attempt: 1,
+    capability: 'conversation', analysisThreadId: 'thread-finalize', documentId: 'doc-1', source: { kind: 'project' as const, id: 'project-finalize' },
+    result: { text: 'Use the selected candidate.' },
+  };
+  const designTask = {
+    id: 'design-finalize', requestId: 'request-design-finalize', state: 'completed' as const, cancelRequested: false, attempt: 1,
+    capability: 'design-generation', analysisThreadId: 'thread-finalize', documentId: 'doc-1', source: { kind: 'project' as const, id: 'project-finalize' },
+    result: { candidate: { id: 'candidate-finalize', baseRevisionId: null, assetIds: ['asset-final'], sceneAssetId: 'asset-final', createdAt: now } },
+  };
+  const updateProjectMetadata = vi.fn(async ({ patch }: UpdateProjectMetadataInput): Promise<ProjectMetadata> => ({
+    projectId: 'project-finalize',
+    workspaceId: 'workspace-1',
+    name: '定稿项目',
+    documents: (patch.documents ?? []).map((entry) => ({ ...entry, updatedAt: now })),
+    archived: false,
+    createdAt: now,
+    updatedAt: now,
+  }));
+  let persistedScene = createScene({ id: 'doc-1', width: 1080, height: 1440, layers: [] });
+  const loadDocumentScene = vi.fn(async () => persistedScene);
+  const saveDocumentScene = vi.fn(async ({ scene }: { scene: typeof persistedScene }) => {
+    persistedScene = scene;
+    return true;
+  });
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    listActiveProjects,
+    updateProjectMetadata,
+    submitConversation: vi.fn(async () => conversationTask),
+    submitDesignGeneration: vi.fn(async () => designTask),
+    loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
+    commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),
+    setFinalDocumentRevision: vi.fn(async () => true),
+    loadDocumentScene,
+    saveDocumentScene,
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+  };
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+  fireEvent.click(await screen.findByRole('button', { name: '定稿项目' }));
+  fireEvent.click(screen.getByRole('button', { name: '打开画布' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成候选' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '生成' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  fireEvent.click(await screen.findByRole('button', { name: /候选设计稿/ }));
+  fireEvent.click(within(screen.getByRole('toolbar', { name: '上下文工具' })).getByRole('button', { name: '定稿所选候选' }));
+
+  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith({
+    workspaceId: 'workspace-1',
+    projectId: 'project-finalize',
+    patch: { documents: [expect.objectContaining({ id: 'doc-1', finalizedRevisionId: 'revision-final' })] },
+  }));
+  expect(await screen.findByText('已定稿')).toBeInTheDocument();
+  expect(await screen.findByRole('img', { name: '主海报定稿预览' })).toBeInTheDocument();
+  confirm.mockRestore();
+});
+
 it('submits one image when the saved provider uses the Responses image transport', async () => {
   const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
   const loadProviderConfigs = vi.fn(async () => ({
