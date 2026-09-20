@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest';
 
 import { Workbench, type WorkbenchProps } from './Workbench';
 import type { Project } from './types';
-import { createScene } from '../../features/canvas/scene';
+import { createScene, type DesignScene } from '../../features/canvas/scene';
 
 vi.mock('react-konva', () => {
   const component = ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => <div {...props}>{children}</div>;
@@ -791,4 +791,116 @@ it('applies a finalized image candidate to the active canvas scene', async () =>
     scene: expect.objectContaining({ layers: [expect.objectContaining({ assetId: 'asset-candidate' })] }),
   })));
   expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ layers: [expect.objectContaining({ assetId: 'asset-candidate' })] }) }));
+});
+
+const completedConversationTask = {
+  id: 'conversation-finalize', requestId: 'request-conversation-finalize', state: 'completed' as const, cancelRequested: false, attempt: 1,
+  capability: 'conversation', analysisThreadId: 'thread-finalize', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' },
+  result: { text: 'Use the selected candidate.' },
+};
+
+const completedDesignTask = {
+  id: 'design-finalize', requestId: 'request-design-finalize', state: 'completed' as const, cancelRequested: false, attempt: 1,
+  capability: 'design-generation', analysisThreadId: 'thread-finalize', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' },
+  result: { candidate: { id: 'candidate-finalize', baseRevisionId: null, assetIds: ['asset-candidate'], sceneAssetId: 'asset-candidate', createdAt: '2026-09-20T00:00:00.000Z' } },
+};
+
+const renderFinalizableCandidate = async (overrides: Partial<WorkbenchProps> = {}) => {
+  const onSubmitConversation = vi.fn(async () => completedConversationTask);
+  const onSubmitDesignGeneration = vi.fn(async () => completedDesignTask);
+  const result = render(<Workbench {...makeProps({
+    workspaceId: 'workspace-1',
+    documentId: 'doc-1',
+    onSubmitConversation,
+    onSubmitDesignGeneration,
+    ...overrides,
+  })} />);
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成候选' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '生成' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  await screen.findByRole('button', { name: /候选设计稿/ });
+  return result;
+};
+
+it('enables the right-toolbar finalization action only after selecting a candidate', async () => {
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+  };
+  await renderFinalizableCandidate();
+
+  const contextTools = screen.getByRole('toolbar', { name: '上下文工具' });
+  const finalize = within(contextTools).getByRole('button', { name: '定稿所选候选' });
+  expect(finalize).toBeDisabled();
+
+  fireEvent.click(screen.getByRole('button', { name: /候选设计稿/ }));
+
+  expect(finalize).toBeEnabled();
+  expect(screen.getAllByRole('button', { name: '定稿所选候选' })).toHaveLength(1);
+});
+
+it('preserves reference layers and waits for scene storage before leaving', async () => {
+  let resolveSave: ((value: boolean) => void) | undefined;
+  const saveDocumentScene = vi.fn((_input: { workspaceId: string; projectId: string; documentId: string; scene: DesignScene }) => new Promise<boolean>((resolve) => { resolveSave = resolve; }));
+  const onBack = vi.fn();
+  const onCandidateFinalized = vi.fn(async () => undefined);
+  const scene = createScene({
+    id: 'scene-current',
+    width: 1080,
+    height: 1440,
+    layers: [
+      { id: 'reference', type: 'image', role: 'reference', assetId: 'asset-reference', x: 10, y: 10, width: 200, height: 200, rotation: 0, opacity: 0.5, visible: true, locked: false },
+      { id: 'content', type: 'image', role: 'content', assetId: 'asset-old', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false },
+    ],
+  });
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+    commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),
+    setFinalDocumentRevision: vi.fn(async () => true),
+    saveDocumentScene,
+  };
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await renderFinalizableCandidate({ scene, onBack, onCandidateFinalized });
+  fireEvent.click(screen.getByRole('button', { name: /候选设计稿/ }));
+  fireEvent.click(within(screen.getByRole('toolbar', { name: '上下文工具' })).getByRole('button', { name: '定稿所选候选' }));
+
+  await waitFor(() => expect(saveDocumentScene).toHaveBeenCalled());
+  const savedScene = saveDocumentScene.mock.calls[0]![0].scene;
+  expect(savedScene.layers).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: 'reference', assetId: 'asset-reference', role: 'reference' }),
+    expect.objectContaining({ id: 'content', assetId: 'asset-candidate', role: 'content' }),
+  ]));
+  expect(onBack).not.toHaveBeenCalled();
+
+  resolveSave?.(true);
+  await waitFor(() => expect(onCandidateFinalized).toHaveBeenCalledWith({ documentId: 'doc-1', revisionId: 'revision-final', scene: savedScene }));
+  expect(onBack).toHaveBeenCalledOnce();
+  confirm.mockRestore();
+});
+
+it('keeps the selected candidate when scene storage fails', async () => {
+  const notify = vi.fn();
+  const onBack = vi.fn();
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+    commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),
+    setFinalDocumentRevision: vi.fn(async () => true),
+    saveDocumentScene: vi.fn(async () => false),
+  };
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await renderFinalizableCandidate({ onBack, notify });
+  fireEvent.click(screen.getByRole('button', { name: /候选设计稿/ }));
+  const contextTools = screen.getByRole('toolbar', { name: '上下文工具' });
+  fireEvent.click(within(contextTools).getByRole('button', { name: '定稿所选候选' }));
+
+  await waitFor(() => expect(notify).toHaveBeenCalledWith('候选定稿失败'));
+  expect(onBack).not.toHaveBeenCalled();
+  expect(within(contextTools).getByRole('button', { name: '定稿所选候选' })).toBeEnabled();
+  confirm.mockRestore();
 });

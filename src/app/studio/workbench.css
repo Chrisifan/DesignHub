@@ -1066,6 +1066,18 @@
   background: var(--surface-container-high);
 }
 
+.workbench-context-tools__separator {
+  width: 24px;
+  height: 1px;
+  margin: 2px auto;
+  background: var(--workbench-glass-border);
+}
+
+.workbench-context-tools .workbench-context-tools__finalize:not(:disabled) {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
 .workbench-properties-float {
   position: absolute;
   z-index: 6;

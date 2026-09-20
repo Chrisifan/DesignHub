@@ -83,6 +83,7 @@ export type WorkbenchProps = {
   onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
+  onCandidateFinalized?: (input: { documentId: string; revisionId: string; scene: DesignScene }) => void | Promise<void>;
   operatorName?: string;
   modelConnected?: boolean;
   readOnly?: boolean;
@@ -140,6 +141,7 @@ export const Workbench = ({
   onSubmitDesignGeneration,
   onSubmitImageTask,
   onSubmitImageGeneration,
+  onCandidateFinalized,
   operatorName = '',
   readOnly = false,
   notify,
@@ -320,7 +322,11 @@ export const Workbench = ({
       const contribution = entry.candidate.designerVersionId
         ? [{ designerVersionId: entry.candidate.designerVersionId, role: 'revision' as const }]
         : revisionContributions('revision');
-      const imageLayer = scene.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image');
+      const imageLayer = scene.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => (
+        layer.type === 'image'
+        && layer.role !== 'reference'
+        && layer.assetId !== 'placeholder'
+      ));
       const selectedAssetId = entry.candidate.sceneAssetId ?? entry.candidate.assetIds[0]!;
       const contentLayerId = (() => {
         const base = `content-${selectedAssetId}`;
@@ -360,7 +366,10 @@ export const Workbench = ({
       if (!committed) return;
       const finalized = await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId: committed.revisionId });
       if (finalized === false || finalized === null) throw new Error('FINALIZE_FAILED');
-      persistScene(candidateScene);
+      const saved = await getDesktopApi().saveDocumentScene?.({ workspaceId, projectId: project.id, documentId, scene: candidateScene });
+      if (saved !== true) throw new Error('SCENE_SAVE_FAILED');
+      setScene(candidateScene);
+      await onCandidateFinalized?.({ documentId, revisionId: committed.revisionId, scene: candidateScene });
       const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
       if (loaded) setRevisionState(loaded);
       notify(t(locale, '候选已定稿', 'Candidate finalized'));
@@ -825,12 +834,6 @@ export const Workbench = ({
         </div>
 
         <div className="workbench-toolbar__actions">
-          <IconButton
-            name="check-circle"
-            label={t(locale, '定稿所选候选', 'Finalize selected candidate')}
-            disabled={readOnly || revisionBusy || !selectedCandidateId}
-            onClick={() => { if (selectedCandidateId) void finalizeCandidate(selectedCandidateId); }}
-          />
           <Button variant="primary" icon="download" onClick={onExport}>
             {t(locale, '导出', 'Export')}
           </Button>
@@ -1081,6 +1084,14 @@ export const Workbench = ({
                 onClick={() => showPanel(panelId)}
               />
             ))}
+            <span className="workbench-context-tools__separator" aria-hidden="true" />
+            <IconButton
+              className="icon-button workbench-context-tools__finalize"
+              name="check-circle"
+              label={t(locale, '定稿所选候选', 'Finalize selected candidate')}
+              disabled={readOnly || revisionBusy || !selectedCandidateId}
+              onClick={() => { if (selectedCandidateId) void finalizeCandidate(selectedCandidateId); }}
+            />
           </div>
           {propertiesOpen && (
             <aside className="workbench-properties-float" aria-label={panelCopy.properties.label}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import type { SceneLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
 import type { Artwork } from './types';
 import { ArtworkPreview } from './ui';
@@ -23,11 +24,11 @@ export const ProjectDocumentPreview = ({ workspaceId, projectId, documentId, art
 
     const load = async (): Promise<void> => {
       const scene = await getDesktopApi().loadDocumentScene?.(workspaceId, projectId, documentId);
-      const image = scene?.layers.find((layer) => (
+      const image = scene?.layers.find((layer): layer is Extract<SceneLayer, { type: 'image' }> => (
         layer.type === 'image'
         && layer.role === 'content'
         && layer.assetId !== 'placeholder'
-      )) ?? scene?.layers.find((layer) => (
+      )) ?? scene?.layers.find((layer): layer is Extract<SceneLayer, { type: 'image' }> => (
         layer.type === 'image'
         && layer.role !== 'reference'
         && layer.assetId !== 'placeholder'
