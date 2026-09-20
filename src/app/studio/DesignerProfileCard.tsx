@@ -2,7 +2,7 @@ import type { Locale } from '../i18n';
 import { PersonaArtwork } from './PersonaArtwork';
 import { localize, type PersonaProfile } from './personas';
 import { Tooltip } from './Tooltip';
-import { Badge, Icon, t } from './ui';
+import { Badge, Icon, t, type BadgeTone } from './ui';
 
 type DesignerProfileCardProps = {
   locale: Locale;
@@ -25,6 +25,13 @@ const statusLabel = (locale: Locale, status: PersonaProfile['status']): string =
     : status === 'archived'
       ? t(locale, '已归档', 'Archived')
       : t(locale, '草稿', 'Draft');
+
+const statusTone = (status: PersonaProfile['status']): BadgeTone =>
+  status === 'published' || status === 'built-in'
+    ? 'success'
+    : status === 'draft'
+      ? 'ai'
+      : '';
 
 const ProfileMetric = ({
   label,
@@ -117,7 +124,7 @@ export const DesignerDossier = ({ locale, profile }: DesignerDossierProps) => {
           <h2>{name}</h2>
           <p>{localize(locale, profile.signature)}</p>
           <ProfileTags locale={locale} profile={profile} compact={false} />
-          <Badge tone={profile.status === 'draft' ? 'ai' : 'success'}>{statusLabel(locale, profile.status)}</Badge>
+          <Badge tone={statusTone(profile.status)}>{statusLabel(locale, profile.status)}</Badge>
         </div>
       </header>
 

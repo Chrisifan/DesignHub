@@ -26,10 +26,11 @@ import {
   PageHeader,
   Select,
   t,
+  type BadgeTone,
 } from './ui';
 import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
-import { createScene } from '../../features/canvas/scene';
+import type { DesignScene } from '../../features/canvas/scene';
 import { ProviderSettings, type ProviderSettingsActions } from '../../features/providers/ProviderSettings';
 import { BrandEditor } from '../../features/brands/BrandEditor';
 import type { Brand } from '../../features/brands/constraints';
@@ -41,6 +42,7 @@ import type { TrashedProject } from '../../features/workspace/project-store';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
 import type { WorkspaceSettings } from '../../features/workspace/settings';
+import { DeliveryScenePreview } from './DeliveryScenePreview';
 import './library.css';
 
 type LibraryPagesProps = PageProps & {
@@ -895,7 +897,15 @@ const TasksPage = ({
           : task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART'
             ? t(locale, '结果未知', 'Result unknown')
             : t(locale, '失败', 'Failed');
-  const taskTone = (task: TaskRecord): string => task.state === 'failed' || task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART' ? 'warning' : task.state === 'completed' ? 'success' : '';
+  const taskTone = (task: TaskRecord): BadgeTone => task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART'
+    ? 'warning'
+    : task.state === 'failed'
+      ? 'error'
+      : task.state === 'cancelled'
+        ? 'warning'
+        : task.state === 'completed'
+          ? 'success'
+          : '';
   const taskSummary = (task: TaskRecord): string => {
     const guidance = task.state === 'failed' || task.state === 'cancelled'
       ? task.capability === 'vision-analysis'
@@ -965,7 +975,7 @@ const TasksPage = ({
             <ul>
               {task.generationSlots.map((slot) => <li key={slot.id}>
                 <span>{slotLabel(slot.id)}</span>
-                <Badge tone={slot.state === 'completed' ? 'success' : slot.state === 'failed' || slot.state === 'cancelled' ? 'warning' : ''}>{slotStateLabel(slot.state)}</Badge>
+                <Badge tone={slot.state === 'completed' ? 'success' : slot.state === 'failed' ? 'error' : slot.state === 'cancelled' ? 'warning' : ''}>{slotStateLabel(slot.state)}</Badge>
                 {!generationBatchActive && (slot.state === 'failed' || slot.state === 'cancelled') && <IconButton
                   name="rotate-ccw"
                   label={t(locale, `重试${slotLabel(slot.id)}`, `Retry ${slotLabel(slot.id)}`)}
@@ -1026,6 +1036,8 @@ const DeliveryPage = ({
   const [source, setSource] = useState<'current' | 'final'>('current');
   const [documentId, setDocumentId] = useState(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
   const [drawerOpen, setDrawerOpen] = useState(Boolean(project));
+  const [deliveryScene, setDeliveryScene] = useState<DesignScene | null>(null);
+  const [sceneStatus, setSceneStatus] = useState<'idle' | 'loading' | 'ready' | 'empty' | 'error'>('idle');
   const formatDescription =
     format === 'jpeg'
       ? t(
@@ -1069,21 +1081,51 @@ const DeliveryPage = ({
   useEffect(() => {
     if (!hasFinalizedRevision && source === 'final') setSource('current');
   }, [hasFinalizedRevision, source]);
+  const loadSelectedScene = useCallback(async (): Promise<DesignScene | null> => {
+    if (!project?.workspaceId || !activeDocumentId) return null;
+    const api = getDesktopApi();
+    if (source === 'final' && finalizedRevisionId) {
+      const revisions = await api.loadDocumentRevisions?.(project.workspaceId, project.id, activeDocumentId);
+      return revisions?.revisions.find((revision) => revision.revisionId === finalizedRevisionId)?.scene
+        ?? (revisions?.finalRevisionId ? revisions.revisions.find((revision) => revision.revisionId === revisions.finalRevisionId)?.scene : null)
+        ?? null;
+    }
+    return await api.loadDocumentScene?.(project.workspaceId, project.id, activeDocumentId) ?? null;
+  }, [activeDocumentId, finalizedRevisionId, project?.id, project?.workspaceId, source]);
+  const hasExportableContent = useCallback((scene: DesignScene | null): scene is DesignScene => Boolean(scene?.layers.some((layer) => (
+    layer.visible && !(layer.type === 'image' && (layer.role === 'reference' || layer.assetId === 'placeholder'))
+  ))), []);
+  useEffect(() => {
+    if (!project?.workspaceId || !activeDocumentId) {
+      setDeliveryScene(null);
+      setSceneStatus('idle');
+      return;
+    }
+    let cancelled = false;
+    setDeliveryScene(null);
+    setSceneStatus('loading');
+    void loadSelectedScene().then((scene) => {
+      if (cancelled) return;
+      setDeliveryScene(scene);
+      setSceneStatus(hasExportableContent(scene) ? 'ready' : 'empty');
+    }).catch(() => {
+      if (!cancelled) {
+        setDeliveryScene(null);
+        setSceneStatus('error');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [activeDocumentId, hasExportableContent, loadSelectedScene, project?.workspaceId]);
   const exportCurrent = async (): Promise<void> => {
     if (!project?.workspaceId || !activeDocumentId) return;
     setExporting(true);
     try {
       const api = getDesktopApi();
-      let scene;
-      if (source === 'final' && finalizedRevisionId) {
-        const revisions = await api.loadDocumentRevisions?.(project.workspaceId, project.id, activeDocumentId);
-        const finalRevision = revisions?.revisions.find((revision) => revision.revisionId === finalizedRevisionId)
-          ?? (revisions?.finalRevisionId ? revisions.revisions.find((revision) => revision.revisionId === revisions.finalRevisionId) : undefined);
-        if (!finalRevision?.scene) throw new Error('FINAL_SCENE_UNAVAILABLE');
-        scene = finalRevision.scene;
-      } else {
-        scene = await api.loadDocumentScene?.(project.workspaceId, project.id, activeDocumentId)
-          ?? createScene({ id: activeDocumentId, width: currentDocument?.width ?? 1080, height: currentDocument?.height ?? 1440, layers: [] });
+      const scene = await loadSelectedScene();
+      if (!hasExportableContent(scene)) {
+        setSceneStatus('empty');
+        notify?.(t(locale, '当前文档没有可导出的正式内容，请先在画布中选择候选稿并定稿。', 'This document has no formal content to export. Select a candidate on the canvas and finalize it first.'));
+        return;
       }
       const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
       if (result) {
@@ -1141,12 +1183,23 @@ const DeliveryPage = ({
         }
       />
       {project?.workspaceId && <PageToolbarSlot active={active}>
-        <IconButton name="download" label={t(locale, '导出项目包', 'Export project package')} onClick={() => { void exportPackage(); }} />
+        <IconButton name="download" label={t(locale, '导出当前设计稿', 'Export current design')} onClick={() => setDrawerOpen(true)} />
       </PageToolbarSlot>}
       <div className="delivery-layout">
         {project ? (
           <div className="delivery-preview">
-            <ArtworkPreview kind={project.artwork} />
+            {persistedProject ? (
+              sceneStatus === 'ready' && deliveryScene
+                ? <DeliveryScenePreview workspaceId={project.workspaceId!} projectId={project.id} scene={deliveryScene} alt={t(locale, `${currentDocument?.name ?? project.name}导出预览`, `${currentDocument?.name ?? project.enName} export preview`)} />
+                : <div className={`delivery-scene-state delivery-scene-state--${sceneStatus}`}>
+                    <Icon name={sceneStatus === 'error' ? 'circle-alert' : 'file-image'} size={36} />
+                    <span>{sceneStatus === 'loading'
+                      ? t(locale, '正在读取当前设计稿…', 'Loading the current design…')
+                      : sceneStatus === 'error'
+                        ? t(locale, '设计稿读取失败，请重试。', 'Could not load the design. Try again.')
+                        : t(locale, '当前文档没有可导出的正式内容，请先在画布中选择候选稿并定稿。', 'This document has no formal content to export. Select a candidate on the canvas and finalize it first.')}</span>
+                  </div>
+            ) : <ArtworkPreview kind={project.artwork} />}
             <div>
               <Badge>{t(locale, '原稿', 'Source')}</Badge>
               <h2>{projectName}</h2>
@@ -1194,7 +1247,7 @@ const DeliveryPage = ({
                 <strong>{t(locale, '尚未选择目标目录', 'No destination selected')}</strong>
                 <span>{t(locale, persistedProject ? '使用桌面保存对话框写出并校验文件。' : '桌面导出能力接入后才可执行。', persistedProject ? 'Use the desktop save dialog to write and validate the file.' : 'Available after desktop export support is connected.')}</span>
               </div>
-              <Button variant="primary" icon="download" disabled={!project?.workspaceId || !activeDocumentId || exporting} onClick={() => { void exportCurrent(); }}>
+              <Button variant="primary" icon="download" disabled={!project?.workspaceId || !activeDocumentId || exporting || sceneStatus === 'empty' || sceneStatus === 'error'} onClick={() => { void exportCurrent(); }}>
                 {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
               </Button>
             </div>
@@ -1266,7 +1319,7 @@ const DeliveryPage = ({
               <div className="export-history-row" key={record.id}>
                 <span>{record.format.toUpperCase()} · {record.revisionId}{record.targetAvailable === false ? ` · ${t(locale, '目标已移动', 'Target moved')}` : ''}</span>
                 <span className="export-history-row__actions">
-                  <Badge tone={record.status === 'success' ? 'success' : 'warning'}>
+                  <Badge tone={record.status === 'success' ? 'success' : 'error'}>
                     {record.status === 'success' ? t(locale, '成功', 'Success') : t(locale, '失败', 'Failed')}
                   </Badge>
                   {record.status === 'success' && <IconButton name="rotate-ccw" label={t(locale, '重新导出', 'Re-export')} onClick={() => { void reexport(record); }} />}
@@ -1274,6 +1327,7 @@ const DeliveryPage = ({
               </div>
             ))}
           </div>}
+          {persistedProject && <Button variant="secondary" icon="download" onClick={() => { void exportPackage(); }}>{t(locale, '导出项目包', 'Export project package')}</Button>}
         </div></Drawer>}
       </div>
     </section>

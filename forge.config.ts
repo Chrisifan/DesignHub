@@ -4,6 +4,22 @@ import MakerDMG from '@electron-forge/maker-dmg';
 import MakerSquirrel from '@electron-forge/maker-squirrel';
 import MakerZIP from '@electron-forge/maker-zip';
 
+const sharpRuntimePackages = [
+  'sharp',
+  'color',
+  'color-convert',
+  'color-name',
+  'color-string',
+  'detect-libc',
+  'is-arrayish',
+  'semver',
+  'simple-swizzle',
+];
+
+const isSharpRuntimeFile = (file: string): boolean => sharpRuntimePackages.some((packageName) => (
+  file === `/node_modules/${packageName}` || file.startsWith(`/node_modules/${packageName}/`)
+));
+
 const retainViteOutputAndNativeStorage = (file: string): boolean => Boolean(file)
   && file !== '/package.json'
   && !file.startsWith('/.vite')
@@ -13,7 +29,10 @@ const retainViteOutputAndNativeStorage = (file: string): boolean => Boolean(file
   && file !== '/node_modules/@napi-rs'
   && file !== '/node_modules/@napi-rs/keyring'
   && !file.startsWith('/node_modules/@napi-rs/keyring/')
-  && !file.startsWith('/node_modules/@napi-rs/keyring-');
+  && !file.startsWith('/node_modules/@napi-rs/keyring-')
+  && !isSharpRuntimeFile(file)
+  && file !== '/node_modules/@img'
+  && !file.startsWith('/node_modules/@img/');
 
 const config = {
   packagerConfig: { asar: true, ignore: retainViteOutputAndNativeStorage },

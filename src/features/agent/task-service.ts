@@ -146,12 +146,40 @@ export type AgentTaskService = {
 export type AgentTaskServiceOptions = {
   runtime: TaskRuntime;
   resolveAdapter: (connectionId: string) => Promise<ConversationAdapter>;
+  imageRetryDelayMs?: number;
   persistGeneratedImages?: (input: { projectId: string; images: GeneratedImage[] }) => Promise<string[]>;
   persistDesignerArtwork?: (input: { designerDraftId: string; images: GeneratedImage[] }) => Promise<string[]>;
   loadSourceImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
   resolveDesignContext?: (input: { input: ConversationInput; attachmentAssetIds: string[] }) => Promise<DesignGenerationContext>;
   persistConversationAttachments?: (input: { projectId: string; attachments: ConversationImageAttachment[] }) => Promise<string[]>;
   loadContextImage?: (input: { projectId: string; assetId: string }) => Promise<ConversationImageAttachment | null>;
+};
+
+const waitForImageRetry = async (delayMs: number, signal: AbortSignal): Promise<void> => {
+  if (signal.aborted) throw Object.assign(new Error('cancelled'), { name: 'AbortError' });
+  if (delayMs <= 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+};
+
+const requestWithGatewayTimeoutRetry = async <T>(request: () => Promise<T>, signal: AbortSignal, delayMs: number): Promise<T> => {
+  try {
+    return await request();
+  } catch (error) {
+    const failure = providerFailure(error);
+    if (failure?.kind !== 'http' || failure.status !== 524 || signal.aborted) throw error;
+    await waitForImageRetry(delayMs, signal);
+    return request();
+  }
 };
 
 const taskId = (): string => `conversation-${crypto.randomUUID()}`;
@@ -479,11 +507,11 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         try {
           const prompt = `${task.requestText ?? generationPrompt(prepared.context, prepared.context.assistantBrief)}\n\nCandidate direction\n${slot.direction}`;
           const size = `${prepared.context.document.width}x${prepared.context.document.height}`;
-          const response = prepared.sourceImage && prepared.adapter.editImage
-            ? await prepared.adapter.editImage({ prompt, image: prepared.sourceImage, ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size }, controller.signal)
+          const response = await requestWithGatewayTimeoutRetry(async () => prepared.sourceImage && prepared.adapter.editImage
+            ? prepared.adapter.editImage({ prompt, image: prepared.sourceImage, ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size }, controller.signal)
             : prepared.adapter.generateImage
-              ? await prepared.adapter.generateImage({ prompt, ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size, count: 1 }, controller.signal)
-              : undefined;
+              ? prepared.adapter.generateImage({ prompt, ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size, count: 1 }, controller.signal)
+              : undefined, controller.signal, options.imageRetryDelayMs ?? 2_000);
           const image = response?.images[0];
           if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
           if (!image) throw new Error('IMAGE_RESULT_EMPTY');

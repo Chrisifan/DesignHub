@@ -68,6 +68,7 @@ import { exportHistoryListChannel, listExportHistoryHandler } from './ipc/export
 import { loadProviderConfigs, saveProviderConfigs } from './security/provider-config';
 import { createProviderConfigLoadHandler, createProviderConfigSaveHandler, providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
 import { createProviderAdapterResolver } from './provider-adapter-resolver';
+import { normalizeProviderImage } from './provider-image-input';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -210,6 +211,13 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
     });
     const projectStore = createProjectStore(workspace);
     const assetStore = createAssetStore(workspace);
+    const loadManagedProviderImage = async (projectId: string, assetId: string) => {
+      const assets = await assetStore.listAssets({ workspaceId: workspace.workspace.workspaceId, projectId, includeContextAssets: true });
+      const asset = assets.find((candidate) => candidate.id === assetId);
+      const bytes = await assetStore.readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
+      if (!asset || !bytes) return null;
+      return { name: asset.name, ...await normalizeProviderImage({ bytes, mimeType: asset.mimeType }) };
+    };
     const service = createAgentTaskService({
       runtime,
       persistGeneratedImages: async ({ projectId, images }) => {
@@ -235,8 +243,8 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         return saved.map((item) => item.artworkId);
       },
       loadSourceImage: async ({ projectId, assetId }) => {
-        const bytes = await assetStore.readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
-        return bytes ? new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }) : null;
+        const image = await loadManagedProviderImage(projectId, assetId);
+        return image ? new Blob([new Uint8Array(image.bytes).buffer as ArrayBuffer], { type: image.mimeType }) : null;
       },
       persistConversationAttachments: async ({ projectId, attachments }) => {
         const imported = await assetStore.importAssets({
@@ -254,10 +262,8 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
       },
       loadContextImage: async ({ projectId, assetId }) => {
-        const assets = await assetStore.listAssets({ workspaceId: workspace.workspace.workspaceId, projectId, includeContextAssets: true });
-        const asset = assets.find((candidate) => candidate.id === assetId);
-        const bytes = await assetStore.readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
-        return asset && bytes ? { name: asset.name, mimeType: asset.mimeType, bytes } : null;
+        const image = await loadManagedProviderImage(projectId, assetId);
+        return image ? { name: image.name, mimeType: image.mimeType, bytes: image.bytes } : null;
       },
       resolveDesignContext: async ({ input, attachmentAssetIds }) => {
         if (!input.projectId || !input.documentId || !input.workspaceId) throw new Error('DESIGN_CONTEXT_BINDING_REQUIRED');
@@ -609,11 +615,27 @@ app.whenReady().then(async () => {
       });
       if (result.canceled || !result.filePath) return null;
       try {
+        const assetStore = createAssetStore(_workspace);
+        const assetsById = new Map((await assetStore.listAssets({
+          workspaceId: exportInput.workspaceId,
+          projectId: exportInput.projectId,
+          includeContextAssets: true,
+        })).map((asset) => [asset.id, asset]));
         const exported = await exportSceneToFile({
           scene: exportInput.scene,
           format: exportInput.format,
           targetPath: result.filePath,
           background: exportInput.background,
+          resolveImageAsset: async (assetId) => {
+            const asset = assetsById.get(assetId);
+            if (!asset?.managed) return null;
+            const bytes = await assetStore.readAsset({
+              workspaceId: exportInput.workspaceId,
+              projectId: exportInput.projectId,
+              assetId,
+            });
+            return bytes ? { bytes, mimeType: asset.mimeType } : null;
+          },
           ...(exportInput.archiveCopy ? {
             archiveCopy: async ({ path }) => {
               if (_workspace.workspace.openMode !== 'writable') throw new Error('ARCHIVE_REQUIRES_WRITABLE');

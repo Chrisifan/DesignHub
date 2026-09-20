@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -70,17 +70,12 @@ const renderPage = (overrides: Partial<ComponentProps<typeof ProjectDetailPage>>
     locale: 'zh-CN',
     project,
     profiles,
-    writable: true,
     projectTitle: '秋季发布会',
     activeDesignerId: 'designer-1',
     designerLabel: '林墨',
     contributorIds: ['designer-1', 'designer-2'],
     contributorLabel: '林墨 · 周野',
     onOpenDocument: vi.fn(),
-    onExport: vi.fn(),
-    onCreateDocument: vi.fn(),
-    onSwitchDesigner: vi.fn(),
-    onToggleContributor: vi.fn(),
     ...overrides,
   };
   const result = render(<ProjectDetailPage {...props} />);
@@ -92,19 +87,30 @@ afterEach(() => {
 });
 
 describe('ProjectDetailPage', () => {
-  it('groups the cover and project summary into one compact header card', () => {
-    const { props } = renderPage();
+  it('groups project status and design count while keeping the summary compact', () => {
+    renderPage();
     const header = screen.getByTestId('project-detail-header');
 
     expect(header).toContainElement(screen.getByRole('img', { name: '秋季发布会项目封面' }));
     expect(header).toContainElement(screen.getByRole('heading', { name: '秋季发布会' }));
     expect(header).toContainElement(screen.getByText(project.description));
-    expect(screen.getByText('2 份文档')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: '打开画布' })).toHaveLength(1);
+    expect(screen.getByLabelText('项目状态与设计稿数量')).toHaveTextContent(/进行中.*2 份设计稿/);
+    expect(screen.getByLabelText('项目状态与设计稿数量').querySelector('.project-detail-status-dot')).toHaveClass('project-detail-status-dot--success');
+    expect(screen.queryByText('本地保存')).not.toBeInTheDocument();
+    expect(within(header).queryByRole('button', { name: '打开画布' })).not.toBeInTheDocument();
+    expect(within(header).queryByRole('button', { name: '导出交付' })).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: '打开画布' }));
+  it('uses a neutral status indicator for archived projects', () => {
+    renderPage({ project: { ...project, archived: true } });
 
-    expect(props.onOpenDocument).toHaveBeenCalledWith('poster', 0);
+    expect(screen.getByLabelText('项目状态与设计稿数量').querySelector('.project-detail-status-dot')).toHaveClass('project-detail-status-dot--neutral');
+  });
+
+  it('uses a warning status indicator for unsaved projects', () => {
+    renderPage({ project: { ...project, workspaceId: undefined } });
+
+    expect(screen.getByLabelText('项目状态与设计稿数量').querySelector('.project-detail-status-dot')).toHaveClass('project-detail-status-dot--warning');
   });
 
   it('opens the document represented by each card and labels its revision state', () => {
@@ -117,6 +123,30 @@ describe('ProjectDetailPage', () => {
     expect(props.onOpenDocument).toHaveBeenCalledWith('square', 1);
   });
 
+  it('sizes document covers from their dimensions instead of their list position', () => {
+    const { container } = renderPage({
+      project: {
+        ...project,
+        documents: 4,
+        documentEntries: [
+          { id: 'portrait-a', name: '竖版 A', width: 1080, height: 1440 },
+          { id: 'portrait-b', name: '竖版 B', width: 1080, height: 1440 },
+          { id: 'square', name: '方图', width: 1080, height: 1080 },
+          { id: 'tall', name: '长图', width: 540, height: 1440 },
+        ],
+      },
+    });
+
+    const sheets = Array.from(container.querySelectorAll<HTMLElement>('.project-detail-document-card__sheet'));
+    expect(sheets).toHaveLength(4);
+    expect(sheets[0]?.style.aspectRatio).toBe('1080 / 1440');
+    expect(sheets[1]?.style.aspectRatio).toBe('1080 / 1440');
+    expect(sheets[0]?.style.width).toBe(sheets[1]?.style.width);
+    expect(sheets[2]?.style.aspectRatio).toBe('1080 / 1080');
+    expect(Number.parseFloat(sheets[3]?.style.width ?? '')).toBeLessThan(Number.parseFloat(sheets[0]?.style.width ?? ''));
+    expect(container.querySelector('[class*="document-cover--"]')).not.toBeInTheDocument();
+  });
+
   it('localizes the conventional primary document name in English', () => {
     renderPage({ locale: 'en' });
 
@@ -124,21 +154,10 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Open main poster' })).toBeInTheDocument();
   });
 
-  it('shows real brand fields for a valid snapshot', () => {
-    renderPage();
-
-    expect(screen.getByText('North Star')).toBeInTheDocument();
-    expect(screen.getByText('Noto Sans SC · Fraunces')).toBeInTheDocument();
-    expect(screen.getByText('冷静、明确')).toBeInTheDocument();
-    expect(screen.getByText('v2')).toBeInTheDocument();
-    expect(document.querySelectorAll('.project-detail-brand-swatch')).toHaveLength(2);
-  });
-
-  it('keeps empty brief and brand states explicit', () => {
+  it('keeps the empty brief state explicit', () => {
     renderPage({ project: { ...project, description: '', enDescription: '', brandSnapshot: undefined } });
 
     expect(screen.getByText('暂无项目简介')).toBeInTheDocument();
-    expect(screen.getByText('未附加品牌包')).toBeInTheDocument();
   });
 
   it('keeps the brief and designer rows explicit when project metadata is missing', () => {
@@ -161,30 +180,17 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByText('暂无设计文档')).toBeInTheDocument();
   });
 
-  it('shows editing controls only for a writable saved project', () => {
-    const { props } = renderPage();
-
-    fireEvent.click(screen.getByRole('button', { name: '新建设计稿' }));
-    expect(props.onCreateDocument).toHaveBeenCalledOnce();
-    expect(screen.getByLabelText('设计师')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: /周野/ })).toBeInTheDocument();
-  });
-
-  it('hides editing controls for a read-only project', () => {
-    renderPage({ writable: false });
-
-    expect(screen.queryByRole('button', { name: '新建设计稿' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('设计师')).not.toBeInTheDocument();
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-  });
-
-  it('exposes the approved layout regions without nested horizontal scrollers', () => {
+  it('uses the full page width for design documents without a project-information sidebar', () => {
     renderPage();
 
     expect(screen.getByTestId('project-detail-page')).toHaveClass('project-detail-page');
     expect(screen.getByTestId('project-detail-hero')).toHaveClass('project-detail-hero');
-    expect(screen.getByTestId('project-detail-layout')).toHaveClass('project-detail-layout');
-    expect(screen.getByRole('region', { name: '设计文档' })).toHaveClass('project-detail-documents');
-    expect(screen.getByRole('complementary', { name: '项目信息' })).toHaveClass('project-detail-sidebar');
+    expect(screen.getByTestId('project-detail-layout')).toHaveClass('project-detail-layout--documents-only');
+    expect(screen.getByRole('region', { name: '设计文档' })).toHaveClass('project-detail-documents--full');
+    expect(screen.queryByRole('complementary', { name: '项目信息' })).not.toBeInTheDocument();
+    expect(screen.queryByText('项目上下文')).not.toBeInTheDocument();
+    expect(screen.queryByText('设计协作')).not.toBeInTheDocument();
+    expect(screen.queryByText('品牌快照')).not.toBeInTheDocument();
+    expect(screen.queryByText('本地')).not.toBeInTheDocument();
   });
 });

@@ -44,6 +44,15 @@ it('renders the full review dossier from profile data', () => {
   expect(within(dossier).getByText('#F4EFE7')).toBeInTheDocument();
 });
 
+it('keeps archived profile status neutral instead of presenting it as success', () => {
+  render(<DesignerProfileCard locale="en" profile={{ ...profile, status: 'archived' }} mode="review" />);
+
+  const status = screen.getByText('Archived');
+  expect(status).toHaveClass('badge');
+  expect(status).not.toHaveClass('badge--success');
+  expect(status).not.toHaveClass('badge--ai');
+});
+
 it('exposes the full dossier independently of its review facade', () => {
   const { rerender } = render(<DesignerDossier locale="zh-CN" profile={profile} />);
   const directOrder = [...screen.getByRole('region', { name: '纸感排版设计师档案' }).children]

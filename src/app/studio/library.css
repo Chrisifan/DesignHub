@@ -439,8 +439,8 @@
 }
 
 .portfolio-steps li.is-complete > span {
-  color: var(--on-tertiary);
-  background: var(--tertiary);
+  color: var(--on-success);
+  background: var(--success);
 }
 
 .portfolio-import,
@@ -687,9 +687,9 @@
 }
 
 .portfolio-analysis-section--texture .portfolio-analysis-section__icon {
-  border-color: color-mix(in srgb, var(--warning) 46%, var(--border-subtle));
-  color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent-warm) 46%, var(--border-subtle));
+  color: var(--accent-warm);
+  background: color-mix(in srgb, var(--accent-warm) 8%, transparent);
 }
 
 .portfolio-analysis-section--danger .portfolio-analysis-section__icon {
@@ -769,11 +769,11 @@
 }
 
 .portfolio-analysis-section--texture .portfolio-analysis-metric__value {
-  color: var(--warning);
+  color: var(--accent-warm);
 }
 
 .portfolio-analysis-section--texture .portfolio-analysis-metric__track i {
-  background: var(--warning);
+  background: var(--accent-warm);
 }
 
 .portfolio-analysis-palette {
@@ -1044,9 +1044,9 @@
   max-width: calc(100% - 16px);
   padding: 3px 6px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--tertiary) 54%, var(--border-subtle));
+  border: 1px solid color-mix(in srgb, var(--primary) 54%, var(--border-subtle));
   border-radius: 4px;
-  color: var(--tertiary);
+  color: var(--primary);
   background: color-mix(in srgb, var(--surface-container-lowest) 90%, transparent);
   font-size: 8px;
   line-height: 13px;
@@ -1277,7 +1277,7 @@
   align-items: center;
   gap: 7px;
   margin: 0;
-  color: var(--tertiary);
+  color: var(--success);
 }
 
 @keyframes portfolio-skeleton {
@@ -2002,11 +2002,40 @@
   background: transparent;
 }
 
-.delivery-preview > .artwork {
+.delivery-preview > .artwork,
+.delivery-scene-preview,
+.delivery-scene-state {
   justify-self: center;
   width: min(100%, 310px);
   min-height: 340px;
   border: 1px solid var(--border-subtle);
+}
+
+.delivery-scene-preview {
+  display: block;
+  height: min(64vh, 620px);
+  min-height: 340px;
+  object-fit: contain;
+  background: #fff;
+  box-shadow: 0 16px 44px rgb(0 0 0 / 24%);
+}
+
+.delivery-scene-state {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  box-sizing: border-box;
+  padding: 28px;
+  color: var(--on-surface-variant);
+  background: var(--surface-container-lowest);
+  text-align: center;
+}
+
+.delivery-scene-state span {
+  max-width: 230px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .delivery-preview--empty {

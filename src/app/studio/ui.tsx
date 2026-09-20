@@ -66,12 +66,14 @@ export const IconButton = ({
     </button>
   </Tooltip>
 );
+export type BadgeTone = '' | 'primary' | 'ai' | 'success' | 'warning' | 'error';
+
 export const Badge = ({
   children,
   tone = '',
 }: {
   children: ReactNode;
-  tone?: string;
+  tone?: BadgeTone;
 }) => <span className={`badge ${tone && `badge--${tone}`}`}>{children}</span>;
 export const Field = ({
   label,

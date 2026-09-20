@@ -76,7 +76,6 @@ export type WorkbenchProps = {
   documentId?: string;
   scene?: DesignScene;
   onBack: () => void;
-  onExport: () => void;
   onConnections: () => void;
   onTasks?: () => void;
   onSubmitConversation?: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
@@ -134,7 +133,6 @@ export const Workbench = ({
   documentId,
   scene: providedScene,
   onBack,
-  onExport,
   onConnections,
   onTasks,
   onSubmitConversation,
@@ -198,6 +196,7 @@ export const Workbench = ({
   const [analysisAttachments, setAnalysisAttachments] = useState<Array<ConversationImageAttachment & { previewUrl: string }>>([]);
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
   const [candidatePreviewId, setCandidatePreviewId] = useState<string | null>(null);
   const [viewportFocusRequest, setViewportFocusRequest] = useState({ id: 0, candidateId: null as string | null });
 
@@ -379,6 +378,49 @@ export const Workbench = ({
       onBack();
     } catch { notify(t(locale, '候选定稿失败', 'Could not finalize candidate')); }
     finally { setRevisionBusy(false); }
+  };
+  const exportSelectedCandidate = async (): Promise<void> => {
+    if (!workspaceId || !documentId || !selectedCandidateId || exportBusy) return;
+    const entry = candidateFor(selectedCandidateId);
+    const selectedAssetId = entry?.candidate.sceneAssetId ?? entry?.candidate.assetIds[0];
+    if (!entry || !selectedAssetId) {
+      notify(t(locale, '所选候选不可导出', 'The selected candidate cannot be exported'));
+      return;
+    }
+    const candidateScene = createScene({
+      id: `candidate-export-${entry.candidate.id}`,
+      width: scene.width,
+      height: scene.height,
+      layers: [{
+        id: `candidate-export-image-${entry.candidate.id}`,
+        type: 'image',
+        role: 'content',
+        assetId: selectedAssetId,
+        x: 0,
+        y: 0,
+        width: scene.width,
+        height: scene.height,
+        rotation: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+      }],
+    });
+    setExportBusy(true);
+    try {
+      const result = await getDesktopApi().exportDocument?.({
+        workspaceId,
+        projectId: project.id,
+        documentId,
+        format: 'png',
+        scene: candidateScene,
+      });
+      if (result) notify(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
+    } catch {
+      notify(t(locale, '候选导出失败，请重试。', 'Could not export the candidate. Try again.'));
+    } finally {
+      setExportBusy(false);
+    }
   };
   const continueCandidate = (candidateId: string): void => {
     if (readOnly) return;
@@ -833,11 +875,6 @@ export const Workbench = ({
           />
         </div>
 
-        <div className="workbench-toolbar__actions">
-          <Button variant="primary" icon="download" onClick={onExport}>
-            {t(locale, '导出', 'Export')}
-          </Button>
-        </div>
       </header>
 
       <div className="workbench-body workbench-body--canvas-first">
@@ -1086,8 +1123,15 @@ export const Workbench = ({
             ))}
             <span className="workbench-context-tools__separator" aria-hidden="true" />
             <IconButton
+              className="icon-button workbench-context-tools__export"
+              name="download"
+              label={t(locale, '导出所选候选', 'Export selected candidate')}
+              disabled={exportBusy || !workspaceId || !documentId || !selectedCandidateId}
+              onClick={() => { void exportSelectedCandidate(); }}
+            />
+            <IconButton
               className="icon-button workbench-context-tools__finalize"
-              name="check-circle"
+              name="circle-check"
               label={t(locale, '定稿所选候选', 'Finalize selected candidate')}
               disabled={readOnly || revisionBusy || !selectedCandidateId}
               onClick={() => { if (selectedCandidateId) void finalizeCandidate(selectedCandidateId); }}

@@ -365,22 +365,6 @@ export const Studio = ({
     setActiveDocumentId(documentId);
     if (!conversionFailed) notify(t(locale, documentMode === 'variant' ? '尺寸变体已创建' : '设计稿已创建', documentMode === 'variant' ? 'Size variant created' : 'Design created'));
   };
-  const switchProjectDesigner = async (designerId: string): Promise<void> => {
-    if (!selected || !workspace || workspace.openMode !== 'writable') return;
-    const designer = designerOptions.find((profile) => profile.id === designerId);
-    if (!designer) return;
-    await updateProject({ activeDesignerVersionId: designer.id, designerSnapshot: structuredClone(designer) });
-    notify(t(locale, '设计师已切换', 'Designer switched'));
-  };
-  const toggleProjectContributor = async (designerId: string): Promise<void> => {
-    if (!selected || !workspace || workspace.openMode !== 'writable') return;
-    const current = selected.contributorDesignerVersionIds ?? (selected.activeDesignerVersionId ? [selected.activeDesignerVersionId] : []);
-    const next = current.includes(designerId) ? current.filter((id) => id !== designerId) : [...current, designerId];
-    const activeId = selected.activeDesignerVersionId;
-    const normalized = activeId && !next.includes(activeId) ? [activeId, ...next] : next;
-    await updateProject({ contributorDesignerVersionIds: normalized });
-    notify(t(locale, '署名已更新', 'Contributors updated'));
-  };
   const duplicateSelected = async (): Promise<void> => {
     if (!workspace || !selected || workspace.openMode !== 'writable') return;
     try {
@@ -784,6 +768,9 @@ export const Studio = ({
       </>
     ) : surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
       <>
+        {workspace?.openMode === 'writable' && selected.workspaceId && (
+          <IconButton name="plus" label={t(locale, '新建设计稿', 'New design')} onClick={openDocumentDialog} />
+        )}
         <IconButton name="download" label={t(locale, '导出交付', 'Delivery')} onClick={() => openDelivery(selected)} />
         <IconButton name="file-image" label={t(locale, '继续编辑', 'Open workbench')} onClick={() => setDocumentOpen(true)} />
         {workspace?.openMode === 'writable' && selected.workspaceId && <>
@@ -993,7 +980,6 @@ export const Studio = ({
               locale={locale}
               project={selected}
               profiles={designerOptions}
-              writable={workspace?.openMode === 'writable' && Boolean(selected.workspaceId)}
               projectTitle={projectName(selected)}
               activeDesignerId={projectPersonaId(selected)}
               designerLabel={projectDesignerLabel(selected)}
@@ -1010,10 +996,6 @@ export const Studio = ({
                   'Open the main poster preview. Other sizes will be available with document storage.',
                 ));
               }}
-              onExport={() => openDelivery(selected)}
-              onCreateDocument={openDocumentDialog}
-              onSwitchDesigner={(designerId) => { void switchProjectDesigner(designerId); }}
-              onToggleContributor={(designerId) => { void toggleProjectContributor(designerId); }}
             />
           )}
           {projects.map((project) => (
@@ -1033,7 +1015,6 @@ export const Studio = ({
                 workspaceId={project.workspaceId}
                 documentId={project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId}
                 onBack={() => setDocumentOpen(false)}
-                onExport={() => openDelivery({ ...project, documentId: project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId })}
                 onConnections={() => navigate('connections')}
                 onTasks={() => navigate('tasks')}
                 onSubmitConversation={(message, attachments, context) => submitProjectConversation(project, message, attachments, context)}

@@ -778,7 +778,6 @@
 .page-content.designer-library-page {
   display: flex;
   flex-direction: column;
-  padding: 24px 28px 18px;
   background: var(--background);
   min-height: 0;
   overflow: hidden;
@@ -901,11 +900,17 @@
   z-index: 2;
   min-height: 20px;
   padding: 2px 7px;
-  border: 1px solid color-mix(in srgb, var(--tertiary) 58%, var(--border-subtle));
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  color: var(--tertiary);
+  color: var(--on-surface-variant);
   background: color-mix(in srgb, var(--surface-container-lowest) 88%, transparent);
   font: 600 9px/14px 'JetBrains Mono', monospace;
+}
+
+.designer-profile-card__status--published,
+.designer-profile-card__status--built-in {
+  border-color: color-mix(in srgb, var(--success) 58%, var(--border-subtle));
+  color: var(--success);
 }
 
 .designer-profile-card__status--draft {
@@ -1125,7 +1130,6 @@
 }
 
 @media (max-width: 1080px) {
-  .designer-library-page { padding: 20px 20px 14px; }
   .library-split--designer { grid-template-columns: minmax(0, 1fr); height: auto; }
   .persona-inspector { padding-inline: 18px; }
 }
@@ -1141,7 +1145,6 @@
 }
 
 @media (max-width: 560px) {
-  .designer-library-page { padding: 16px 14px 12px; }
   .designer-library-page .page-heading { align-items: flex-start; }
   .designer-library-page .page-heading h1 {
     font-size: 20px;

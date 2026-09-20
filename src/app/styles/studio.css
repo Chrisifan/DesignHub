@@ -173,7 +173,7 @@ button:disabled {
 }
 .local-note > .ui-icon {
   margin-top: 2px;
-  color: var(--tertiary);
+  color: var(--on-surface-variant);
 }
 .local-note small {
   font-size: 10px;
@@ -361,7 +361,9 @@ button:disabled {
   box-sizing: border-box;
   max-width: 1600px;
   margin: 0 auto;
-  padding: 24px 28px 20px;
+  padding: var(--page-content-padding-block-start)
+    var(--page-content-padding-inline)
+    var(--page-content-padding-block-end);
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -517,9 +519,25 @@ button:disabled {
   color: var(--secondary);
   background: color-mix(in srgb, var(--secondary) 10%, var(--background));
 }
+.badge--primary {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border-subtle));
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--background));
+}
 .badge--success {
-  color: var(--tertiary);
-  background: color-mix(in srgb, var(--tertiary) 8%, var(--background));
+  border-color: color-mix(in srgb, var(--success) 28%, var(--border-subtle));
+  color: var(--success);
+  background: var(--success-container);
+}
+.badge--warning {
+  border-color: color-mix(in srgb, var(--warning) 28%, var(--border-subtle));
+  color: var(--warning);
+  background: var(--warning-container);
+}
+.badge--error {
+  border-color: color-mix(in srgb, var(--error) 28%, var(--border-subtle));
+  color: var(--error);
+  background: var(--error-container);
 }
 .tab-strip {
   display: flex;
@@ -1122,7 +1140,7 @@ button:disabled {
 }
 .inline-notice > .ui-icon {
   margin-top: 1px;
-  color: var(--secondary);
+  color: var(--info);
 }
 .form-tabs {
   border-bottom: 1px solid var(--border-subtle);
@@ -1610,9 +1628,6 @@ button:disabled {
   .studio:not(.studio--compact) {
     grid-template-columns: 280px minmax(0, 1fr);
   }
-  .page-content {
-    padding: 28px 32px 24px;
-  }
 }
 @media (max-width: 1279px) {
   .studio {
@@ -1635,9 +1650,6 @@ button:disabled {
   }
   .studio .nav-divider {
     margin: 12px 8px;
-  }
-  .page-content {
-    padding: 20px 24px 16px;
   }
   .project-cover {
     height: 256px;
@@ -1679,9 +1691,6 @@ button:disabled {
   }
 }
 @media (max-width: 560px) {
-  .page-content {
-    padding: 16px;
-  }
   .page-heading h1 {
     font-size: 20px;
     line-height: 26px;

@@ -12,7 +12,13 @@ it('allows Vite inline styles only for the development renderer', () => {
 
 it('allows managed designer artwork without permitting arbitrary remote images', () => {
   expect(createContentSecurityPolicy(false)).toContain(
-    "img-src 'self' data: designhub-artwork:",
+    "img-src 'self' data: blob: designhub-artwork:",
   );
   expect(createContentSecurityPolicy(false)).not.toContain('https:');
+});
+
+it('allows local object URLs used to render managed image assets', () => {
+  expect(createContentSecurityPolicy(false)).toContain(
+    "img-src 'self' data: blob: designhub-artwork:",
+  );
 });

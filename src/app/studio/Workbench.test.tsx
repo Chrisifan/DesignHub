@@ -28,7 +28,6 @@ const makeProps = (
   locale: 'zh-CN',
   project,
   onBack: vi.fn(),
-  onExport: vi.fn(),
   onConnections: vi.fn(),
   notify: vi.fn(),
   ...overrides,
@@ -151,7 +150,7 @@ it('keeps the workbench canvas clear until a context is selected', () => {
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
 });
 
-it('exposes the design canvas and routes project and export actions', () => {
+it('exposes the design canvas, routes the project action, and keeps export out of the header', () => {
   const props = makeProps();
   render(<Workbench {...props} />);
 
@@ -163,10 +162,10 @@ it('exposes the design canvas and routes project and export actions', () => {
     '春间市集',
   );
   fireEvent.click(screen.getByRole('button', { name: '返回项目' }));
-  fireEvent.click(screen.getByRole('button', { name: '导出' }));
 
   expect(props.onBack).toHaveBeenCalledOnce();
-  expect(props.onExport).toHaveBeenCalledOnce();
+  expect(within(document.querySelector('.workbench-toolbar')!).queryByRole('button', { name: '导出' })).not.toBeInTheDocument();
+  expect(within(screen.getByRole('toolbar', { name: '上下文工具' })).getByRole('button', { name: '导出所选候选' })).toBeDisabled();
 });
 
 it('bootstraps an empty document with its persisted dimensions', () => {
@@ -499,7 +498,7 @@ it('reports an empty workspace document when properties cannot inspect a layer',
 
 it('applies an offline canvas resize through the tools panel', () => {
   const notify = vi.fn();
-  render(<Workbench locale="zh-CN" project={project} onBack={() => undefined} onExport={() => undefined} onConnections={() => undefined} notify={notify} />);
+  render(<Workbench locale="zh-CN" project={project} onBack={() => undefined} onConnections={() => undefined} notify={notify} />);
   fireEvent.click(screen.getByRole('button', { name: '工具' }));
   fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '540' } });
   fireEvent.change(screen.getByRole('spinbutton', { name: '高度' }), { target: { value: '720' } });
@@ -834,13 +833,52 @@ it('enables the right-toolbar finalization action only after selecting a candida
   await renderFinalizableCandidate();
 
   const contextTools = screen.getByRole('toolbar', { name: '上下文工具' });
+  const exportSelected = within(contextTools).getByRole('button', { name: '导出所选候选' });
   const finalize = within(contextTools).getByRole('button', { name: '定稿所选候选' });
+  expect(exportSelected).toBeDisabled();
   expect(finalize).toBeDisabled();
+  expect(exportSelected.querySelector('.ui-icon')).toHaveAttribute('style', expect.stringContaining('download.svg'));
+  expect(finalize.querySelector('.ui-icon')).toHaveAttribute('style', expect.stringContaining('circle-check.svg'));
 
   fireEvent.click(screen.getByRole('button', { name: /候选设计稿/ }));
 
+  expect(exportSelected).toBeEnabled();
   expect(finalize).toBeEnabled();
   expect(screen.getAllByRole('button', { name: '定稿所选候选' })).toHaveLength(1);
+});
+
+it('exports only the selected candidate as a document-sized PNG scene', async () => {
+  const exportDocument = vi.fn(async () => ({ path: '/tmp/selected-candidate.png', sha256: 'a'.repeat(64) }));
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+    exportDocument,
+  };
+  const notify = vi.fn();
+  await renderFinalizableCandidate({ notify });
+
+  fireEvent.click(screen.getByRole('button', { name: /候选设计稿/ }));
+  fireEvent.click(within(screen.getByRole('toolbar', { name: '上下文工具' })).getByRole('button', { name: '导出所选候选' }));
+
+  await waitFor(() => expect(exportDocument).toHaveBeenCalledWith({
+    workspaceId: 'workspace-1',
+    projectId: 'spring-market',
+    documentId: 'doc-1',
+    format: 'png',
+    scene: expect.objectContaining({
+      width: 1080,
+      height: 1440,
+      layers: [expect.objectContaining({
+        type: 'image',
+        role: 'content',
+        assetId: 'asset-candidate',
+        width: 1080,
+        height: 1440,
+      })],
+    }),
+  }));
+  expect(notify).toHaveBeenCalledWith('已导出到 /tmp/selected-candidate.png');
 });
 
 it('preserves reference layers and waits for scene storage before leaving', async () => {

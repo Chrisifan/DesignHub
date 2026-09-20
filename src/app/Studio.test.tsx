@@ -179,7 +179,7 @@ it('places designer status before search without adding a view switch', () => {
   expect(document.querySelector('.persona-repository__toolbar')).not.toBeInTheDocument();
 });
 
-it('shows the cover-led project detail without the duplicate design brief', () => {
+it('shows the cover-led project detail as a full-width design list', () => {
   enter();
   fireEvent.click(screen.getByRole('button', { name: '春间市集' }));
 
@@ -187,10 +187,11 @@ it('shows the cover-led project detail without the duplicate design brief', () =
   expect(screen.getByTestId('project-detail-page')).toBeInTheDocument();
   expect(header).toContainElement(screen.getByTestId('project-detail-hero'));
   expect(header).toContainElement(screen.getByRole('heading', { name: '春间市集' }));
-  expect(screen.getAllByRole('button', { name: '打开画布' })).toHaveLength(1);
+  expect(within(header).queryByRole('button', { name: '打开画布' })).not.toBeInTheDocument();
+  expect(within(header).queryByRole('button', { name: '导出交付' })).not.toBeInTheDocument();
   expect(screen.getByText('设计文档')).toBeInTheDocument();
-  expect(screen.getByText('项目上下文')).toBeInTheDocument();
-  expect(screen.getByText('设计协作')).toBeInTheDocument();
+  expect(screen.queryByText('项目上下文')).not.toBeInTheDocument();
+  expect(screen.queryByText('设计协作')).not.toBeInTheDocument();
   expect(screen.queryByText('设计简报')).not.toBeInTheDocument();
 });
 
@@ -272,11 +273,10 @@ it('keeps the draft while the shell controls are used', () => {
   );
 });
 
-it('preserves the originating project when opening delivery from a document', () => {
+it('preserves the originating project when opening delivery from project details', () => {
   enter();
   fireEvent.click(screen.getByRole('button', { name: '日常之物' }));
-  fireEvent.click(screen.getByRole('button', { name: '打开主海报' }));
-  fireEvent.click(screen.getByRole('button', { name: '导出' }));
+  fireEvent.click(screen.getAllByRole('button', { name: '导出交付' }).at(-1)!);
   expect(screen.getByRole('heading', { name: '导出交付' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: '日常之物' })).toBeInTheDocument();
 });
@@ -486,7 +486,7 @@ it('submits project conversation through the desktop task bridge', async () => {
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
-  fireEvent.click(screen.getAllByRole('button', { name: '打开画布' })[0]!);
+  fireEvent.click(screen.getByRole('button', { name: '打开Main' }));
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
   fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '调整标题' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
@@ -538,7 +538,7 @@ it('stores the finalized revision id before returning to project details', async
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   fireEvent.click(await screen.findByRole('button', { name: '定稿项目' }));
-  fireEvent.click(screen.getByRole('button', { name: '打开画布' }));
+  fireEvent.click(screen.getByRole('button', { name: '打开主海报' }));
   fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成候选' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   await waitFor(() => expect(screen.getByRole('button', { name: '生成' })).toBeEnabled());
@@ -570,7 +570,7 @@ it('submits one image when the saved provider uses the Responses image transport
 
   await screen.findByRole('button', { name: 'Persisted project' });
   fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
-  fireEvent.click(screen.getAllByRole('button', { name: '打开画布' })[0]!);
+  fireEvent.click(screen.getByRole('button', { name: '打开Main' }));
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
   fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成项目主视觉' } });
   fireEvent.click(screen.getByRole('button', { name: '生成' }));
@@ -592,7 +592,7 @@ it('keeps two-image generation when no provider transport is saved', async () =>
 
   await screen.findByRole('button', { name: 'Persisted project' });
   fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
-  fireEvent.click(screen.getAllByRole('button', { name: '打开画布' })[0]!);
+  fireEvent.click(screen.getByRole('button', { name: '打开Main' }));
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
   fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成项目主视觉' } });
   fireEvent.click(screen.getByRole('button', { name: '生成' }));
@@ -606,17 +606,15 @@ it('keeps two-image generation when no provider transport is saved', async () =>
   })));
 });
 
-it('uses the persisted designer version and lets a writable project switch designers', async () => {
+it('uses the persisted designer version without embedding project editor controls', async () => {
   const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', activeDesignerVersionId: 'user-paper', designerSnapshot: { name: { zh: '纸感排版', en: 'Paper & Type' }, version: 'v1.4' }, documents: [{ id: 'doc-1', name: 'Main', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }] }]);
   const loadDesignerState = vi.fn(async () => ({ profiles: persistedProfiles.filter((profile) => ['user-paper', 'user-commerce'].includes(profile.id)), defaultId: 'user-paper' }));
-  const updateProjectMetadata = vi.fn(async ({ patch }: { patch: { activeDesignerVersionId?: string; designerSnapshot?: unknown } }) => ({ projectId: 'project-1', workspaceId: 'workspace-1', name: 'Persisted project', activeDesignerVersionId: patch.activeDesignerVersionId, designerSnapshot: patch.designerSnapshot, archived: false, documents: [], createdAt: '2026-09-12T00:00:00.000Z', updatedAt: '2026-09-12T00:00:01.000Z' }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDesignerState, updateProjectMetadata };
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listActiveProjects, loadDesignerState };
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'Persisted project' }));
-  const selector = screen.getByRole('combobox', { name: '设计师' });
-  fireEvent.change(selector, { target: { value: 'user-commerce' } });
-  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ activeDesignerVersionId: 'user-commerce' }) })));
+  expect(screen.getByLabelText('版本署名')).toHaveTextContent('纸感排版 · v1.4');
+  expect(screen.queryByRole('combobox', { name: '设计师' })).not.toBeInTheDocument();
 });
 
 it('shows every project contributor in the card and detail view', async () => {
@@ -637,6 +635,7 @@ it('shows every project contributor in the card and detail view', async () => {
   fireEvent.click(card);
   expect(screen.getByLabelText('版本署名')).toHaveTextContent('纸感排版');
   expect(screen.getByLabelText('版本署名')).toHaveTextContent('自然叙事');
+  expect(within(screen.getByRole('banner', { name: '工作区工具栏' })).queryByRole('button', { name: '新建设计稿' })).not.toBeInTheDocument();
 });
 
 it('opens each persisted document with its own size and scene target', async () => {
@@ -690,7 +689,8 @@ it('creates an independent blank design document without a finalized source', as
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
 
   fireEvent.click(await screen.findByRole('button', { name: '空白设计稿项目' }));
-  fireEvent.click(screen.getByRole('button', { name: '新建设计稿' }));
+  const toolbar = screen.getByRole('banner', { name: '工作区工具栏' });
+  fireEvent.click(within(toolbar).getByRole('button', { name: '新建设计稿' }));
   expect(screen.getByRole('button', { name: '空白设计稿' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('button', { name: '尺寸变体' })).toBeDisabled();
   expect(screen.getByText('项目中还没有已定稿的设计稿，暂时不能创建尺寸变体。')).toBeInTheDocument();

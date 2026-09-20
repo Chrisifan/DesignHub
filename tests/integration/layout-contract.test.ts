@@ -5,11 +5,53 @@ import { expect, it } from 'vitest';
 const readStyle = (file: string): string =>
   readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8');
 
-it('defines the warning accent in the shared dark theme', () => {
+it('defines independent semantic colors in dark and light themes', () => {
   const tokens = readStyle('../../src/app/styles/tokens.css');
   const darkTheme = tokens.match(/:root,\s*:root\[data-theme='dark'\]\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const lightTheme = tokens.match(/:root\[data-theme='light'\]\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const systemLightTheme = tokens.match(/:root:not\(\[data-theme='dark'\]\)\s*\{([\s\S]*?)\n  \}/u)?.[1] ?? '';
 
-  expect(darkTheme).toMatch(/--warning:\s*#f6bd60;/u);
+  expect(darkTheme).toMatch(/--success:\s*#4ade80/u);
+  expect(darkTheme).toMatch(/--success-container:\s*#14532d/u);
+  expect(darkTheme).toMatch(/--warning:\s*#fbbf24/u);
+  expect(darkTheme).toMatch(/--error:\s*#fca5a5/u);
+  expect(darkTheme).toMatch(/--info:\s*#93c5fd/u);
+  expect(darkTheme).toMatch(/--accent-warm:\s*#fb923c/u);
+
+  expect(lightTheme).toMatch(/--success:\s*#15803d/u);
+  expect(lightTheme).toMatch(/--warning:\s*#a16207/u);
+  expect(lightTheme).toMatch(/--error:\s*#b91c1c/u);
+  expect(lightTheme).toMatch(/--info:\s*#1d4ed8/u);
+  expect(lightTheme).toMatch(/--accent-warm:\s*#c2410c/u);
+  expect(lightTheme).not.toMatch(/--success:\s*var\(--(?:primary|tertiary)\)/u);
+  expect(systemLightTheme).toMatch(/--success:\s*#15803d/u);
+
+  for (const theme of [darkTheme, lightTheme, systemLightTheme]) {
+    for (const tone of ['success', 'warning', 'error', 'info']) {
+      expect(theme).toMatch(new RegExp(`--on-${tone}:\\s*#[0-9a-f]{6}`, 'u'));
+      expect(theme).toMatch(new RegExp(`--${tone}-container:\\s*#[0-9a-f]{6}`, 'u'));
+      expect(theme).toMatch(new RegExp(`--on-${tone}-container:\\s*#[0-9a-f]{6}`, 'u'));
+    }
+  }
+});
+
+it('uses semantic colors for status UI without consuming brand or decorative accents', () => {
+  const studioStyles = readStyle('../../src/app/styles/studio.css');
+  const libraryStyles = readStyle('../../src/app/studio/library.css');
+  const personaStyles = readStyle('../../src/app/studio/persona.css');
+  const workbenchStyles = readStyle('../../src/app/studio/workbench.css');
+
+  expect(studioStyles).toMatch(/\.badge--success\s*\{[\s\S]*?color:\s*var\(--success\)/u);
+  expect(studioStyles).toMatch(/\.badge--warning\s*\{[\s\S]*?color:\s*var\(--warning\)/u);
+  expect(studioStyles).toMatch(/\.badge--error\s*\{[\s\S]*?color:\s*var\(--error\)/u);
+  expect(studioStyles).toMatch(/\.badge--primary\s*\{[\s\S]*?color:\s*var\(--primary\)/u);
+  expect(studioStyles).toMatch(/\.inline-notice\s*>\s*\.ui-icon\s*\{[\s\S]*?color:\s*var\(--info\)/u);
+  expect(studioStyles).toMatch(/\.local-note\s*>\s*\.ui-icon\s*\{[\s\S]*?color:\s*var\(--on-surface-variant\)/u);
+  expect(libraryStyles).toMatch(/\.portfolio-steps li\.is-complete > span\s*\{[\s\S]*?background:\s*var\(--success\)/u);
+  expect(libraryStyles).toMatch(/\.portfolio-analysis-section--texture[\s\S]*?var\(--accent-warm\)/u);
+  expect(libraryStyles).toMatch(/\.portfolio-review__published\s*\{[\s\S]*?color:\s*var\(--success\)/u);
+  expect(personaStyles).toMatch(/\.designer-profile-card__status--published[\s\S]*?var\(--success\)/u);
+  expect(workbenchStyles).toMatch(/\.workbench-context-tools__finalize:not\(:disabled\)[\s\S]*?background:\s*var\(--success\)/u);
 });
 
 it('defines shared layout tokens for compact toolbar controls and unframed main content', () => {
@@ -23,6 +65,41 @@ it('defines shared layout tokens for compact toolbar controls and unframed main 
   expect(tokens).toMatch(/--scrollbar-size:\s*6px/);
   expect(tokens).toMatch(/--scrollbar-thumb:/);
   expect(tokens).toMatch(/--scrollbar-thumb-hover:/);
+});
+
+it('uses one responsive page-content spacing contract across regular pages', () => {
+  const tokens = readStyle('../../src/app/styles/tokens.css');
+  const studioStyles = readStyle('../../src/app/styles/studio.css');
+  const detailStyles = readStyle('../../src/app/studio/project-detail.css');
+  const personaStyles = readStyle('../../src/app/studio/persona.css');
+
+  expect(tokens).toMatch(/--page-content-padding-block-start:\s*24px/);
+  expect(tokens).toMatch(/--page-content-padding-inline:\s*28px/);
+  expect(tokens).toMatch(/--page-content-padding-block-end:\s*20px/);
+  expect(tokens).toMatch(
+    /@media \(min-width:\s*1440px\)[\s\S]*?--page-content-padding-block-start:\s*28px[\s\S]*?--page-content-padding-inline:\s*32px[\s\S]*?--page-content-padding-block-end:\s*24px/,
+  );
+  expect(tokens).toMatch(
+    /@media \(max-width:\s*1279px\)[\s\S]*?--page-content-padding-block-start:\s*20px[\s\S]*?--page-content-padding-inline:\s*24px[\s\S]*?--page-content-padding-block-end:\s*16px/,
+  );
+  expect(tokens).toMatch(
+    /@media \(max-width:\s*560px\)[\s\S]*?--page-content-padding-block-start:\s*16px[\s\S]*?--page-content-padding-inline:\s*16px[\s\S]*?--page-content-padding-block-end:\s*16px/,
+  );
+
+  const pageContentRule = studioStyles.match(/\.page-content\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const projectDetailRule = detailStyles.match(
+    /\.page-content\.project-detail-page\s*\{([\s\S]*?)\n\}/u,
+  )?.[1] ?? '';
+  const designerLibraryRule = personaStyles.match(
+    /\.page-content\.designer-library-page\s*\{([\s\S]*?)\n\}/u,
+  )?.[1] ?? '';
+  expect(pageContentRule).toMatch(
+    /padding:\s*var\(--page-content-padding-block-start\)\s+var\(--page-content-padding-inline\)\s+var\(--page-content-padding-block-end\)/,
+  );
+  expect(projectDetailRule).not.toMatch(/padding:/u);
+  expect(designerLibraryRule).not.toMatch(/padding:/u);
+  expect(detailStyles).not.toMatch(/\.page-content\.project-detail-page\s*\{[^}]*padding:/u);
+  expect(personaStyles).not.toMatch(/\.designer-library-page\s*\{[^}]*padding:/u);
 });
 
 it('keeps resource cards at one shared fixed width without stretching the last row', () => {
@@ -56,8 +133,15 @@ it('keeps the project detail page responsive without horizontal overflow', () =>
   expect(styles).toMatch(/\.project-detail-header\s*\{[\s\S]*?overflow:\s*hidden/);
   expect(styles).toMatch(/\.project-detail-hero\s*\{[\s\S]*?min-height:\s*168px/);
   expect(styles).toMatch(/\.project-detail-summary__description\s*\{[\s\S]*?-webkit-line-clamp:\s*1/);
-  expect(styles).toMatch(/\.project-detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*2fr\)\s+minmax\(280px,\s*1fr\)/);
-  expect(styles).toMatch(/@media \(max-width:\s*1100px\)[\s\S]*?\.project-detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  expect(styles).toMatch(/\.project-detail-layout\s*\{[\s\S]*?display:\s*block/);
+  expect(styles).toMatch(/\.project-detail-documents--full\s*\{[\s\S]*?width:\s*100%/);
+  expect(styles).toMatch(
+    /\.project-detail-document-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(100%,\s*360px\),\s*360px\)\)/,
+  );
+  expect(styles).toMatch(
+    /\.project-detail-document-grid\s*\{[\s\S]*?justify-content:\s*start/,
+  );
+  expect(styles).not.toMatch(/\.project-detail-sidebar/);
   expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-hero,[\s\S]*?\.project-detail-hero__overlay\s*\{[\s\S]*?min-height:\s*168px/);
   expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-document-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?overflow-x:\s*clip/);

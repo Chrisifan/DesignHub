@@ -227,6 +227,36 @@ it('keeps successful candidates when one parallel request fails', async () => {
   ]);
 });
 
+it('retries an individual design candidate once after an HTTP 524 without serializing the batch', async () => {
+  const runtime = createTaskRuntime();
+  let primaryAttempts = 0;
+  const generateImage = vi.fn(async (request: { prompt: string }) => {
+    if (request.prompt.includes('主方案')) {
+      primaryAttempts += 1;
+      if (primaryAttempts === 1) throw Object.assign(new Error('gateway timeout'), { kind: 'http', status: 524 });
+    }
+    return { images: [{ base64: request.prompt.includes('主方案') ? 'primary' : request.prompt.includes('构图探索') ? 'composition' : 'expressive' }], cost: null };
+  });
+  const service = createAgentTaskService({
+    runtime,
+    imageRetryDelayMs: 0,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }), generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId!, projectId: input.projectId!, documentId: input.documentId!, brief: 'Brief',
+      document: { width: 100, height: 100, currentImageAssetIds: [] }, attachmentAssetIds, userMessage: input.message, baseRevisionId: null,
+    }),
+    persistGeneratedImages: async ({ images }) => [`asset-${'base64' in images[0]! ? images[0].base64 : 'url'}`],
+  });
+  const conversation = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Poster' });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
+  await service.flush();
+
+  expect(generateImage).toHaveBeenCalledTimes(4);
+  expect(primaryAttempts).toBe(2);
+  expect(runtime.get(generation.id)).toMatchObject({ state: 'completed', result: { imageCount: 3 } });
+});
+
 it('fails the generation batch only when all three requests fail', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({

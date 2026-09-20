@@ -1,6 +1,11 @@
-import { expect, it } from 'vitest';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { renderSceneSvg } from './export-scene';
+import sharp from 'sharp';
+import { expect, it, vi } from 'vitest';
+
+import { exportSceneToFile, renderSceneSvg } from './export-scene';
 import { createScene } from '../features/canvas/scene';
 
 it('renders a finite scene to an exportable SVG without leaking hidden layers', () => {
@@ -19,7 +24,69 @@ it('does not include reference-only layers in delivery output', () => {
     { id: 'reference', type: 'image', assetId: 'asset-reference', role: 'reference', x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 0.55, visible: true, locked: true },
     { id: 'content', type: 'image', assetId: 'asset-content', x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1, visible: true, locked: false },
   ] });
-  const svg = renderSceneSvg(scene);
+  const svg = renderSceneSvg(scene, new Map([
+    ['asset-content', { bytes: new Uint8Array([1, 2, 3]), mimeType: 'image/png' }],
+  ]));
   expect(svg).not.toContain('asset-reference');
-  expect(svg.match(/fill="#d7dce5"/gu)).toHaveLength(1);
+  expect(svg).toContain('href="data:image/png;base64,AQID"');
+  expect(svg).not.toContain('fill="#d7dce5"');
+});
+
+it('renders managed content image bytes into the exported SVG', () => {
+  const scene = createScene({ id: 'scene-image', width: 120, height: 80, layers: [
+    { id: 'content', type: 'image', assetId: 'asset-content', x: 5, y: 6, width: 100, height: 60, rotation: 0, opacity: 0.8, visible: true, locked: false },
+  ] });
+
+  const svg = renderSceneSvg(scene, new Map([
+    ['asset-content', { bytes: new Uint8Array([137, 80, 78, 71]), mimeType: 'image/png' }],
+  ]));
+
+  expect(svg).toContain('<image');
+  expect(svg).toContain('href="data:image/png;base64,iVBORw=="');
+  expect(svg).toContain('x="5" y="6" width="100" height="60"');
+  expect(svg).toContain('preserveAspectRatio="none"');
+});
+
+it('fails the export when a visible content image asset cannot be resolved', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'designhub-export-test-'));
+  const targetPath = join(directory, 'missing.png');
+  const scene = createScene({ id: 'scene-missing', width: 20, height: 20, layers: [
+    { id: 'content', type: 'image', assetId: 'asset-missing', x: 0, y: 0, width: 20, height: 20, rotation: 0, opacity: 1, visible: true, locked: false },
+  ] });
+  const resolveImageAsset = vi.fn(async () => null);
+
+  try {
+    await expect(exportSceneToFile({ scene, format: 'png', targetPath, resolveImageAsset })).rejects.toThrow('EXPORT_ASSET_MISSING');
+    expect(resolveImageAsset).toHaveBeenCalledWith('asset-missing');
+    await expect(readFile(targetPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it('exports the resolved design image instead of a placeholder rectangle', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'designhub-export-test-'));
+  const targetPath = join(directory, 'design.png');
+  const source = new Uint8Array(await sharp({
+    create: { width: 8, height: 8, channels: 4, background: '#f20a35' },
+  }).png().toBuffer());
+  const scene = createScene({ id: 'scene-content', width: 8, height: 8, layers: [
+    { id: 'content', type: 'image', assetId: 'asset-content', x: 0, y: 0, width: 8, height: 8, rotation: 0, opacity: 1, visible: true, locked: false },
+    { id: 'reference', type: 'image', assetId: 'asset-reference', role: 'reference', x: 0, y: 0, width: 8, height: 8, rotation: 0, opacity: 1, visible: true, locked: true },
+  ] });
+  const resolveImageAsset = vi.fn(async (assetId: string) => assetId === 'asset-content'
+    ? { bytes: source, mimeType: 'image/png' }
+    : null);
+
+  try {
+    await exportSceneToFile({ scene, format: 'png', targetPath, resolveImageAsset });
+    const exported = await readFile(targetPath);
+    const { data, info } = await sharp(exported).raw().toBuffer({ resolveWithObject: true });
+    expect(info).toMatchObject({ width: 8, height: 8 });
+    expect([...data.subarray(0, 3)]).toEqual([242, 10, 53]);
+    expect(resolveImageAsset).toHaveBeenCalledTimes(1);
+    expect(resolveImageAsset).toHaveBeenCalledWith('asset-content');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
