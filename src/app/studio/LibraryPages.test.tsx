@@ -710,6 +710,41 @@ it('lets a failed task create a new retry attempt through the desktop bridge', a
   expect(screen.getByText('2')).toBeInTheDocument();
 });
 
+it('shows generation batch progress and retries only the failed slot', async () => {
+  const batch = taskRecord({
+    id: 'design-1',
+    capability: 'design-generation',
+    source: { kind: 'project', id: 'project-1' },
+    generationSlots: [
+      { id: 'primary', direction: 'primary', state: 'completed', attempt: 1, assetId: 'asset-primary', candidateId: 'candidate-primary' },
+      { id: 'composition', direction: 'composition', state: 'failed', attempt: 1, errorCode: 'PROVIDER_REQUEST_FAILED' },
+      { id: 'expressive', direction: 'expressive', state: 'completed', attempt: 1, assetId: 'asset-expressive', candidateId: 'candidate-expressive' },
+    ],
+    result: { imageCount: 2, candidates: [] },
+  });
+  const listTasks = vi.fn(async () => [batch]);
+  const retryTask = vi.fn(async () => null);
+  const retryDesignGenerationSlot = vi.fn(async () => ({
+    ...batch,
+    state: 'running' as const,
+    generationSlots: batch.generationSlots?.map((slot) => slot.id === 'composition'
+      ? { ...slot, state: 'queued' as const, attempt: 2, errorCode: undefined }
+      : slot),
+  }));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask, retryDesignGenerationSlot };
+  render(<TaskHarness />);
+
+  const progress = await screen.findByText('候选生成 2/3');
+  fireEvent.click(progress);
+  expect(screen.getByText('主方案')).toBeVisible();
+  expect(screen.getByText('构图探索')).toBeVisible();
+  expect(screen.getByText('视觉突破')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '重试构图探索' }));
+
+  await waitFor(() => expect(retryDesignGenerationSlot).toHaveBeenCalledWith({ workspaceId: 'workspace-1', taskId: 'design-1', slotId: 'composition' }));
+  expect(retryTask).not.toHaveBeenCalled();
+});
+
 it('does not offer an implicit retry for portfolio vision tasks without retained images', async () => {
   const listTasks = vi.fn(async () => [{
     id: 'task-portfolio', requestId: 'request-portfolio', state: 'failed' as const, cancelRequested: false, attempt: 1,

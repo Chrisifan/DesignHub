@@ -35,7 +35,7 @@ import { BrandEditor } from '../../features/brands/BrandEditor';
 import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
 import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, type ProviderProfile } from '../../features/providers/config';
-import type { TaskRecord } from '../../features/tasks/state';
+import type { DesignGenerationSlotId, DesignGenerationSlotState, TaskRecord } from '../../features/tasks/state';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
@@ -837,6 +837,29 @@ const TasksPage = ({
     if (!retried) return;
     setTasks((current) => [...current, retried]);
   };
+  const retryGenerationSlot = async (taskId: string, slotId: DesignGenerationSlotId): Promise<void> => {
+    if (!workspaceId) return;
+    const retried = await getDesktopApi().retryDesignGenerationSlot?.({ workspaceId, taskId, slotId });
+    if (!retried) return;
+    setTasks((current) => current.map((task) => task.id === taskId ? retried : task));
+  };
+  const generationProgress = (task: TaskRecord): string | undefined => {
+    if (!task.generationSlots?.length) return undefined;
+    const completed = task.generationSlots.filter((slot) => slot.state === 'completed').length;
+    return t(locale, `候选生成 ${completed}/${task.generationSlots.length}`, `Candidates ${completed}/${task.generationSlots.length}`);
+  };
+  const slotLabel = (slotId: DesignGenerationSlotId): string => ({
+    primary: t(locale, '主方案', 'Primary'),
+    composition: t(locale, '构图探索', 'Composition'),
+    expressive: t(locale, '视觉突破', 'Expressive'),
+  })[slotId];
+  const slotStateLabel = (state: DesignGenerationSlotState): string => ({
+    queued: t(locale, '排队', 'Queued'),
+    running: t(locale, '处理中', 'Running'),
+    completed: t(locale, '已完成', 'Completed'),
+    failed: t(locale, '失败', 'Failed'),
+    cancelled: t(locale, '已取消', 'Cancelled'),
+  })[state];
   const failureDescription = (task: TaskRecord): string | undefined => {
     const failure = task.providerFailure;
     if (!failure) return undefined;
@@ -879,6 +902,7 @@ const TasksPage = ({
   };
   const taskMetadata = (task: TaskRecord): string => [
     task.updatedAt ?? task.createdAt,
+    generationProgress(task),
     task.result?.imageCount === undefined ? undefined : t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`),
     task.result?.cost === undefined || task.result.cost === null ? undefined : t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`),
   ].filter(Boolean).join(' · ') || '—';
@@ -916,7 +940,7 @@ const TasksPage = ({
       {visibleTasks.map((task) => {
         const summary = taskSummary(task);
         const metadata = taskMetadata(task);
-        const canRetry = (task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region));
+        const canRetry = !task.generationSlots?.length && (task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region));
         return <article className="task-row" aria-label={task.id} key={task.id}>
           <strong className="task-row__cell task-row__type" title={task.capability ?? t(locale, '模型任务', 'Model task')}>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
           <span className="task-row__cell task-row__state"><Badge tone={taskTone(task)}>{taskStateLabel(task)}</Badge></span>
@@ -926,6 +950,20 @@ const TasksPage = ({
             {(task.state === 'queued' || task.state === 'running') && <IconButton name="x" label={t(locale, '停止', 'Stop')} onClick={() => { void stopTask(task.id); }} />}
             {canRetry && <IconButton name="rotate-ccw" label={t(locale, '重试', 'Retry')} onClick={() => { void retryTask(task.id); }} />}
           </span>
+          {task.generationSlots?.length ? <details className="task-generation-details">
+            <summary>{generationProgress(task)}</summary>
+            <ul>
+              {task.generationSlots.map((slot) => <li key={slot.id}>
+                <span>{slotLabel(slot.id)}</span>
+                <Badge tone={slot.state === 'completed' ? 'success' : slot.state === 'failed' || slot.state === 'cancelled' ? 'warning' : ''}>{slotStateLabel(slot.state)}</Badge>
+                {(slot.state === 'failed' || slot.state === 'cancelled') && <IconButton
+                  name="rotate-ccw"
+                  label={t(locale, `重试${slotLabel(slot.id)}`, `Retry ${slotLabel(slot.id)}`)}
+                  onClick={() => { void retryGenerationSlot(task.id, slot.id); }}
+                />}
+              </li>)}
+            </ul>
+          </details> : null}
         </article>;
       })}
     </div> : tasks.length > 0 ? <div className="page-empty-state"><EmptyState
