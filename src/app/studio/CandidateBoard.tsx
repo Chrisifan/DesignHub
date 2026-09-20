@@ -110,6 +110,8 @@ export const CandidateBoard = ({ locale, tasks, workspaceId, projectId, analysis
   }, [candidates, previews, projectId, workspaceId]);
   if (!analysisThreadId || designTasks.length === 0) return null;
   const renderDraft = (draft: DraftItem, isLatestLegacy: boolean) => {
+    const batch = designTasks.find((task) => task.id === draft.taskId);
+    const batchSettled = !batch?.generationSlots?.some((slot) => slot.state === 'queued' || slot.state === 'running');
     if (draft.state === 'queued' || draft.state === 'running') return <div
       key={draft.key}
       ref={isLatestLegacy ? (element) => { latestDraftRef.current = element; } : undefined}
@@ -129,9 +131,9 @@ export const CandidateBoard = ({ locale, tasks, workspaceId, projectId, analysis
     >
       <div className="workbench-candidate-card__placeholder" style={{ aspectRatio: draftAspectRatio }}><Icon name="circle-alert" size={22} /></div>
       <span>{locale === 'zh-CN' ? '生成失败' : 'Generation failed'}</span>
-      <button type="button" onClick={() => onRetrySlot?.(draft.taskId, draft.slotId!)}>
+      {batchSettled && <button type="button" onClick={() => onRetrySlot?.(draft.taskId, draft.slotId!)}>
         {locale === 'zh-CN' ? `重新生成${slotLabel(locale, draft.slotId)}` : `Regenerate ${slotLabel(locale, draft.slotId)}`}
-      </button>
+      </button>}
     </div>;
     const candidate = draft.candidate;
     if (!candidate) return null;

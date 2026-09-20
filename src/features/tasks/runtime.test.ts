@@ -62,6 +62,7 @@ it('retries only one failed generation slot and preserves completed candidates',
     state: 'completed', assetId: 'asset-primary', candidateId: candidate.id, cost: null,
   }, candidate);
   runtime.updateGenerationSlot(task.id, 'composition', { state: 'failed', errorCode: 'IMAGE_RESULT_EMPTY' });
+  runtime.updateGenerationSlot(task.id, 'expressive', { state: 'failed', errorCode: 'IMAGE_RESULT_EMPTY' });
 
   runtime.retryGenerationSlot(task.id, 'composition');
 
@@ -73,6 +74,23 @@ it('retries only one failed generation slot and preserves completed candidates',
   expect(runtime.get(task.id)?.generationSlots?.find((slot) => slot.id === 'primary')).toMatchObject({ state: 'completed', attempt: 1 });
   expect(runtime.get(task.id)?.generationSlots?.find((slot) => slot.id === 'composition')).toMatchObject({ state: 'queued', attempt: 2 });
   expect(runtime.get(task.id)?.generationSlots?.[1]?.errorCode).toBeUndefined();
+});
+
+it('does not retry a generation slot while another slot is still active', () => {
+  const runtime = createTaskRuntime();
+  const task = runtime.start(batchTask());
+  runtime.updateGenerationSlot(task.id, 'composition', { state: 'failed', errorCode: 'IMAGE_RESULT_EMPTY' });
+
+  expect(() => runtime.retryGenerationSlot(task.id, 'composition')).toThrow('GENERATION_BATCH_ACTIVE');
+});
+
+it('does not settle a generation batch until every slot is terminal', async () => {
+  const runtime = createTaskRuntime();
+  const task = runtime.start(batchTask());
+  runtime.updateGenerationSlot(task.id, 'primary', { state: 'failed', errorCode: 'IMAGE_RESULT_EMPTY' });
+
+  await expect(runtime.settleGenerationBatch(task.id)).rejects.toThrow('GENERATION_BATCH_ACTIVE');
+  expect(runtime.get(task.id)?.state).toBe('running');
 });
 
 it('settles a partially successful generation batch as completed', async () => {

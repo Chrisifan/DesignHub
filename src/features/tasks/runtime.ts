@@ -188,6 +188,7 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     const task = tasks.get(taskId);
     const current = task?.generationSlots?.find((slot) => slot.id === slotId);
     if (!task || !current || (current.state !== 'failed' && current.state !== 'cancelled')) throw new Error('GENERATION_SLOT_NOT_RETRYABLE');
+    if (task.generationSlots!.some((slot) => slot.id !== slotId && (slot.state === 'queued' || slot.state === 'running'))) throw new Error('GENERATION_BATCH_ACTIVE');
     const generationSlots = task.generationSlots!.map((slot) => slot.id === slotId ? {
       id: slot.id,
       direction: slot.direction,
@@ -210,6 +211,7 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
   const settleGenerationBatch: TaskRuntime['settleGenerationBatch'] = async (taskId) => {
     const task = tasks.get(taskId);
     if (!task?.generationSlots) throw new Error('GENERATION_SLOTS_REQUIRED');
+    if (task.generationSlots.some((slot) => slot.state === 'queued' || slot.state === 'running')) throw new Error('GENERATION_BATCH_ACTIVE');
     const hasSuccess = task.generationSlots.some((slot) => slot.state === 'completed');
     const state = hasSuccess ? 'completed' : task.cancelRequested ? 'cancelled' : 'failed';
     const settled: TaskRecord = {

@@ -784,28 +784,37 @@ const TasksPage = ({
   const [category, setCategory] = useState<TaskCategory>('all');
   useEffect(() => {
     let cancelled = false;
+    let loading = false;
     setLoadFailed(false);
-    if (!workspaceId) {
+    if (!workspaceId || !active) {
       setTasks([]);
       return () => { cancelled = true; };
     }
-    const request = getDesktopApi().listTasks?.(workspaceId);
-    if (!request) {
-      setTasks([]);
-      return () => { cancelled = true; };
-    }
-    void request.then((stored) => {
-      if (cancelled) return;
-      if (!stored) {
-        setLoadFailed(true);
-        return;
+    const load = async (): Promise<void> => {
+      if (loading) return;
+      loading = true;
+      try {
+        const stored = await getDesktopApi().listTasks?.(workspaceId);
+        if (cancelled) return;
+        if (!stored) {
+          setLoadFailed(true);
+          return;
+        }
+        setLoadFailed(false);
+        setTasks(stored);
+      } catch {
+        if (!cancelled) setLoadFailed(true);
+      } finally {
+        loading = false;
       }
-      setTasks(stored);
-    }).catch(() => {
-      if (!cancelled) setLoadFailed(true);
-    });
-    return () => { cancelled = true; };
-  }, [workspaceId]);
+    };
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [active, workspaceId]);
   const matchesCategory = (task: TaskRecord, value: TaskCategory): boolean => {
     if (value === 'all') return true;
     if (value === 'failed') return task.state === 'failed' || task.state === 'cancelled' || task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART';
@@ -940,6 +949,7 @@ const TasksPage = ({
       {visibleTasks.map((task) => {
         const summary = taskSummary(task);
         const metadata = taskMetadata(task);
+        const generationBatchActive = task.generationSlots?.some((slot) => slot.state === 'queued' || slot.state === 'running') ?? false;
         const canRetry = !task.generationSlots?.length && (task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region));
         return <article className="task-row" aria-label={task.id} key={task.id}>
           <strong className="task-row__cell task-row__type" title={task.capability ?? t(locale, '模型任务', 'Model task')}>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
@@ -956,7 +966,7 @@ const TasksPage = ({
               {task.generationSlots.map((slot) => <li key={slot.id}>
                 <span>{slotLabel(slot.id)}</span>
                 <Badge tone={slot.state === 'completed' ? 'success' : slot.state === 'failed' || slot.state === 'cancelled' ? 'warning' : ''}>{slotStateLabel(slot.state)}</Badge>
-                {(slot.state === 'failed' || slot.state === 'cancelled') && <IconButton
+                {!generationBatchActive && (slot.state === 'failed' || slot.state === 'cancelled') && <IconButton
                   name="rotate-ccw"
                   label={t(locale, `重试${slotLabel(slot.id)}`, `Retry ${slotLabel(slot.id)}`)}
                   onClick={() => { void retryGenerationSlot(task.id, slot.id); }}

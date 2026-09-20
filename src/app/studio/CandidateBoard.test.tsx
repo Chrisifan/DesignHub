@@ -123,6 +123,17 @@ it('renders three stable batch slots and retries only a failed slot', () => {
 
   expect(screen.getByRole('button', { name: '主方案' })).toBeVisible();
   expect(screen.getAllByLabelText('正在生成设计稿')).toHaveLength(1);
+  expect(screen.queryByRole('button', { name: '重新生成构图探索' })).not.toBeInTheDocument();
+  view.rerender(<CandidateBoard locale="zh-CN" tasks={[{
+    ...batch,
+    state: 'completed',
+    generationSlots: generationSlots.map((slot) => slot.id === 'primary'
+      ? { ...slot, state: 'completed' as const, assetId: 'asset-primary', candidateId: completedCandidate.id }
+      : slot.id === 'composition'
+        ? { ...slot, state: 'failed' as const, errorCode: 'PROVIDER_REQUEST_FAILED' }
+        : { ...slot, state: 'failed' as const, errorCode: 'PROVIDER_REQUEST_FAILED' }),
+    result: { imageCount: 1, candidates: [completedCandidate] },
+  }]} projectId="project-1" analysisThreadId="thread-1" width={1080} height={1440} selectedCandidateId={null} onSelect={vi.fn()} onRetrySlot={onRetrySlot} onRequestFocus={onRequestFocus} />);
   fireEvent.click(screen.getByRole('button', { name: '重新生成构图探索' }));
   expect(onRetrySlot).toHaveBeenCalledWith('design-batch-1', 'composition');
   expect(onRequestFocus).toHaveBeenCalledOnce();

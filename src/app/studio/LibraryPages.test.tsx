@@ -722,15 +722,26 @@ it('shows generation batch progress and retries only the failed slot', async () 
     ],
     result: { imageCount: 2, candidates: [] },
   });
-  const listTasks = vi.fn(async () => [batch]);
+  const completedBatch = {
+    ...batch,
+    state: 'completed' as const,
+    generationSlots: batch.generationSlots?.map((slot) => slot.id === 'composition'
+      ? { ...slot, state: 'completed' as const, attempt: 2, errorCode: undefined, assetId: 'asset-composition', candidateId: 'candidate-composition' }
+      : slot),
+  };
+  let retryStarted = false;
+  const listTasks = vi.fn(async () => [retryStarted ? completedBatch : batch]);
   const retryTask = vi.fn(async () => null);
-  const retryDesignGenerationSlot = vi.fn(async () => ({
+  const retryDesignGenerationSlot = vi.fn(async () => {
+    retryStarted = true;
+    return {
     ...batch,
     state: 'running' as const,
     generationSlots: batch.generationSlots?.map((slot) => slot.id === 'composition'
       ? { ...slot, state: 'queued' as const, attempt: 2, errorCode: undefined }
       : slot),
-  }));
+    };
+  });
   window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask, retryDesignGenerationSlot };
   render(<TaskHarness />);
 
@@ -742,6 +753,9 @@ it('shows generation batch progress and retries only the failed slot', async () 
   fireEvent.click(screen.getByRole('button', { name: '重试构图探索' }));
 
   await waitFor(() => expect(retryDesignGenerationSlot).toHaveBeenCalledWith({ workspaceId: 'workspace-1', taskId: 'design-1', slotId: 'composition' }));
+  await waitFor(() => expect(screen.getAllByText('候选生成 3/3').length).toBeGreaterThan(0), { timeout: 2_000 });
+  expect(within(screen.getByRole('article', { name: 'design-1' })).queryByText('排队')).not.toBeInTheDocument();
+  expect(listTasks.mock.calls.length).toBeGreaterThan(1);
   expect(retryTask).not.toHaveBeenCalled();
 });
 
