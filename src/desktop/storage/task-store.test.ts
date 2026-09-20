@@ -54,6 +54,74 @@ it('persists task state across workspace reopen without secret fields', async ()
   }
 });
 
+it('round-trips a three-slot generation batch and plural candidates', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const batch: TaskRecord = {
+    ...task,
+    capability: 'design-generation',
+    generationSlots: [
+      { id: 'primary', direction: 'primary direction', state: 'completed', attempt: 1, assetId: 'asset-a', candidateId: 'candidate-a', cost: 0.1 },
+      { id: 'composition', direction: 'composition direction', state: 'failed', attempt: 1, errorCode: 'IMAGE_RESULT_EMPTY' },
+      { id: 'expressive', direction: 'expressive direction', state: 'running', attempt: 1 },
+    ],
+    result: {
+      candidates: [{ id: 'candidate-a', baseRevisionId: null, assetIds: ['asset-a'], createdAt: '2026-09-20T00:00:00.000Z' }],
+    },
+  };
+
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [batch])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).resolves.toEqual([batch]);
+  workspace.close();
+});
+
+it('rejects duplicate or unknown generation slots', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const duplicate = {
+    ...task,
+    generationSlots: [
+      { id: 'primary', direction: 'a', state: 'queued', attempt: 1 },
+      { id: 'primary', direction: 'b', state: 'queued', attempt: 1 },
+      { id: 'expressive', direction: 'c', state: 'queued', attempt: 1 },
+    ],
+  } as unknown as TaskRecord;
+  const unknown = {
+    ...task,
+    generationSlots: [
+      { id: 'primary', direction: 'a', state: 'queued', attempt: 1 },
+      { id: 'composition', direction: 'b', state: 'queued', attempt: 1 },
+      { id: 'other', direction: 'c', state: 'queued', attempt: 1 },
+    ],
+  } as unknown as TaskRecord;
+
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [duplicate])).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [unknown])).rejects.toThrow('INVALID_TASK_STATE');
+  workspace.close();
+});
+
+it('rejects malformed generation slot diagnostics and plural candidates', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const baseBatch = {
+    ...task,
+    generationSlots: [
+      { id: 'primary', direction: 'a', state: 'queued', attempt: 1 },
+      { id: 'composition', direction: 'b', state: 'queued', attempt: 1 },
+      { id: 'expressive', direction: 'c', state: 'queued', attempt: 1 },
+    ],
+  } as TaskRecord;
+
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+    ...baseBatch,
+    generationSlots: baseBatch.generationSlots?.map((slot) => slot.id === 'primary'
+      ? { ...slot, providerFailure: { kind: 'http', status: 400, message: 'private' } as never }
+      : slot),
+  }])).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+    ...baseBatch,
+    result: { candidates: [{ id: '', baseRevisionId: null, assetIds: ['asset-a'], createdAt: 'bad' }] },
+  }])).rejects.toThrow('INVALID_TASK_STATE');
+  workspace.close();
+});
+
 it('persists the managed source asset binding used for image retries', async () => {
   const workspace = await createTemporaryWorkspace();
   const imageTask: TaskRecord = {

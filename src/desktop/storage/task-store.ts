@@ -3,7 +3,19 @@ import { access, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { isPortfolioAnalysisDiagnostic, isSafeProviderCode, taskRecordKeys, type TaskProviderFailure, type TaskRecord, type TaskSource, type TaskState } from '../../features/tasks/state';
+import {
+  designGenerationSlotIds,
+  isPortfolioAnalysisDiagnostic,
+  isSafeProviderCode,
+  taskRecordKeys,
+  type DesignGenerationSlot,
+  type DesignGenerationSlotId,
+  type TaskCandidate,
+  type TaskProviderFailure,
+  type TaskRecord,
+  type TaskSource,
+  type TaskState,
+} from '../../features/tasks/state';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { getWritableWorkspaceLease } from './workspace-store';
@@ -34,6 +46,32 @@ const isProviderFailure = (value: unknown): value is TaskProviderFailure => isRe
   && (value.status === undefined || (Number.isInteger(value.status) && Number(value.status) >= 100 && Number(value.status) <= 599))
   && (value.providerCode === undefined || isSafeProviderCode(value.providerCode))
   && (value.retryAfterSeconds === undefined || (Number.isInteger(value.retryAfterSeconds) && Number(value.retryAfterSeconds) >= 0 && Number(value.retryAfterSeconds) <= 86_400));
+const isTaskCandidate = (value: unknown): value is TaskCandidate => isRecord(value)
+  && Object.keys(value).every((key) => ['id', 'baseRevisionId', 'assetIds', 'sceneAssetId', 'analysisThreadId', 'parentConversationTaskId', 'designerVersionId', 'createdAt'].includes(key))
+  && typeof value.id === 'string' && value.id.trim().length > 0
+  && (value.baseRevisionId === null || typeof value.baseRevisionId === 'string')
+  && Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')
+  && (value.sceneAssetId === undefined || typeof value.sceneAssetId === 'string')
+  && (value.analysisThreadId === undefined || typeof value.analysisThreadId === 'string')
+  && (value.parentConversationTaskId === undefined || typeof value.parentConversationTaskId === 'string')
+  && (value.designerVersionId === undefined || typeof value.designerVersionId === 'string')
+  && typeof value.createdAt === 'string';
+const isGenerationSlot = (value: unknown): value is DesignGenerationSlot => isRecord(value)
+  && Object.keys(value).every((key) => ['id', 'direction', 'state', 'attempt', 'assetId', 'candidateId', 'errorCode', 'providerFailure', 'cost'].includes(key))
+  && designGenerationSlotIds.includes(value.id as DesignGenerationSlotId)
+  && typeof value.direction === 'string' && value.direction.trim().length > 0
+  && (value.state === 'queued' || value.state === 'running' || value.state === 'completed' || value.state === 'failed' || value.state === 'cancelled')
+  && Number.isInteger(value.attempt) && Number(value.attempt) > 0
+  && (value.assetId === undefined || typeof value.assetId === 'string')
+  && (value.candidateId === undefined || typeof value.candidateId === 'string')
+  && (value.errorCode === undefined || typeof value.errorCode === 'string')
+  && (value.providerFailure === undefined || isProviderFailure(value.providerFailure))
+  && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0));
+const isGenerationSlots = (value: unknown): value is DesignGenerationSlot[] => Array.isArray(value)
+  && value.length === designGenerationSlotIds.length
+  && value.every(isGenerationSlot)
+  && new Set(value.map((slot) => slot.id)).size === value.length
+  && designGenerationSlotIds.every((id, index) => value[index]?.id === id);
 const isRegion = (value: unknown): boolean => isRecord(value)
   && ['x', 'y', 'width', 'height'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0)
   && Number(value.width) > 0 && Number(value.height) > 0;
@@ -55,22 +93,17 @@ const isDesignContext = (value: unknown): boolean => isRecord(value)
   && (value.baseRevisionId === null || typeof value.baseRevisionId === 'string');
 const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> => {
   if (!isRecord(value)) return false;
-  const candidate = value.candidate;
-  const candidateValid = candidate === undefined || (isRecord(candidate)
-    && typeof candidate.id === 'string' && candidate.id.trim().length > 0
-    && (candidate.baseRevisionId === null || typeof candidate.baseRevisionId === 'string')
-    && Array.isArray(candidate.assetIds) && candidate.assetIds.every((id) => typeof id === 'string')
-    && (candidate.sceneAssetId === undefined || typeof candidate.sceneAssetId === 'string')
-    && (candidate.analysisThreadId === undefined || typeof candidate.analysisThreadId === 'string')
-    && (candidate.parentConversationTaskId === undefined || typeof candidate.parentConversationTaskId === 'string')
-    && (candidate.designerVersionId === undefined || typeof candidate.designerVersionId === 'string')
-    && typeof candidate.createdAt === 'string');
-  return (value.text === undefined || typeof value.text === 'string')
+  const candidatesValid = value.candidates === undefined || (Array.isArray(value.candidates)
+    && value.candidates.every(isTaskCandidate)
+    && new Set(value.candidates.map((candidate) => candidate.id)).size === value.candidates.length);
+  return Object.keys(value).every((key) => ['text', 'sceneAssetId', 'assetIds', 'imageCount', 'cost', 'candidate', 'candidates'].includes(key))
+    && (value.text === undefined || typeof value.text === 'string')
     && (value.sceneAssetId === undefined || typeof value.sceneAssetId === 'string')
     && (value.assetIds === undefined || (Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')))
     && (value.imageCount === undefined || (Number.isInteger(value.imageCount) && Number(value.imageCount) >= 0))
     && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0))
-    && candidateValid;
+    && (value.candidate === undefined || isTaskCandidate(value.candidate))
+    && candidatesValid;
 };
 const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && Object.keys(value).every((key) => taskRecordKeys.has(key as keyof TaskRecord))
@@ -86,6 +119,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.analysisThreadId === undefined || typeof value.analysisThreadId === 'string')
   && (value.conversationParentTaskId === undefined || typeof value.conversationParentTaskId === 'string')
   && (value.progressText === undefined || typeof value.progressText === 'string')
+  && (value.generationSlots === undefined || isGenerationSlots(value.generationSlots))
   && (value.contextAssetIds === undefined || (Array.isArray(value.contextAssetIds) && value.contextAssetIds.every((id) => typeof id === 'string')))
   && (value.contextVersion === undefined || value.contextVersion === 1)
   && (value.designContext === undefined || isDesignContext(value.designContext))
