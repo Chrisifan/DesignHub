@@ -180,6 +180,7 @@ export const Workbench = ({
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const canvasStageRef = useRef<HTMLDivElement>(null);
+  const [canvasOverlayHost, setCanvasOverlayHost] = useState<HTMLElement | null>(null);
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
@@ -443,7 +444,7 @@ export const Workbench = ({
     '--workbench-rotation': `${rotation}deg`,
   } as CSSProperties;
   const draftDisplayWidth = Math.round(280 * zoom / 68);
-  const hasSceneImage = scene.layers.some((layer) => layer.type === 'image' && layer.assetId !== 'placeholder');
+  const hasSceneContent = scene.layers.some((layer) => layer.type !== 'image' || layer.assetId !== 'placeholder');
   const centerDraft = useCallback((element: HTMLElement): void => {
     const container = canvasStageRef.current;
     if (!container || typeof container.scrollTo !== 'function') return;
@@ -819,7 +820,6 @@ export const Workbench = ({
             name="layout-grid"
             label={t(locale, '网格', 'Grid')}
             aria-pressed={gridVisible}
-            disabled
             onClick={() => undefined}
           />
         </div>
@@ -953,6 +953,7 @@ export const Workbench = ({
         </aside>
 
         <section
+          ref={setCanvasOverlayHost}
           className="workbench-canvas"
           aria-label={t(locale, '设计画布', 'Design canvas')}
           data-grid-visible={gridVisible}
@@ -979,7 +980,7 @@ export const Workbench = ({
             <div className="workbench-canvas-world">
               <div className="workbench-canvas-world__row">
                 {workspaceId && documentId ? (
-                  <div data-draft-role="current" className={`workbench-design-card${hasSceneImage ? '' : ' workbench-design-card--empty'}`} style={{ aspectRatio: `${scene.width} / ${scene.height}`, ...(hasSceneImage ? { width: draftDisplayWidth, flexBasis: draftDisplayWidth } : {}) }}>
+                  <div data-draft-role="current" className={`workbench-design-card${hasSceneContent ? '' : ' workbench-design-card--empty'}`} style={{ aspectRatio: `${scene.width} / ${scene.height}`, ...(hasSceneContent ? { width: draftDisplayWidth, flexBasis: draftDisplayWidth } : {}) }}>
                     <CanvasWorkspace
                       locale={locale}
                       scene={scene}
@@ -994,6 +995,7 @@ export const Workbench = ({
                       inspectorRequestId={canvasInspectorRequestId}
                       selectionRequest={canvasSelectionRequest}
                       zoomPercent={68}
+                      overlayHost={canvasOverlayHost}
                       assetAction={assetAction}
                       onAssetActionHandled={onAssetActionHandled}
                     />

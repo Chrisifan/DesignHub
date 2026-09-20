@@ -464,13 +464,27 @@ it('updates preview zoom and grid without changing the document', () => {
   fireEvent.click(screen.getByRole('button', { name: '放大' }));
   expect(screen.getByText('76%')).toBeInTheDocument();
   expect(draft).toHaveStyle({ width: '313px', flexBasis: '313px' });
-  fireEvent.click(screen.getByRole('button', { name: '网格' }));
+  const gridButton = screen.getByRole('button', { name: '网格' });
+  expect(gridButton).toBeEnabled();
+  fireEvent.click(gridButton);
   expect(canvas).toHaveAttribute('data-grid-visible', 'true');
   fireEvent.click(screen.getByRole('button', { name: '重置缩放' }));
   expect(screen.getByText('68%')).toBeInTheDocument();
   expect(draft).toHaveStyle({ width: '280px', flexBasis: '280px' });
   expect(scrollTo).toHaveBeenCalledWith({ left: 940, top: 786.5, behavior: 'smooth' });
   rectSpy.mockRestore();
+});
+
+it('keeps a text-only scene on a sized canvas card so its floating layers remain interactive', () => {
+  const scene = createScene({
+    id: 'scene-text-only', width: 1080, height: 1440,
+    layers: [{ id: 'title', type: 'text', text: '标题', fontFamily: 'Inter', fontSize: 96, fontWeight: 'bold', align: 'center', color: '#24262B', x: 120, y: 520, width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false }],
+  });
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+
+  const draft = document.querySelector('[data-draft-role="current"]');
+  expect(draft).not.toHaveClass('workbench-design-card--empty');
+  expect(draft).toHaveStyle({ width: '280px', flexBasis: '280px' });
 });
 
 it('reports an empty workspace document when properties cannot inspect a layer', () => {

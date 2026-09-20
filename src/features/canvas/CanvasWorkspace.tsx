@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Ellipse, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva';
 
 import { getMessages, type Locale } from '../../app/i18n';
@@ -45,6 +46,7 @@ export type CanvasWorkspaceProps = {
   inspectorRequestId?: number;
   selectionRequest?: { id: number; type: SceneLayer['type'] };
   zoomPercent?: number;
+  overlayHost?: HTMLElement | null;
 };
 
 const initialViewport: ViewportState = { zoom: 1, offsetX: 0, offsetY: 0 };
@@ -85,7 +87,7 @@ const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void,
   return <Rect {...common} fill={layer.type === 'shape' ? layer.fill : '#d7dce5'} dash={layer.type === 'image' ? [8, 6] : undefined} />;
 };
 
-export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId, readOnly = false, assetAction, onAssetActionHandled, embedded = false, layersOpen = false, onLayersClose, inspectorRequestId, selectionRequest, zoomPercent = 68 }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId, readOnly = false, assetAction, onAssetActionHandled, embedded = false, layersOpen = false, onLayersClose, inspectorRequestId, selectionRequest, zoomPercent = 68, overlayHost }: CanvasWorkspaceProps) => {
   const messages = getMessages(locale);
   const canvasReady = useMemo(canRenderCanvas, []);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -233,7 +235,15 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
     const byId = new Map(layers.map((layer) => [layer.id, layer]));
     persist(createScene({ ...scene, layers: scene.layers.map((layer) => byId.get(layer.id) ?? layer) }));
   };
-  return (
+  const layersPanel = embedded && layersOpen && <div className="canvas-layer-float">
+    <IconButton name="x" label={locale === 'zh-CN' ? '关闭图层' : 'Close layers'} onClick={onLayersClose} />
+    <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} readOnly={readOnly} />
+  </div>;
+  const inspectorPanel = embedded && inspectorOpen && <div className="canvas-inspector-float">
+    <IconButton name="x" label={locale === 'zh-CN' ? '关闭检查器' : 'Close inspector'} onClick={() => setInspectorDismissed(true)} />
+    <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} readOnly={readOnly} />
+  </div>;
+  return <>
     <section
       className={`canvas-workspace${embedded ? ' canvas-workspace--embedded' : ''}`}
       aria-label={messages.canvasTitle}
@@ -251,10 +261,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
       </header>}
       <div className="canvas-workspace__body">
         {!embedded && <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} readOnly={readOnly} />}
-        {embedded && layersOpen && <div className="canvas-layer-float">
-          <IconButton name="x" label={locale === 'zh-CN' ? '关闭图层' : 'Close layers'} onClick={onLayersClose} />
-          <LayerList locale={locale} layers={scene.layers} selectedIds={selectedIds} onSelect={select} onMove={move} onDuplicate={duplicate} onDelete={remove} onRename={rename} readOnly={readOnly} />
-        </div>}
+        {!overlayHost && layersPanel}
         <div ref={stageRef} className="canvas-workspace__stage">
           {canvasReady ? <Stage width={stageSize.width} height={stageSize.height} scaleX={viewport.zoom} scaleY={viewport.zoom} x={viewport.offsetX} y={viewport.offsetY}
             onClick={(event) => { if (event.target === event.target.getStage()) select([]); }}
@@ -280,13 +287,12 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
           </Stage> : <div className="canvas-workspace__fallback" role="img" aria-label={messages.canvasTitle}>{messages.canvasUnavailable}</div>}
         </div>
       </div>
-      {embedded && inspectorOpen && <div className="canvas-inspector-float">
-        <IconButton name="x" label={locale === 'zh-CN' ? '关闭检查器' : 'Close inspector'} onClick={() => setInspectorDismissed(true)} />
-        <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} readOnly={readOnly} />
-      </div>}
+      {!overlayHost && inspectorPanel}
       <Drawer open={!embedded && inspectorOpen} title={messages.canvasInspector} locale={locale} onClose={() => setInspectorDismissed(true)}>
         <Inspector locale={locale} layer={selectedLayer} selectedLayers={selectedLayers} onChange={updateLayer} onChangeMany={updateLayers} readOnly={readOnly} />
       </Drawer>
     </section>
-  );
+    {overlayHost && layersPanel && createPortal(layersPanel, overlayHost)}
+    {overlayHost && inspectorPanel && createPortal(inspectorPanel, overlayHost)}
+  </>;
 };
