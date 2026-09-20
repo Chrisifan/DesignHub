@@ -1318,6 +1318,13 @@
   display: contents;
 }
 
+.workbench-candidate-batch {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 24px;
+}
+
 .workbench-candidate-card {
   box-sizing: border-box;
   width: 280px;
@@ -1348,6 +1355,21 @@
 .workbench-candidate-card--skeleton {
   cursor: progress;
   touch-action: auto;
+}
+
+.workbench-candidate-card--failed {
+  cursor: default;
+  touch-action: auto;
+}
+
+.workbench-candidate-card--failed > button {
+  align-self: flex-start;
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--on-primary-container);
+  background: var(--primary-container);
+  cursor: pointer;
 }
 
 .workbench-candidate-card.is-selected {

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 import { CandidateBoard } from './CandidateBoard';
+import { createDesignGenerationSlots } from '../../features/tasks/state';
 
 const task = {
   id: 'design-generation-1',
@@ -79,4 +80,50 @@ it('renders one proportionate placeholder per running generation and requests fo
   expect(screen.getByRole('button', { name: '候选设计稿' })).toHaveStyle({ width: '340px', flexBasis: '340px' });
   expect(onRequestFocus).toHaveBeenCalledOnce();
   expect(onRequestFocus.mock.calls[0]?.[0]).toBe(placeholders[1].closest('.workbench-candidate-card'));
+});
+
+it('renders three stable batch slots and retries only a failed slot', () => {
+  const generationSlots = createDesignGenerationSlots();
+  const batch = {
+    ...task,
+    id: 'design-batch-1',
+    requestId: 'request-batch-1',
+    state: 'running' as const,
+    result: undefined,
+    generationSlots,
+  };
+  const onRetrySlot = vi.fn();
+  const onRequestFocus = vi.fn();
+  const view = render(<CandidateBoard locale="zh-CN" tasks={[batch]} projectId="project-1" analysisThreadId="thread-1" width={1080} height={1440} selectedCandidateId={null} onSelect={vi.fn()} onRetrySlot={onRetrySlot} onRequestFocus={onRequestFocus} />);
+
+  expect(screen.getAllByLabelText('正在生成设计稿')).toHaveLength(3);
+  const initialSlots = screen.getAllByTestId(/generation-slot-/u);
+  expect(initialSlots.map((slot) => slot.getAttribute('data-testid'))).toEqual([
+    'generation-slot-primary', 'generation-slot-composition', 'generation-slot-expressive',
+  ]);
+  expect(onRequestFocus).toHaveBeenCalledOnce();
+  expect(onRequestFocus.mock.calls[0]?.[0]).toHaveAttribute('data-generation-batch-id', 'design-batch-1');
+
+  const completedCandidate = {
+    id: 'candidate-design-batch-1-primary',
+    baseRevisionId: null,
+    assetIds: ['asset-primary'],
+    sceneAssetId: 'asset-primary',
+    createdAt: '2026-09-20T00:00:00.000Z',
+  };
+  view.rerender(<CandidateBoard locale="zh-CN" tasks={[{
+    ...batch,
+    generationSlots: generationSlots.map((slot) => slot.id === 'primary'
+      ? { ...slot, state: 'completed' as const, assetId: 'asset-primary', candidateId: completedCandidate.id }
+      : slot.id === 'composition'
+        ? { ...slot, state: 'failed' as const, errorCode: 'PROVIDER_REQUEST_FAILED' }
+        : slot),
+    result: { imageCount: 1, candidates: [completedCandidate] },
+  }]} projectId="project-1" analysisThreadId="thread-1" width={1080} height={1440} selectedCandidateId={null} onSelect={vi.fn()} onRetrySlot={onRetrySlot} onRequestFocus={onRequestFocus} />);
+
+  expect(screen.getByRole('button', { name: '主方案' })).toBeVisible();
+  expect(screen.getAllByLabelText('正在生成设计稿')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: '重新生成构图探索' }));
+  expect(onRetrySlot).toHaveBeenCalledWith('design-batch-1', 'composition');
+  expect(onRequestFocus).toHaveBeenCalledOnce();
 });
