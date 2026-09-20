@@ -348,6 +348,53 @@ it('chains a completed conversation into design generation', async () => {
   rectSpy.mockRestore();
 });
 
+it('supports plural candidates and retries a failed generation slot', async () => {
+  const retryDesignGenerationSlot = vi.fn();
+  window.designhub = { chooseWorkspaceDirectory: async () => null, retryDesignGenerationSlot };
+  const conversation = {
+    id: 'conversation-1', requestId: 'request-1', state: 'completed' as const, cancelRequested: false, attempt: 1,
+    capability: 'conversation', analysisThreadId: 'thread-1', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' },
+    result: { text: 'Brief' },
+  };
+  const candidates = [
+    { id: 'candidate-primary', baseRevisionId: null, assetIds: ['asset-primary'], sceneAssetId: 'asset-primary', createdAt: '2026-09-20T00:00:00.000Z' },
+    { id: 'candidate-expressive', baseRevisionId: null, assetIds: ['asset-expressive'], sceneAssetId: 'asset-expressive', createdAt: '2026-09-20T00:00:02.000Z' },
+  ];
+  const generation = {
+    id: 'design-1', requestId: 'request-2', state: 'completed' as const, cancelRequested: false, attempt: 1,
+    capability: 'design-generation', analysisThreadId: 'thread-1', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' },
+    generationSlots: [
+      { id: 'primary' as const, direction: 'primary', state: 'completed' as const, attempt: 1, assetId: 'asset-primary', candidateId: 'candidate-primary' },
+      { id: 'composition' as const, direction: 'composition', state: 'failed' as const, attempt: 1, errorCode: 'PROVIDER_REQUEST_FAILED' },
+      { id: 'expressive' as const, direction: 'expressive', state: 'completed' as const, attempt: 1, assetId: 'asset-expressive', candidateId: 'candidate-expressive' },
+    ],
+    result: { imageCount: 2, candidates },
+  };
+  retryDesignGenerationSlot.mockImplementation(async () => ({
+    ...generation,
+    state: 'running' as const,
+    generationSlots: generation.generationSlots.map((slot) => slot.id === 'composition'
+      ? { ...slot, state: 'queued' as const, attempt: 2, errorCode: undefined }
+      : slot),
+  }));
+  const onSubmitConversation = vi.fn(async () => conversation);
+  const onSubmitDesignGeneration = vi.fn(async () => generation);
+  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', onSubmitConversation, onSubmitDesignGeneration })} />);
+
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成海报' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '生成' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+
+  await waitFor(() => expect(screen.getByRole('button', { name: '重新生成构图探索' })).toBeVisible());
+  expect(screen.getByRole('button', { name: '主方案' })).toBeVisible();
+  expect(screen.getByRole('button', { name: '视觉突破' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '历史' }));
+  expect(screen.getAllByText('候选')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: '重新生成构图探索' }));
+  await waitFor(() => expect(retryDesignGenerationSlot).toHaveBeenCalledWith({ workspaceId: 'workspace-1', taskId: 'design-1', slotId: 'composition' }));
+});
+
 it('adds pasted images above the prompt and supports preview and removal', async () => {
   const image = new File([new Uint8Array([137, 80, 78, 71])], 'reference.png', { type: 'image/png' });
   const onSubmitConversation = vi.fn();

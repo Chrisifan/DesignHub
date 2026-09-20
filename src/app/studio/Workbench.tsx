@@ -15,7 +15,7 @@ import { defaultToolParams, validateToolParams, type ImageTool, type ToolParams 
 import { ToolInspector } from '../../features/image-tools/ToolInspector';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
-import type { TaskCandidate, TaskRecord } from '../../features/tasks/state';
+import type { DesignGenerationSlotId, TaskCandidate, TaskRecord } from '../../features/tasks/state';
 import { CompareRevisions } from '../../features/revisions/CompareRevisions';
 import {
   ArtworkPreview,
@@ -117,6 +117,8 @@ const createInitialScene = (project: Project, documentId?: string): DesignScene 
 
 const clamp = (value: number, minimum: number, maximum: number): number =>
   Math.min(maximum, Math.max(minimum, value));
+const taskCandidates = (task: TaskRecord): TaskCandidate[] => task.result?.candidates
+  ?? (task.result?.candidate ? [task.result.candidate] : []);
 
 const contributionRoleLabel = (locale: Locale, role: 'lead' | 'direction' | 'revision'): string => {
   if (role === 'lead') return t(locale, '主导', 'Lead');
@@ -223,7 +225,8 @@ export const Workbench = ({
   const hasPendingAnalysis = Boolean(pendingConversationTask && (pendingConversationTask.state === 'queued' || pendingConversationTask.state === 'running'));
   const candidateFor = (candidateId: string): { task: TaskRecord; candidate: TaskCandidate } | undefined => {
     for (const task of tasks) {
-      if (task.result?.candidate?.id === candidateId) return { task, candidate: task.result.candidate };
+      const candidate = taskCandidates(task).find((item) => item.id === candidateId);
+      if (candidate) return { task, candidate };
     }
     return undefined;
   };
@@ -646,6 +649,12 @@ export const Workbench = ({
       setAnalysisThreadId(task.analysisThreadId ?? analysisThreadId);
     }).catch(() => notify(t(locale, '重试失败', 'Retry failed')));
   };
+  const retryGenerationSlot = async (taskId: string, slotId: DesignGenerationSlotId): Promise<void> => {
+    if (!workspaceId) return;
+    const retried = await getDesktopApi().retryDesignGenerationSlot?.({ workspaceId, taskId, slotId });
+    if (!retried) return;
+    setTasks((current) => current.map((task) => task.id === retried.id ? retried : task));
+  };
   const submitImageTask = (tool: ImageTool, taskPrompt: string, params: ToolParams, region?: Region): void => {
     if (readOnly) return;
     if (!onSubmitImageTask) {
@@ -1035,6 +1044,7 @@ export const Workbench = ({
                   displayWidth={draftDisplayWidth}
                   selectedCandidateId={selectedCandidateId}
                   onSelect={selectCandidate}
+                  onRetrySlot={(taskId, slotId) => { void retryGenerationSlot(taskId, slotId); }}
                   onRequestFocus={centerDraft}
                 />
               </div>
@@ -1181,8 +1191,9 @@ export const Workbench = ({
                   )}
                 </p>
                 <ol className="workbench-history-list">
-                {tasks.filter((task) => task.state === 'completed' && task.result?.candidate).map((task) => {
-                  const candidate = task.result!.candidate!;
+                {tasks.flatMap((task) => task.state === 'completed'
+                  ? taskCandidates(task).map((candidate) => ({ task, candidate }))
+                  : []).map(({ candidate }) => {
                   const latest = revisionState.revisions[revisionState.revisions.length - 1];
                   return <li key={candidate.id}>
                     <span className="workbench-history-marker" aria-hidden="true" />
