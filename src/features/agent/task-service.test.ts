@@ -4,6 +4,18 @@ import { createTaskRuntime } from '../tasks/runtime';
 import type { TaskRecord } from '../tasks/state';
 import { createAgentTaskService } from './task-service';
 
+type ImageResponse = { images: Array<{ base64: string; mimeType?: string }>; cost: number | null };
+
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 const completePortfolioCandidate = (name: { zh: string; en: string }, overrides: Record<string, unknown> = {}) => ({
   name,
   signature: { zh: '视觉分析草稿', en: 'Visual analysis draft' },
@@ -124,10 +136,182 @@ it('uses a completed conversation context to create a design candidate', async (
   });
   await service.flush();
 
+  expect(generateImage).toHaveBeenCalledTimes(3);
   expect(generateImage).toHaveBeenCalledWith(expect.objectContaining({
     prompt: expect.stringContaining('Avoid neon'), size: '1080x1440', count: 1,
   }), expect.any(AbortSignal));
-  expect(runtime.get(generation.id)).toMatchObject({ capability: 'design-generation', parentConversationTaskId: conversation.id, result: { candidate: { assetIds: ['asset-generated'], baseRevisionId: null } } });
+  expect(runtime.get(generation.id)).toMatchObject({
+    capability: 'design-generation',
+    parentConversationTaskId: conversation.id,
+    result: { imageCount: 3, candidates: [{ assetIds: ['asset-generated'], baseRevisionId: null }, { assetIds: ['asset-generated'], baseRevisionId: null }, { assetIds: ['asset-generated'], baseRevisionId: null }] },
+  });
+});
+
+it('starts three differentiated count-one generation requests concurrently', async () => {
+  const runtime = createTaskRuntime();
+  const responses = [deferred<ImageResponse>(), deferred<ImageResponse>(), deferred<ImageResponse>()];
+  const generateImage = vi.fn((_request: { prompt: string; count?: number }) => responses[generateImage.mock.calls.length - 1]!.promise);
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'analysis brief', cost: null }), generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      workspaceId: input.workspaceId!,
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: 'Project brief',
+      document: { width: 1080, height: 1440, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: 'revision-1',
+    }),
+    persistGeneratedImages: async ({ images }) => [`asset-${'base64' in images[0]! ? images[0].base64 : 'url'}`],
+  });
+  const conversation = await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Poster',
+  });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1',
+  });
+
+  await vi.waitFor(() => expect(generateImage).toHaveBeenCalledTimes(3));
+  expect(generateImage.mock.calls.every(([request]) => request.count === 1)).toBe(true);
+  expect(generateImage.mock.calls.map(([request]) => request.prompt)).toEqual([
+    expect.stringContaining('主方案'),
+    expect.stringContaining('构图探索'),
+    expect.stringContaining('视觉突破'),
+  ]);
+  responses.forEach((response, index) => response.resolve({ images: [{ base64: `image-${index}` }], cost: 0.1 }));
+  await service.flush();
+
+  expect(runtime.get(generation.id)).toMatchObject({ state: 'completed', result: { imageCount: 3 } });
+  expect(runtime.get(generation.id)?.result?.cost).toBeCloseTo(0.3);
+  expect(runtime.get(generation.id)?.result?.candidates?.map((candidate) => candidate.id)).toEqual([
+    `candidate-${generation.id}-primary`,
+    `candidate-${generation.id}-composition`,
+    `candidate-${generation.id}-expressive`,
+  ]);
+});
+
+it('keeps successful candidates when one parallel request fails', async () => {
+  const runtime = createTaskRuntime();
+  let call = 0;
+  const generateImage = vi.fn(async () => {
+    call += 1;
+    if (call === 2) throw new Error('PROVIDER_REQUEST_FAILED');
+    return { images: [{ base64: call === 1 ? 'primary' : 'expressive' }], cost: null };
+  });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }), generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId!, projectId: input.projectId!, documentId: input.documentId!, brief: 'Brief',
+      document: { width: 100, height: 100, currentImageAssetIds: [] }, attachmentAssetIds, userMessage: input.message, baseRevisionId: null,
+    }),
+    persistGeneratedImages: async ({ images }) => [`asset-${'base64' in images[0]! ? images[0].base64 : 'url'}`],
+  });
+  const conversation = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Poster' });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
+  await service.flush();
+
+  expect(runtime.get(generation.id)).toMatchObject({ state: 'completed', result: { imageCount: 2 } });
+  expect(runtime.get(generation.id)?.generationSlots?.find((slot) => slot.id === 'composition')).toMatchObject({ state: 'failed', errorCode: 'PROVIDER_REQUEST_FAILED' });
+  expect(runtime.get(generation.id)?.result?.candidates?.map((candidate) => candidate.id)).toEqual([
+    `candidate-${generation.id}-primary`,
+    `candidate-${generation.id}-expressive`,
+  ]);
+});
+
+it('fails the generation batch only when all three requests fail', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: 'brief', cost: null }),
+      generateImage: async () => { throw new Error('PROVIDER_REQUEST_FAILED'); },
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId!, projectId: input.projectId!, documentId: input.documentId!, brief: 'Brief',
+      document: { width: 100, height: 100, currentImageAssetIds: [] }, attachmentAssetIds, userMessage: input.message, baseRevisionId: null,
+    }),
+  });
+  const conversation = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Poster' });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
+  await service.flush();
+
+  expect(runtime.get(generation.id)).toMatchObject({ state: 'failed', errorCode: 'DESIGN_GENERATION_ALL_FAILED', result: { imageCount: 0, candidates: [] } });
+});
+
+it('retries only one failed generation slot with the immutable batch context', async () => {
+  const runtime = createTaskRuntime();
+  let call = 0;
+  const generateImage = vi.fn(async (request: { prompt: string; count?: number }) => {
+    call += 1;
+    if (call === 2) throw new Error('PROVIDER_REQUEST_FAILED');
+    return { images: [{ base64: `image-${call}` }], cost: null, request };
+  });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }), generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId!, projectId: input.projectId!, documentId: input.documentId!, brief: 'Immutable brief',
+      document: { width: 100, height: 100, currentImageAssetIds: [] }, attachmentAssetIds, userMessage: input.message, baseRevisionId: 'revision-1',
+    }),
+    persistGeneratedImages: async ({ images }) => [`asset-${'base64' in images[0]! ? images[0].base64 : 'url'}`],
+  });
+  const conversation = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Poster' });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
+  await service.flush();
+
+  await service.retryDesignGenerationSlot({ workspaceId: 'workspace-1', taskId: generation.id, slotId: 'composition' });
+  await service.flush();
+
+  expect(generateImage).toHaveBeenCalledTimes(4);
+  expect(generateImage.mock.calls[3]?.[0].prompt).toContain('构图探索');
+  expect(runtime.get(generation.id)?.generationSlots?.find((slot) => slot.id === 'primary')).toMatchObject({ state: 'completed', attempt: 1 });
+  expect(runtime.get(generation.id)?.generationSlots?.find((slot) => slot.id === 'composition')).toMatchObject({ state: 'completed', attempt: 2 });
+  expect(runtime.get(generation.id)?.generationSlots?.find((slot) => slot.id === 'expressive')).toMatchObject({ state: 'completed', attempt: 1 });
+  await expect(service.retryDesignGenerationSlot({ workspaceId: 'workspace-2', taskId: generation.id, slotId: 'composition' })).rejects.toThrow('WORKSPACE_CONTEXT_MISMATCH');
+  await expect(service.retryDesignGenerationSlot({ workspaceId: 'workspace-1', taskId: generation.id, slotId: 'primary' })).rejects.toThrow('GENERATION_SLOT_NOT_RETRYABLE');
+});
+
+it('cancels unfinished slots while retaining an already completed candidate', async () => {
+  const runtime = createTaskRuntime();
+  const pendingResponses = [deferred<ImageResponse>(), deferred<ImageResponse>()];
+  const signals: AbortSignal[] = [];
+  let call = 0;
+  const generateImage = vi.fn(async (_request: { prompt: string; count?: number }, signal?: AbortSignal) => {
+    signals.push(signal!);
+    call += 1;
+    if (call === 1) return { images: [{ base64: 'primary' }], cost: null };
+    return pendingResponses[call - 2]!.promise;
+  });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }), generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId!, projectId: input.projectId!, documentId: input.documentId!, brief: 'Brief',
+      document: { width: 100, height: 100, currentImageAssetIds: [] }, attachmentAssetIds, userMessage: input.message, baseRevisionId: null,
+    }),
+    persistGeneratedImages: async ({ images }) => [`asset-${'base64' in images[0]! ? images[0].base64 : 'url'}`],
+  });
+  const conversation = await service.submitConversation({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Poster' });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
+  await vi.waitFor(() => expect(runtime.get(generation.id)?.generationSlots?.find((slot) => slot.id === 'primary')?.state).toBe('completed'));
+
+  service.cancel(generation.id);
+  const abortError = Object.assign(new Error('cancelled'), { name: 'AbortError' });
+  pendingResponses.forEach((response) => response.reject(abortError));
+  await service.flush();
+
+  expect(signals.slice(1).every((signal) => signal.aborted)).toBe(true);
+  expect(runtime.get(generation.id)).toMatchObject({ state: 'completed', result: { imageCount: 1 } });
+  expect(runtime.get(generation.id)?.generationSlots?.slice(1).map((slot) => slot.state)).toEqual(['cancelled', 'cancelled']);
 });
 
 it('passes persisted conversation references to image generation', async () => {
@@ -167,9 +351,11 @@ it('passes persisted conversation references to image generation', async () => {
   await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
   await service.flush();
 
-  expect(generateImage).toHaveBeenCalledWith(expect.objectContaining({
-    referenceImages: [expect.any(Blob), expect.any(Blob)],
-  }), expect.any(AbortSignal));
+  expect(generateImage).toHaveBeenCalledTimes(3);
+  const requests = generateImage.mock.calls.map(([request]) => request);
+  expect(requests[0]?.referenceImages).toEqual([expect.any(Blob), expect.any(Blob)]);
+  expect(requests[1]?.referenceImages).toBe(requests[0]?.referenceImages);
+  expect(requests[2]?.referenceImages).toBe(requests[0]?.referenceImages);
 });
 
 it('generates without carrying designer style when the project has no designer', async () => {
@@ -230,7 +416,7 @@ it('sends the immutable designer context as a system message', async () => {
 
 it('uses the current canvas image as the edit source for a design draft', async () => {
   const runtime = createTaskRuntime();
-  const editImage = vi.fn(async () => ({ images: [{ base64: 'edited-bytes' }], cost: null }));
+  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[]; size?: string }) => ({ images: [{ base64: 'edited-bytes' }], cost: null }));
   const service = createAgentTaskService({
     runtime,
     resolveAdapter: async () => ({ chat: async () => ({ text: 'brief', cost: null }), editImage }),
@@ -248,8 +434,10 @@ it('uses the current canvas image as the edit source for a design draft', async 
   await service.flush();
   const generation = await service.submitDesignGeneration({ workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1' });
   await service.flush();
+  expect(editImage).toHaveBeenCalledTimes(3);
   expect(editImage).toHaveBeenCalledWith(expect.objectContaining({ image: expect.any(Blob), prompt: expect.stringContaining('Existing poster') }), expect.any(AbortSignal));
-  expect(runtime.get(generation.id)?.result?.candidate?.assetIds).toEqual(['asset-edited']);
+  expect(editImage.mock.calls.every(([request]) => !Object.hasOwn(request, 'count'))).toBe(true);
+  expect(runtime.get(generation.id)?.result?.candidates).toHaveLength(3);
 });
 
 it('rejects generation when a persisted context asset is no longer available', async () => {

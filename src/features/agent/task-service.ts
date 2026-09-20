@@ -1,5 +1,15 @@
 import type { ChatRequest, ChatResponse, GeneratedImage, VisionRequest } from '../providers/adapter';
-import { isPortfolioAnalysisDiagnostic, isSafeProviderCode, type PortfolioAnalysisDiagnostic, type TaskProviderFailure, type TaskRecord } from '../tasks/state';
+import {
+  createDesignGenerationSlots,
+  designGenerationSlotIds,
+  isPortfolioAnalysisDiagnostic,
+  isSafeProviderCode,
+  type DesignGenerationSlotId,
+  type PortfolioAnalysisDiagnostic,
+  type TaskCandidate,
+  type TaskProviderFailure,
+  type TaskRecord,
+} from '../tasks/state';
 import type { TaskSource } from '../tasks/state';
 import type { TaskRuntime } from '../tasks/runtime';
 import type { Region } from '../canvas/selection';
@@ -29,6 +39,12 @@ export type DesignGenerationInput = {
   conversationTaskId: string;
   baseRevisionId?: string | null;
   connectionId: string;
+};
+
+export type DesignGenerationSlotRetryInput = {
+  workspaceId: string;
+  taskId: string;
+  slotId: DesignGenerationSlotId;
 };
 
 export type ConversationImageAttachment = {
@@ -112,8 +128,10 @@ type ConversationAdapter = {
 };
 
 export type AgentTaskService = {
+  getTask: (taskId: string) => TaskRecord | undefined;
   submitConversation: (input: ConversationInput) => Promise<TaskRecord>;
   submitDesignGeneration: (input: DesignGenerationInput) => Promise<TaskRecord>;
+  retryDesignGenerationSlot: (input: DesignGenerationSlotRetryInput) => Promise<TaskRecord>;
   submitPortfolioAnalysis: (input: PortfolioAnalysisInput) => Promise<TaskRecord>;
   submitImageGeneration: (input: ImageGenerationInput) => Promise<TaskRecord>;
   submitDesignerArtworkGeneration: (input: DesignerArtworkGenerationInput) => Promise<TaskRecord>;
@@ -194,6 +212,7 @@ const generationPrompt = (context: DesignGenerationContext, assistantBrief?: str
 
 export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentTaskService => {
   const controllers = new Map<string, AbortController>();
+  const generationControllers = new Map<string, Map<DesignGenerationSlotId, AbortController>>();
   const pending = new Set<Promise<unknown>>();
   const executeTask = async (task: TaskRecord, input: ConversationInput): Promise<void> => {
     const controller = new AbortController();
@@ -403,56 +422,104 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await executeTask(task, input);
     return task;
   };
-  const executeDesignGeneration = async (task: TaskRecord, input: DesignGenerationInput, parent: TaskRecord): Promise<void> => {
-    const controller = new AbortController();
-    controllers.set(task.id, controller);
+  const prepareDesignGeneration = async (task: TaskRecord) => {
+    const context = task.designContext;
+    if (!context || task.source?.kind !== 'project' || !task.providerId) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
+    const adapter = await options.resolveAdapter(task.providerId);
+    const sourceAssetId = context.document.currentImageAssetIds[0];
+    const sourceImage = sourceAssetId && options.loadSourceImage
+      ? await options.loadSourceImage({ projectId: task.source.id, assetId: sourceAssetId })
+      : null;
+    const referenceAssetIds = [...new Set([
+      ...(task.contextAssetIds ?? context.attachmentAssetIds),
+      ...context.document.currentImageAssetIds,
+    ])].filter((assetId) => assetId !== sourceAssetId);
+    const loadedReferences = options.loadContextImage && referenceAssetIds.length
+      ? await Promise.all(referenceAssetIds.map((assetId) => options.loadContextImage!({ projectId: task.source!.id, assetId })))
+      : [];
+    if (loadedReferences.some((attachment) => !attachment)) throw new Error('CONTEXT_ASSET_MISSING');
+    const referenceImages = loadedReferences
+      .filter((attachment): attachment is ConversationImageAttachment => Boolean(attachment))
+      .map((attachment) => new Blob([new Uint8Array(attachment.bytes).buffer as ArrayBuffer], { type: attachment.mimeType }));
+    return { context, adapter, sourceImage, referenceImages };
+  };
+  const executeDesignGeneration = async (task: TaskRecord, onlySlots?: readonly DesignGenerationSlotId[]): Promise<void> => {
     const execution = (async (): Promise<void> => {
+      const slotIds = onlySlots ?? designGenerationSlotIds;
+      let prepared: Awaited<ReturnType<typeof prepareDesignGeneration>>;
       try {
-        const context = task.designContext ?? parent.designContext;
-        if (!context) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
-        const adapter = await options.resolveAdapter(input.connectionId);
-        const prompt = generationPrompt(context, parent.result?.text);
-        const sourceAssetId = context.document.currentImageAssetIds[0];
-        const sourceImage = sourceAssetId && options.loadSourceImage
-          ? await options.loadSourceImage({ projectId: input.projectId, assetId: sourceAssetId })
-          : null;
-        const referenceAssetIds = [...new Set([
-          ...(task.contextAssetIds ?? context.attachmentAssetIds),
-          ...context.document.currentImageAssetIds,
-        ])].filter((assetId) => assetId !== sourceAssetId);
-        const loadedReferences = options.loadContextImage && referenceAssetIds.length
-          ? await Promise.all(referenceAssetIds.map((assetId) => options.loadContextImage!({ projectId: input.projectId, assetId })))
-          : [];
-        if (loadedReferences.some((attachment) => !attachment)) throw new Error('CONTEXT_ASSET_MISSING');
-        const referenceImages = loadedReferences
-          .filter((attachment): attachment is ConversationImageAttachment => Boolean(attachment))
-          .map((attachment) => new Blob([new Uint8Array(attachment.bytes).buffer as ArrayBuffer], { type: attachment.mimeType }));
-        const response = sourceImage && adapter.editImage
-          ? await adapter.editImage({ prompt, image: sourceImage, ...(referenceImages.length ? { referenceImages } : {}), size: `${context.document.width}x${context.document.height}` }, controller.signal)
-          : (adapter.generateImage ? await adapter.generateImage({ prompt, ...(referenceImages.length ? { referenceImages } : {}), size: `${context.document.width}x${context.document.height}`, count: 1 }, controller.signal) : undefined);
-        if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
-        if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
-        const assetIds = options.persistGeneratedImages ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images }) : [];
-        await options.runtime.complete(task.id, {
-          assetIds,
-          imageCount: response.images.length,
-          cost: response.cost,
-          candidate: {
-            id: `candidate-${task.id}`,
+        prepared = await prepareDesignGeneration(task);
+      } catch (error) {
+        const failure = providerFailure(error);
+        for (const slotId of slotIds) options.runtime.updateGenerationSlot(task.id, slotId, {
+          state: 'failed',
+          errorCode: errorCode(error),
+          ...(failure ? { providerFailure: failure } : {}),
+        });
+        await options.runtime.settleGenerationBatch(task.id);
+        return;
+      }
+      if (options.runtime.get(task.id)?.cancelRequested) {
+        for (const slotId of slotIds) options.runtime.updateGenerationSlot(task.id, slotId, {
+          state: 'cancelled',
+          errorCode: 'CANCELLED',
+          providerFailure: { kind: 'cancelled' },
+        });
+        await options.runtime.settleGenerationBatch(task.id);
+        return;
+      }
+      const controllersForTask = new Map<DesignGenerationSlotId, AbortController>();
+      generationControllers.set(task.id, controllersForTask);
+      for (const slotId of slotIds) options.runtime.updateGenerationSlot(task.id, slotId, { state: 'running' });
+      const requests = slotIds.map(async (slotId) => {
+        const slot = options.runtime.get(task.id)?.generationSlots?.find((candidate) => candidate.id === slotId);
+        if (!slot) throw new Error('GENERATION_SLOT_NOT_FOUND');
+        const controller = new AbortController();
+        controllersForTask.set(slotId, controller);
+        try {
+          const prompt = `${task.requestText ?? generationPrompt(prepared.context, prepared.context.assistantBrief)}\n\nCandidate direction\n${slot.direction}`;
+          const size = `${prepared.context.document.width}x${prepared.context.document.height}`;
+          const response = prepared.sourceImage && prepared.adapter.editImage
+            ? await prepared.adapter.editImage({ prompt, image: prepared.sourceImage, ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size }, controller.signal)
+            : prepared.adapter.generateImage
+              ? await prepared.adapter.generateImage({ prompt, ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size, count: 1 }, controller.signal)
+              : undefined;
+          const image = response?.images[0];
+          if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
+          if (!image) throw new Error('IMAGE_RESULT_EMPTY');
+          const assetIds = options.persistGeneratedImages
+            ? await options.persistGeneratedImages({ projectId: task.source!.id, images: [image] })
+            : [];
+          const assetId = assetIds[0];
+          if (!assetId) throw new Error('IMAGE_ASSET_PERSIST_FAILED');
+          const candidate: TaskCandidate = {
+            id: `candidate-${task.id}-${slotId}`,
             baseRevisionId: task.baseRevisionId ?? null,
-            assetIds: [...assetIds],
-            ...(assetIds[0] ? { sceneAssetId: assetIds[0] } : {}),
-            parentConversationTaskId: input.conversationTaskId,
+            assetIds: [assetId],
+            sceneAssetId: assetId,
+            ...(task.parentConversationTaskId ? { parentConversationTaskId: task.parentConversationTaskId } : {}),
             ...(task.analysisThreadId ? { analysisThreadId: task.analysisThreadId } : {}),
             ...(task.designerVersionId ? { designerVersionId: task.designerVersionId } : {}),
             createdAt: new Date().toISOString(),
-          },
-        });
-      } catch (error) {
-        if (controller.signal.aborted) await options.runtime.complete(task.id);
-        else await failTask(options.runtime, task.id, error);
-      } finally { controllers.delete(task.id); }
-    })();
+          };
+          options.runtime.updateGenerationSlot(task.id, slotId, {
+            state: 'completed',
+            assetId,
+            candidateId: candidate.id,
+            cost: response.cost,
+          }, candidate);
+        } catch (error) {
+          const failure = providerFailure(error);
+          options.runtime.updateGenerationSlot(task.id, slotId, controller.signal.aborted
+            ? { state: 'cancelled', errorCode: 'CANCELLED', providerFailure: { kind: 'cancelled' } }
+            : { state: 'failed', errorCode: errorCode(error), ...(failure ? { providerFailure: failure } : {}) });
+        } finally {
+          controllersForTask.delete(slotId);
+        }
+      });
+      await Promise.allSettled(requests);
+      await options.runtime.settleGenerationBatch(task.id);
+    })().finally(() => { generationControllers.delete(task.id); });
     pending.add(execution);
     void execution.finally(() => pending.delete(execution));
   };
@@ -489,6 +556,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       source: { kind: 'project', id: input.projectId },
       documentId: input.documentId,
       baseRevisionId: input.baseRevisionId ?? parent.baseRevisionId ?? null,
+      generationSlots: createDesignGenerationSlots(),
       ...(parent.designerVersionId ? { designerVersionId: parent.designerVersionId } : {}),
       ...(threadAssetIds.length ? { contextAssetIds: threadAssetIds } : {}),
       ...(parent.analysisThreadId ? { analysisThreadId: parent.analysisThreadId } : {}),
@@ -503,8 +571,24 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       capability: 'design-generation',
       createdAt: new Date().toISOString(),
     });
-    await executeDesignGeneration(task, input, parent);
+    await executeDesignGeneration(task);
     return task;
+  };
+  const retryDesignGenerationSlot = async (input: DesignGenerationSlotRetryInput): Promise<TaskRecord> => {
+    const task = options.runtime.get(input.taskId);
+    if (!task || task.capability !== 'design-generation' || !task.generationSlots || task.source?.kind !== 'project' || !task.documentId) throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
+    if (task.designContext?.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_CONTEXT_MISMATCH');
+    const slot = task.generationSlots.find((candidate) => candidate.id === input.slotId);
+    if (!slot) throw new Error('GENERATION_SLOT_NOT_FOUND');
+    const assetIds = [...new Set([...(task.contextAssetIds ?? []), ...(task.designContext?.document.currentImageAssetIds ?? [])])];
+    if (options.loadContextImage && assetIds.length) {
+      const assets = await Promise.all(assetIds.map((assetId) => options.loadContextImage!({ projectId: task.source!.id, assetId })));
+      if (assets.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');
+    }
+    const retried = options.runtime.retryGenerationSlot(task.id, input.slotId);
+    if (!retried) throw new Error('GENERATION_SLOT_NOT_FOUND');
+    await executeDesignGeneration(retried, [input.slotId]);
+    return retried;
   };
   const submitPortfolioAnalysis = async (input: PortfolioAnalysisInput): Promise<TaskRecord> => {
     if (input.source.kind !== 'designer-draft' || !input.source.id.trim() || !input.connectionId.trim() || input.sources.length === 0 || input.rightsConfirmed !== true) throw new Error('PORTFOLIO_TASK_BINDING_REQUIRED');
@@ -623,20 +707,12 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     }
     if (previous.capability === 'design-generation') {
       if (!previous.parentConversationTaskId || previous.source.kind !== 'project' || !previous.documentId) return undefined;
-      const parent = options.runtime.get(previous.parentConversationTaskId);
-      if (!parent) return undefined;
+      if (previous.generationSlots?.length) return undefined;
       const retried = options.runtime.retry(taskId);
       if (!retried) return undefined;
       const running = options.runtime.run(retried.id);
       if (!running) return undefined;
-      await executeDesignGeneration(running, {
-        workspaceId: previous.designContext?.workspaceId ?? '',
-        projectId: previous.source.id,
-        documentId: previous.documentId,
-        conversationTaskId: previous.parentConversationTaskId,
-        baseRevisionId: previous.baseRevisionId ?? null,
-        connectionId: previous.providerId,
-      }, parent);
+      await executeDesignGeneration(running);
       return running;
     }
     if (previous.capability !== 'conversation') return undefined;
@@ -659,11 +735,13 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   };
   const cancel = (taskIdValue: string): TaskRecord | undefined => {
     controllers.get(taskIdValue)?.abort();
+    generationControllers.get(taskIdValue)?.forEach((controller) => controller.abort());
     return options.runtime.cancel(taskIdValue);
   };
   const flush = async (): Promise<void> => {
     await Promise.all([...pending]);
     await options.runtime.flush();
   };
-  return { submitConversation, submitDesignGeneration, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testConversation, testImageGeneration, retry, cancel, flush };
+  const getTask = (taskIdValue: string): TaskRecord | undefined => options.runtime.get(taskIdValue);
+  return { getTask, submitConversation, submitDesignGeneration, retryDesignGenerationSlot, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testConversation, testImageGeneration, retry, cancel, flush };
 };
