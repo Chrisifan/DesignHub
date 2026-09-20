@@ -2,11 +2,11 @@
   display: grid;
   grid-auto-rows: max-content;
   align-content: start;
-  gap: 26px;
+  gap: 20px;
   width: min(100%, 1480px);
   min-width: 0;
   margin-inline: auto;
-  padding: 28px clamp(24px, 4vw, 56px) 64px;
+  padding: 20px clamp(24px, 4vw, 56px) 48px;
   overflow-x: clip;
 }
 
@@ -31,7 +31,7 @@
 .project-detail-hero {
   position: relative;
   isolation: isolate;
-  min-height: 240px;
+  min-height: 168px;
   overflow: hidden;
   border: 0;
   border-radius: 0;
@@ -76,8 +76,8 @@
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-end;
-  min-height: 240px;
-  padding: 24px;
+  min-height: 168px;
+  padding: 18px 20px;
   color: #fff;
 }
 
@@ -101,9 +101,9 @@
 .project-detail-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px 28px;
+  gap: 12px 24px;
   align-items: center;
-  padding: 22px 24px 24px;
+  padding: 14px 20px 16px;
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -115,7 +115,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   color: var(--on-surface-variant);
   font:
     600 10px/14px 'JetBrains Mono',
@@ -136,7 +136,7 @@
   margin: 0;
   color: var(--on-surface);
   font:
-    600 clamp(30px, 2.6vw, 36px) / 1.1 Geist,
+    600 clamp(28px, 2.3vw, 32px) / 1.1 Geist,
     'PingFang SC',
     sans-serif;
   letter-spacing: -0.035em;
@@ -146,15 +146,15 @@
 .project-detail-summary__description {
   display: -webkit-box;
   max-width: 72ch;
-  min-height: 3em;
-  margin: 8px 0 0;
+  min-height: 1.5em;
+  margin: 5px 0 0;
   overflow: hidden;
   color: var(--on-surface-variant);
   font-size: 13px;
   line-height: 1.5;
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
 .project-detail-summary__description.is-empty {
@@ -167,8 +167,8 @@
   align-items: center;
   gap: 16px;
   min-width: 0;
-  min-height: 34px;
-  margin-top: 12px;
+  min-height: 30px;
+  margin-top: 8px;
 }
 
 .project-detail-attribution {
@@ -695,16 +695,19 @@
 
   .project-detail-hero,
   .project-detail-hero__overlay {
-    min-height: 180px;
+    min-height: 168px;
   }
 
   .project-detail-hero::after {
     inset: 10px;
   }
 
-  .project-detail-hero__overlay,
+  .project-detail-hero__overlay {
+    padding: 16px;
+  }
+
   .project-detail-summary {
-    padding: 18px;
+    padding: 14px 16px 16px;
   }
 
   .project-detail-summary {

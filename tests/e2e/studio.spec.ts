@@ -546,24 +546,33 @@ test('project detail uses the cover-led responsive console layout', async ({ pag
   await page.getByRole('button', { name: '春间市集', exact: true }).click();
 
   const detail = page.getByTestId('project-detail-page');
+  const header = page.getByTestId('project-detail-header');
   const hero = page.getByTestId('project-detail-hero');
+  const summary = page.locator('.project-detail-summary');
+  const description = page.locator('.project-detail-summary__description');
   const layout = page.getByTestId('project-detail-layout');
   await expect(detail).toBeVisible();
-  await expect(page.getByTestId('project-detail-header')).toBeVisible();
+  await expect(header).toBeVisible();
   await expect(hero).toBeVisible();
   await expect(page.getByRole('button', { name: '打开画布', exact: true })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: '春间市集', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: '设计文档', exact: true })).toBeVisible();
   await expect(page.getByRole('complementary', { name: '项目信息', exact: true })).toBeVisible();
   expect(await layout.evaluate((element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length)).toBe(2);
-  expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(260);
+  expect(await header.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(340);
+  expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(160);
+  expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(176);
+  expect(await summary.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(164);
+  expect(await description.evaluate((element) => getComputedStyle(element).webkitLineClamp)).toBe('1');
   expect(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('project-detail-wide.png'), fullPage: true });
 
   await page.setViewportSize({ width: 1024, height: 900 });
   expect(await layout.evaluate((element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length)).toBe(1);
-  expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(260);
+  expect(await header.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(340);
+  expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(160);
+  expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(176);
   expect(await detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('project-detail-narrow.png'), fullPage: true });
