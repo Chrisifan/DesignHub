@@ -48,7 +48,7 @@ import { saveTaskState } from './storage/task-store';
 import { createTaskRuntime, type TaskRuntime } from '../features/tasks/runtime';
 import { createAgentTaskService, type AgentTaskService } from '../features/agent/task-service';
 import type { GeneratedImage } from '../features/providers/adapter';
-import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createConversationTestHandler, createDesignGenerationHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, conversationSubmitChannel, conversationTestChannel, designGenerationSubmitChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel } from './ipc/agent';
+import { bindAgentTaskService, cancelTaskHandler, createConversationHandler, createConversationTestHandler, createDesignGenerationHandler, createDesignGenerationSlotRetryHandler, createDesignerArtworkGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, conversationSubmitChannel, conversationTestChannel, designGenerationSlotRetryChannel, designGenerationSubmitChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, retryTaskHandler, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { createPortfolioDiscardHandler, createPortfolioInspectionHandler, createPortfolioSelectionHandler, portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
 import { createPortfolioSourceInspector } from './portfolio-source-inspector';
 import { exportDocumentChannel, exportDocumentHandler } from './ipc/export';
@@ -510,6 +510,17 @@ app.whenReady().then(async () => {
       }
       const service = await getAgentTaskService();
       return service.submitDesignGeneration(generationInput);
+    })(event, input);
+  });
+  ipcMain.handle(designGenerationSlotRetryChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createDesignGenerationSlotRetryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, retryInput) => {
+      const service = await getAgentTaskService();
+      const existing = service.getTask(retryInput.taskId);
+      if (!existing || existing.source?.kind !== 'project' || !existing.documentId) throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
+      const metadata = await createProjectStore(workspace).getProjectMetadata(existing.source.id);
+      if (!metadata || metadata.workspaceId !== retryInput.workspaceId || !metadata.documents.some((document) => document.id === existing.documentId)) throw new Error('DOCUMENT_NOT_FOUND');
+      return service.retryDesignGenerationSlot(retryInput);
     })(event, input);
   });
   ipcMain.handle(conversationTestChannel, async (event, input) => {

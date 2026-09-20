@@ -1,13 +1,14 @@
-import type { TaskRecord } from '../../features/tasks/state';
+import { designGenerationSlotIds, type DesignGenerationSlotId, type TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, DesignGenerationInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
+import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, DesignGenerationInput, DesignGenerationSlotRetryInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const conversationSubmitChannel = 'agent:conversation-submit';
 export const designGenerationSubmitChannel = 'agent:design-generation-submit';
+export const designGenerationSlotRetryChannel = 'agent:retry-design-generation-slot';
 export const conversationTestChannel = 'agent:conversation-test';
 export const taskCancelChannel = 'agent:task-cancel';
 export const taskRetryChannel = 'agent:task-retry';
@@ -116,6 +117,11 @@ const isCancelInput = (value: unknown): value is { workspaceId: string; taskId: 
   && typeof value === 'object'
   && isNonEmpty((value as Record<string, unknown>).workspaceId)
   && isNonEmpty((value as Record<string, unknown>).taskId);
+const isDesignGenerationSlotRetryInput = (value: unknown): value is DesignGenerationSlotRetryInput => value !== null
+  && typeof value === 'object'
+  && isNonEmpty((value as Record<string, unknown>).workspaceId)
+  && isNonEmpty((value as Record<string, unknown>).taskId)
+  && designGenerationSlotIds.includes((value as Record<string, unknown>).slotId as DesignGenerationSlotId);
 const isImageGenerationInput = (value: unknown): value is ImageGenerationBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
@@ -288,6 +294,18 @@ export const retryTaskHandler = (
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
   return (await retry(workspace, input.taskId)) ?? null;
+};
+
+export const createDesignGenerationSlotRetryHandler = (
+  window: AgentWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  retry: (workspace: WorkspaceHandle, input: DesignGenerationSlotRetryInput) => Promise<TaskRecord>,
+) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignGenerationSlotRetryInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  return retry(workspace, input);
 };
 
 export const bindAgentTaskService = (service: AgentTaskService): AgentTaskService => service;

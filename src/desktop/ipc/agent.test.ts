@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 
 import * as agentIpc from './agent';
-import { createConversationHandler, cancelTaskHandler, createDesignGenerationHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, retryTaskHandler, createPortfolioAnalysisHandler } from './agent';
+import { createConversationHandler, cancelTaskHandler, createDesignGenerationHandler, createDesignGenerationSlotRetryHandler, createImageEditHandler, createImageGenerationHandler, createImageGenerationTestHandler, retryTaskHandler, createPortfolioAnalysisHandler } from './agent';
 import type { TaskRecord } from '../../features/tasks/state';
 
 const makeFixture = (url: string) => {
@@ -45,6 +45,20 @@ it('accepts design generation only for a writable active workspace', async () =>
   await expect(submit(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1', baseRevisionId: null })).resolves.toEqual(task);
   await expect(submit(fixture.event, { workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1', baseRevisionId: null })).resolves.toEqual(task);
   await expect(submit(fixture.event, { workspaceId: 'workspace-2', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1' })).resolves.toBeNull();
+});
+
+it('retries only a known generation slot in the active writable workspace', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { workspace: { workspaceId: 'workspace-1', openMode: 'writable' } };
+  const retry = createDesignGenerationSlotRetryHandler(
+    fixture.window,
+    'http://localhost:5173/?preview=1',
+    () => workspace as never,
+    async (_workspace, input) => ({ ...task, id: input.taskId }),
+  );
+  await expect(retry(fixture.event, { workspaceId: 'workspace-1', taskId: 'design-1', slotId: 'composition' })).resolves.toMatchObject({ id: 'design-1' });
+  await expect(retry(fixture.event, { workspaceId: 'workspace-1', taskId: 'design-1', slotId: 'unknown' })).resolves.toBeNull();
+  await expect(retry(fixture.event, { workspaceId: 'workspace-2', taskId: 'design-1', slotId: 'composition' })).resolves.toBeNull();
 });
 
 it('accepts conversation connection tests only from the active trusted workspace', async () => {
