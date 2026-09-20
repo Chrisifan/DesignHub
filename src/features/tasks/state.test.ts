@@ -69,6 +69,7 @@ describe('task state transitions', () => {
     const failed = { ...task, state: 'failed' as const, errorCode: 'PROVIDER_REQUEST_FAILED' };
     const retried = retryTask(failed, 'task-2');
     expect(retried).toMatchObject({ parentConversationTaskId: 'conversation-1', contextAssetIds: ['asset-1'], contextVersion: 1 });
+    expect(retried.generationSlots?.map((slot) => slot.id)).toEqual(['primary', 'composition', 'expressive']);
   });
 
   it('preserves analysis thread fields when a task is retried', () => {

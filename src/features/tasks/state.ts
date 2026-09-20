@@ -187,5 +187,17 @@ export const completeTask = (task: TaskRecord): TaskRecord => (
 
 export const retryTask = (task: TaskRecord, id: string): TaskRecord => {
   if (task.state !== 'failed' && task.state !== 'cancelled') throw new Error('TASK_NOT_RETRYABLE');
-  return { ...task, id, state: 'queued', cancelRequested: false, attempt: task.attempt + 1, errorCode: undefined, providerFailure: undefined, analysisDiagnostic: undefined };
+  return {
+    ...task,
+    id,
+    state: 'queued',
+    cancelRequested: false,
+    attempt: task.attempt + 1,
+    errorCode: undefined,
+    providerFailure: undefined,
+    analysisDiagnostic: undefined,
+    ...(task.capability === 'design-generation' && !task.generationSlots?.length
+      ? { generationSlots: createDesignGenerationSlots(), result: undefined }
+      : {}),
+  };
 };
