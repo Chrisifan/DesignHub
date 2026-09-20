@@ -23,6 +23,9 @@ it('persists document revisions and finalization across workspace reopen', async
     const projectId = (await createProjectStore(workspace).createProjectContainer({ workspaceId: workspace.workspace.workspaceId, operationId: 'revision-project', name: 'Revision project', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200 }] })).projectId;
     const first = await commitDocumentRevision(workspace, { workspaceId: workspace.workspace.workspaceId, projectId, documentId: 'doc-1', baseRevisionId: null, operationId: 'revision-1', sceneAssetId: 'scene-1', assetIds: ['asset-1'], contributions: [], operatorName: 'Designer' });
     await setFinalDocumentRevision(workspace, { workspaceId: workspace.workspace.workspaceId, projectId, documentId: 'doc-1', revisionId: first.revisionId });
+    await setFinalDocumentRevision(workspace, { workspaceId: workspace.workspace.workspaceId, projectId, documentId: 'doc-1', revisionId: first.revisionId });
+    const finalized = await loadDocumentRevisions(workspace, workspace.workspace.workspaceId, projectId, 'doc-1');
+    expect(finalized.timeline.filter((event) => event.kind === 'finalized')).toHaveLength(1);
     workspace.close();
     const reopened = await openWorkspace(directory);
     try {

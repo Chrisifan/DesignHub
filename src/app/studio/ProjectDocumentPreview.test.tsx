@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { createScene } from '../../features/canvas/scene';
@@ -84,4 +84,27 @@ it('falls back to the artwork preview when no formal image can be read', async (
 
   await waitFor(() => expect(view.container.querySelector('.artwork--market')).toBeInTheDocument());
   expect(screen.queryByRole('img', { name: '主海报定稿预览' })).not.toBeInTheDocument();
+});
+
+it('releases the object URL immediately when the managed image cannot be decoded', async () => {
+  const scene = createScene({
+    id: 'doc-1',
+    width: 1080,
+    height: 1440,
+    layers: [
+      { id: 'content', type: 'image', role: 'content', assetId: 'asset-final', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false },
+    ],
+  });
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDocumentScene: vi.fn(async () => scene),
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+  };
+  const view = render(<ProjectDocumentPreview workspaceId="workspace-1" projectId="project-1" documentId="doc-1" artwork="market" alt="损坏图片预览" />);
+  const image = await screen.findByRole('img', { name: '损坏图片预览' });
+
+  fireEvent.error(image);
+
+  expect(revokeObjectURL).toHaveBeenCalledWith('blob:finalized-document');
+  expect(view.container.querySelector('.artwork--market')).toBeInTheDocument();
 });

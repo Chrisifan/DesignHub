@@ -363,7 +363,7 @@ export const Workbench = ({
         ...(operatorName.trim() ? { operatorName: operatorName.trim() } : {}),
         scene: candidateScene,
       });
-      if (!committed) return;
+      if (!committed) throw new Error('REVISION_COMMIT_FAILED');
       const finalized = await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId: committed.revisionId });
       if (finalized === false || finalized === null) throw new Error('FINALIZE_FAILED');
       const saved = await getDesktopApi().saveDocumentScene?.({ workspaceId, projectId: project.id, documentId, scene: candidateScene });

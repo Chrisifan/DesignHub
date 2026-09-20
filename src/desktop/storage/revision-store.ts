@@ -140,6 +140,7 @@ export const setFinalDocumentRevision = async (handle: WorkspaceHandle, input: {
   const revision = state.revisions.find((entry) => entry.revisionId === input.revisionId);
   if (!revision) throw new Error('REVISION_NOT_FOUND');
   if (revision.documentId !== input.documentId || revision.projectId !== input.projectId) throw new Error('DOCUMENT_MISMATCH');
+  if (state.finalRevisionId === input.revisionId) return true;
   const event: RevisionTimelineEvent = { id: `finalized-${input.documentId}-${input.revisionId}-${Date.now()}-${randomUUID()}`, kind: 'finalized', label: 'Final revision selected', documentId: input.documentId, revisionId: input.revisionId, timestamp: new Date().toISOString() };
   await writeState(target.file, { revisions: state.revisions, timeline: [...state.timeline, event], finalRevisionId: input.revisionId });
   return true;

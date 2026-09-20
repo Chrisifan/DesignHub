@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { SceneLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
@@ -15,6 +15,7 @@ type ProjectDocumentPreviewProps = {
 
 export const ProjectDocumentPreview = ({ workspaceId, projectId, documentId, artwork, alt }: ProjectDocumentPreviewProps) => {
   const [source, setSource] = useState<string | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     setSource(null);
@@ -37,17 +38,27 @@ export const ProjectDocumentPreview = ({ workspaceId, projectId, documentId, art
       const bytes = await getDesktopApi().readAsset?.({ workspaceId, projectId, assetId: image.assetId });
       if (!bytes || cancelled) return;
       objectUrl = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'image/*' }));
+      objectUrlRef.current = objectUrl;
       if (!cancelled) setSource(objectUrl);
     };
 
     void load().catch(() => undefined);
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (objectUrl && objectUrlRef.current === objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrlRef.current = null;
+      }
     };
   }, [documentId, projectId, workspaceId]);
 
   return source
-    ? <img className="project-detail-document-card__image" src={source} alt={alt} onError={() => setSource(null)} />
+    ? <img className="project-detail-document-card__image" src={source} alt={alt} onError={() => {
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+          objectUrlRef.current = null;
+        }
+        setSource(null);
+      }} />
     : <ArtworkPreview kind={artwork} />;
 };

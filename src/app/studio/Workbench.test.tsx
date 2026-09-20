@@ -909,3 +909,78 @@ it('keeps the selected candidate when scene storage fails', async () => {
   expect(within(contextTools).getByRole('button', { name: '定稿所选候选' })).toBeEnabled();
   confirm.mockRestore();
 });
+
+it('reports a failed finalization when revision commit returns no result', async () => {
+  const notify = vi.fn();
+  const onBack = vi.fn();
+  const setFinalDocumentRevision = vi.fn(async () => true);
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+    commitDocumentRevision: vi.fn(async () => null),
+    setFinalDocumentRevision,
+    saveDocumentScene: vi.fn(async () => true),
+  };
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await renderFinalizableCandidate({ onBack, notify });
+  fireEvent.click(screen.getByRole('button', { name: /候选设计稿/ }));
+  const contextTools = screen.getByRole('toolbar', { name: '上下文工具' });
+  fireEvent.click(within(contextTools).getByRole('button', { name: '定稿所选候选' }));
+
+  await waitFor(() => expect(notify).toHaveBeenCalledWith('候选定稿失败'));
+  expect(setFinalDocumentRevision).not.toHaveBeenCalled();
+  expect(onBack).not.toHaveBeenCalled();
+  expect(within(contextTools).getByRole('button', { name: '定稿所选候选' })).toBeEnabled();
+  confirm.mockRestore();
+});
+
+it('keeps the candidate when selecting the final revision is rejected', async () => {
+  const notify = vi.fn();
+  const onBack = vi.fn();
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+    commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),
+    setFinalDocumentRevision: vi.fn(async () => false),
+    saveDocumentScene,
+  };
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await renderFinalizableCandidate({ onBack, notify });
+  fireEvent.click(screen.getByRole('button', { name: /候选设计稿/ }));
+  const contextTools = screen.getByRole('toolbar', { name: '上下文工具' });
+  fireEvent.click(within(contextTools).getByRole('button', { name: '定稿所选候选' }));
+
+  await waitFor(() => expect(notify).toHaveBeenCalledWith('候选定稿失败'));
+  expect(saveDocumentScene).not.toHaveBeenCalled();
+  expect(onBack).not.toHaveBeenCalled();
+  expect(within(contextTools).getByRole('button', { name: '定稿所选候选' })).toBeEnabled();
+  confirm.mockRestore();
+});
+
+it('keeps the candidate when project metadata synchronization fails', async () => {
+  const notify = vi.fn();
+  const onBack = vi.fn();
+  const onCandidateFinalized = vi.fn(async () => { throw new Error('PROJECT_METADATA_UPDATE_FAILED'); });
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
+    readAsset: vi.fn(async () => new Uint8Array([1])),
+    commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),
+    setFinalDocumentRevision: vi.fn(async () => true),
+    saveDocumentScene: vi.fn(async () => true),
+  };
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  await renderFinalizableCandidate({ onBack, notify, onCandidateFinalized });
+  fireEvent.click(screen.getByRole('button', { name: /候选设计稿/ }));
+  const contextTools = screen.getByRole('toolbar', { name: '上下文工具' });
+  fireEvent.click(within(contextTools).getByRole('button', { name: '定稿所选候选' }));
+
+  await waitFor(() => expect(notify).toHaveBeenCalledWith('候选定稿失败'));
+  expect(onCandidateFinalized).toHaveBeenCalledOnce();
+  expect(onBack).not.toHaveBeenCalled();
+  expect(within(contextTools).getByRole('button', { name: '定稿所选候选' })).toBeEnabled();
+  confirm.mockRestore();
+});
