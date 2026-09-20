@@ -2,9 +2,10 @@ import type { Locale } from '../i18n';
 import { isBrand } from '../../features/brands/constraints';
 import { PersonaArtwork } from './PersonaArtwork';
 import { ProjectCoverImage } from './ProjectCoverImage';
+import { ProjectDocumentPreview } from './ProjectDocumentPreview';
 import { localize, type PersonaProfile } from './personas';
 import type { Project } from './types';
-import { ArtworkPreview, Badge, Button, EmptyState, Field, Icon, Select, t } from './ui';
+import { Badge, Button, EmptyState, Field, Icon, Select, t } from './ui';
 import './project-detail.css';
 
 export type ProjectDetailPageProps = {
@@ -188,7 +189,13 @@ export const ProjectDetailPage = ({
                     onClick={() => onOpenDocument(entry?.id, index)}
                   >
                     <span className={`project-detail-document-card__preview document-cover document-cover--${index % 3}`}>
-                      <ArtworkPreview kind={project.artwork} />
+                      <ProjectDocumentPreview
+                        workspaceId={project.workspaceId}
+                        projectId={project.id}
+                        documentId={entry?.id}
+                        artwork={project.artwork}
+                        alt={t(locale, `${name}定稿预览`, `${name} final preview`)}
+                      />
                     </span>
                     <span className="project-detail-document-card__body">
                       <span>
