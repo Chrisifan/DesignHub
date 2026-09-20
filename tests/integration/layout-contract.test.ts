@@ -54,11 +54,11 @@ it('keeps the project detail page responsive without horizontal overflow', () =>
   expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?grid-auto-rows:\s*max-content/);
   expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?align-content:\s*start/);
   expect(styles).toMatch(/\.project-detail-header\s*\{[\s\S]*?overflow:\s*hidden/);
-  expect(styles).toMatch(/\.project-detail-hero\s*\{[\s\S]*?min-height:\s*240px/);
-  expect(styles).toMatch(/\.project-detail-summary__description\s*\{[\s\S]*?-webkit-line-clamp:\s*2/);
+  expect(styles).toMatch(/\.project-detail-hero\s*\{[\s\S]*?min-height:\s*168px/);
+  expect(styles).toMatch(/\.project-detail-summary__description\s*\{[\s\S]*?-webkit-line-clamp:\s*1/);
   expect(styles).toMatch(/\.project-detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*2fr\)\s+minmax\(280px,\s*1fr\)/);
   expect(styles).toMatch(/@media \(max-width:\s*1100px\)[\s\S]*?\.project-detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-hero,[\s\S]*?\.project-detail-hero__overlay\s*\{[\s\S]*?min-height:\s*180px/);
+  expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-hero,[\s\S]*?\.project-detail-hero__overlay\s*\{[\s\S]*?min-height:\s*168px/);
   expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-document-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?overflow-x:\s*clip/);
 });

@@ -783,6 +783,7 @@ it('applies a finalized image candidate to the active canvas scene', async () =>
   const saveDocumentScene = vi.fn(async () => true);
   const scene = createScene({ id: 'scene-current', width: 1080, height: 1440, layers: [{ id: 'image', type: 'image', assetId: 'asset-old', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false }] });
   window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, listTasks, commitDocumentRevision, setFinalDocumentRevision, saveDocumentScene };
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
   render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   await waitFor(() => expect(screen.getByRole('button', { name: '定稿' })).toBeInTheDocument());
@@ -791,6 +792,7 @@ it('applies a finalized image candidate to the active canvas scene', async () =>
     scene: expect.objectContaining({ layers: [expect.objectContaining({ assetId: 'asset-candidate' })] }),
   })));
   expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({ scene: expect.objectContaining({ layers: [expect.objectContaining({ assetId: 'asset-candidate' })] }) }));
+  confirm.mockRestore();
 });
 
 const completedConversationTask = {
@@ -843,7 +845,10 @@ it('enables the right-toolbar finalization action only after selecting a candida
 
 it('preserves reference layers and waits for scene storage before leaving', async () => {
   let resolveSave: ((value: boolean) => void) | undefined;
-  const saveDocumentScene = vi.fn((_input: { workspaceId: string; projectId: string; documentId: string; scene: DesignScene }) => new Promise<boolean>((resolve) => { resolveSave = resolve; }));
+  const saveDocumentScene = vi.fn((input: { workspaceId: string; projectId: string; documentId: string; scene: DesignScene }) => {
+    void input;
+    return new Promise<boolean>((resolve) => { resolveSave = resolve; });
+  });
   const onBack = vi.fn();
   const onCandidateFinalized = vi.fn(async () => undefined);
   const scene = createScene({
