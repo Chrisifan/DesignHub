@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { AnalysisPanel } from './AnalysisPanel';
@@ -12,6 +12,14 @@ const task = (progressText: string) => ({
   capability: 'conversation' as const,
   progressText,
 });
+
+const attachment = {
+  assetId: 'asset-1',
+  name: 'reference.png',
+  mimeType: 'image/png',
+  bytes: new Uint8Array([1, 2, 3]),
+  previewUrl: 'data:image/png;base64,AQID',
+};
 
 const renderPanel = (progressText: string) => render(
   <AnalysisPanel
@@ -100,4 +108,70 @@ it('keeps the body as the independently scrolling analysis region', () => {
 it('uses the compact action treatment for generation', () => {
   renderPanel('分析完成');
   expect(screen.getByRole('button', { name: '生成' })).toHaveClass('workbench-analysis-panel__generate');
+});
+
+it('shows one request line until the user expands its text and images', () => {
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message={'第一行需求\n第二行补充'}
+      attachments={[attachment]}
+      task={task('分析内容')}
+      canGenerate={false}
+      onGenerate={vi.fn()}
+      onCopyRequest={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByText('第一行需求 第二行补充')).toHaveClass('workbench-analysis-panel__request-line');
+  expect(screen.queryByRole('img', { name: 'reference.png' })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: '展开本轮输入' }));
+
+  expect(screen.getByTestId('analysis-request-details')).toHaveTextContent('第一行需求 第二行补充');
+  expect(screen.getByRole('img', { name: 'reference.png' })).toBeVisible();
+});
+
+it('copies the current request payload and collapses the full panel', () => {
+  const onCopyRequest = vi.fn();
+  const onCollapse = vi.fn();
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message="生成春季主视觉"
+      attachments={[attachment]}
+      task={task('分析内容')}
+      canGenerate={false}
+      onGenerate={vi.fn()}
+      onCopyRequest={onCopyRequest}
+      onCollapse={onCollapse}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: '复制到对话框' }));
+  fireEvent.click(screen.getByRole('button', { name: '收起本轮分析' }));
+
+  expect(onCopyRequest).toHaveBeenCalledWith({ message: '生成春季主视觉', attachments: [attachment] });
+  expect(onCollapse).toHaveBeenCalledOnce();
+});
+
+it('renders only the animated dots and expand action while collapsed', () => {
+  const onExpand = vi.fn();
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message="生成春季主视觉"
+      attachments={[]}
+      task={task('分析内容')}
+      canGenerate={false}
+      onGenerate={vi.fn()}
+      collapsed
+      onExpand={onExpand}
+    />,
+  );
+
+  expect(screen.getByTestId('collapsed-analysis-dots').children).toHaveLength(3);
+  expect(screen.queryByText('分析内容')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '展开本轮分析' }));
+  expect(onExpand).toHaveBeenCalledOnce();
 });

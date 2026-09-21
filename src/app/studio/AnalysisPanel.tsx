@@ -5,16 +5,28 @@ import type { ConversationImageAttachment } from '../../features/agent/task-serv
 import type { TaskRecord } from '../../features/tasks/state';
 import { Button, Icon, IconButton } from './ui';
 
-type PreviewAttachment = ConversationImageAttachment & { previewUrl: string };
+export type AnalysisPanelAttachment = ConversationImageAttachment & {
+  assetId?: string;
+  previewUrl: string;
+};
+
+export type AnalysisPanelRequest = {
+  message: string;
+  attachments: AnalysisPanelAttachment[];
+};
 
 export type AnalysisPanelProps = {
   locale: Locale;
   message: string;
-  attachments: PreviewAttachment[];
+  attachments: AnalysisPanelAttachment[];
   task?: TaskRecord;
   canGenerate: boolean;
+  collapsed?: boolean;
   onGenerate: () => void;
   onRetry?: () => void;
+  onCopyRequest?: (request: AnalysisPanelRequest) => void;
+  onCollapse?: () => void;
+  onExpand?: () => void;
 };
 
 type AnalysisBlock =
@@ -130,8 +142,9 @@ const renderAnalysisBlock = (block: AnalysisBlock, index: number): ReactNode => 
   return <p key={`${block.type}-${index}`}>{renderInlineMarkdown(block.text)}</p>;
 };
 
-export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate, onGenerate, onRetry }: AnalysisPanelProps) => {
+export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate, collapsed = false, onGenerate, onRetry, onCopyRequest, onCollapse, onExpand }: AnalysisPanelProps) => {
   const [expanded, setExpanded] = useState(false);
+  const [requestExpanded, setRequestExpanded] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const progress = task?.progressText || task?.result?.text || '';
@@ -139,6 +152,10 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
   const failed = task?.state === 'failed';
   const running = task?.state === 'queued' || task?.state === 'running';
   const smoothing = visibleProgress !== progress;
+  const enhancedRequest = Boolean(onCopyRequest || onCollapse);
+  const requestSummary = message.replace(/\s+/gu, ' ').trim();
+
+  useEffect(() => setRequestExpanded(false), [task?.id]);
 
   useEffect(() => {
     if (visibleProgress === progress) return undefined;
@@ -175,20 +192,50 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
     if (bottom && typeof bottom.scrollIntoView === 'function') {
       bottom.scrollIntoView({ block: 'end' });
     }
-  }, [expanded, progress, visibleProgress, task?.state]);
+  }, [expanded, progress, requestExpanded, visibleProgress, task?.state]);
 
   const blocks = visibleProgress ? parseAnalysisMarkdown(visibleProgress) : [];
   const streaming = running || smoothing;
+  if (collapsed) {
+    return (
+      <aside className="workbench-analysis-panel workbench-analysis-panel--collapsed" aria-label={locale === 'zh-CN' ? '本轮分析已收起' : 'Current analysis collapsed'}>
+        <span className="workbench-analysis-panel__streaming" data-testid="collapsed-analysis-dots" aria-hidden="true"><span /><span /><span /></span>
+        <IconButton name="chevron-down" label={locale === 'zh-CN' ? '展开本轮分析' : 'Expand current analysis'} onClick={onExpand} />
+      </aside>
+    );
+  }
   return (
     <aside className="workbench-analysis-panel" aria-label={locale === 'zh-CN' ? '设计分析' : 'Design analysis'}>
-      <div className="workbench-analysis-panel__header">
-        <div>
-          <p>{locale === 'zh-CN' ? '本轮分析' : 'Current analysis'}</p>
-          <strong title={message}>{message || (locale === 'zh-CN' ? '等待输入' : 'Waiting for input')}</strong>
+      {enhancedRequest ? <>
+        <div className="workbench-analysis-panel__header">
+          <div className="workbench-analysis-panel__request">
+            <p>{locale === 'zh-CN' ? '本轮分析' : 'Current analysis'}</p>
+            <strong className="workbench-analysis-panel__request-line" title={message}>{requestSummary || (locale === 'zh-CN' ? '等待输入' : 'Waiting for input')}</strong>
+          </div>
+          {onCopyRequest && <IconButton name="copy" label={locale === 'zh-CN' ? '复制到对话框' : 'Copy to conversation'} onClick={() => onCopyRequest({ message, attachments })} />}
+          <IconButton
+            name="chevron-down"
+            className={`workbench-analysis-panel__request-toggle${requestExpanded ? ' is-expanded' : ''}`}
+            label={locale === 'zh-CN' ? (requestExpanded ? '收起本轮输入' : '展开本轮输入') : (requestExpanded ? 'Collapse current request' : 'Expand current request')}
+            aria-expanded={requestExpanded}
+            onClick={() => setRequestExpanded((value) => !value)}
+          />
+          {onCollapse && <IconButton className="workbench-analysis-panel__collapse" name="chevron-down" label={locale === 'zh-CN' ? '收起本轮分析' : 'Collapse current analysis'} onClick={onCollapse} />}
         </div>
-        {attachments.length > 0 && <IconButton name={expanded ? 'chevron-up' : 'chevron-down'} label={locale === 'zh-CN' ? '展开参考图' : 'Toggle reference images'} onClick={() => setExpanded((value) => !value)} />}
-      </div>
-      {expanded && attachments.length > 0 && (
+        {requestExpanded && <div className="workbench-analysis-panel__request-details" data-testid="analysis-request-details">
+          <p>{message}</p>
+          {attachments.length > 0 && <div className="workbench-analysis-panel__attachments">{attachments.map((attachment) => <img key={attachment.assetId ?? attachment.previewUrl} src={attachment.previewUrl} alt={attachment.name} />)}</div>}
+        </div>}
+      </> : <>
+        <div className="workbench-analysis-panel__header">
+          <div>
+            <p>{locale === 'zh-CN' ? '本轮分析' : 'Current analysis'}</p>
+            <strong title={message}>{message || (locale === 'zh-CN' ? '等待输入' : 'Waiting for input')}</strong>
+          </div>
+          {attachments.length > 0 && <IconButton name={expanded ? 'chevron-up' : 'chevron-down'} label={locale === 'zh-CN' ? '展开参考图' : 'Toggle reference images'} onClick={() => setExpanded((value) => !value)} />}
+        </div>
+      </>}
+      {!enhancedRequest && expanded && attachments.length > 0 && (
         <div className="workbench-analysis-panel__attachments">
           {attachments.map((attachment) => <img key={attachment.previewUrl} src={attachment.previewUrl} alt={attachment.name} />)}
         </div>
