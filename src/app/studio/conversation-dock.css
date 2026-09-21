@@ -4,7 +4,7 @@
   gap: 0;
   padding: 12px 14px 9px;
   border: 1px solid var(--shell-glass-border);
-  border-radius: var(--radius-ui);
+  border-radius: var(--radius-conversation);
   background: var(--shell-glass);
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);
@@ -158,7 +158,7 @@
 }
 
 @media (max-width: 720px) {
-  .conversation-dock--compact { width: calc(100% - 24px); padding-inline: 11px; border-radius: var(--radius-ui); }
+  .conversation-dock--compact { width: calc(100% - 24px); padding-inline: 11px; border-radius: var(--radius-conversation); }
   .conversation-dock__connection { max-width: 100px; }
   .conversation-dock__designer { max-width: 58px; }
   .conversation-dock__attachment { flex-basis: 124px; width: 124px; }

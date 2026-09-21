@@ -17,6 +17,7 @@
 - Preserve `0`, `50%`, `999px`, `inherit`, `45% 45% 16% 16%`, `40% 40% 30% 30%`, and `0 55% 55% 0` only for their documented square, circular, pill, inherited, or artwork shapes.
 - Do not change colors, shadows, spacing, typography, dimensions, markup, or behavior.
 - Preserve all pre-existing worktree changes; review any overlapping dirty file before staging it.
+- Keep the outer conversation dock as the single hierarchy exception at `var(--radius-conversation)` (`14px`) on desktop and mobile; its internal controls remain `var(--radius-ui)`.
 
 ---
 
@@ -372,3 +373,33 @@ git status --short
 ```
 
 Summarize passing focused tests, build/lint status, the known baseline failures, and every file changed. Do not claim the complete suite is green while baseline failures remain.
+
+### Task 6: Add the approved conversation-dock hierarchy exception
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-09-21-unified-corner-radius-design.md`
+- Modify: `docs/superpowers/plans/2026-09-21-unified-corner-radius.md`
+- Modify: `src/app-radius-contract.test.ts`
+- Modify: `src/app/styles/tokens.css`
+- Modify: `src/app/studio/conversation-dock.css`
+
+**Interfaces:**
+- Produces: global CSS custom property `--radius-conversation: 14px`.
+- Produces: one larger radius for the outer conversation dock at every viewport size.
+- Preserves: `--radius-ui: 10px` for all internal conversation controls and ordinary rectangles.
+
+- [x] **Step 1: Extend the contract and verify RED**
+
+Assert that the conversation token is exactly `14px`, that only the outer dock uses it, and that the mobile override uses the same token. Run the focused contract and confirm it fails because the token and usage do not exist yet.
+
+- [x] **Step 2: Implement the minimal token and selector changes**
+
+Add `--radius-conversation: 14px` next to `--radius-ui`, then route the base `.conversation-dock` and its mobile `.conversation-dock--compact` override through the new token. Leave internal controls on `var(--radius-ui)`.
+
+- [x] **Step 3: Verify GREEN and focused behavior**
+
+Run the radius contract together with `ConversationDock.test.tsx`, then run the production build and inspect the dock at desktop and mobile widths.
+
+- [x] **Step 4: Review and commit the exception**
+
+Run `git diff --check`, review the complete diff, and commit the five approved files without unrelated changes.
