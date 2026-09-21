@@ -70,6 +70,13 @@ export const getLatestConversationTask = (tasks: TaskRecord[]): TaskRecord | und
     (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id)
   ))[0];
 
+const getAnalysisStatus = (task: TaskRecord, locale: Locale): { icon: string; kind: 'completed' | 'running' | 'failed'; label: string } => {
+  if (task.state === 'completed') return { icon: 'circle-check', kind: 'completed', label: t(locale, '已完成', 'Completed') };
+  if (task.state === 'cancelled') return { icon: 'circle-alert', kind: 'failed', label: t(locale, '已取消', 'Cancelled') };
+  if (task.state === 'failed') return { icon: 'circle-alert', kind: 'failed', label: t(locale, '失败', 'Failed') };
+  return { icon: 'clock', kind: 'running', label: t(locale, '处理中', 'Processing') };
+};
+
 export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversationConnected, designer, notify, onBack, onRename, onDuplicate, onArchive, onConnections, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
   const [layout, setLayout] = useState<ProjectCanvasLayout | undefined>(project.canvasLayout);
@@ -82,6 +89,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
   const [selectedAnalysisTaskId, setSelectedAnalysisTaskId] = useState<string>();
   const [analysisAttachments, setAnalysisAttachments] = useState<ConversationDockAttachment[]>([]);
   const [analysisOpen, setAnalysisOpen] = useState(true);
+  const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
   const [analysisHistoryOpen, setAnalysisHistoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
@@ -110,6 +118,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
     setSelectedAnalysisTaskId(undefined);
     setAnalysisAttachments([]);
     setSelectedDesignIds([]);
+    setAnalysisCollapsed(false);
   }, [project.id]);
 
   const latestAnalysisTask = (latestConversation ? tasks.find((task) => task.id === latestConversation.id) ?? latestConversation : undefined)
@@ -158,7 +167,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
       ...(referencedAssetIds.length ? { referencedAssetIds } : {}),
     };
     const task = await onSubmitConversation(currentMessage, userAttachments, context);
-    if (task) { setThreadId(task.analysisThreadId); setLatestConversation(task); setSelectedAnalysisTaskId(task.id); void refresh(); }
+    if (task) { setThreadId(task.analysisThreadId); setLatestConversation(task); setSelectedAnalysisTaskId(task.id); setAnalysisCollapsed(false); void refresh(); }
     else notify(t(locale, '分析任务提交失败，可重试。', 'Analysis could not be submitted; retry it.'));
   };
   const generate = async (): Promise<void> => {
@@ -169,7 +178,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
   const selectAnalysis = (taskId: string): void => {
     setSelectedAnalysisTaskId(taskId);
     setSelectedDesignIds(designs.filter((design) => design.sourceConversationTaskId === taskId).map((design) => design.id));
-    setAnalysisHistoryOpen(false);
+    setAnalysisCollapsed(false);
   };
   const saveLayout = async (next: ProjectCanvasLayout): Promise<void> => {
     setLayout(next);
@@ -253,15 +262,19 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
         readOnly={readOnly}
         onSelect={(designId) => setSelectedDesignIds(designId ? [designId] : [])}
         onAddToConversation={(designId) => { void addDesignToConversation(designId); }}
+        onCanvasBackground={() => setAnalysisCollapsed(true)}
         onLayoutChange={saveLayout}
       />
       {analysisOpen && analysisTask && <div className="project-canvas-analysis-panel">
-        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} onGenerate={() => { void generate(); }} onCopyRequest={copyAnalysisRequest} />
+        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} collapsed={analysisCollapsed} onGenerate={() => { void generate(); }} onCopyRequest={copyAnalysisRequest} onCollapse={() => setAnalysisCollapsed(true)} onExpand={() => setAnalysisCollapsed(false)} />
       </div>}
-      {analysisOpen && analysisHistory.length > 0 && <section className={`project-canvas-analysis-history${analysisHistoryOpen ? ' is-open' : ''}`} aria-label={t(locale, '分析结果列表', 'Analysis results')}>
-        {analysisHistoryOpen && <div className="project-canvas-analysis-history__list">{analysisHistory.map((task) => <button type="button" className={`project-canvas-analysis-history__item${task.id === selectedAnalysisTaskId ? ' is-selected' : ''}`} key={task.id} onClick={() => selectAnalysis(task.id)}><strong>{task.requestText || t(locale, '未命名分析', 'Untitled analysis')}</strong><span>{task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'failed' ? t(locale, '失败', 'Failed') : t(locale, '处理中', 'Processing')}</span></button>)}</div>}
+      {analysisOpen && analysisHistory.length > 0 && <section className={`project-canvas-analysis-history${analysisHistoryOpen ? ' is-open' : ''}`} aria-label={t(locale, '分析历史列表', 'Analysis history')}>
+        {analysisHistoryOpen && <div className="project-canvas-analysis-history__list">{analysisHistory.map((task) => {
+          const status = getAnalysisStatus(task, locale);
+          return <button type="button" className={`project-canvas-analysis-history__item${task.id === analysisTask?.id ? ' is-selected' : ''}`} key={task.id} onClick={() => selectAnalysis(task.id)}><span className={`project-canvas-analysis-history__status is-${status.kind}`} data-testid={`analysis-status-${status.kind}`}><Icon name={status.icon} size={13} /></span><span className="project-canvas-analysis-history__copy"><strong>{task.requestText || t(locale, '未命名分析', 'Untitled analysis')}</strong><span>{status.label}</span></span></button>;
+        })}</div>}
         <button type="button" className="project-canvas-analysis-history__trigger" aria-expanded={analysisHistoryOpen} onClick={() => setAnalysisHistoryOpen((open) => !open)}>
-          <span>{t(locale, '分析结果', 'Analysis results')}</span><span className="project-canvas-analysis-history__count">{analysisHistory.length}</span><Icon name={analysisHistoryOpen ? 'chevron-up' : 'chevron-down'} size={14} />
+          <span>{t(locale, '分析历史', 'Analysis history')}</span><span className="project-canvas-analysis-history__count">{analysisHistory.length}</span><Icon name="chevron-down" size={14} />
         </button>
       </section>}
       <div className="project-canvas-toolbar project-canvas-toolbar--bottom">

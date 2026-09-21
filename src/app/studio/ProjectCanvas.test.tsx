@@ -12,12 +12,14 @@ type StageMockProps = {
   selectedDesignIds?: readonly string[];
   onSelect: (designId: string | null) => void;
   onAddToConversation?: (designId: string) => void;
+  onCanvasBackground?: () => void;
   children?: ReactNode;
 };
 
 vi.mock('./ProjectCanvasStage', () => ({
-  ProjectCanvasStage: ({ designs, selectedDesignIds = [], onSelect, onAddToConversation }: StageMockProps) => (
+  ProjectCanvasStage: ({ designs, selectedDesignIds = [], onSelect, onAddToConversation, onCanvasBackground }: StageMockProps) => (
     <div aria-label="设计画布内容">
+      <button type="button" aria-label="画布空白" onClick={onCanvasBackground}>画布空白</button>
       {designs.map((design) => (
         <button
           type="button"
@@ -51,6 +53,30 @@ const conversation = (input: Partial<TaskRecord> & Pick<TaskRecord, 'id' | 'crea
   analysisThreadId: input.analysisThreadId ?? 'thread-1',
   createdAt: input.createdAt,
 });
+
+const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[]) => {
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    listProjectDesigns: vi.fn(async () => []),
+    loadProjectCanvasLayout: vi.fn(async () => null),
+    listTasks: vi.fn(async () => taskRecords),
+  };
+  return render(
+    <ProjectCanvas
+      locale="zh-CN"
+      project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
+      workspaceId="workspace-1"
+      readOnly={false}
+      conversationConnected
+      designer={null}
+      notify={vi.fn()}
+      onBack={vi.fn()}
+      onConnections={vi.fn()}
+      onSubmitConversation={vi.fn(async () => null)}
+      onSubmitDesignGeneration={vi.fn(async () => null)}
+    />,
+  );
+};
 
 describe('getAnalysisHistory', () => {
   it('includes the displayed analysis, orders newest first, and counts every conversation in the thread', () => {
@@ -164,7 +190,7 @@ describe('ProjectCanvas design references', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: /分析结果/u }));
+    fireEvent.click(await screen.findByRole('button', { name: /分析历史/u }));
     fireEvent.click(screen.getByRole('button', { name: /第一轮分析/u }));
 
     expect(screen.getByRole('button', { name: '设计稿 方案一' })).toHaveAttribute('aria-pressed', 'true');
@@ -203,7 +229,7 @@ describe('ProjectCanvas design references', () => {
       />,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: /分析结果/u }));
+    fireEvent.click(await screen.findByRole('button', { name: /分析历史/u }));
     fireEvent.click(screen.getByRole('button', { name: /第一轮分析/u }));
     fireEvent.click(screen.getByRole('button', { name: '导出所选设计稿' }));
 
@@ -251,5 +277,34 @@ describe('ProjectCanvas design references', () => {
 
     expect(screen.getByLabelText('设计需求')).toHaveValue('保留现有草稿\n\n加入春季植物元素');
     expect(screen.getAllByRole('button', { name: '预览 plant.png' })).toHaveLength(1);
+  });
+
+  it('keeps analysis history open and shows status icons after selecting an item', async () => {
+    const tasks: TaskRecord[] = [
+      { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析', state: 'completed' }), source: { kind: 'project', id: 'project-1' }, result: { text: '第一轮结果' } },
+      { ...conversation({ id: 'analysis-2', createdAt: '2026-09-21T11:00:00.000Z', requestText: '第二轮分析', state: 'running' }), source: { kind: 'project', id: 'project-1' } },
+      { ...conversation({ id: 'analysis-3', createdAt: '2026-09-21T12:00:00.000Z', requestText: '第三轮分析', state: 'failed' }), source: { kind: 'project', id: 'project-1' } },
+    ];
+    renderProjectCanvasWithTasks(tasks);
+    fireEvent.click(await screen.findByRole('button', { name: /分析历史/u }));
+
+    expect(screen.getByTestId('analysis-status-completed')).toBeInTheDocument();
+    expect(screen.getByTestId('analysis-status-running')).toBeInTheDocument();
+    expect(screen.getByTestId('analysis-status-failed')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /第一轮分析/u }));
+
+    expect(screen.getByRole('button', { name: /第二轮分析/u })).toBeVisible();
+  });
+
+  it('collapses on canvas background and expands when a history item is selected', async () => {
+    const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } };
+    renderProjectCanvasWithTasks([analysis]);
+
+    fireEvent.click(await screen.findByRole('button', { name: '画布空白' }));
+    expect(screen.getByTestId('collapsed-analysis-dots')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /分析历史/u }));
+    fireEvent.click(screen.getByRole('button', { name: /第一轮分析/u }));
+    expect(screen.queryByTestId('collapsed-analysis-dots')).not.toBeInTheDocument();
   });
 });
