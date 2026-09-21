@@ -5,7 +5,9 @@ import { getDesktopApi } from '../../platform/runtime';
 
 export type CanvasViewport = ProjectCanvasLayout['viewport'];
 export type CanvasSize = { width: number; height: number };
-export type DesignDimensions = Pick<ProjectDesign, 'id' | 'width' | 'height'>;
+export type DesignDimensions = Pick<ProjectDesign, 'id' | 'width' | 'height'> & {
+  rowKey?: string;
+};
 
 export const layoutProjectDesigns = (
   designs: readonly DesignDimensions[],
@@ -17,14 +19,22 @@ export const layoutProjectDesigns = (
   let x = 0;
   let y = 0;
   let rowHeight = 0;
+  let rowKey: string | undefined;
   designs.forEach((design) => {
     const width = Math.max(1, design.width);
     const height = Math.max(1, design.height);
-    if (x > 0 && x + width > maxWidth) {
+    const startsExplicitRow = design.rowKey !== undefined && design.rowKey !== rowKey;
+    if (startsExplicitRow || (design.rowKey === undefined && rowKey !== undefined)) {
+      if (x > 0) y += rowHeight + gap;
+      x = 0;
+      rowHeight = 0;
+    }
+    if (design.rowKey === undefined && x > 0 && x + width > maxWidth) {
       x = 0;
       y += rowHeight + gap;
       rowHeight = 0;
     }
+    rowKey = design.rowKey;
     positions[design.id] = { x, y };
     x += width + gap;
     rowHeight = Math.max(rowHeight, height);
@@ -125,10 +135,12 @@ export const ProjectCanvasStage = ({
   const stageRef = useRef<any>(null);
   const [size, setSize] = useState<CanvasSize>({ width: 1200, height: 760 });
   const [viewport, setViewport] = useState<CanvasViewport>(initialViewport ?? { zoom: 0.65, offsetX: 40, offsetY: 40 });
-  const [nodes, setNodes] = useState<Record<string, Point>>(() => initialNodes ?? layoutProjectDesigns(designs));
+  const [nodes, setNodes] = useState<Record<string, Point>>(() => initialNodes ?? layoutProjectDesigns(designs.map((design) => ({ ...design, rowKey: design.sourceTaskId }))));
+  const [skeletonPhase, setSkeletonPhase] = useState(0);
   const dragRef = useRef<{ start: Point; viewport: CanvasViewport } | null>(null);
   const previousDesignCount = useRef(designs.length);
   const images = useAssetImages(workspaceId, projectId, designs);
+  const layoutDesigns = useMemo(() => designs.map((design) => ({ ...design, rowKey: design.sourceTaskId })), [designs]);
   const notifyLayout = useCallback((nextViewport: CanvasViewport, nextNodes: Record<string, Point>): void => {
     onViewportChange?.(nextViewport);
     onLayoutChange?.({ viewport: nextViewport, nodes: nextNodes });
@@ -151,12 +163,32 @@ export const ProjectCanvasStage = ({
 
   useEffect(() => {
     setNodes((current) => {
-      const fallback = layoutProjectDesigns(designs);
+      const fallback = layoutProjectDesigns(layoutDesigns);
       const next: Record<string, Point> = {};
       designs.forEach((design) => { next[design.id] = current[design.id] ?? fallback[design.id] ?? { x: 0, y: 0 }; });
+      const rows = new Map<string, string[]>();
+      layoutDesigns.forEach((design) => {
+        if (!design.rowKey) return;
+        rows.set(design.rowKey, [...(rows.get(design.rowKey) ?? []), design.id]);
+      });
+      rows.forEach((ids) => {
+        if (ids.length < 2) return;
+        const yValues = ids.map((id) => next[id]?.y).filter((value): value is number => value !== undefined);
+        if (new Set(yValues).size < 2) return;
+        ids.forEach((id) => { next[id] = fallback[id] ?? next[id]!; });
+      });
       return next;
     });
-  }, [designs]);
+  }, [designs, layoutDesigns]);
+
+  useEffect(() => {
+    if (pendingDesigns.length === 0) {
+      setSkeletonPhase(0);
+      return undefined;
+    }
+    const timer = window.setInterval(() => setSkeletonPhase((current) => (current + 1) % 24), 70);
+    return () => window.clearInterval(timer);
+  }, [pendingDesigns.length]);
 
   useEffect(() => {
     if (designs.length <= previousDesignCount.current || designs.length === 0) {
@@ -164,7 +196,7 @@ export const ProjectCanvasStage = ({
       return;
     }
     const newest = designs.at(-1)!;
-    const position = nodes[newest.id] ?? layoutProjectDesigns([newest])[newest.id] ?? { x: 0, y: 0 };
+    const position = nodes[newest.id] ?? layoutProjectDesigns([{ ...newest, rowKey: newest.sourceTaskId }])[newest.id] ?? { x: 0, y: 0 };
     const host = hostRef.current;
     if (host) {
       const next = centerNodeInViewport({ ...position, width: newest.width, height: newest.height }, { width: host.clientWidth || size.width, height: host.clientHeight || size.height }, viewport.zoom);
@@ -178,7 +210,8 @@ export const ProjectCanvasStage = ({
     if (initialNodes) setNodes((current) => ({ ...current, ...initialNodes }));
   }, [initialNodes]);
 
-  const pendingPositions = useMemo(() => layoutProjectDesigns([...designs, ...pendingDesigns]), [designs, pendingDesigns]);
+  const pendingPositions = useMemo(() => layoutProjectDesigns([...layoutDesigns, ...pendingDesigns]), [layoutDesigns, pendingDesigns]);
+  const skeletonOpacity = 0.14 + ((Math.sin((skeletonPhase / 24) * Math.PI * 2) + 1) / 2) * 0.16;
 
   const handleWheel = (rawEvent: unknown): void => {
     const event = rawEvent as StageEvent;
@@ -242,7 +275,7 @@ export const ProjectCanvasStage = ({
         <Layer>
           {pendingDesigns.map((design) => {
             const position = nodes[design.id] ?? pendingPositions[design.id] ?? { x: 0, y: 0 };
-            return <Rect key={`pending-${design.id}`} x={position.x} y={position.y} width={design.width} height={design.height} fill="rgba(148,163,184,.18)" stroke="rgba(148,163,184,.55)" dash={[12, 10]} strokeWidth={2 / viewport.zoom} cornerRadius={8} />;
+            return <Rect key={`pending-${design.id}`} x={position.x} y={position.y} width={design.width} height={design.height} fill={`rgba(148,163,184,${skeletonOpacity.toFixed(3)})`} stroke="rgba(148,163,184,.65)" dash={[12, 10]} dashOffset={-skeletonPhase * 8} strokeWidth={2 / viewport.zoom} cornerRadius={8} />;
           })}
           {designs.map((design) => {
             const position = nodes[design.id] ?? { x: 0, y: 0 };

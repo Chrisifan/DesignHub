@@ -174,22 +174,31 @@
 .project-canvas-analysis-column {
   position: absolute;
   z-index: 9;
-  top: 50%;
+  top: 78px;
   left: 16px;
   width: min(286px, calc(100% - 36px));
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: min(70vh, 600px);
-  transform: translateY(-50%);
+  max-height: min(70vh, 560px);
 }
 
 .project-canvas-analysis-column .workbench-analysis-panel {
   position: relative;
   inset: auto;
   width: 100%;
-  max-height: min(58vh, 500px);
+  max-height: min(62vh, 520px);
   transform: none;
+  border-color: var(--shell-glass-border);
+  background: var(--shell-glass);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+  backdrop-filter: var(--shell-backdrop);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent), var(--shadow-overlay);
+}
+
+.project-canvas-analysis-column .workbench-analysis-panel__header,
+.project-canvas-analysis-column .workbench-analysis-panel__footer {
+  background: transparent;
 }
 
 .project-canvas-analysis-history {

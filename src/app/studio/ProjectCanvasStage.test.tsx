@@ -17,6 +17,19 @@ describe('project canvas math', () => {
     });
   });
 
+  it('keeps designs from the same generation task on one row', () => {
+    const positions = layoutProjectDesigns([
+      { id: 'a', width: 1080, height: 1440, rowKey: 'task-1' },
+      { id: 'b', width: 1080, height: 1440, rowKey: 'task-1' },
+      { id: 'c', width: 1080, height: 1440, rowKey: 'task-2' },
+    ]);
+    expect(positions).toEqual({
+      a: { x: 0, y: 0 },
+      b: { x: 1104, y: 0 },
+      c: { x: 0, y: 1464 },
+    });
+  });
+
   it('zooms around the pointer without moving the content under the pointer', () => {
     expect(zoomAroundPointer({ zoom: 1, offsetX: 0, offsetY: 0 }, { x: 200, y: 100 }, 2)).toEqual({ zoom: 2, offsetX: -200, offsetY: -100 });
   });
