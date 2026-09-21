@@ -73,7 +73,7 @@
 .project-canvas-toolbar__actions {
   padding: 4px;
   border: 1px solid var(--shell-glass-border);
-  border-radius: 15px;
+  border-radius: var(--radius-ui);
   background: var(--shell-glass);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 11%, transparent);
   -webkit-backdrop-filter: var(--shell-backdrop);
@@ -88,7 +88,7 @@
   width: 36px;
   gap: 2px;
   transform: translateY(-50%);
-  border-radius: 15px;
+  border-radius: var(--radius-ui);
 }
 
 .project-canvas-toolbar__actions .icon-button {
@@ -104,7 +104,7 @@
   align-items: center;
   padding: 2px;
   border: 1px solid var(--shell-glass-border);
-  border-radius: 13px;
+  border-radius: var(--radius-ui);
   background: var(--shell-glass);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 11%, transparent);
   -webkit-backdrop-filter: var(--shell-backdrop);
@@ -136,7 +136,7 @@
   max-width: 260px;
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--studio-border, #cbd5e1) 65%, transparent);
-  border-radius: 14px;
+  border-radius: var(--radius-ui);
   background: color-mix(in srgb, var(--studio-surface, #fff) 66%, transparent);
   box-shadow: 0 12px 32px rgb(15 23 42 / 10%);
   backdrop-filter: blur(18px) saturate(140%);
@@ -154,7 +154,7 @@
   gap: 2px;
   padding: 7px;
   border: 1px solid var(--shell-glass-border);
-  border-radius: 16px;
+  border-radius: var(--radius-ui);
   background: var(--shell-glass);
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);
@@ -168,7 +168,7 @@
   min-height: 32px;
   padding: 0 9px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface);
   background: transparent;
   font-size: 11px;
@@ -213,7 +213,7 @@
   width: min(286px, calc(100% - 36px));
   overflow: hidden;
   border: 1px solid var(--shell-glass-border);
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
   background: var(--project-canvas-panel-background);
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);

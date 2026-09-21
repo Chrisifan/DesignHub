@@ -39,6 +39,16 @@ describe('application corner radius contract', () => {
       'src/app/styles/studio.css',
     ]);
   });
+
+  it('uses the shared radius in primary creation and editing workflows', () => {
+    expectUnifiedRadii([
+      'src/app/studio/studio-home.css',
+      'src/app/studio/project-detail.css',
+      'src/app/studio/project-canvas.css',
+      'src/app/studio/conversation-dock.css',
+      'src/app/studio/workbench.css',
+    ]);
+  });
 });
 
 export { expectUnifiedRadii };
