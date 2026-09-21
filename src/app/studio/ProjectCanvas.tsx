@@ -265,7 +265,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
         onCanvasBackground={() => setAnalysisCollapsed(true)}
         onLayoutChange={saveLayout}
       />
-      {analysisOpen && analysisTask && <div className="project-canvas-analysis-panel">
+      {analysisOpen && analysisTask && <div className={`project-canvas-analysis-panel${analysisCollapsed ? ' is-collapsed' : ''}`}>
         <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} collapsed={analysisCollapsed} onGenerate={() => { void generate(); }} onCopyRequest={copyAnalysisRequest} onCollapse={() => setAnalysisCollapsed(true)} onExpand={() => setAnalysisCollapsed(false)} />
       </div>}
       {analysisOpen && analysisHistory.length > 0 && <section className={`project-canvas-analysis-history${analysisHistoryOpen ? ' is-open' : ''}`} aria-label={t(locale, '分析历史列表', 'Analysis history')}>

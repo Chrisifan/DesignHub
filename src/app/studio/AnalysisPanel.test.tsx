@@ -171,6 +171,7 @@ it('renders only the animated dots and expand action while collapsed', () => {
   );
 
   expect(screen.getByTestId('collapsed-analysis-dots').children).toHaveLength(3);
+  expect(screen.getByTestId('collapsed-analysis-dots').closest('.workbench-analysis-panel')).toHaveClass('workbench-analysis-panel--collapsed');
   expect(screen.queryByText('分析内容')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '展开本轮分析' }));
   expect(onExpand).toHaveBeenCalledOnce();

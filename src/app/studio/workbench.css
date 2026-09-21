@@ -1122,6 +1122,29 @@
   transform: translateY(-50%);
 }
 
+.workbench-analysis-panel--collapsed {
+  width: auto;
+  min-width: 76px;
+  min-height: 36px;
+  max-height: none;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+}
+
+.workbench-analysis-panel--collapsed .workbench-analysis-panel__streaming {
+  padding: 0;
+}
+
+.workbench-analysis-panel--collapsed .icon-button {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+}
+
 .workbench-analysis-panel__header,
 .workbench-analysis-panel__footer {
   flex: 0 0 auto;
@@ -1135,6 +1158,13 @@
 
 .workbench-analysis-panel__header {
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.workbench-analysis-panel__header > .icon-button {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  flex: 0 0 26px;
 }
 
 .workbench-analysis-panel__footer {
@@ -1173,12 +1203,55 @@
   font-weight: 600;
 }
 
+.workbench-analysis-panel__request {
+  min-width: 0;
+  flex: 1;
+}
+
+.workbench-analysis-panel__request-line {
+  max-width: 100% !important;
+}
+
+.workbench-analysis-panel__request-toggle .ui-icon,
+.workbench-analysis-panel__collapse .ui-icon {
+  transition: transform 160ms ease;
+}
+
+.workbench-analysis-panel__request-toggle.is-expanded .ui-icon,
+.workbench-analysis-panel__collapse .ui-icon {
+  transform: rotate(180deg);
+}
+
+.workbench-analysis-panel__request-details {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-container-high) 34%, transparent);
+}
+
+.workbench-analysis-panel__request-details > p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.workbench-analysis-panel__request-details .workbench-analysis-panel__attachments {
+  padding: 8px 0 0;
+  border: 0;
+}
+
 .workbench-analysis-panel__attachments {
   display: flex;
   gap: 6px;
   padding: 8px 12px;
   overflow-x: auto;
   border-bottom: 1px solid var(--border-subtle);
+  scrollbar-width: none;
+}
+
+.workbench-analysis-panel__attachments::-webkit-scrollbar {
+  display: none;
 }
 
 .workbench-analysis-panel__attachments img {
@@ -1197,6 +1270,11 @@
   padding: 12px;
   font-size: 12px;
   line-height: 1.55;
+  scrollbar-width: none;
+}
+
+.workbench-analysis-panel__body::-webkit-scrollbar {
+  display: none;
 }
 
 .workbench-analysis-panel__markdown {
