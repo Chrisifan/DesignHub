@@ -1,7 +1,7 @@
 import { expect, test } from 'playwright/test';
 
 import type { TaskRecord } from '../../src/features/tasks/state';
-import { gotoTestWorkspace } from './test-workspace';
+import { gotoTestWorkspace, navigateFromUserMenu } from './test-workspace';
 
 const longFilename = 'portfolio-reference-2026-final-approved-editorial-grid-material-lighting-typography-composition-texture-art-direction-presentation-cover-detail-archive-version-18.png';
 const longNegativeRule = '避免使用会破坏安全边距、信息层级与主体识别度的霓虹渐变、高强度装饰效果以及喧宾夺主的复杂背景纹理';
@@ -13,7 +13,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await page.route('designhub-artwork://**', (route) => route.fulfill({ contentType: 'image/png', body: avatarPng }));
     await page.addInitScript(() => localStorage.setItem('designhub.ui.theme', 'dark'));
     await gotoTestWorkspace(page);
-    await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '设计师', exact: true }).click();
+    await navigateFromUserMenu(page, '设计师');
     await page.getByRole('button', { name: '从作品集创建' }).click();
     await page.evaluate((longRule) => {
       const api = (window as typeof window & { designhub: Record<string, unknown> }).designhub;
@@ -157,13 +157,13 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     const grainPresentation = await grainProgress.evaluate((track) => {
       const fill = track.querySelector<HTMLElement>('i')!;
       return {
-        token: getComputedStyle(document.documentElement).getPropertyValue('--warning').trim(),
+        token: getComputedStyle(document.documentElement).getPropertyValue('--accent-warm').trim(),
         color: getComputedStyle(fill).backgroundColor,
         ratio: fill.getBoundingClientRect().width / track.getBoundingClientRect().width,
       };
     });
-    expect(grainPresentation.token).toBe('#f6bd60');
-    expect(grainPresentation.color).toBe('rgb(246, 189, 96)');
+    expect(grainPresentation.token).toBe('#fb923c');
+    expect(grainPresentation.color).toBe('rgb(251, 146, 60)');
     expect(grainPresentation.ratio).toBeCloseTo(0.15, 2);
     await expect(drawer.getByRole('textbox')).toHaveCount(0);
     await expect(drawer.getByRole('spinbutton')).toHaveCount(0);

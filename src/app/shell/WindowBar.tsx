@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import type { Locale, Messages } from '../i18n';
 import type { Theme } from '../studio/types';
 import { Icon, IconButton } from '../studio/ui';
@@ -15,12 +17,14 @@ type WindowBarProps = {
     name: string;
     detail: string;
     label: string;
+    disabled?: boolean;
     onClick: () => void;
   };
+  userMenu?: ReactNode;
+  onBrandClick?: () => void;
 };
 
 export const WindowBar = ({
-  copy,
   locale,
   theme,
   nativeControlSide,
@@ -29,22 +33,18 @@ export const WindowBar = ({
   previewLabel,
   themeLabel,
   workspace,
+  userMenu,
 }: WindowBarProps) => (
   <header className="window-bar">
     {nativeControlSide === 'left' ? <div className="window-control-safe-area window-control-safe-area--left" aria-hidden="true" /> : null}
     <div className="window-bar-drag-region">
-      <div className="window-brand">
-        <span className="window-brand-mark" aria-hidden="true">
-          D
-        </span>
-        <span className="window-bar-title">{copy.appName}</span>
-      </div>
       {workspace ? (
         <>
           <span className="window-bar-separator" aria-hidden="true" />
           <button
             type="button"
             className="window-workspace-switch"
+            disabled={workspace.disabled}
             onClick={workspace.onClick}
             title={workspace.label}
             aria-label={workspace.label}
@@ -81,6 +81,7 @@ export const WindowBar = ({
         >
           {locale === 'zh-CN' ? 'EN' : '中'}
         </button>
+        {userMenu}
       </div>
     </div>
     {nativeControlSide === 'right' ? <div className="window-control-safe-area window-control-safe-area--right" aria-hidden="true" /> : null}

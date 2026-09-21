@@ -7,6 +7,7 @@ import { Button, Field, Icon, Modal, t } from './studio/ui';
 import type { Theme } from './studio/types';
 import type { WorkspaceDescriptor } from '../features/workspace/open-workspace';
 import { getDesktopApi } from '../platform/desktop';
+import { usePointerDotBackground } from './usePointerDotBackground';
 import './styles/tokens.css';
 import './styles/window.css';
 
@@ -59,7 +60,9 @@ export const App = () => {
   const [workspaceError, setWorkspaceError] = useState('');
   const [workspace, setWorkspace] = useState<WorkspaceDescriptor | null>(null);
   const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceDescriptor[]>(readRecentWorkspaces);
+  const appShellRef = useRef<HTMLElement>(null);
   const startupRestoreAttempted = useRef(false);
+  usePointerDotBackground(appShellRef);
   const changeLocale = (value: Locale) => {
     setLocale(value);
     savePreference('designhub.ui.locale', value);
@@ -187,7 +190,7 @@ export const App = () => {
   );
 
   return (
-    <main className="app-shell" aria-label={copy.appName} data-theme={theme}>
+    <main ref={appShellRef} className="app-shell" aria-label={copy.appName} data-theme={theme}>
       {!entered && (
         <WindowBar
           copy={copy}

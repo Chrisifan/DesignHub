@@ -40,13 +40,14 @@ it('uses semantic colors for status UI without consuming brand or decorative acc
   const libraryStyles = readStyle('../../src/app/studio/library.css');
   const personaStyles = readStyle('../../src/app/studio/persona.css');
   const workbenchStyles = readStyle('../../src/app/studio/workbench.css');
+  const conversationDockStyles = readStyle('../../src/app/studio/conversation-dock.css');
 
   expect(studioStyles).toMatch(/\.badge--success\s*\{[\s\S]*?color:\s*var\(--success\)/u);
   expect(studioStyles).toMatch(/\.badge--warning\s*\{[\s\S]*?color:\s*var\(--warning\)/u);
   expect(studioStyles).toMatch(/\.badge--error\s*\{[\s\S]*?color:\s*var\(--error\)/u);
   expect(studioStyles).toMatch(/\.badge--primary\s*\{[\s\S]*?color:\s*var\(--primary\)/u);
   expect(studioStyles).toMatch(/\.inline-notice\s*>\s*\.ui-icon\s*\{[\s\S]*?color:\s*var\(--info\)/u);
-  expect(studioStyles).toMatch(/\.local-note\s*>\s*\.ui-icon\s*\{[\s\S]*?color:\s*var\(--on-surface-variant\)/u);
+  expect(conversationDockStyles).toMatch(/\.conversation-dock__status\s*>\s*span\.is-connected\s*\{[\s\S]*?background:\s*var\(--success\)/u);
   expect(libraryStyles).toMatch(/\.portfolio-steps li\.is-complete > span\s*\{[\s\S]*?background:\s*var\(--success\)/u);
   expect(libraryStyles).toMatch(/\.portfolio-analysis-section--texture[\s\S]*?var\(--accent-warm\)/u);
   expect(libraryStyles).toMatch(/\.portfolio-review__published\s*\{[\s\S]*?color:\s*var\(--success\)/u);
@@ -251,6 +252,49 @@ it('prevents the designer page from creating document-level outer scroll', () =>
   expect(studioStyles).toMatch(
     /\.studio\s*\{[^}]*height:\s*calc\(100dvh - 40px\);[^}]*min-height:\s*0;/,
   );
+});
+
+it('uses a seamless 30/70 conversation-first home without global divider lines', () => {
+  const homeStyles = readStyle('../../src/app/studio/studio-home.css');
+  const conversationDockStyles = readStyle('../../src/app/studio/conversation-dock.css');
+  const workbenchStyles = readStyle('../../src/app/studio/workbench.css');
+  const windowStyles = readStyle('../../src/app/styles/window.css');
+  const studioStyles = readStyle('../../src/app/styles/studio.css');
+  const projectPanelRule = homeStyles.match(/\.studio-home-projects\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+
+  expect(homeStyles).toMatch(/\.studio-home\s*\{[\s\S]*grid-template-columns:\s*minmax\(260px,\s*3fr\)\s+minmax\(0,\s*7fr\)/);
+  expect(homeStyles).toMatch(/\.studio-home-projects__list\s*\{[\s\S]*overflow-y:\s*auto/);
+  expect(homeStyles).toMatch(/\.home-designer-rail__list\s*\{[\s\S]*overflow-x:\s*auto/);
+  expect(projectPanelRule).toMatch(/box-shadow:\s*inset/);
+  expect(projectPanelRule).not.toMatch(/var\(--shadow-overlay\)/);
+  expect(homeStyles).not.toMatch(/\.home-conversation__suggestions/);
+  expect(homeStyles).not.toMatch(/\.home-conversation__composer/);
+  expect(workbenchStyles).not.toMatch(/\.workbench-command-dock/);
+  expect(conversationDockStyles).toMatch(/\.conversation-dock\s*\{[\s\S]*background:[\s\S]*var\(--shell-glass\)/);
+  expect(conversationDockStyles).toMatch(/\.conversation-dock\s*\{[\s\S]*box-shadow:\s*inset/);
+  expect(conversationDockStyles).not.toMatch(/box-shadow:[^;]*0\s+14px\s+34px/);
+  expect(windowStyles.match(/\.window-bar\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(/border-bottom:\s*0/);
+  expect(windowStyles).toMatch(/\.app-shell::before\s*\{[\s\S]*radial-gradient\(circle,[\s\S]*var\(--workspace-dot-base\)/);
+  expect(windowStyles).toMatch(/\.app-shell::after\s*\{[\s\S]*circle 150px at var\(--pointer-x\) var\(--pointer-y\)/);
+  expect(windowStyles).toMatch(/\.app-shell\[data-pointer-active='true'\]::after\s*\{\s*opacity:\s*1/);
+  expect(windowStyles).toMatch(/@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*\.app-shell::after\s*\{\s*display:\s*none/);
+  expect(windowStyles).not.toMatch(/linear-gradient\(118deg/);
+  expect(homeStyles.match(/\.studio-home\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').not.toMatch(/background:/);
+  expect(studioStyles).not.toMatch(/\.studio-sidebar\s*\{/);
+  expect(studioStyles).not.toMatch(/\.studio-status\s*\{/);
+});
+
+it('keeps the dot workspace visible through glass controls', () => {
+  const tokens = readStyle('../../src/app/styles/tokens.css');
+  const homeStyles = readStyle('../../src/app/studio/studio-home.css');
+  const dockStyles = readStyle('../../src/app/studio/conversation-dock.css');
+
+  expect(tokens).toMatch(/rgb\(255 255 255 \/ 0\.(?:[0-4]\d)\)/u);
+  expect(tokens).toMatch(/rgb\(238 242 255 \/ 0\.(?:[0-4]\d)\)/u);
+  expect(homeStyles).toMatch(/\.studio-home-projects__filters\s*\{[\s\S]*background:\s*color-mix\([^;]*transparent/u);
+  expect(homeStyles.match(/\.studio-home-projects__filters button\.is-active\s*\{([^}]*)\}/u)?.[1] ?? '').not.toMatch(/var\(--surface-container-highest\)/u);
+  expect(homeStyles.match(/\.home-designer-card\s*\{([^}]*)\}/u)?.[1] ?? '').not.toMatch(/var\(--surface-container\)/u);
+  expect(dockStyles.match(/\.conversation-dock__connection\s*\{([^}]*)\}/u)?.[1] ?? '').not.toMatch(/var\(--surface-container-high\)\s+68%/u);
 });
 
 it('fills library regions and keeps sibling content aligned', () => {

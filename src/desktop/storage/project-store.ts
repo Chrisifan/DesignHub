@@ -520,6 +520,7 @@ const initializeProject = (
     projectId: operation.projectId,
     workspaceId: input.workspaceId,
     name,
+    generationRatio: input.generationRatio,
     brief: input.brief,
     activeDesignerVersionId: input.activeDesignerVersionId,
     contributorDesignerVersionIds: input.contributorDesignerVersionIds,
@@ -669,6 +670,7 @@ const toActiveProject = (manifest: ProjectManifest): ActiveProject => {
   return {
     projectId: manifest.projectId,
     name: metadata.name,
+    ...(metadata.generationRatio === undefined ? {} : { generationRatio: metadata.generationRatio }),
     ...(metadata.brief === undefined ? {} : { brief: metadata.brief }),
     ...(metadata.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: metadata.activeDesignerVersionId }),
     ...(metadata.contributorDesignerVersionIds === undefined ? {} : { contributorDesignerVersionIds: [...metadata.contributorDesignerVersionIds] }),

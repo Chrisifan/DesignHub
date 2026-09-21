@@ -54,6 +54,7 @@ export type Project = {
 export type HomeConversationRequest = {
   message: string;
   attachments: ConversationImageAttachment[];
+  generationRatio: ProjectGenerationRatio;
   designerId?: string;
 };
 export type PendingHomeConversation = {

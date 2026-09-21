@@ -1,5 +1,5 @@
 import { expect, test } from 'playwright/test';
-import { gotoTestWorkspace } from './test-workspace';
+import { gotoTestWorkspace, navigateFromUserMenu } from './test-workspace';
 
 test('long floating layers remain scrollable within a compact canvas', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 });
@@ -47,7 +47,7 @@ for (const width of [1280, 1024]) {
         const english = locale === 'en';
         await expect(
           page.getByRole('heading', {
-            name: english ? 'Projects' : '项目库',
+            name: english ? 'Creative library' : '创作中心',
             exact: true,
           }),
         ).toBeAttached();
@@ -74,7 +74,7 @@ for (const width of [1280, 1024]) {
           'height',
           '17px',
         );
-        await expect(page.locator('.studio-sidebar .sidebar-create')).toHaveCount(0);
+        await expect(page.locator('.studio-sidebar')).toHaveCount(0);
         await page
           .getByRole('button', {
             name: /Spring in bloom|春间市集/,
@@ -101,7 +101,7 @@ for (const width of [1280, 1024]) {
         await expect(page.getByRole('toolbar', { name: english ? 'Canvas tools' : '画布工具' })).toBeVisible();
         await expect(page.getByRole('toolbar', { name: english ? 'Context tools' : '上下文工具' })).toBeVisible();
         await expect(page.getByRole('form', { name: english ? 'AI command dock' : 'AI 操作坞' })).toBeVisible();
-        await expect(canvas.locator('.workbench-command-dock')).toHaveCSS('position', 'absolute');
+        await expect(canvas.locator('.conversation-dock--compact')).toHaveCSS('position', 'absolute');
         await expect(
           page.getByRole('button', {
             name: english ? 'Back to project' : '返回项目',
@@ -168,9 +168,6 @@ for (const width of [1280, 1024]) {
             exact: true,
           })
           .click();
-        const nav = page.getByRole('navigation', {
-          name: english ? 'Main navigation' : '主导航',
-        });
         for (const name of english
           ? [
               'Designers',
@@ -190,7 +187,7 @@ for (const width of [1280, 1024]) {
               '导出交付',
               '工作区管理',
             ]) {
-          await nav.getByRole('button', { name, exact: true }).click();
+          await navigateFromUserMenu(page, name);
           await expect(
             page.locator('.destination:not([hidden]) h1'),
           ).toBeAttached();
@@ -221,10 +218,7 @@ for (const width of [1280, 1024]) {
   }
 }
 
-for (const [theme, expectedTint] of [
-  ['dark', 'rgba(20, 28, 46, 0.84)'],
-  ['light', 'rgba(255, 255, 255, 0.86)'],
-] as const) {
+for (const theme of ['dark', 'light'] as const) {
   test(`desktop ${theme} shell uses the approved dimensions and glass material`, async ({
     page,
   }) => {
@@ -234,7 +228,7 @@ for (const [theme, expectedTint] of [
     }, theme);
     await gotoTestWorkspace(page);
     await expect(
-      page.getByRole('heading', { name: '项目库', exact: true }),
+      page.getByRole('heading', { name: '创作中心', exact: true }),
     ).toBeAttached();
     const shell = await page.evaluate(() => {
       const inspect = (selector: string) => {
@@ -244,13 +238,16 @@ for (const [theme, expectedTint] of [
           width: element.getBoundingClientRect().width,
           height: element.getBoundingClientRect().height,
           backdropFilter: style.backdropFilter,
+          backgroundColor: style.backgroundColor,
           backgroundImage: style.backgroundImage,
+          borderBottomWidth: style.borderBottomWidth,
+          boxShadow: style.boxShadow,
         };
       };
       return {
-        sidebar: inspect('.studio-sidebar'),
         windowBar: inspect('.window-bar'),
-        toolbar: inspect('.studio-toolbar'),
+        projects: inspect('.studio-home-projects'),
+        composer: inspect('.conversation-dock--expanded'),
         backdrop: getComputedStyle(
           document.querySelector<HTMLElement>('.app-shell')!,
           '::before',
@@ -258,21 +255,26 @@ for (const [theme, expectedTint] of [
       };
     });
 
-    expect(shell.sidebar.width).toBe(280);
     expect(shell.windowBar.height).toBe(40);
-    expect(shell.toolbar.height).toBe(44);
-    for (const surface of [shell.sidebar, shell.windowBar, shell.toolbar]) {
+    expect(shell.windowBar.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(shell.windowBar.borderBottomWidth).toBe('0px');
+    expect(shell.projects.width).toBeGreaterThanOrEqual(260);
+    for (const surface of [shell.projects, shell.composer]) {
       // Headless Chromium may expose reduced-transparency as the default; native
       // hosts still verify the blur path separately.
       expect(surface.backdropFilter === 'none' || surface.backdropFilter.includes('blur(')).toBe(true);
-      expect(surface.backgroundImage).toContain(expectedTint);
+      expect(surface.backgroundImage !== 'none' || surface.backgroundColor !== 'rgba(0, 0, 0, 0)').toBe(true);
     }
-    expect(shell.backdrop).toContain('repeating-linear-gradient');
+    expect(shell.projects.boxShadow === 'none' || shell.projects.boxShadow.startsWith('rgba(255, 255, 255')).toBe(true);
+    expect(shell.composer.boxShadow).not.toContain('14px 34px');
+    await expect(page.locator('.studio-sidebar, .studio-toolbar')).toHaveCount(0);
+    await expect(page.getByLabel('提示词建议')).toHaveCount(0);
+    expect(shell.backdrop).toContain('radial-gradient');
 
     await page.getByRole('button', { name: /春间市集|Spring in bloom/ }).click();
     await page.getByRole('button', { name: '打开主海报', exact: true }).click();
-    await expect(page.locator('.studio-sidebar')).toHaveCSS('width', '64px');
-    const dockStyle = await page.locator('.workbench-command-dock').evaluate((element) => {
+    await expect(page.locator('.studio-sidebar')).toHaveCount(0);
+    const dockStyle = await page.locator('.conversation-dock--compact').evaluate((element) => {
       const style = getComputedStyle(element);
       return { bottom: style.bottom, backdropFilter: style.backdropFilter };
     });
@@ -310,9 +312,8 @@ test('reduced-transparency shell uses solid surfaces without blur', async ({
         '(prefers-reduced-transparency: reduce)',
       ).matches,
       surfaces: [
-        inspect('.window-bar'),
-        inspect('.studio-sidebar'),
-        inspect('.studio-toolbar'),
+        inspect('.studio-home-projects'),
+        inspect('.conversation-dock--expanded'),
       ],
     };
   });
@@ -321,15 +322,105 @@ test('reduced-transparency shell uses solid surfaces without blur', async ({
   for (const surface of shell.surfaces) {
     expect(surface.backdropFilter).toBe('none');
     expect(surface.backgroundImage).toBe('none');
-    expect(surface.backgroundColor).toBe('rgb(14, 20, 36)');
+    expect(surface.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
   }
+});
+
+test('dot workspace follows the pointer without intercepting home controls', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await gotoTestWorkspace(page);
+
+  const shell = page.locator('.app-shell');
+  await page.mouse.move(820, 360);
+  await expect(shell).toHaveAttribute('data-pointer-active', 'true');
+  const coordinates = await shell.evaluate((element) => ({
+    x: element.style.getPropertyValue('--pointer-x'),
+    y: element.style.getPropertyValue('--pointer-y'),
+  }));
+  expect(parseFloat(coordinates.x)).toBeGreaterThan(700);
+  expect(parseFloat(coordinates.y)).toBeGreaterThan(250);
+
+  const textbox = page.getByRole('textbox', { name: '设计需求' });
+  await textbox.click();
+  await expect(textbox).toBeFocused();
+});
+
+test('reduced motion keeps static dots without pointer following', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await gotoTestWorkspace(page);
+
+  const shell = page.locator('.app-shell');
+  await page.mouse.move(820, 360);
+  await expect(shell).not.toHaveAttribute('data-pointer-active');
+  const staticDots = await shell.evaluate(
+    (element) => getComputedStyle(element, '::before').backgroundImage,
+  );
+  expect(staticDots).toContain('radial-gradient');
+});
+
+test('expanded dock creates a project with an attachment and hands analysis to the compact dock', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await gotoTestWorkspace(page, null, { conversationConnected: true });
+
+  await page.locator('.conversation-dock--expanded').getByLabel('选择图片文件').setInputFiles({
+    name: 'conversation-reference.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xw2X7wAAAABJRU5ErkJggg==', 'base64'),
+  });
+  await page.getByRole('textbox', { name: '设计需求' }).fill('为春季市集设计一张海报');
+  await page.getByRole('button', { name: '发送并创建项目' }).click();
+
+  await expect(page.getByRole('region', { name: '设计画布' })).toBeVisible();
+  await expect(page.getByRole('form', { name: 'AI 操作坞' })).toHaveClass(/conversation-dock--compact/);
+  await expect(page.getByRole('textbox', { name: '修改说明' })).toHaveValue('');
+  await expect(page.getByText('已完成首轮设计分析。')).toBeVisible();
+});
+
+test('failed automatic project creation preserves the complete home draft', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await gotoTestWorkspace(page, null, { conversationConnected: true, failProjectCreation: true });
+
+  await page.locator('.conversation-dock--expanded').getByLabel('选择图片文件').setInputFiles({
+    name: 'failed-reference.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xw2X7wAAAABJRU5ErkJggg==', 'base64'),
+  });
+  const textbox = page.getByRole('textbox', { name: '设计需求' });
+  await textbox.fill('失败后仍保留');
+  await page.getByRole('button', { name: '发送并创建项目' }).click();
+
+  await expect(page.getByRole('heading', { name: '创作中心', exact: true })).toBeAttached();
+  await expect(textbox).toHaveValue('失败后仍保留');
+  await expect(page.getByRole('button', { name: '预览 failed-reference.png' })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('无法创建项目，请重试。');
+});
+
+test('project list scrolls independently while creation controls remain fixed', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await gotoTestWorkspace(page, null, { projectCount: 18 });
+
+  const projectList = page.locator('.studio-home-projects__list');
+  const dock = page.locator('.conversation-dock--expanded');
+  const designerRail = page.locator('.home-designer-rail');
+  const before = await Promise.all([dock.boundingBox(), designerRail.boundingBox()]);
+  await projectList.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => projectList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const after = await Promise.all([dock.boundingBox(), designerRail.boundingBox()]);
+
+  expect(after).toEqual(before);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('home-1024x720.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(dock).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('home-1280x800.png'), fullPage: true });
 });
 
 test('persona-led creation keeps the selected designer across pages', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
-  const navigation = page.getByRole('navigation', { name: '主导航' });
-  await navigation.getByRole('button', { name: '设计师', exact: true }).click();
+  await navigateFromUserMenu(page, '设计师');
   await expect(page.getByRole('heading', { name: '设计师', exact: true })).toBeAttached();
   await page.getByRole('button', { name: /清晰商业/ }).click();
   const inspector = page.getByRole('dialog', { name: '设计师检查器' });
@@ -408,7 +499,7 @@ test('designer rules stay on one line with app tooltips in the inspector and edi
   const longRule = '避免使用会破坏安全边距、信息层级与主体识别度的霓虹渐变、高强度装饰效果以及复杂背景纹理';
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '设计师', exact: true }).click();
+  await navigateFromUserMenu(page, '设计师');
   await page.getByRole('button', { name: /纸感排版/ }).click();
 
   const inspector = page.getByRole('dialog', { name: '设计师检查器' });
@@ -455,7 +546,7 @@ test('designer rules stay on one line with app tooltips in the inspector and edi
 test('designer dossier cards keep a stable responsive grid', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '设计师', exact: true }).click();
+  await navigateFromUserMenu(page, '设计师');
 
   const repository = page.getByLabel('设计师档案库');
   const cards = repository.locator('.designer-profile-card--library');
@@ -511,36 +602,38 @@ test('designer dossier cards keep a stable responsive grid', async ({ page }, te
   await page.screenshot({ path: testInfo.outputPath('designer-dossier-grid-narrow.png'), fullPage: true });
 });
 
-test('project cards align cover title and designer rows without a brief or designer', async ({ page }) => {
+test('compact project rows keep cover, title, and metadata aligned', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
 
-  await page.getByRole('button', { name: '新建项目', exact: true }).first().click();
+  await navigateFromUserMenu(page, '新建空白项目');
   const drawer = page.getByRole('dialog', { name: '新建项目' });
   await drawer.getByRole('textbox', { name: '项目名称' }).fill('空简介项目');
   await drawer.getByRole('button', { name: '创建项目', exact: true }).click();
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '项目库', exact: true }).click();
+  await page.getByRole('button', { name: '返回首页', exact: true }).click();
 
-  const metrics = await page.locator('.project-card').evaluateAll((cards) => cards.map((card) => {
+  const metrics = await page.locator('.studio-home-project-row').evaluateAll((cards) => cards.map((card) => {
+    const cardBounds = card.getBoundingClientRect();
     const readRect = (selector: string) => {
       const bounds = card.querySelector<HTMLElement>(selector)!.getBoundingClientRect();
-      return { top: bounds.top, height: bounds.height };
+      return { top: bounds.top - cardBounds.top, height: bounds.height };
     };
     return {
-      cover: readRect('.project-cover'),
-      title: readRect('.project-title-line'),
-      metadata: readRect('.project-meta'),
+      height: cardBounds.height,
+      cover: readRect('.studio-home-project-row__cover'),
+      title: readRect('.studio-home-project-row__copy strong'),
+      metadata: readRect('.studio-home-project-row__copy small'),
     };
   }));
 
   expect(metrics).toHaveLength(2);
-  expect(new Set(metrics.map(({ cover }) => cover.top)).size).toBe(1);
+  expect(new Set(metrics.map(({ height }) => height)).size).toBe(1);
   expect(new Set(metrics.map(({ title }) => title.top)).size).toBe(1);
   expect(new Set(metrics.map(({ metadata }) => metadata.top)).size).toBe(1);
-  expect(metrics.every(({ metadata }) => metadata.height === 24)).toBe(true);
+  expect(metrics.every(({ cover }) => cover.height === 48)).toBe(true);
 });
 
-test('project detail uses the cover-led responsive console layout', async ({ page }, testInfo) => {
+test('project detail uses the cover-led responsive document layout', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await gotoTestWorkspace(page);
   await page.getByRole('button', { name: '春间市集', exact: true }).click();
@@ -554,11 +647,10 @@ test('project detail uses the cover-led responsive console layout', async ({ pag
   await expect(detail).toBeVisible();
   await expect(header).toBeVisible();
   await expect(hero).toBeVisible();
-  await expect(page.getByRole('button', { name: '打开画布', exact: true })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: '春间市集', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: '设计文档', exact: true })).toBeVisible();
-  await expect(page.getByRole('complementary', { name: '项目信息', exact: true })).toBeVisible();
-  expect(await layout.evaluate((element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length)).toBe(2);
+  await expect(page.getByRole('complementary', { name: '项目信息', exact: true })).toHaveCount(0);
+  expect(await layout.evaluate((element) => getComputedStyle(element).display)).toBe('block');
   expect(await header.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(340);
   expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(160);
   expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(176);
@@ -569,7 +661,7 @@ test('project detail uses the cover-led responsive console layout', async ({ pag
   await page.screenshot({ path: testInfo.outputPath('project-detail-wide.png'), fullPage: true });
 
   await page.setViewportSize({ width: 1024, height: 900 });
-  expect(await layout.evaluate((element) => getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length)).toBe(1);
+  expect(await layout.evaluate((element) => getComputedStyle(element).display)).toBe('block');
   expect(await header.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(340);
   expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(160);
   expect(await hero.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(176);
@@ -577,7 +669,7 @@ test('project detail uses the cover-led responsive console layout', async ({ pag
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('project-detail-narrow.png'), fullPage: true });
 
-  const openCanvas = page.getByRole('button', { name: '打开画布', exact: true });
+  const openCanvas = page.getByRole('button', { name: '打开主海报', exact: true });
   await openCanvas.click();
   await expect(page.getByRole('region', { name: '设计画布', exact: true })).toBeVisible();
 });
@@ -587,7 +679,7 @@ test('new project uses a focused drawer without the duplicate callout or designe
   await gotoTestWorkspace(page);
   await expect(page.getByText('下一次创作，从这里开始')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '开始创作' })).toHaveCount(0);
-  await page.getByRole('button', { name: '新建项目', exact: true }).first().click();
+  await navigateFromUserMenu(page, '新建空白项目');
 
   const drawer = page.getByRole('dialog', { name: '新建项目' });
   await expect(drawer).toBeVisible();
@@ -614,9 +706,9 @@ test('new-project drawer restores focus and retains a cancelled draft', async ({
   page,
 }) => {
   await gotoTestWorkspace(page);
-  const trigger = page
-    .getByRole('button', { name: '新建项目', exact: true })
-    .first();
+  const menuTrigger = page.getByRole('button', { name: '打开用户菜单', exact: true });
+  await menuTrigger.click();
+  const trigger = page.getByRole('menuitem', { name: '新建空白项目', exact: true });
   await trigger.click();
   await expect(page.getByRole('textbox', { name: '项目名称' })).toBeFocused();
   const drawer = page.getByRole('dialog', { name: '新建项目' });
@@ -631,8 +723,9 @@ test('new-project drawer restores focus and retains a cancelled draft', async ({
     .fill('秋日漫游 / An unexpectedly long campaign title');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(trigger).toBeFocused();
-  await trigger.click();
+  await expect(menuTrigger).toBeFocused();
+  await menuTrigger.click();
+  await page.getByRole('menuitem', { name: '新建空白项目', exact: true }).click();
   await expect(page.getByRole('textbox', { name: '项目名称' })).toHaveValue(
     '秋日漫游 / An unexpectedly long campaign title',
   );
@@ -643,10 +736,10 @@ test('new-project drawer restores focus and retains a cancelled draft', async ({
       name: '秋日漫游 / An unexpectedly long campaign title',
     }),
   ).toBeAttached();
-  await expect(page.locator('.project-detail-summary__status')).toHaveText('进行中');
-  await page.getByRole('button', { name: '项目库', exact: true }).click();
+  await expect(page.locator('.project-detail-hero__status')).toContainText('进行中');
+  await page.getByRole('button', { name: '返回首页', exact: true }).click();
   const createdCard = page.getByRole('button', { name: '秋日漫游 / An unexpectedly long campaign title', exact: true });
-  await expect(createdCard.getByRole('img', { name: '秋日漫游 / An unexpectedly long campaign title项目封面' })).toHaveAttribute('src', /^blob:/u);
+  await expect(createdCard.locator('img')).toHaveAttribute('src', /^blob:/u);
 });
 
 test('preferences survive reload and empty search can be cleared', async ({
@@ -662,7 +755,7 @@ test('preferences survive reload and empty search can be cleared', async ({
   await page.getByRole('button', { name: 'Switch theme' }).click();
   await page.reload();
   await expect(
-    page.getByRole('heading', { name: 'Projects', exact: true }),
+    page.getByRole('heading', { name: 'Creative library', exact: true }),
   ).toBeAttached();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });

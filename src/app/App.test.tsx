@@ -10,6 +10,27 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+it('tracks the pointer on the root application shell through an animation frame', () => {
+  let frame: FrameRequestCallback | undefined;
+  const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+    frame = callback;
+    return 1;
+  });
+  vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
+  render(<App />);
+  const shell = screen.getByRole('main', { name: 'Design Hub' });
+
+  fireEvent.pointerMove(shell, { clientX: 320, clientY: 240 });
+  expect(requestAnimationFrame).toHaveBeenCalledOnce();
+  frame?.(0);
+  expect(shell).toHaveAttribute('data-pointer-active', 'true');
+  expect(shell.style.getPropertyValue('--pointer-x')).toBe('320px');
+  expect(shell.style.getPropertyValue('--pointer-y')).toBe('240px');
 });
 
 it('does not expose an example workspace or built-in designer entry', () => {
@@ -134,6 +155,7 @@ it('creates a real workspace from the welcome form instead of entering example m
     chooseWorkspaceDirectory: async () => '/tmp/designhub-parent',
     createWorkspace,
     openWorkspace: async () => null,
+    listActiveProjects: async () => [],
   } as never;
   render(<App />);
 
@@ -150,7 +172,8 @@ it('creates a real workspace from the welcome form instead of entering example m
     name: '我的真实空间',
   }));
   expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('我的真实空间');
-  expect(screen.getByRole('heading', { name: '项目库' })).toBeVisible();
+  expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible();
+  expect(screen.queryByRole('complementary', { name: '项目列表' })).toBeNull();
 });
 
 it('opens a selected workspace and preserves read-only mode in the shell', async () => {
@@ -165,6 +188,7 @@ it('opens a selected workspace and preserves read-only mode in the shell', async
     chooseWorkspaceDirectory: async () => '/tmp/designhub-workspace',
     createWorkspace: async () => null,
     openWorkspace,
+    listActiveProjects: async () => [],
   } as never;
   render(<App />);
 
@@ -172,7 +196,8 @@ it('opens a selected workspace and preserves read-only mode in the shell', async
 
   await waitFor(() => expect(openWorkspace).toHaveBeenCalledWith('/tmp/designhub-workspace'));
   expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('只读空间');
-  expect(screen.getByRole('heading', { name: '项目库' })).toBeVisible();
+  expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible();
+  expect(screen.queryByRole('complementary', { name: '项目列表' })).toBeNull();
 });
 
 it('keeps opened workspaces in the switcher for later selection', async () => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { ProjectDesign, ProjectCanvasLayout } from '../../features/projects/metadata';
+import type { ProjectGenerationRatio } from '../../features/projects/size';
 import type { TaskRecord } from '../../features/tasks/state';
 import { getDesktopApi } from '../../platform/runtime';
 import type { Locale } from '../i18n';
@@ -26,7 +27,7 @@ type ProjectCanvasProps = {
   onArchive?: () => void;
   onConnections: () => void;
   onSubmitConversation: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => Promise<TaskRecord | null>;
-  onSubmitDesignGeneration: (conversationTaskId: string) => Promise<TaskRecord | null>;
+  onSubmitDesignGeneration: (conversationTaskId: string, generationRatio: ProjectGenerationRatio) => Promise<TaskRecord | null>;
 };
 
 const toAttachment = (attachment: ConversationDockAttachment): ConversationImageAttachment => ({ name: attachment.name, mimeType: attachment.mimeType, bytes: attachment.bytes });
@@ -99,7 +100,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
   };
   const generate = async (): Promise<void> => {
     if (!analysisTask || !canGenerate) return;
-    await onSubmitDesignGeneration(analysisTask.id);
+    await onSubmitDesignGeneration(analysisTask.id, project.generationRatio ?? '3:4');
     void refresh();
   };
   const saveLayout = async (next: ProjectCanvasLayout): Promise<void> => {
@@ -181,6 +182,8 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
           busy={Boolean(analysisTask?.state === 'queued' || analysisTask?.state === 'running')}
           conversationConnected={conversationConnected}
           designer={designer}
+          generationRatio={project.generationRatio ?? '3:4'}
+          onGenerationRatioChange={() => undefined}
           textareaLabel={t(locale, '设计需求', 'Design request')}
           placeholder={t(locale, '描述你想生成的设计…', 'Describe the design you want…')}
           submitLabel={t(locale, '发送', 'Send')}

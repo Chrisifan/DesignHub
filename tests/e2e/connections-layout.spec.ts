@@ -1,10 +1,10 @@
 import { expect, test } from 'playwright/test';
-import { gotoTestWorkspace } from './test-workspace';
+import { gotoTestWorkspace, navigateFromUserMenu } from './test-workspace';
 
 test('model connection setup remains inside its panel without horizontal overflow', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1962, height: 1000 });
   await gotoTestWorkspace(page);
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '模型连接', exact: true }).click();
+  await navigateFromUserMenu(page, '模型连接');
   await page.getByRole('button', { name: '图片生成与编辑', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: '连接配置' });
   const settings = drawer.locator('.provider-settings');

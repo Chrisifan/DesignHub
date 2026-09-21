@@ -1,9 +1,19 @@
 import type { Page } from 'playwright/test';
 import type { DesignScene } from '../../src/features/canvas/scene';
 
+type TestWorkspaceOptions = {
+  conversationConnected?: boolean;
+  failProjectCreation?: boolean;
+  projectCount?: number;
+};
+
 /** Opens an explicit test workspace; production has no equivalent seed path. */
-export const gotoTestWorkspace = async (page: Page, scene: DesignScene | null = null): Promise<void> => {
-  await page.addInitScript((initialScene) => {
+export const gotoTestWorkspace = async (
+  page: Page,
+  scene: DesignScene | null = null,
+  options: TestWorkspaceOptions = {},
+): Promise<void> => {
+  await page.addInitScript(({ initialScene, fixtureOptions }) => {
     const paper = {
       id: 'e2e-paper',
       name: { zh: '纸感排版', en: 'Paper & Type' },
@@ -69,11 +79,20 @@ export const gotoTestWorkspace = async (page: Page, scene: DesignScene | null = 
     let createdProjectInput: { name: string; documents?: Array<{ id: string; name: string; width: number; height: number }> } | undefined;
     let projectCoverBytes: Uint8Array | undefined;
     const projectCoverAssetId = 'asset-0123456789abcdef';
+    const submittedTasks: Array<Record<string, unknown>> = [];
     (window as typeof window & { designhub?: unknown }).designhub = ({
       chooseWorkspaceDirectory: async () => '/tmp/designhub-e2e',
       openWorkspace: async () => ({ workspaceId: 'workspace-e2e', name: '测试工作区', directory: '/tmp/designhub-e2e', formatVersion: 1, openMode: 'writable' }),
-      listActiveProjects: async () => [project],
+      listActiveProjects: async () => Array.from(
+        { length: fixtureOptions.projectCount ?? 1 },
+        (_, index) => index === 0 ? structuredClone(project) : {
+          ...structuredClone(project),
+          projectId: `project-e2e-${index}`,
+          name: `测试项目 ${index + 1}`,
+        },
+      ),
       createProjectContainer: async (input: typeof createdProjectInput) => {
+        if (fixtureOptions.failProjectCreation) throw new Error('PROJECT_CREATE_FAILED');
         createdProjectInput = input;
         return { projectId: 'project-created' };
       },
@@ -98,14 +117,35 @@ export const gotoTestWorkspace = async (page: Page, scene: DesignScene | null = 
       loadBrandState: async () => ({ brands: [] }),
       listAssets: async () => [],
       readAsset: async (input: { assetId: string }) => input.assetId === projectCoverAssetId ? projectCoverBytes ?? null : null,
-      listTasks: async () => [],
-      hasCredential: async () => false,
+      listTasks: async () => submittedTasks,
+      hasCredential: async () => fixtureOptions.conversationConnected ?? false,
+      submitConversation: async (input: { message: string; documentId?: string }) => {
+        const task = {
+          id: 'task-home-conversation',
+          requestId: 'request-home-conversation',
+          requestText: input.message,
+          documentId: input.documentId,
+          capability: 'conversation',
+          state: 'completed',
+          cancelRequested: false,
+          attempt: 1,
+          analysisThreadId: 'analysis-home-conversation',
+          result: { text: '已完成首轮设计分析。' },
+        };
+        submittedTasks.splice(0, submittedTasks.length, task);
+        return task;
+      },
       loadDocumentScene: async () => initialScene,
       loadDocumentRevisions: async () => ({ revisions: [], timeline: [], finalRevisionId: null }),
       saveDocumentScene: async () => true,
     } as never);
-  }, scene);
+  }, { initialScene: scene, fixtureOptions: options });
   await page.goto('/');
   await page.getByRole('button', { name: /打开工作区|Open workspace/ }).click();
-  await page.getByRole('navigation', { name: /主导航|Main navigation/ }).waitFor();
+  await page.getByRole('textbox', { name: /设计需求|Design request/ }).waitFor();
+};
+
+export const navigateFromUserMenu = async (page: Page, name: string | RegExp): Promise<void> => {
+  await page.getByRole('button', { name: /打开用户菜单|Open user menu/ }).click();
+  await page.getByRole('menuitem', { name, exact: typeof name === 'string' }).click();
 };

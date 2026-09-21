@@ -65,6 +65,7 @@ const toStudioProject = (entry: ActiveProject, workspaceId: string): Project => 
     documentId: entry.documents?.[0]?.id,
     name: entry.name,
     enName: entry.name,
+    generationRatio: entry.generationRatio ?? '3:4',
     description: entry.brief ?? '',
     enDescription: entry.brief ?? '',
     designers: primaryDesigner ? [primaryDesigner] : [],
@@ -87,6 +88,7 @@ const mergeProjectMetadata = (current: Project, metadata: ProjectMetadata): Proj
   ...current,
   name: metadata.name,
   enName: metadata.name,
+  generationRatio: metadata.generationRatio ?? current.generationRatio ?? '3:4',
   description: metadata.brief ?? current.description,
   enDescription: metadata.brief ?? current.enDescription,
   documents: metadata.documents.length || current.documents,
@@ -367,6 +369,7 @@ export const Studio = ({
         workspaceId: workspace.workspaceId,
         operationId: crypto.randomUUID(),
         name,
+        generationRatio: request.generationRatio,
         ...(selectedDesigner ? {
           activeDesignerVersionId: selectedDesigner.id,
           designerSnapshot: structuredClone(selectedDesigner),
@@ -387,6 +390,7 @@ export const Studio = ({
         workspaceId: workspace.workspaceId,
         name,
         enName: name,
+        generationRatio: request.generationRatio,
         description: '',
         enDescription: '',
         designers: selectedDesigner ? [localize(locale, selectedDesigner.name)] : [],
@@ -557,7 +561,7 @@ export const Studio = ({
       return null;
     }
   };
-  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null): Promise<import('../../features/tasks/state').TaskRecord | null> => {
+  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null, generationRatio: Project['generationRatio'] = project.generationRatio ?? '3:4'): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return null;
@@ -569,6 +573,7 @@ export const Studio = ({
         conversationTaskId,
         baseRevisionId,
         connectionId: 'openai-compatible',
+        generationRatio,
       });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
@@ -750,7 +755,7 @@ export const Studio = ({
               onArchive={() => { void updateProject({ archived: true }); setSelected(null); }}
               onConnections={() => navigate('connections')}
               onSubmitConversation={(message, attachments, context) => submitProjectConversation(selected, message, attachments, context)}
-              onSubmitDesignGeneration={(conversationTaskId) => submitProjectDesignGeneration(selected, conversationTaskId, null)}
+              onSubmitDesignGeneration={(conversationTaskId, generationRatio) => submitProjectDesignGeneration(selected, conversationTaskId, null, generationRatio)}
             />
           )}
           {projects.map((project) => (
@@ -773,7 +778,7 @@ export const Studio = ({
                 onConnections={() => navigate('connections')}
                 onTasks={() => navigate('tasks')}
                 onSubmitConversation={(message, attachments, context) => submitProjectConversation(project, message, attachments, context)}
-                onSubmitDesignGeneration={(conversationTaskId, baseRevisionId) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId)}
+                onSubmitDesignGeneration={(conversationTaskId, baseRevisionId, generationRatio) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId, generationRatio)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
                 assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}

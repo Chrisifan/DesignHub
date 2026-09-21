@@ -4,6 +4,7 @@ import type { Locale } from '../i18n';
 import type { PendingHomeConversation, Project } from './types';
 import { Drawer } from './Drawer';
 import { ConversationDock, type ConversationDockAttachment } from './ConversationDock';
+import type { ProjectGenerationRatio } from '../../features/projects/size';
 import { CanvasWorkspace, type CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import { AnalysisPanel } from './AnalysisPanel';
 import { CandidateBoard } from './CandidateBoard';
@@ -82,7 +83,7 @@ export type WorkbenchProps = {
   onConnections: () => void;
   onTasks?: () => void;
   onSubmitConversation?: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
-  onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
+  onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null, generationRatio: ProjectGenerationRatio) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
@@ -592,7 +593,7 @@ export const Workbench = ({
         notify(t(locale, '请等待对话理解完成。', 'Wait for conversation analysis to finish.'));
         return;
       }
-      void Promise.resolve(onSubmitDesignGeneration(pendingConversationTaskId, currentRevisionId)).then((task) => {
+      void Promise.resolve(onSubmitDesignGeneration(pendingConversationTaskId, currentRevisionId, project.generationRatio ?? '3:4')).then((task) => {
         if (!task) return;
         const threadTask = task.analysisThreadId || !analysisThreadId
           ? task
@@ -1065,6 +1066,8 @@ export const Workbench = ({
             readOnly={readOnly}
             conversationConnected={modelConnected}
             designer={designerSnapshot ? conversationDesignerProfile : null}
+            generationRatio={project.generationRatio ?? '3:4'}
+            onGenerationRatioChange={() => undefined}
             textareaLabel={t(locale, '修改说明', 'Edit request')}
             placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
             submitLabel={t(locale, '发送', 'Send')}

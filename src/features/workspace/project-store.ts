@@ -1,9 +1,11 @@
 import type { ProjectCanvasLayout, ProjectDesign, ProjectDocumentMetadata, ProjectMetadata, ProjectMetadataPatch } from '../projects/metadata';
+import type { ProjectGenerationRatio } from '../projects/size';
 
 export type CreateProjectContainerInput = {
   workspaceId: string;
   operationId: string;
   name: string;
+  generationRatio?: ProjectGenerationRatio;
   brief?: string;
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];
@@ -39,6 +41,7 @@ export type ImportProjectPackageResult = {
 export type ActiveProject = {
   projectId: string;
   name: string;
+  generationRatio?: ProjectGenerationRatio;
   brief?: string;
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];

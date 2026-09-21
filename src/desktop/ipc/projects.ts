@@ -2,6 +2,7 @@ import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainer
 import type { ProjectCanvasLayout, ProjectDesign, ProjectMetadata } from '../../features/projects/metadata';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { isTrustedWorkspaceRequest } from './workspace';
+import { isProjectGenerationRatio } from '../../features/projects/size';
 
 export const projectListChannel = 'project:list-active';
 export const projectCreateChannel = 'project:create';
@@ -43,7 +44,8 @@ const isCreateInput = (value: unknown): value is CreateProjectContainerInput => 
     && typeof input.operationId === 'string'
     && input.operationId.trim().length > 0
     && typeof input.name === 'string'
-    && input.name.trim().length > 0;
+    && input.name.trim().length > 0
+    && (input.generationRatio === undefined || isProjectGenerationRatio(input.generationRatio));
 };
 
 const isDuplicateInput = (value: unknown): value is DuplicateProjectInput => {
@@ -60,7 +62,8 @@ const isMetadataInput = (value: unknown): value is UpdateProjectMetadataInput =>
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
   if (!isWorkspaceId(input.workspaceId) || !isWorkspaceId(input.projectId) || typeof input.patch !== 'object' || input.patch === null || Array.isArray(input.patch)) return false;
-  return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'activeDesignerVersionId', 'contributorDesignerVersionIds', 'designerSnapshot', 'brandSnapshot', 'coverAssetId', 'documents', 'archived'].includes(key));
+  return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'generationRatio', 'activeDesignerVersionId', 'contributorDesignerVersionIds', 'designerSnapshot', 'brandSnapshot', 'coverAssetId', 'documents', 'archived'].includes(key))
+    && ((input.patch as Record<string, unknown>).generationRatio === undefined || isProjectGenerationRatio((input.patch as Record<string, unknown>).generationRatio));
 };
 
 const isProjectRef = (value: unknown): value is { workspaceId: string; projectId: string } => {

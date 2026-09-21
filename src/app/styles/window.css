@@ -2,35 +2,52 @@
 html, body, #root { min-width: 1024px; min-height: 720px; height: 100%; margin: 0; overflow: hidden; }
 body { background: var(--background); color: var(--on-surface); }
 button { font: inherit; }
-.app-shell { position: relative; isolation: isolate; height: 100%; min-height: 100%; overflow: hidden; background: var(--background); }
-.app-shell::before {
+.app-shell {
+  --workspace-dot-size: 20px;
+  --workspace-dot-base: color-mix(in srgb, var(--on-surface) 13%, transparent);
+  --workspace-dot-focus: color-mix(in srgb, var(--on-surface) 42%, transparent);
+  --pointer-x: 50%;
+  --pointer-y: 50%;
+  position: relative;
+  isolation: isolate;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: var(--background);
+}
+.app-shell::before,
+.app-shell::after {
   content: '';
   position: absolute;
   z-index: 0;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(118deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent 42%, color-mix(in srgb, var(--secondary) 3%, transparent)),
-    repeating-linear-gradient(90deg, transparent 0 63px, color-mix(in srgb, var(--on-surface) 4%, transparent) 64px),
-    repeating-linear-gradient(0deg, transparent 0 63px, color-mix(in srgb, var(--on-surface) 3%, transparent) 64px);
+  background-size: var(--workspace-dot-size) var(--workspace-dot-size);
 }
+.app-shell::before { background-image: radial-gradient(circle, var(--workspace-dot-base) 1px, transparent 1.25px); }
+.app-shell::after {
+  opacity: 0;
+  background-image: radial-gradient(circle, var(--workspace-dot-focus) 1.15px, transparent 1.4px);
+  -webkit-mask-image: radial-gradient(circle 150px at var(--pointer-x) var(--pointer-y), #000 0%, transparent 100%);
+  mask-image: radial-gradient(circle 150px at var(--pointer-x) var(--pointer-y), #000 0%, transparent 100%);
+}
+.app-shell[data-pointer-active='true']::after { opacity: 1; }
 .window-bar, .studio, .welcome { position: relative; z-index: 1; }
 .window-bar {
+  z-index: 20;
   height: 40px;
   display: flex;
   align-items: center;
-  border-bottom: 1px solid var(--shell-glass-border);
-  background: var(--shell-glass);
-  backdrop-filter: var(--shell-backdrop);
-  -webkit-backdrop-filter: var(--shell-backdrop);
+  border-bottom: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .window-bar-drag-region { flex: 1; height: 100%; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 0 16px; -webkit-app-region: drag; user-select: none; }
-.window-brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.window-brand-mark { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--primary); color: var(--on-primary); font: 600 14px/1 Geist, 'PingFang SC', sans-serif; letter-spacing: -1px; }
-.window-bar-title { font-size: 12px; font-weight: 600; white-space: nowrap; }
-.window-bar-separator { width: 1px; height: 18px; flex: 0 0 1px; background: var(--shell-glass-border); }
+.window-bar-separator { display: none; }
 .window-workspace-switch { display: inline-flex; align-items: center; gap: 10px; max-width: min(300px, 32vw); min-width: 0; min-height: 30px; padding: 2px 8px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; -webkit-app-region: no-drag; }
 .window-workspace-switch:hover { background: color-mix(in srgb, var(--on-surface) 7%, transparent); }
+.window-workspace-switch:disabled { opacity: .5; cursor: wait; }
 .window-workspace-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
 .window-workspace-switch strong, .window-workspace-switch small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .window-workspace-switch strong { font-size: 12px; font-weight: 500; }
@@ -56,4 +73,7 @@ h1 { margin: 0; font: 600 24px/32px Geist, "PingFang SC", sans-serif; }
 .window-preview-label > span { width: 5px; height: 5px; border-radius: 50%; background: var(--secondary); }
 .window-locale-switch { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 28px; padding: 0; border: 1px solid var(--shell-glass-border); border-radius: 4px; background: transparent; color: var(--on-surface-variant); font-size: 11px; white-space: nowrap; -webkit-app-region: no-drag; }
 .window-locale-switch:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); color: var(--on-surface); }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  .app-shell::after { display: none; }
+}
