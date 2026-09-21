@@ -45,11 +45,15 @@ it('creates a project metadata snapshot with an independent document list', () =
 });
 
 it('updates metadata without changing the previous snapshot', () => {
-  const initial = createProjectMetadata({ projectId: 'project-1', name: '旧名称', workspaceId: 'workspace-1' });
-  const updated = updateProjectMetadata(initial, { name: '新名称', archived: true, activeDesignerVersionId: 'designer-v2' });
-  expect(initial).toMatchObject({ name: '旧名称', archived: false });
-  expect(updated).toMatchObject({ name: '新名称', archived: true, activeDesignerVersionId: 'designer-v2' });
+  const initial = createProjectMetadata({ projectId: 'project-1', name: '旧名称', workspaceId: 'workspace-1', generationRatio: '1:1' });
+  const updated = updateProjectMetadata(initial, { name: '新名称', archived: true, activeDesignerVersionId: 'designer-v2', generationRatio: '16:9' });
+  expect(initial).toMatchObject({ name: '旧名称', archived: false, generationRatio: '1:1' });
+  expect(updated).toMatchObject({ name: '新名称', archived: true, activeDesignerVersionId: 'designer-v2', generationRatio: '16:9' });
   expect(updated.updatedAt).not.toBe(initial.updatedAt);
+});
+
+it('defaults project generation ratio to portrait', () => {
+  expect(createProjectMetadata({ projectId: 'project-1', name: '项目', workspaceId: 'workspace-1' }).generationRatio).toBe('3:4');
 });
 
 it('rejects an empty project name and invalid document dimensions', () => {

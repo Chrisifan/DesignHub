@@ -2,6 +2,7 @@ import type { Locale } from '../i18n';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { ProjectCoverFile } from './project-cover';
 import type { ProjectCanvasLayout, ProjectDesign } from '../../features/projects/metadata';
+import type { ProjectGenerationRatio } from '../../features/projects/size';
 export type View =
   | 'projects'
   | 'designers'
@@ -32,6 +33,7 @@ export type Project = {
   documentId?: string;
   name: string;
   enName: string;
+  generationRatio?: ProjectGenerationRatio;
   description: string;
   enDescription: string;
   designers: string[];

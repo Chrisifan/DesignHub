@@ -1,3 +1,5 @@
+import { isProjectGenerationRatio, type ProjectGenerationRatio } from './size';
+
 export type ProjectDocumentMetadata = {
   id: string;
   name: string;
@@ -30,6 +32,7 @@ export type ProjectMetadata = {
   projectId: string;
   workspaceId: string;
   name: string;
+  generationRatio?: ProjectGenerationRatio;
   brief?: string;
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];
@@ -48,6 +51,7 @@ export type ProjectMetadataInput = {
   projectId: string;
   workspaceId: string;
   name: string;
+  generationRatio?: ProjectGenerationRatio;
   brief?: string;
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];
@@ -62,7 +66,7 @@ export type ProjectMetadataInput = {
   updatedAt?: string;
 };
 
-export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'activeDesignerVersionId' | 'contributorDesignerVersionIds' | 'designerSnapshot' | 'brandSnapshot' | 'coverAssetId' | 'archived'>> & {
+export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'generationRatio' | 'activeDesignerVersionId' | 'contributorDesignerVersionIds' | 'designerSnapshot' | 'brandSnapshot' | 'coverAssetId' | 'archived'>> & {
   designs?: ProjectDesign[];
   canvasLayout?: ProjectCanvasLayout;
   documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
@@ -128,6 +132,7 @@ const normalizeCanvasLayout = (layout: ProjectCanvasLayout | undefined, designs:
 
 export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetadata => {
   if (!input.projectId || !input.workspaceId || !input.name.trim()) throw new Error('INVALID_PROJECT_METADATA');
+  if (input.generationRatio !== undefined && !isProjectGenerationRatio(input.generationRatio)) throw new Error('INVALID_PROJECT_METADATA');
   const createdAt = input.createdAt ?? new Date().toISOString();
   const updatedAt = input.updatedAt ?? createdAt;
   if (Number.isNaN(Date.parse(createdAt)) || Number.isNaN(Date.parse(updatedAt))) throw new Error('INVALID_PROJECT_METADATA');
@@ -135,6 +140,7 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
     projectId: input.projectId,
     workspaceId: input.workspaceId,
     name: input.name.trim(),
+    generationRatio: input.generationRatio ?? '3:4',
     ...(input.brief === undefined ? {} : { brief: input.brief }),
     ...(input.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: input.activeDesignerVersionId }),
     ...(normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) ? { contributorDesignerVersionIds: normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) } : {}),
@@ -156,6 +162,7 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
 
 export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectMetadataPatch): ProjectMetadata => {
   if (patch.name !== undefined && !patch.name.trim()) throw new Error('INVALID_PROJECT_METADATA');
+  if (patch.generationRatio !== undefined && !isProjectGenerationRatio(patch.generationRatio)) throw new Error('INVALID_PROJECT_METADATA');
   const now = Date.now();
   const previous = Date.parse(metadata.updatedAt);
   const updatedAt = new Date(Math.max(now, Number.isNaN(previous) ? now : previous + 1)).toISOString();
@@ -169,6 +176,7 @@ export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectM
   return {
     ...clone(metadata),
     ...(patch.name === undefined ? {} : { name: patch.name.trim() }),
+    ...(patch.generationRatio === undefined ? {} : { generationRatio: patch.generationRatio }),
     ...(patch.brief === undefined ? {} : { brief: patch.brief }),
     ...(patch.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: patch.activeDesignerVersionId.trim() }),
     ...(() => {
