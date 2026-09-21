@@ -31,7 +31,7 @@ button:disabled {
 }
 :where(html, body, .studio, .studio *)::-webkit-scrollbar-thumb {
   border: 1px solid transparent;
-  border-radius: var(--scrollbar-radius);
+  border-radius: 999px;
   background: var(--scrollbar-thumb);
   background-clip: padding-box;
 }
@@ -73,7 +73,7 @@ button:disabled {
   width: 36px;
   height: 36px;
   flex: 0 0 36px;
-  border-radius: 9px;
+  border-radius: var(--radius-ui);
   background: var(--primary);
   color: var(--on-primary);
   font-size: 21px;
@@ -87,7 +87,7 @@ button:disabled {
   width: 5px;
   height: 5px;
   background: currentColor;
-  border-radius: 2px;
+  border-radius: var(--radius-ui);
 }
 .workspace-choice small {
   display: block;
@@ -178,7 +178,7 @@ button:disabled {
   min-height: var(--toolbar-control-height);
   padding: 2px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-low);
 }
 .toolbar-segmented button {
@@ -188,7 +188,7 @@ button:disabled {
   min-height: calc(var(--toolbar-control-height) - 6px);
   padding: 0 8px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
   background: transparent;
   color: var(--on-surface-variant);
   font-size: 12px;
@@ -200,7 +200,7 @@ button:disabled {
 }
 .toolbar-segmented button > span {
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-highest);
   color: inherit;
   font-size: 10px;
@@ -214,7 +214,7 @@ button:disabled {
   height: var(--toolbar-control-height);
   padding: 0 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   background: var(--surface-container-low);
 }
@@ -248,7 +248,7 @@ button:disabled {
 .delivery-layout {
   background: var(--content-card-background);
   border: 0;
-  border-radius: var(--content-card-radius);
+  border-radius: 0;
   box-shadow: var(--content-card-shadow);
   overflow: visible;
 }
@@ -314,7 +314,7 @@ button:disabled {
   min-height: 32px;
   padding: 0 12px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container);
   color: var(--on-surface);
   white-space: nowrap;
@@ -361,7 +361,7 @@ button:disabled {
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   background: transparent;
 }
@@ -376,7 +376,7 @@ button:disabled {
   content: attr(data-tooltip);
   background: var(--surface-container-highest);
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   box-shadow: var(--shadow-overlay);
   font-size: 11px;
   line-height: 14px;
@@ -411,7 +411,7 @@ button:disabled {
   color: var(--on-surface-variant);
   background: var(--surface-container-high);
   border: 1px solid var(--border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
   font-size: 10px;
   white-space: nowrap;
   font-weight: 500;
@@ -474,7 +474,7 @@ button:disabled {
 .tab-strip button > span {
   padding: 0 5px;
   background: var(--surface-container-high);
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
   font-size: 10px;
   line-height: 16px;
 }
@@ -482,7 +482,7 @@ button:disabled {
   display: flex;
   padding: 2px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
 }
 .view-toggle .icon-button {
   height: 26px;
@@ -505,7 +505,7 @@ button:disabled {
   min-width: 0;
   text-align: left;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
   overflow: hidden;
   transition:
@@ -563,7 +563,7 @@ button:disabled {
   font-size: 10px;
   color: var(--art-milk);
   background: color-mix(in srgb, var(--art-dark) 85%, transparent);
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
 }
 .project-card-body {
   display: flex;
@@ -662,7 +662,7 @@ button:disabled {
   background: var(--surface-container-high);
   box-shadow: var(--shadow-overlay);
   border: 1px solid var(--outline-variant);
-  border-radius: 8px;
+  border-radius: var(--radius-ui);
   z-index: 50;
   font-size: 12px;
 }
@@ -674,7 +674,7 @@ button:disabled {
   max-height: calc(100dvh - 96px);
   padding: 0;
   border: 1px solid var(--outline-variant);
-  border-radius: 10px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-low);
   color: var(--on-surface);
   box-shadow: var(--shadow-overlay);
@@ -776,7 +776,7 @@ button:disabled {
   outline: none;
 }
 .ui-tooltip-trigger:focus-visible {
-  border-radius: 2px;
+  border-radius: var(--radius-ui);
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
@@ -789,7 +789,7 @@ button:disabled {
   max-inline-size: min(320px, calc(100vw - 16px));
   padding: 7px 9px;
   border: 1px solid var(--outline-variant);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface);
   background: var(--surface-container-highest);
   box-shadow: var(--shadow-overlay);
@@ -872,7 +872,7 @@ button:disabled {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface);
   background: var(--surface-container-lowest);
   font-size: 12px;
@@ -892,7 +892,7 @@ button:disabled {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface);
   background: var(--surface-container-lowest);
   font-size: 12px;
@@ -959,7 +959,7 @@ button:disabled {
   overflow: auto;
   padding: 5px;
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
   box-shadow: 0 12px 28px color-mix(in srgb, #000 32%, transparent);
   transform-origin: top center;
@@ -979,7 +979,7 @@ button:disabled {
   width: 100%;
   padding: 6px 8px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface);
   background: transparent;
   font-size: 12px;
@@ -1015,7 +1015,7 @@ button:disabled {
   align-items: flex-start;
   padding: 12px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   background: var(--surface-container);
   font-size: 11px;
@@ -1053,7 +1053,7 @@ button:disabled {
   width: 100%;
   background: var(--surface-container);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   padding: 16px;
   text-align: left;
 }
@@ -1112,7 +1112,7 @@ button:disabled {
 .empty-state-icon {
   padding: 20px;
   border: 1px solid var(--border-subtle);
-  border-radius: 14px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   background: var(--surface-container-low);
   margin-bottom: 20px;
@@ -1208,7 +1208,7 @@ button:disabled {
 .document-card {
   background: transparent;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   padding: 0;
   overflow: hidden;
   text-align: left;

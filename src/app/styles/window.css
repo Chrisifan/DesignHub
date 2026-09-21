@@ -45,7 +45,7 @@ button { font: inherit; }
 }
 .window-bar-drag-region { flex: 1; height: 100%; display: flex; align-items: center; gap: 14px; min-width: 0; padding: 0 16px; -webkit-app-region: drag; user-select: none; }
 .window-bar-separator { display: none; }
-.window-workspace-switch { display: inline-flex; align-items: center; gap: 10px; max-width: min(300px, 32vw); min-width: 0; min-height: 30px; padding: 2px 8px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; -webkit-app-region: no-drag; }
+.window-workspace-switch { display: inline-flex; align-items: center; gap: 10px; max-width: min(300px, 32vw); min-width: 0; min-height: 30px; padding: 2px 8px; border: 0; border-radius: var(--radius-ui); background: transparent; color: inherit; text-align: left; -webkit-app-region: no-drag; }
 .window-workspace-switch:hover { background: color-mix(in srgb, var(--on-surface) 7%, transparent); }
 .window-workspace-switch:disabled { opacity: .5; cursor: wait; }
 .window-workspace-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
@@ -61,17 +61,17 @@ button { font: inherit; }
 h1 { margin: 0; font: 600 24px/32px Geist, "PingFang SC", sans-serif; }
 .welcome-description { margin: 12px 0 24px; max-width: 42ch; color: var(--on-surface-variant); font-size: 13px; line-height: 18px; }
 .welcome-actions { display: flex; gap: 12px; }
-.button { min-height: 32px; padding: 0 16px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.button { min-height: 32px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--radius-ui); cursor: pointer; white-space: nowrap; }
 .button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .button-primary { background: var(--primary-container); color: #061016; }
 .button-secondary { background: var(--surface-container-high); border-color: var(--outline-variant); color: var(--on-surface); }
 .window-bar .ui-icon { display: inline-block; flex: 0 0 auto; background: currentColor; mask-position: center; mask-size: contain; mask-repeat: no-repeat; -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; vertical-align: middle; }
 .window-bar-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto; -webkit-app-region: no-drag; }
-.window-bar-actions .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 4px; color: var(--on-surface-variant); background: transparent; -webkit-app-region: no-drag; }
+.window-bar-actions .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-ui); color: var(--on-surface-variant); background: transparent; -webkit-app-region: no-drag; }
 .window-bar-actions .icon-button:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); color: var(--on-surface); }
 .window-preview-label { display: inline-flex; align-items: center; gap: 6px; color: var(--on-surface-variant); font-size: 11px; white-space: nowrap; }
 .window-preview-label > span { width: 5px; height: 5px; border-radius: 50%; background: var(--secondary); }
-.window-locale-switch { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 28px; padding: 0; border: 1px solid var(--shell-glass-border); border-radius: 4px; background: transparent; color: var(--on-surface-variant); font-size: 11px; white-space: nowrap; -webkit-app-region: no-drag; }
+.window-locale-switch { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 28px; padding: 0; border: 1px solid var(--shell-glass-border); border-radius: var(--radius-ui); background: transparent; color: var(--on-surface-variant); font-size: 11px; white-space: nowrap; -webkit-app-region: no-drag; }
 .window-locale-switch:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); color: var(--on-surface); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }

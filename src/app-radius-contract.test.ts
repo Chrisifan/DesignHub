@@ -32,6 +32,13 @@ describe('application corner radius contract', () => {
   it('defines the analysis-panel radius as the shared rectangular token', () => {
     expect(readStyle('src/app/styles/tokens.css')).toMatch(/--radius-ui:\s*10px;/u);
   });
+
+  it('uses the shared radius in window and studio primitives', () => {
+    expectUnifiedRadii([
+      'src/app/styles/window.css',
+      'src/app/styles/studio.css',
+    ]);
+  });
 });
 
 export { expectUnifiedRadii };

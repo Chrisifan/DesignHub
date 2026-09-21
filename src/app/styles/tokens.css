@@ -245,12 +245,10 @@
   --page-content-padding-inline: 28px;
   --page-content-padding-block-end: 20px;
   --content-card-background: transparent;
-  --content-card-radius: 0;
   --content-card-shadow: none;
   --content-panel-min-height: 520px;
   --library-card-width: 216px;
   --scrollbar-size: 6px;
-  --scrollbar-radius: 999px;
   --scrollbar-track: color-mix(
     in srgb,
     var(--surface-container-lowest) 72%,
