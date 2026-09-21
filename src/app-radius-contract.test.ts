@@ -49,6 +49,13 @@ describe('application corner radius contract', () => {
       'src/app/studio/workbench.css',
     ]);
   });
+
+  it('uses the shared radius in designer and library surfaces', () => {
+    expectUnifiedRadii([
+      'src/app/studio/persona.css',
+      'src/app/studio/library.css',
+    ]);
+  });
 });
 
 export { expectUnifiedRadii };

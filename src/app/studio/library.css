@@ -177,7 +177,7 @@
   overflow: hidden;
   text-align: left;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
 }
 
@@ -283,7 +283,7 @@
 
 .sample-strip .artwork {
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
 }
 
 .sample-strip .art-title {
@@ -309,7 +309,7 @@
   min-height: 326px;
   padding: 22px;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
 }
 
@@ -409,7 +409,7 @@
   padding: 7px 8px;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   font-size: 10px;
   line-height: 14px;
@@ -422,7 +422,7 @@
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-high);
   font: 600 10px/1 'JetBrains Mono', monospace;
 }
@@ -471,7 +471,7 @@
   min-height: 104px;
   padding: 18px;
   border: 1px dashed var(--outline-variant);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   background: color-mix(in srgb, var(--surface-container-low) 70%, transparent);
   cursor: pointer;
@@ -523,7 +523,7 @@
   min-height: 50px;
   padding: 7px;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
   font-size: 11px;
 }
@@ -541,7 +541,7 @@
   width: 34px;
   height: 34px;
   object-fit: cover;
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
 }
 
 .designer-portfolio-candidate__name {
@@ -637,7 +637,7 @@
 .portfolio-analysis-tags li {
   padding: 3px 8px;
   border: 1px solid color-mix(in srgb, var(--primary) 32%, var(--border-subtle));
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 7%, transparent);
   font-size: 10px;
@@ -657,7 +657,7 @@
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--border-subtle);
-  border-radius: 7px;
+  border-radius: var(--radius-ui);
   background: color-mix(in srgb, var(--surface-container-lowest) 84%, transparent);
 }
 
@@ -675,7 +675,7 @@
   width: 24px;
   height: 24px;
   border: 1px solid color-mix(in srgb, var(--primary) 46%, var(--border-subtle));
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   color: var(--primary);
   background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
@@ -730,7 +730,7 @@
   min-width: 0;
   padding: 10px 11px;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
   color: var(--on-surface-variant);
   font-size: 10px;
@@ -748,7 +748,7 @@
   grid-column: 1 / -1;
   height: 5px;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-high);
 }
 
@@ -796,7 +796,7 @@
   width: 100%;
   height: 42px;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
 }
 
 .portfolio-analysis-palette .is-empty {
@@ -805,7 +805,7 @@
   place-items: center;
   padding: 10px;
   border: 1px dashed var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
 }
 
 .portfolio-analysis-value {
@@ -848,7 +848,7 @@
   overflow: hidden;
   padding: 5px 9px;
   border: 1px solid color-mix(in srgb, var(--error) 56%, var(--border-subtle));
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   color: var(--error);
   background: color-mix(in srgb, var(--error) 7%, transparent);
   font-size: 10px;
@@ -943,7 +943,7 @@
 
 .portfolio-analysis-skeleton i {
   min-height: 126px;
-  border-radius: 7px;
+  border-radius: var(--radius-ui);
 }
 
 .portfolio-analysis-skeleton i:nth-child(4),
@@ -960,7 +960,7 @@
 .portfolio-artwork-skeleton i {
   width: min(100%, 320px);
   aspect-ratio: 1;
-  border-radius: 7px;
+  border-radius: var(--radius-ui);
 }
 
 .portfolio-analysis-skeleton i::after,
@@ -986,7 +986,7 @@
   aspect-ratio: 1;
   object-fit: cover;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
 }
 
 .portfolio-review,
@@ -1006,7 +1006,7 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
 }
 
@@ -1045,7 +1045,7 @@
   padding: 3px 6px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--primary) 54%, var(--border-subtle));
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--primary);
   background: color-mix(in srgb, var(--surface-container-lowest) 90%, transparent);
   font-size: 8px;
@@ -1117,7 +1117,7 @@
   min-width: 0;
   padding: 15px;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: color-mix(in srgb, var(--surface-container-lowest) 86%, transparent);
 }
 
@@ -1159,7 +1159,7 @@
   display: block;
   height: 32px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
 }
 
 .designer-profile-card__palette small {
@@ -1393,7 +1393,7 @@
   overflow: hidden;
   text-align: left;
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
 }
 
@@ -1545,7 +1545,7 @@
   min-height: 72px;
   padding: 10px;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   text-align: left;
   background: transparent;
 }
@@ -1595,7 +1595,7 @@
   place-items: center;
   width: 42px;
   height: 42px;
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--art-ink);
   background: var(--art-paper);
   font:
@@ -1661,7 +1661,7 @@
 .brand-color {
   height: 28px;
   border: 1px solid var(--border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
 }
 
 .brand-color--primary {
@@ -2124,7 +2124,7 @@
   gap: 8px;
   min-height: 54px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   background: var(--surface-container-lowest);
   font:
@@ -2319,7 +2319,7 @@
 .storage-icon {
   width: 48px;
   height: 48px;
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
 }
 
 .backup-status p:not(.section-kicker) {
@@ -2360,7 +2360,7 @@
 .settings-icon {
   width: 38px;
   height: 38px;
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
 }
 
 .settings-section-heading p {
@@ -2384,7 +2384,7 @@
   min-height: 58px;
   padding: 0 14px;
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
 }
 
@@ -2447,7 +2447,7 @@
 
 .settings-actions {
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   overflow: hidden;
 }
 

@@ -97,7 +97,7 @@
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container);
   color: var(--on-surface);
   text-align: left;
@@ -222,7 +222,7 @@
   min-height: 144px;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-low);
 }
 
@@ -323,7 +323,7 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--outline) 68%, transparent);
-  border-radius: 12px;
+  border-radius: var(--radius-ui);
   background: var(--surface-raised);
   box-shadow: 0 18px 44px color-mix(in srgb, var(--shadow-color) 12%, transparent);
 }
@@ -374,7 +374,7 @@
   overflow: hidden;
   padding: 6px 9px;
   border: 1px solid color-mix(in srgb, white 24%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-ui);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   color: var(--on-surface);
   font-size: 9px;
@@ -447,7 +447,7 @@
   padding: 6px 8px;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container);
   color: var(--on-surface-variant);
   text-align: left;
@@ -498,7 +498,7 @@
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
   color: var(--on-surface);
   text-align: left;
@@ -600,7 +600,7 @@
 .portfolio-item .artwork {
   height: 92px;
   border: 1px solid var(--border-subtle);
-  border-radius: 3px;
+  border-radius: var(--radius-ui);
 }
 
 .portfolio-item strong,
@@ -695,7 +695,7 @@
   padding: 0 0 10px;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-low);
   color: var(--on-surface);
   text-align: left;
@@ -834,7 +834,7 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--primary);
 }
 
@@ -860,7 +860,7 @@
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-lowest);
   color: var(--on-surface);
   text-align: left;
@@ -901,7 +901,7 @@
   min-height: 20px;
   padding: 2px 7px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   background: color-mix(in srgb, var(--surface-container-lowest) 88%, transparent);
   font: 600 9px/14px 'JetBrains Mono', monospace;
@@ -973,7 +973,7 @@
   overflow: hidden;
   padding: 2px 6px;
   border: 1px solid var(--border-subtle);
-  border-radius: 4px;
+  border-radius: var(--radius-ui);
   color: var(--on-surface-variant);
   font-size: 9px;
   line-height: 14px;
@@ -999,7 +999,7 @@
   min-width: 0;
   padding: 9px 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 5px;
+  border-radius: var(--radius-ui);
   background: color-mix(in srgb, var(--surface-container-low) 76%, transparent);
   color: var(--on-surface-variant);
   font-size: 9px;
@@ -1015,7 +1015,7 @@
   grid-column: 1 / -1;
   height: 4px;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: var(--radius-ui);
   background: var(--surface-container-high);
 }
 
@@ -1080,7 +1080,7 @@
   min-width: 0;
   padding: 15px;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--radius-ui);
   background: color-mix(in srgb, var(--surface-container-lowest) 86%, transparent);
 }
 
@@ -1118,7 +1118,7 @@
 
 .portfolio-item .artwork {
   height: 104px;
-  border-radius: 2px;
+  border-radius: var(--radius-ui);
 }
 
 .portfolio-item strong { font-size: 10px; }
