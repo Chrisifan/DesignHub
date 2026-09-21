@@ -109,6 +109,26 @@ it('shows no-designer state without a candidate reference count', () => {
   expect(screen.queryByLabelText('候选参考图')).not.toBeInTheDocument();
 });
 
+it('places the controlled generation ratio selector before the designer control', () => {
+  const props = makeProps();
+  const onGenerationRatioChange = vi.fn();
+  render(
+    <ConversationDock
+      {...props}
+      variant="compact"
+      generationRatio="3:4"
+      onGenerationRatioChange={onGenerationRatioChange}
+    />,
+  );
+
+  const ratio = screen.getByRole('combobox', { name: '设计稿比例' });
+  const designer = screen.getByLabelText('设计师：未设置设计师');
+  expect(ratio).toHaveValue('3:4');
+  expect(ratio.compareDocumentPosition(designer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.change(ratio, { target: { value: '1:1' } });
+  expect(onGenerationRatioChange).toHaveBeenCalledWith('1:1');
+});
+
 it('rejects invalid and oversized files without changing attachments', async () => {
   const props = makeProps();
   const textFile = new File(['text'], 'notes.txt', { type: 'text/plain' });

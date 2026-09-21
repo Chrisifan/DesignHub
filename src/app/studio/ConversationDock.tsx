@@ -1,6 +1,7 @@
 import { useRef, useState, type ClipboardEvent, type FormEvent, type RefObject } from 'react';
 
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
+import { isProjectGenerationRatio, projectGenerationRatios, type ProjectGenerationRatio } from '../../features/projects/size';
 import type { Locale } from '../i18n';
 import { PersonaArtwork } from './PersonaArtwork';
 import type { PersonaProfile } from './personas';
@@ -29,6 +30,8 @@ type ConversationDockProps = {
   submitLabel: string;
   busyLabel?: string;
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
+  generationRatio?: ProjectGenerationRatio;
+  onGenerationRatioChange?: (ratio: ProjectGenerationRatio) => void;
   /** Kept for callers that still track managed references; references are intentionally quiet in the dock. */
   referencedAssetCount?: number;
   showGenerate?: boolean;
@@ -92,6 +95,8 @@ export const ConversationDock = ({
   submitLabel,
   busyLabel,
   textareaRef,
+  generationRatio = '3:4',
+  onGenerationRatioChange,
   showGenerate = false,
   generateDisabled = false,
   onValueChange,
@@ -232,6 +237,19 @@ export const ConversationDock = ({
             {compact && <span className="conversation-dock__shortcut" aria-hidden="true">/</span>}
           </div>
           <div className="conversation-dock__toolbar-actions">
+            <label className="conversation-dock__ratio">
+              <span className="visually-hidden">{t(locale, '设计稿比例', 'Design ratio')}</span>
+              <select
+                aria-label={t(locale, '设计稿比例', 'Design ratio')}
+                value={generationRatio}
+                disabled={readOnly}
+                onChange={(event) => {
+                  if (isProjectGenerationRatio(event.target.value)) onGenerationRatioChange?.(event.target.value);
+                }}
+              >
+                {projectGenerationRatios.map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
+              </select>
+            </label>
             {onDesignerClick ? (
               <button
                 type="button"
