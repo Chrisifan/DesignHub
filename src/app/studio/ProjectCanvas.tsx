@@ -149,7 +149,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
         if (!bytes) return null;
         return { assetId, name: asset.name, mimeType: asset.mimeType, bytes, previewUrl: bytesToDataUrl(asset.mimeType, bytes) } satisfies ConversationDockAttachment;
       }));
-      if (!cancelled) setAnalysisAttachments(loaded.filter((entry): entry is ConversationDockAttachment => entry !== null));
+      if (!cancelled) setAnalysisAttachments(loaded.filter((entry): entry is NonNullable<(typeof loaded)[number]> => entry !== null));
     })();
     return () => { cancelled = true; };
   }, [analysisAssetKey, analysisTask?.id, project.id, workspaceId]);

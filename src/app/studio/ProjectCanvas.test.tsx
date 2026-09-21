@@ -249,7 +249,7 @@ describe('ProjectCanvas design references', () => {
       listProjectDesigns: vi.fn(async () => []),
       loadProjectCanvasLayout: vi.fn(async () => null),
       listTasks: vi.fn(async () => [analysis]),
-      listAssets: vi.fn(async () => [{ id: 'asset-1', name: 'plant.png', format: 'PNG', mimeType: 'image/png', contentHash: 'hash-1', managed: true }]),
+      listAssets: vi.fn(async () => [{ id: 'asset-1', name: 'plant.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'hash-1', managed: true }]),
       readAsset: vi.fn(async () => new Uint8Array([1, 2, 3])),
     };
     render(
