@@ -67,9 +67,7 @@
   padding: 4px;
   border: 1px solid var(--shell-glass-border);
   border-radius: 15px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--on-surface) 9%, transparent), transparent 45%),
-    var(--shell-glass);
+  background: var(--shell-glass);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 11%, transparent);
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);
@@ -100,9 +98,7 @@
   padding: 2px;
   border: 1px solid var(--shell-glass-border);
   border-radius: 13px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--on-surface) 9%, transparent), transparent 45%),
-    var(--shell-glass);
+  background: var(--shell-glass);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 11%, transparent);
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);

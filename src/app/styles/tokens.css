@@ -61,14 +61,10 @@
   --background: #0f131c;
   --on-background: #dfe2ef;
   --surface-variant: #31353f;
-  --shell-glass: linear-gradient(
-    118deg,
-    rgb(20 28 46 / 0.84) 0%,
-    rgb(9 13 22 / 0.72) 100%
-  );
   --shell-solid: #0e1424;
+  --shell-glass: color-mix(in srgb, var(--shell-solid) 68%, transparent);
   --shell-glass-border: rgb(255 255 255 / 0.09);
-  --shell-backdrop: blur(20px) saturate(150%);
+  --shell-backdrop: blur(24px) saturate(125%);
 }
 
 :root[data-theme='light'] {
@@ -133,14 +129,10 @@
   --background: #faf8ff;
   --on-background: #131b2e;
   --surface-variant: #dae2fd;
-  --shell-glass: linear-gradient(
-    118deg,
-    rgb(255 255 255 / 0.86) 0%,
-    rgb(238 242 255 / 0.74) 100%
-  );
   --shell-solid: #f7f8ff;
+  --shell-glass: color-mix(in srgb, var(--shell-solid) 68%, transparent);
   --shell-glass-border: rgb(115 125 160 / 0.22);
-  --shell-backdrop: blur(20px) saturate(130%);
+  --shell-backdrop: blur(24px) saturate(120%);
   --canvas-bg: #f1f5f9;
   --surface-base: #ffffff;
   --surface-subdued: #f8fafc;
@@ -215,14 +207,10 @@
     --background: #faf8ff;
     --on-background: #131b2e;
     --surface-variant: #dae2fd;
-    --shell-glass: linear-gradient(
-      118deg,
-      rgb(255 255 255 / 0.86) 0%,
-      rgb(238 242 255 / 0.74) 100%
-    );
     --shell-solid: #f7f8ff;
+    --shell-glass: color-mix(in srgb, var(--shell-solid) 68%, transparent);
     --shell-glass-border: rgb(115 125 160 / 0.22);
-    --shell-backdrop: blur(20px) saturate(130%);
+    --shell-backdrop: blur(24px) saturate(120%);
     --canvas-bg: #f1f5f9;
     --surface-base: #ffffff;
     --surface-subdued: #f8fafc;
