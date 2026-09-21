@@ -29,6 +29,7 @@ type ConversationDockProps = {
   submitLabel: string;
   busyLabel?: string;
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
+  /** Kept for callers that still track managed references; references are intentionally quiet in the dock. */
   referencedAssetCount?: number;
   showGenerate?: boolean;
   generateDisabled?: boolean;
@@ -91,7 +92,6 @@ export const ConversationDock = ({
   submitLabel,
   busyLabel,
   textareaRef,
-  referencedAssetCount = 0,
   showGenerate = false,
   generateDisabled = false,
   onValueChange,
@@ -184,14 +184,6 @@ export const ConversationDock = ({
                 />
               </div>
             ))}
-          </div>
-        )}
-        {compact && referencedAssetCount > 0 && (
-          <div className="conversation-dock__references" aria-label={t(locale, '候选参考图', 'Candidate references')}>
-            <Icon name="image" size={14} />
-            <span>
-              {referencedAssetCount} {t(locale, '张候选图将用于下一轮对话', 'candidate image(s) referenced in the next conversation')}
-            </span>
           </div>
         )}
         <div className="conversation-dock__input-wrap">
