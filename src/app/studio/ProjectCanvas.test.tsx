@@ -1,7 +1,44 @@
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getAnalysisHistory, getLatestConversationTask } from './ProjectCanvas';
+import { ProjectCanvas, getAnalysisHistory, getLatestConversationTask } from './ProjectCanvas';
+import type { ProjectDesign } from '../../features/projects/metadata';
 import type { TaskRecord } from '../../features/tasks/state';
+import type { ExportDocumentInput } from '../../platform/contracts';
+
+type StageMockProps = {
+  designs: readonly ProjectDesign[];
+  selectedDesignIds?: readonly string[];
+  onSelect: (designId: string | null) => void;
+  onAddToConversation?: (designId: string) => void;
+  children?: ReactNode;
+};
+
+vi.mock('./ProjectCanvasStage', () => ({
+  ProjectCanvasStage: ({ designs, selectedDesignIds = [], onSelect, onAddToConversation }: StageMockProps) => (
+    <div aria-label="设计画布内容">
+      {designs.map((design) => (
+        <button
+          type="button"
+          key={design.id}
+          aria-label={`设计稿 ${design.title}`}
+          aria-pressed={selectedDesignIds.includes(design.id)}
+          onClick={() => onSelect(design.id)}
+          onDoubleClick={() => onAddToConversation?.(design.id)}
+        >
+          {design.title}
+        </button>
+      ))}
+    </div>
+  ),
+}));
+
+const originalDesktopApi = window.designhub;
+
+afterEach(() => {
+  window.designhub = originalDesktopApi;
+});
 
 const conversation = (input: Partial<TaskRecord> & Pick<TaskRecord, 'id' | 'createdAt'>): TaskRecord => ({
   id: input.id,
@@ -42,5 +79,135 @@ describe('getLatestConversationTask', () => {
     const generation = { ...latest, id: 'generation', capability: 'design-generation' };
 
     expect(getLatestConversationTask([older, generation, latest])?.id).toBe('latest');
+  });
+});
+
+describe('ProjectCanvas design references', () => {
+  it('adds a design to the conversation only after a double click', async () => {
+    const design: ProjectDesign = {
+      id: 'design-1',
+      projectId: 'project-1',
+      assetId: 'asset-1',
+      sourceTaskId: 'generation-1',
+      sourceConversationTaskId: 'analysis-1',
+      width: 1080,
+      height: 1440,
+      title: '春日海报',
+      createdAt: '2026-09-21T10:00:00.000Z',
+    };
+    const readAsset = vi.fn(async () => new Uint8Array([1, 2, 3]));
+    window.designhub = {
+      chooseWorkspaceDirectory: async () => null,
+      listProjectDesigns: vi.fn(async () => [design]),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+      readAsset,
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
+        workspaceId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    const draft = screen.getByRole('button', { name: '设计稿 春日海报' });
+    fireEvent.click(draft);
+    await Promise.resolve();
+    expect(readAsset).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '预览 春日海报' })).not.toBeInTheDocument();
+
+    fireEvent.doubleClick(draft);
+    await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-1' }));
+    expect(await screen.findByRole('button', { name: '预览 春日海报' })).toBeVisible();
+  });
+
+  it('selects every design generated from the chosen analysis without attaching them', async () => {
+    const designs: ProjectDesign[] = [
+      { id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'generation-1', sourceConversationTaskId: 'analysis-1', width: 1080, height: 1440, title: '方案一', createdAt: '2026-09-21T10:00:00.000Z' },
+      { id: 'design-2', projectId: 'project-1', assetId: 'asset-2', sourceTaskId: 'generation-1', sourceConversationTaskId: 'analysis-1', width: 1080, height: 1440, title: '方案二', createdAt: '2026-09-21T10:01:00.000Z' },
+      { id: 'design-3', projectId: 'project-1', assetId: 'asset-3', sourceTaskId: 'generation-2', sourceConversationTaskId: 'analysis-2', width: 1080, height: 1440, title: '其他方案', createdAt: '2026-09-21T11:00:00.000Z' },
+    ];
+    const tasks = [
+      { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } },
+      { ...conversation({ id: 'analysis-2', createdAt: '2026-09-21T11:00:00.000Z', requestText: '第二轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第二轮结果' } },
+    ];
+    const readAsset = vi.fn(async () => new Uint8Array([1]));
+    window.designhub = {
+      chooseWorkspaceDirectory: async () => null,
+      listProjectDesigns: vi.fn(async () => designs),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => tasks),
+      readAsset,
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, documents: 0 }}
+        workspaceId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /分析结果/u }));
+    fireEvent.click(screen.getByRole('button', { name: /第一轮分析/u }));
+
+    expect(screen.getByRole('button', { name: '设计稿 方案一' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '设计稿 方案二' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '设计稿 其他方案' })).toHaveAttribute('aria-pressed', 'false');
+    expect(readAsset).not.toHaveBeenCalled();
+  });
+
+  it('exports every design selected through an analysis result', async () => {
+    const designs: ProjectDesign[] = [
+      { id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'generation-1', sourceConversationTaskId: 'analysis-1', width: 1080, height: 1440, title: '方案一', createdAt: '2026-09-21T10:00:00.000Z' },
+      { id: 'design-2', projectId: 'project-1', assetId: 'asset-2', sourceTaskId: 'generation-1', sourceConversationTaskId: 'analysis-1', width: 1080, height: 1440, title: '方案二', createdAt: '2026-09-21T10:01:00.000Z' },
+    ];
+    const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } };
+    const exportDocument = vi.fn(async (input: ExportDocumentInput) => ({ path: `/tmp/${input.documentId}.png`, sha256: 'a'.repeat(64) }));
+    window.designhub = {
+      chooseWorkspaceDirectory: async () => null,
+      listProjectDesigns: vi.fn(async () => designs),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => [analysis]),
+      exportDocument,
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, documents: 0 }}
+        workspaceId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /分析结果/u }));
+    fireEvent.click(screen.getByRole('button', { name: /第一轮分析/u }));
+    fireEvent.click(screen.getByRole('button', { name: '导出所选设计稿' }));
+
+    await waitFor(() => expect(exportDocument).toHaveBeenCalledTimes(2));
+    expect(exportDocument.mock.calls.map(([input]) => input.documentId)).toEqual(['design-1', 'design-2']);
   });
 });

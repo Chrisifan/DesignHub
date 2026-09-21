@@ -71,10 +71,11 @@ type ProjectCanvasStageProps = {
   designs: readonly ProjectDesign[];
   viewport?: CanvasViewport;
   initialNodes?: Record<string, { x: number; y: number }>;
-  selectedDesignId?: string | null;
+  selectedDesignIds?: readonly string[];
   pendingDesigns?: readonly DesignDimensions[];
   readOnly?: boolean;
   onSelect: (designId: string | null) => void;
+  onAddToConversation?: (designId: string) => void;
   onLayoutChange?: (layout: { viewport: CanvasViewport; nodes: Record<string, { x: number; y: number }> }) => void;
   onViewportChange?: (viewport: CanvasViewport) => void;
   onReady?: (size: CanvasSize) => void;
@@ -121,10 +122,11 @@ export const ProjectCanvasStage = ({
   designs,
   viewport: initialViewport,
   initialNodes,
-  selectedDesignId,
+  selectedDesignIds = [],
   pendingDesigns = [],
   readOnly = false,
   onSelect,
+  onAddToConversation,
   onLayoutChange,
   onViewportChange,
   onReady,
@@ -279,7 +281,7 @@ export const ProjectCanvasStage = ({
           })}
           {designs.map((design) => {
             const position = nodes[design.id] ?? { x: 0, y: 0 };
-            const selected = selectedDesignId === design.id;
+            const selected = selectedDesignIds.includes(design.id);
             return (
               <KonvaImage
                 key={design.id}
@@ -292,6 +294,7 @@ export const ProjectCanvasStage = ({
                 strokeWidth={(selected ? 4 : 1) / viewport.zoom}
                 draggable={!readOnly}
                 onClick={(event) => { event.cancelBubble = true; onSelect(design.id); }}
+                onDblClick={(event) => { event.cancelBubble = true; onSelect(design.id); onAddToConversation?.(design.id); }}
                 onTap={(event) => { event.cancelBubble = true; onSelect(design.id); }}
                 onDragEnd={(event) => moveDesign(design, { x: event.target.x(), y: event.target.y() })}
               />
