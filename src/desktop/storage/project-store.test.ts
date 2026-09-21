@@ -106,6 +106,36 @@ it('persists project brief, designer and document metadata across reopen', async
   });
 });
 
+it('persists project designs and canvas layout across reopen', async () => {
+  await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
+    const first = await openWorkspace(workspaceDirectory);
+    const store = createProjectStore(first);
+    const created = await store.createProjectContainer({
+      workspaceId: first.workspace.workspaceId,
+      operationId: 'canvas-designs-create',
+      name: 'Canvas designs',
+      designs: [],
+    });
+    await store.addProjectDesigns({
+      workspaceId: first.workspace.workspaceId,
+      projectId: created.projectId,
+      designs: [{ id: 'design-1', projectId: created.projectId, assetId: 'asset-1', sourceTaskId: 'task-1', width: 800, height: 600, title: 'First', createdAt: '2026-09-21T00:00:00.000Z' }],
+    });
+    await store.saveProjectCanvasLayout({
+      workspaceId: first.workspace.workspaceId,
+      projectId: created.projectId,
+      layout: { viewport: { zoom: 0.8, offsetX: 12, offsetY: 24 }, nodes: { 'design-1': { x: 100, y: 120 } } },
+    });
+    first.close();
+
+    const reopened = await openWorkspace(workspaceDirectory);
+    try {
+      await expect(createProjectStore(reopened).listProjectDesigns({ workspaceId: reopened.workspace.workspaceId, projectId: created.projectId })).resolves.toMatchObject([{ id: 'design-1', assetId: 'asset-1' }]);
+      await expect(createProjectStore(reopened).loadProjectCanvasLayout({ workspaceId: reopened.workspace.workspaceId, projectId: created.projectId })).resolves.toEqual({ viewport: { zoom: 0.8, offsetX: 12, offsetY: 24 }, nodes: { 'design-1': { x: 100, y: 120 } } });
+    } finally { reopened.close(); }
+  });
+});
+
 it('imports a validated project package into the workspace and rewrites project identity', async () => {
   await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
     const workspace = await openWorkspace(workspaceDirectory);

@@ -5,9 +5,10 @@ import { LibraryPages } from './LibraryPages';
 import { NewProjectForm } from './NewDesignPage';
 import { Drawer } from './Drawer';
 import { PageToolbarHost, PageToolbarProvider } from './PageToolbar';
-import { PersonaArtwork } from './PersonaArtwork';
-import { ProjectCoverImage } from './ProjectCoverImage';
-import { ProjectDetailPage } from './ProjectDetailPage';
+import { ProjectCanvas } from './ProjectCanvas';
+import { StudioHome } from './StudioHome';
+import { StudioUserMenu } from './StudioUserMenu';
+import { createAutomaticProjectName } from './auto-project-name';
 import { localize, type PersonaProfile } from './personas';
 import { legacySeededDesignerIds } from '../../features/designers/persistence';
 import { Workbench } from './Workbench';
@@ -17,20 +18,16 @@ import type { ActiveProject } from '../../features/workspace/project-store';
 import { getDesktopApi } from '../../platform/runtime';
 import {
   Button,
-  EmptyState,
   Field,
   Icon,
   IconButton,
   Modal,
-  PageHeader,
   t,
 } from './ui';
-import type { NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
+import type { HomeConversationRequest, NewDesignDraft, PendingHomeConversation, Project, StudioSurface, Theme, View } from './types';
 import type { ProjectDocumentMetadata, ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool, ToolParams } from '../../features/image-tools/target';
-import { resizeScene } from '../../features/image-tools/local-transform';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
-import { parseDocumentSize } from '../../features/projects/size';
 import '../styles/studio.css';
 
 const navigation: { view: View; icon: string; zh: string; en: string }[] = [
@@ -77,9 +74,12 @@ const toStudioProject = (entry: ActiveProject, workspaceId: string): Project => 
     brandSnapshot: entry.brandSnapshot,
     coverAssetId: entry.coverAssetId,
     artwork: 'blank',
+    designs: entry.designs,
+    canvasLayout: entry.canvasLayout,
     documents: documentEntries?.length ?? 0,
     documentEntries,
     archived: entry.archived,
+    updatedAt: entry.updatedAt,
   };
 };
 
@@ -97,6 +97,8 @@ const mergeProjectMetadata = (current: Project, metadata: ProjectMetadata): Proj
   designerSnapshot: metadata.designerSnapshot,
   brandSnapshot: metadata.brandSnapshot,
   coverAssetId: metadata.coverAssetId,
+  designs: metadata.designs,
+  canvasLayout: metadata.canvasLayout,
 });
 
 type StudioProps = {
@@ -137,13 +139,11 @@ export const Studio = ({
   const [projectsReloadKey, setProjectsReloadKey] = useState(0);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'active' | 'archived' | 'all'>('active');
-  const [display, setDisplay] = useState<'grid' | 'list'>('grid');
   const [selected, setSelected] = useState<Project | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
-  const [deliveryProject, setDeliveryProject] = useState<Project | null>(null);
+  const [deliveryProject] = useState<Project | null>(null);
   const [dialog, setDialog] = useState<'workspace' | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
   const [notice, setNotice] = useState('');
   const [newProjectDrawerOpen, setNewProjectDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<NewDesignDraft>({
@@ -155,16 +155,14 @@ export const Studio = ({
     mode: 'manual',
   });
   const previewCoverUrls = useRef(new Set<string>());
+  const activeWorkspaceRef = useRef(workspace);
+  activeWorkspaceRef.current = workspace;
   const [projectDialog, setProjectDialog] = useState<'rename' | null>(null);
-  const [documentDialog, setDocumentDialog] = useState(false);
-  const [documentMode, setDocumentMode] = useState<'blank' | 'variant'>('blank');
-  const [documentName, setDocumentName] = useState('');
-  const [documentWidth, setDocumentWidth] = useState('1080');
-  const [documentHeight, setDocumentHeight] = useState('1080');
-  const [documentSourceId, setDocumentSourceId] = useState('');
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(initialDesignerOptions);
-  const [modelConnected, setModelConnected] = useState(false);
+  const [conversationConnected, setConversationConnected] = useState(false);
+  const [homeCreationBusy, setHomeCreationBusy] = useState(false);
+  const [pendingHomeConversation, setPendingHomeConversation] = useState<PendingHomeConversation | null>(null);
   const [operatorName, setOperatorName] = useState(readOperatorName);
   const [pendingAssetAction, setPendingAssetAction] = useState<(CanvasAssetAction & { projectId?: string }) | null>(null);
   useEffect(() => () => {
@@ -203,6 +201,7 @@ export const Studio = ({
     setSelected(null);
     setDocumentOpen(false);
     setActiveDocumentId(null);
+    setPendingHomeConversation(null);
     setNewProjectDrawerOpen(false);
     setView('projects');
     setSurface('projects');
@@ -210,12 +209,9 @@ export const Studio = ({
   }, [initialDesignerOptions, initialProjects, workspace?.workspaceId, locale, projectsReloadKey]);
   useEffect(() => {
     let cancelled = false;
-    if (!workspace) { setModelConnected(false); return () => { cancelled = true; }; }
-    const request = Promise.all([
-      getDesktopApi().hasCredential?.('openai-compatible:conversation') ?? Promise.resolve(false),
-      getDesktopApi().hasCredential?.('openai-compatible:image') ?? Promise.resolve(false),
-    ]);
-    void request.then(([conversation, image]) => { if (!cancelled) setModelConnected(Boolean(conversation || image)); }).catch(() => undefined);
+    if (!workspace) { setConversationConnected(false); return () => { cancelled = true; }; }
+    const request = getDesktopApi().hasCredential?.('openai-compatible:conversation') ?? Promise.resolve(false);
+    void request.then((connected) => { if (!cancelled) setConversationConnected(Boolean(connected)); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [workspace?.workspaceId]);
   useEffect(() => {
@@ -278,92 +274,6 @@ export const Studio = ({
       notify(t(locale, '项目更新失败，请重试', 'Project update failed; try again'));
       return null;
     }
-  };
-  const finalizeProjectDocument = async (project: Project, input: { documentId: string; revisionId: string }): Promise<void> => {
-    if (!workspace || workspace.openMode !== 'writable') throw new Error('WORKSPACE_NOT_WRITABLE');
-    if (!project.documentEntries?.some((entry) => entry.id === input.documentId)) throw new Error('DOCUMENT_NOT_FOUND');
-    const documents: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>> = project.documentEntries.map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      width: entry.width,
-      height: entry.height,
-      ...(entry.sourceDocumentId ? { sourceDocumentId: entry.sourceDocumentId } : {}),
-      ...(entry.sourceRevisionId !== undefined ? { sourceRevisionId: entry.sourceRevisionId } : {}),
-      ...(entry.id === input.documentId
-        ? { finalizedRevisionId: input.revisionId }
-        : entry.finalizedRevisionId !== undefined ? { finalizedRevisionId: entry.finalizedRevisionId } : {}),
-    }));
-    const metadata = await getDesktopApi().updateProjectMetadata?.({
-      workspaceId: workspace.workspaceId,
-      projectId: project.id,
-      patch: { documents },
-    });
-    if (!metadata) throw new Error('PROJECT_METADATA_UPDATE_FAILED');
-    setProjects((current) => current.map((entry) => entry.id === project.id ? mergeProjectMetadata(entry, metadata) : entry));
-    setSelected((current) => current?.id === project.id ? mergeProjectMetadata(current, metadata) : current);
-  };
-  const openDocumentDialog = (): void => {
-    if (!workspace || workspace.openMode !== 'writable' || !selected) return;
-    const activeDocument = selected.documentEntries?.find((entry) => entry.id === (activeDocumentId ?? selected.documentId)) ?? selected.documentEntries?.[0];
-    const preferredSource = activeDocument?.finalizedRevisionId
-      ? activeDocument
-      : selected.documentEntries?.find((entry) => Boolean(entry.finalizedRevisionId));
-    setDocumentMode('blank');
-    setDocumentName('');
-    setDocumentWidth(String(activeDocument?.width ?? 1080));
-    setDocumentHeight(String(activeDocument?.height ?? 1080));
-    setDocumentSourceId(preferredSource?.id ?? '');
-    setDocumentDialog(true);
-  };
-  const createDocument = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    if (!workspace || workspace.openMode !== 'writable' || !selected) return;
-    const source = documentMode === 'variant'
-      ? selected.documentEntries?.find((entry) => entry.id === documentSourceId && Boolean(entry.finalizedRevisionId))
-      : undefined;
-    const width = Number(documentWidth);
-    const height = Number(documentHeight);
-    if (!documentName.trim() || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || (documentMode === 'variant' && !source?.finalizedRevisionId)) {
-      notify(t(locale, '尺寸信息无效', 'Enter a valid document name and size'));
-      return;
-    }
-    const documents: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>> = (selected.documentEntries ?? []).map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      width: entry.width,
-      height: entry.height,
-      ...(entry.sourceDocumentId ? { sourceDocumentId: entry.sourceDocumentId } : {}),
-      ...(entry.sourceRevisionId ? { sourceRevisionId: entry.sourceRevisionId } : {}),
-      ...(entry.finalizedRevisionId ? { finalizedRevisionId: entry.finalizedRevisionId } : {}),
-    }));
-    const documentId = `doc-${crypto.randomUUID()}`;
-    documents.push({
-      id: documentId,
-      name: documentName.trim(),
-      width,
-      height,
-      finalizedRevisionId: null,
-      ...(source?.finalizedRevisionId ? { sourceDocumentId: source.id, sourceRevisionId: source.finalizedRevisionId } : {}),
-    });
-    const metadata = await updateProject({ documents });
-    if (!metadata) return;
-    let conversionFailed = false;
-    if (source?.finalizedRevisionId) {
-      try {
-        const sourceRevisions = await getDesktopApi().loadDocumentRevisions?.(workspace.workspaceId, selected.id, source.id);
-        const sourceRevision = sourceRevisions?.revisions.find((revision) => revision.revisionId === source.finalizedRevisionId);
-        if (sourceRevision?.scene) {
-          const converted = resizeScene(sourceRevision.scene, { width, height });
-          await getDesktopApi().saveDocumentScene?.({ workspaceId: workspace.workspaceId, projectId: selected.id, documentId, scene: { ...converted, id: documentId } });
-        }
-      } catch {
-        conversionFailed = true;
-        notify(t(locale, '布局转换失败，已创建空白尺寸稿', 'Layout conversion failed; an empty size document was created'));
-      }
-    }
-    setDocumentDialog(false);
-    setActiveDocumentId(documentId);
-    if (!conversionFailed) notify(t(locale, documentMode === 'variant' ? '尺寸变体已创建' : '设计稿已创建', documentMode === 'variant' ? 'Size variant created' : 'Design created'));
   };
   const duplicateSelected = async (): Promise<void> => {
     if (!workspace || !selected || workspace.openMode !== 'writable') return;
@@ -444,17 +354,68 @@ export const Studio = ({
     setActiveDocumentId(null);
     setView('projects');
   };
+  const createProjectFromHome = async (request: HomeConversationRequest): Promise<boolean> => {
+    if (!workspace || workspace.openMode !== 'writable' || !conversationConnected) return false;
+    setHomeCreationBusy(true);
+    const initiatingWorkspaceId = workspace.workspaceId;
+    const selectedDesigner = request.designerId
+      ? designerOptions.find((profile) => profile.id === request.designerId && profile.status !== 'archived')
+      : undefined;
+    const name = createAutomaticProjectName(locale, projects.map((project) => project.name));
+    try {
+      const created = await getDesktopApi().createProjectContainer?.({
+        workspaceId: workspace.workspaceId,
+        operationId: crypto.randomUUID(),
+        name,
+        ...(selectedDesigner ? {
+          activeDesignerVersionId: selectedDesigner.id,
+          designerSnapshot: structuredClone(selectedDesigner),
+        } : {}),
+        designs: [],
+      });
+      if (!created) {
+        setHomeCreationBusy(false);
+        notify(t(locale, '无法创建项目，请重试。', 'Could not create the project. Try again.'));
+        return false;
+      }
+      if (activeWorkspaceRef.current?.workspaceId !== initiatingWorkspaceId) {
+        setHomeCreationBusy(false);
+        return false;
+      }
+      const project: Project = {
+        id: created.projectId,
+        workspaceId: workspace.workspaceId,
+        name,
+        enName: name,
+        description: '',
+        enDescription: '',
+        designers: selectedDesigner ? [localize(locale, selectedDesigner.name)] : [],
+        ...(selectedDesigner ? {
+          activeDesignerVersionId: selectedDesigner.id,
+          designerSnapshot: structuredClone(selectedDesigner),
+        } : {}),
+        artwork: 'blank',
+        designs: [],
+        documents: 0,
+        documentEntries: [],
+        updatedAt: new Date().toISOString(),
+      };
+      setProjects((current) => [project, ...current]);
+      setSelected(project);
+      setDocumentOpen(false);
+      setView('projects');
+      setSurface('projects');
+      void submitProjectConversation(project, request.message, request.attachments);
+      return true;
+    } catch {
+      setHomeCreationBusy(false);
+      notify(t(locale, '无法创建项目，请重试。', 'Could not create the project. Try again.'));
+      return false;
+    }
+  };
   const createProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.name.trim()) return;
-    const documentId = crypto.randomUUID();
-    let documentSize;
-    try {
-      documentSize = parseDocumentSize(draft.size);
-    } catch {
-      notify(t(locale, '尺寸无效，请重新选择。', 'Invalid document size. Choose another preset.'));
-      return;
-    }
     if (workspace?.openMode === 'writable') {
       const selectedDesigner = designerOptions.find((profile) => profile.id === draft.personaId);
       const submittedCover = draft.cover;
@@ -464,7 +425,7 @@ export const Studio = ({
         name: draft.name.trim(),
         brief: draft.goal || undefined,
         ...(selectedDesigner ? { activeDesignerVersionId: selectedDesigner.id, designerSnapshot: structuredClone(selectedDesigner) } : {}),
-        documents: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
+        designs: [],
       });
       if (!created) {
         notify(t(locale, '无法保存项目，请检查工作区。', 'Could not save the project. Check the workspace.'));
@@ -500,7 +461,6 @@ export const Studio = ({
       const project: Project = {
         id: created.projectId,
         workspaceId: workspace.workspaceId,
-        documentId,
         name: draft.name.trim(),
         enName: draft.name.trim(),
         description: draft.goal,
@@ -509,8 +469,9 @@ export const Studio = ({
         ...(selectedDesigner ? { activeDesignerVersionId: selectedDesigner.id, designerSnapshot: structuredClone(selectedDesigner) } : {}),
         ...(coverAssetId ? { coverAssetId } : {}),
         artwork: 'blank',
-        documents: 1,
-        documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
+        designs: [],
+        documents: 0,
+        documentEntries: [],
       };
       setProjects((previous) => [project, ...previous]);
       setNewProjectDrawerOpen(false);
@@ -541,8 +502,9 @@ export const Studio = ({
       designers: designerOptions.find((profile) => profile.id === draft.personaId) ? [localize(locale, designerOptions.find((profile) => profile.id === draft.personaId)!.name)] : [],
       ...(draft.cover?.previewUrl ? { coverPreviewUrl: draft.cover.previewUrl } : {}),
       artwork: 'blank',
-      documents: 1,
-      documentEntries: [{ id: documentId, name: t(locale, '主海报', 'Main poster'), width: documentSize.width, height: documentSize.height }],
+      designs: [],
+      documents: 0,
+      documentEntries: [],
     };
     if (draft.cover?.previewUrl) previewCoverUrls.current.add(draft.cover.previewUrl);
     setProjects((previous) => [project, ...previous]);
@@ -570,48 +532,15 @@ export const Studio = ({
   };
   const projectName = (project: Project) =>
     t(locale, project.name, project.enName);
-  const projectPersonaId = (project: Project) => project.activeDesignerVersionId ?? '';
-  const projectDesignerLabel = (project: Project): string => {
-    const snapshot = project.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
-    const localizedName = snapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en'];
-    if (localizedName) return localizedName;
-    return project.designers[0] ?? t(locale, '未设置设计师', 'No designer selected');
-  };
-  const projectContributorIds = (project: Project): string[] => {
-    const ids = [...new Set(project.contributorDesignerVersionIds?.length
-      ? project.contributorDesignerVersionIds
-      : (project.activeDesignerVersionId ? [project.activeDesignerVersionId] : []))];
-    if (ids.length > 0) return ids;
-    return [];
-  };
-  const projectContributorLabel = (project: Project): string => projectContributorIds(project).map((id, index) => {
-    if (index === 0) return projectDesignerLabel(project);
-    const profile = designerOptions.find((entry) => entry.id === id);
-    return profile ? localize(locale, profile.name) : id;
-  }).join(' · ');
-  const openDelivery = (project: Project) => {
-    setDeliveryProject(project);
-    navigate('delivery');
-  };
-  const openDocument = (project: Project, documentId?: string): void => {
-    setSelected(project);
-    setActiveDocumentId(documentId ?? project.documentEntries?.[0]?.id ?? project.documentId ?? null);
-    setDocumentOpen(true);
-    setCollapsed(true);
-    setSurface('projects');
-    setView('projects');
-  };
   const submitProjectConversation = async (project: Project, message: string, attachments: import('../../features/agent/task-service').ConversationImageAttachment[] = [], context: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] } = {}): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return null;
     }
     try {
-      const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
       const task = await getDesktopApi().submitConversation?.({
         workspaceId: workspace.workspaceId,
         projectId: project.id,
-        ...(documentId ? { documentId } : {}),
         connectionId: 'openai-compatible',
         message,
         ...context,
@@ -628,21 +557,15 @@ export const Studio = ({
       return null;
     }
   };
-  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null): Promise<import('../../features/tasks/state').TaskRecord | null> => {
+  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
-      return null;
-    }
-    const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
-    if (!documentId) {
-      notify(t(locale, '请先打开文档。', 'Open a document first.'));
       return null;
     }
     try {
       const task = await getDesktopApi().submitDesignGeneration?.({
         workspaceId: workspace.workspaceId,
         projectId: project.id,
-        documentId,
         conversationTaskId,
         baseRevisionId,
         connectionId: 'openai-compatible',
@@ -728,51 +651,8 @@ export const Studio = ({
       ? projectName(selected)
       : t(locale, title.zh, title.en);
   const toolbarActions =
-    surface === 'projects' && view === 'projects' && !documentOpen && !selected ? (
+    surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
       <>
-        <div className="toolbar-segmented" role="group" aria-label={t(locale, '项目状态', 'Project status')}>
-          {(['active', 'archived', 'all'] as const).map((value) => (
-            <button
-              type="button"
-              key={value}
-              className={filter === value ? 'is-active' : ''}
-              aria-pressed={filter === value}
-              onClick={() => setFilter(value)}
-            >
-              {value === 'active'
-                ? t(locale, '进行中', 'Active')
-                : value === 'archived'
-                  ? t(locale, '已归档', 'Archived')
-                  : t(locale, '全部项目', 'All projects')}
-              {value === 'active' && <span>{projects.filter((project) => !project.archived).length}</span>}
-            </button>
-          ))}
-        </div>
-        <label className="toolbar-search">
-          <Icon name="search" size={16} />
-          <span className="sr-only">{t(locale, '搜索项目', 'Search projects')}</span>
-          <input
-            type="search"
-            aria-label={t(locale, '搜索项目', 'Search projects')}
-            placeholder={t(locale, '搜索项目…', 'Search projects…')}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
-        <div className="view-toggle" role="group" aria-label={t(locale, '展示方式', 'Display mode')}>
-          <IconButton name="layout-grid" label={t(locale, '网格视图', 'Grid view')} aria-pressed={display === 'grid'} onClick={() => setDisplay('grid')} />
-          <IconButton name="list" label={t(locale, '列表视图', 'List view')} aria-pressed={display === 'list'} onClick={() => setDisplay('list')} />
-        </div>
-        {workspace?.openMode === 'writable' && <IconButton name="upload" label={t(locale, '导入项目包', 'Import package')} onClick={() => { void importProjectPackage(); }} />}
-        <IconButton name="plus" label={t(locale, '新建项目', 'New project')} onClick={() => openNewDesign()} />
-      </>
-    ) : surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
-      <>
-        {workspace?.openMode === 'writable' && selected.workspaceId && (
-          <IconButton name="plus" label={t(locale, '新建设计稿', 'New design')} onClick={openDocumentDialog} />
-        )}
-        <IconButton name="download" label={t(locale, '导出交付', 'Delivery')} onClick={() => openDelivery(selected)} />
-        <IconButton name="file-image" label={t(locale, '继续编辑', 'Open workbench')} onClick={() => setDocumentOpen(true)} />
         {workspace?.openMode === 'writable' && selected.workspaceId && <>
           <IconButton name="settings" label={t(locale, '重命名', 'Rename')} onClick={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }} />
           <IconButton name="copy" label={t(locale, '复制', 'Duplicate')} onClick={() => { void duplicateSelected(); }} />
@@ -798,81 +678,30 @@ export const Studio = ({
               : t(locale, '本地工作区', 'Local workspace')
             : t(locale, '未打开工作区', 'No workspace open'),
           label: t(locale, '切换工作区', 'Switch workspace'),
+          disabled: homeCreationBusy,
           onClick: () => setDialog('workspace'),
         }}
+        userMenu={(
+          <StudioUserMenu
+            locale={locale}
+            operatorName={operatorName}
+            currentView={view}
+            onNavigate={navigate}
+            onNewProject={() => openNewDesign()}
+            onImportProject={() => { void importProjectPackage(); }}
+            newProjectDisabled={workspace?.openMode === 'read-only'}
+            importDisabled={workspace?.openMode !== 'writable'}
+          />
+        )}
       />
-      <div className={`studio ${collapsed ? 'studio--compact' : ''}`}>
-        <aside className="studio-sidebar">
-        <nav
-          aria-label={t(locale, '主导航', 'Main navigation')}
-          className="main-navigation"
-        >
-          {navigation.map((item, index) => (
-            <div key={item.view}>
-              {(index === 4 || index === 7) && <div className="nav-divider" />}
-              <button
-                onClick={() => navigate(item.view)}
-                aria-current={view === item.view ? 'page' : undefined}
-                aria-label={t(locale, item.zh, item.en)}
-                title={t(locale, item.zh, item.en)}
-                className={`nav-item ${view === item.view ? 'is-active' : ''}`}
-              >
-                <Icon name={item.icon} />
-                <span className="sidebar-label">
-                  {t(locale, item.zh, item.en)}
-                </span>
-                {item.view === 'projects' && (
-                  <span className="nav-count sidebar-label">
-                    {projects.length}
-                  </span>
-                )}
-              </button>
-            </div>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="local-note">
-            <Icon name="hard-drive" size={16} />
-            <span className="sidebar-label">
-              {t(locale, '创作由你掌握', 'Your work, your space')}
-              <small>
-                {t(
-                  locale,
-                  '本地优先 · 无需账号',
-                  'Local first · No account needed',
-                )}
-              </small>
-            </span>
-          </div>
-          <button
-            className="operator"
-            onClick={() => navigate('settings')}
-            title={t(locale, '本机操作者设置', 'Local operator settings')}
-          >
-            <span className="operator-avatar">{(operatorName.trim() || 'S').slice(0, 1).toUpperCase()}</span>
-            <span className="sidebar-label">
-              {operatorName.trim() || t(locale, '本机操作者', 'Local operator')}
-              <small>
-                {t(locale, '仅用于创作署名', 'For creative attribution')}
-              </small>
-            </span>
-            <Icon name="settings" size={15} />
-          </button>
-        </div>
-        </aside>
+      <div className="studio">
         <div className="studio-main" data-drawer-host>
         <PageToolbarProvider>
-        <header
+        {!(surface === 'projects' && view === 'projects') ? <header
           className="studio-toolbar"
           aria-label={t(locale, '工作区工具栏', 'Workspace toolbar')}
         >
           <div className="toolbar-location">
-            <IconButton
-              name="panel-left"
-              label={t(locale, '切换侧栏', 'Toggle sidebar')}
-              onClick={() => setCollapsed(!collapsed)}
-            />
-            <span className="toolbar-divider" />
             <span className="toolbar-workspace">
               {workspace?.name ?? t(locale, '我的设计空间', 'My design studio')}
             </span>
@@ -882,120 +711,46 @@ export const Studio = ({
             </span>
           </div>
           <PageToolbarHost>{toolbarActions}</PageToolbarHost>
-        </header>
+        </header> : null}
         <div className="studio-body">
           {surface === 'projects' && view === 'projects' && !selected && (
-            <section className="page-content projects-page">
-              <PageHeader
-                title={t(locale, '项目库', 'Projects')}
-                description={t(
-                  locale,
-                  '从一个想法，到一组完整的作品。',
-                  'From the first idea to a complete collection.',
-                )}
-                eyebrow={t(locale, '工作区 / 创作', 'WORKSPACE / CREATE')}
-              />
-              {visibleProjects.length ? (
-                <div
-                  className={`project-collection project-collection--${display}`}
-                >
-                  {visibleProjects.map((project) => (
-                    <button
-                      className="project-card"
-                      key={project.id}
-                      onClick={() => openProject(project)}
-                      aria-label={projectName(project)}
-                    >
-                      <div className="project-cover">
-                        <ProjectCoverImage
-                          workspaceId={project.workspaceId}
-                          projectId={project.id}
-                          coverAssetId={project.coverAssetId}
-                          previewUrl={project.coverPreviewUrl}
-                          alt={t(locale, `${projectName(project)}项目封面`, `${projectName(project)} project cover`)}
-                        />
-                        <span className="project-open">
-                          <Icon name="arrow-up-right" size={20} />
-                        </span>
-                        <span className="cover-caption">
-                          {project.documents} {t(locale, '份文档', 'documents')}
-                        </span>
-                      </div>
-                      <div className="project-card-body">
-                        <div className="project-title-line">
-                          <h2>{projectName(project)}</h2>
-                          <Icon name="arrow-up-right" size={16} />
-                        </div>
-                        <p className="project-card-description">
-                          {t(
-                            locale,
-                            project.description,
-                            project.enDescription,
-                          )}
-                        </p>
-                        <div className="project-meta">
-                          <span className="design-attribution">
-                            <span className="design-attribution-avatars">
-                              {projectContributorIds(project).slice(0, 3).map((designerId) => <PersonaArtwork key={designerId} locale={locale} personaId={designerId} crop="avatar" profile={designerOptions.find((profile) => profile.id === designerId)} />)}
-                            </span>
-                            <strong>
-                              {projectDesignerLabel(project)}{(project.designerSnapshot as { version?: string } | undefined)?.version ? ` · ${(project.designerSnapshot as { version?: string }).version}` : ''}
-                            </strong>
-                            {projectContributorIds(project).length > 1 && <span className="design-attribution-contributors" aria-label={t(locale, '版本署名', 'Revision credits')}>{projectContributorLabel(project)}</span>}
-                          </span>
-                          <span className="project-meta-end">
-                            {project.workspaceId ? t(locale, '本地', 'Local') : t(locale, '未保存', 'Unsaved')}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="page-empty-state">
-                  <EmptyState
-                    icon={projectsLoadFailed ? 'alert-triangle' : projects.length === 0 ? 'folder-open' : 'search'}
-                    title={projectsLoadFailed ? t(locale, '项目读取失败', 'Could not load projects') : projects.length === 0 ? t(locale, '暂无项目', 'No projects yet') : t(locale, '没有匹配的项目', 'No matching projects')}
-                    description={t(
-                      locale,
-                      projectsLoadFailed ? '请重试或检查工作区权限。' : projects.length === 0 ? '创建项目后会显示在这里。' : '试试其他关键词，或查看全部项目。',
-                      projectsLoadFailed ? 'Retry or check workspace permissions.' : projects.length === 0 ? 'Create a project to see it here.' : 'Try another keyword or view all projects.',
-                    )}
-                  >
-                    {(projectsLoadFailed || projects.length > 0) && <Button
-                      onClick={() => {
-                        if (projectsLoadFailed) setProjectsReloadKey((key) => key + 1);
-                        else { setQuery(''); setFilter('all'); }
-                      }}
-                    >
-                      {projectsLoadFailed ? t(locale, '重试', 'Retry') : t(locale, '清除搜索', 'Clear search')}
-                    </Button>}
-                  </EmptyState>
-                </div>
-              )}
-            </section>
+            <StudioHome
+              workspaceId={workspace?.workspaceId}
+              locale={locale}
+              projects={projects}
+              visibleProjects={visibleProjects}
+              profiles={designerOptions}
+              filter={filter}
+              query={query}
+              loadFailed={projectsLoadFailed}
+              readOnly={workspace?.openMode !== 'writable'}
+              conversationConnected={conversationConnected}
+              onFilterChange={setFilter}
+              onQueryChange={setQuery}
+              onOpenProject={openProject}
+              onRetry={() => setProjectsReloadKey((key) => key + 1)}
+              onViewAllDesigners={() => navigate('designers')}
+              onNewProject={() => openNewDesign()}
+              onSubmit={createProjectFromHome}
+              notify={notify}
+            />
           )}
           {surface === 'projects' && view === 'projects' && selected && !documentOpen && (
-            <ProjectDetailPage
+            <ProjectCanvas
               locale={locale}
               project={selected}
-              profiles={designerOptions}
-              projectTitle={projectName(selected)}
-              activeDesignerId={projectPersonaId(selected)}
-              designerLabel={projectDesignerLabel(selected)}
-              contributorIds={projectContributorIds(selected)}
-              contributorLabel={projectContributorLabel(selected)}
-              onOpenDocument={(documentId, index) => {
-                if (documentId || index === 0) {
-                  openDocument(selected, documentId);
-                  return;
-                }
-                notify(t(
-                  locale,
-                  '当前可打开主海报预览，其他尺寸稿将在文档能力接入后提供。',
-                  'Open the main poster preview. Other sizes will be available with document storage.',
-                ));
-              }}
+              workspaceId={workspace?.workspaceId}
+              readOnly={workspace?.openMode !== 'writable'}
+              conversationConnected={conversationConnected}
+              designer={designerOptions.find((profile) => profile.id === selected.activeDesignerVersionId) ?? null}
+              notify={notify}
+              onBack={() => setSelected(null)}
+              onRename={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}
+              onDuplicate={() => { void duplicateSelected(); }}
+              onArchive={() => { void updateProject({ archived: true }); setSelected(null); }}
+              onConnections={() => navigate('connections')}
+              onSubmitConversation={(message, attachments, context) => submitProjectConversation(selected, message, attachments, context)}
+              onSubmitDesignGeneration={(conversationTaskId) => submitProjectDesignGeneration(selected, conversationTaskId, null)}
             />
           )}
           {projects.map((project) => (
@@ -1021,13 +776,17 @@ export const Studio = ({
                 onSubmitDesignGeneration={(conversationTaskId, baseRevisionId) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
-                onCandidateFinalized={({ documentId, revisionId }) => finalizeProjectDocument(project, { documentId, revisionId })}
                 assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}
                 onAssetActionHandled={(actionId) => setPendingAssetAction((current) => current?.id === actionId ? null : current)}
                 operatorName={operatorName}
-                modelConnected={modelConnected}
+                modelConnected={conversationConnected}
                 readOnly={workspace?.openMode === 'read-only'}
                 notify={notify}
+                initialConversation={pendingHomeConversation?.projectId === project.id ? pendingHomeConversation : undefined}
+                onInitialConversationConsumed={(id) => {
+                  setPendingHomeConversation((current) => current?.id === id ? null : current);
+                  setHomeCreationBusy(false);
+                }}
               />
             </div>
           ))}
@@ -1065,33 +824,6 @@ export const Studio = ({
             ))}
         </div>
         </PageToolbarProvider>
-        <footer className="studio-status">
-          <span>
-            <Icon name="hard-drive" size={12} />
-            {t(
-              locale,
-              workspace
-                ? workspace.openMode === 'read-only'
-                  ? '只读工作区'
-                  : '本地工作区'
-                : '未打开工作区',
-              workspace
-                ? workspace.openMode === 'read-only'
-                  ? 'Read-only workspace'
-                  : 'Local workspace'
-                : 'No workspace open',
-            )}
-          </span>
-          <span>
-            <Icon name="plug" size={12} />
-            {modelConnected
-              ? t(locale, '模型已连接', 'Model connected')
-              : t(locale, '模型未连接', 'No model connected')}
-          </span>
-          <span className="status-end">
-            DesignHub <span className="mono">0.1</span>
-          </span>
-        </footer>
         </div>
       </div>
       {notice && (
@@ -1206,66 +938,6 @@ export const Studio = ({
             <Button onClick={() => setProjectDialog(null)}>{t(locale, '取消', 'Cancel')}</Button>
             <Button variant="primary" icon="check" disabled={!projectNameDraft.trim()} onClick={() => { setProjectDialog(null); void updateProject({ name: projectNameDraft }); }}>{t(locale, '保存', 'Save')}</Button>
           </div>
-        </Modal>
-      )}
-      {documentDialog && selected && (
-        <Modal title={t(locale, '新建设计稿', 'New design')} locale={locale} onClose={() => setDocumentDialog(false)}>
-          <form className="document-create-form" onSubmit={(event) => { void createDocument(event); }}>
-            <div className="document-create-mode" role="group" aria-label={t(locale, '创建方式', 'Creation method')}>
-              <Button
-                className={documentMode === 'blank' ? 'is-active' : ''}
-                aria-pressed={documentMode === 'blank'}
-                icon="file-image"
-                onClick={() => setDocumentMode('blank')}
-              >
-                {t(locale, '空白设计稿', 'Blank design')}
-              </Button>
-              <Button
-                className={documentMode === 'variant' ? 'is-active' : ''}
-                aria-pressed={documentMode === 'variant'}
-                icon="git-branch"
-                disabled={!selected.documentEntries?.some((entry) => Boolean(entry.finalizedRevisionId))}
-                onClick={() => setDocumentMode('variant')}
-              >
-                {t(locale, '尺寸变体', 'Size variant')}
-              </Button>
-            </div>
-            {!selected.documentEntries?.some((entry) => Boolean(entry.finalizedRevisionId)) && (
-              <p className="document-create-hint">
-                {t(locale, '项目中还没有已定稿的设计稿，暂时不能创建尺寸变体。', 'This project has no finalized design yet, so a size variant cannot be created.')}
-              </p>
-            )}
-            {documentMode === 'variant' && (
-              <Field label={t(locale, '源定稿', 'Finalized source')}>
-                <select value={documentSourceId} onChange={(event) => setDocumentSourceId(event.target.value)}>
-                  {(selected.documentEntries ?? []).filter((entry) => Boolean(entry.finalizedRevisionId)).map((entry) => (
-                    <option key={entry.id} value={entry.id}>{entry.name || t(locale, '未命名设计稿', 'Untitled design')} · {entry.width} × {entry.height}</option>
-                  ))}
-                </select>
-              </Field>
-            )}
-            <Field label={t(locale, '文档名称', 'Document name')}>
-              <input autoFocus value={documentName} onChange={(event) => setDocumentName(event.target.value)} />
-            </Field>
-            <div className="form-grid form-grid--two">
-              <Field label={t(locale, '宽度', 'Width')}>
-                <input type="number" min="1" step="1" value={documentWidth} onChange={(event) => setDocumentWidth(event.target.value)} />
-              </Field>
-              <Field label={t(locale, '高度', 'Height')}>
-                <input type="number" min="1" step="1" value={documentHeight} onChange={(event) => setDocumentHeight(event.target.value)} />
-              </Field>
-            </div>
-            <p className="inline-notice">
-              <Icon name={documentMode === 'variant' ? 'git-branch' : 'file-image'} size={16} />
-              {documentMode === 'variant'
-                ? t(locale, '复制源定稿并按新尺寸缩放，同时保留来源关系。', 'Copy and resize the finalized source while preserving its origin.')
-                : t(locale, '创建一份独立空白画布，不影响项目中的其他设计稿。', 'Create an independent blank canvas without changing other designs.')}
-            </p>
-            <div className="dialog-actions">
-              <Button type="button" onClick={() => setDocumentDialog(false)}>{t(locale, '取消', 'Cancel')}</Button>
-              <Button type="submit" variant="primary" icon="check" disabled={!documentName.trim() || (documentMode === 'variant' && !documentSourceId)}>{t(locale, '创建设计稿', 'Create design')}</Button>
-            </div>
-          </form>
         </Modal>
       )}
     </>

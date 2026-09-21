@@ -1,7 +1,7 @@
 import type { WorkspaceDescriptor } from '../features/workspace/open-workspace';
 import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, DuplicateProjectInput, ImportProjectPackageResult, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../features/workspace/project-store';
 import type { BackupArtifact, RestoreBackupResult } from '../features/workspace/backup';
-import type { ProjectMetadata } from '../features/projects/metadata';
+import type { ProjectCanvasLayout, ProjectDesign, ProjectMetadata } from '../features/projects/metadata';
 import type { DesignerLibraryState } from '../features/designers/persistence';
 import type { AssetImportInput, AssetReadInput, AssetStoreInput } from '../features/assets/asset-store';
 import type { AssetImportResult, ManagedAsset } from '../features/assets/import-assets';
@@ -87,6 +87,10 @@ export type DesktopApi = {
   importProjectPackage?: (input: { workspaceId: string }) => Promise<ImportProjectPackageResult | null>;
   getProjectMetadata?: (workspaceId: string, projectId: string) => Promise<ProjectMetadata | null>;
   updateProjectMetadata?: (input: UpdateProjectMetadataInput) => Promise<ProjectMetadata | null>;
+  addProjectDesigns?: (input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[] | null>;
+  listProjectDesigns?: (input: { workspaceId: string; projectId: string }) => Promise<ProjectDesign[] | null>;
+  loadProjectCanvasLayout?: (input: { workspaceId: string; projectId: string }) => Promise<ProjectCanvasLayout | null>;
+  saveProjectCanvasLayout?: (input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout | null>;
   listTrashedProjects?: (workspaceId: string) => Promise<TrashedProject[] | null>;
   moveProjectToTrash?: (input: TrashProjectInput) => Promise<TrashedProject | null>;
   restoreProjectFromTrash?: (input: TrashProjectInput) => Promise<RestoreProjectResult | null>;

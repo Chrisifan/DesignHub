@@ -25,7 +25,7 @@ import {
 } from './ipc/credentials';
 import { openWorkspaceForActivation, recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore, resolveProjectDirectory } from './storage/project-store';
-import { createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listTrashedProjectsHandler, moveProjectToTrashHandler, projectCreateChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, updateProjectMetadataHandler } from './ipc/projects';
+import { addProjectDesignsHandler, createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listProjectDesignsHandler, listTrashedProjectsHandler, loadProjectCanvasLayoutHandler, moveProjectToTrashHandler, projectCanvasLayoutLoadChannel, projectCanvasLayoutSaveChannel, projectCreateChannel, projectDesignsAddChannel, projectDesignsListChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, saveProjectCanvasLayoutHandler, updateProjectMetadataHandler } from './ipc/projects';
 import { designerArtworkReadChannel, designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, readDesignerArtworkHandler, saveDesignerStateHandler } from './ipc/designers';
 import { brandLoadChannel, brandSaveChannel, loadBrandStateHandler, saveBrandStateHandler } from './ipc/brands';
 import { assetImportChannel, assetListChannel, assetReadChannel, importAssetsHandler, listAssetsHandler, readAssetHandler } from './ipc/assets';
@@ -231,6 +231,13 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         if (failures.length > 0) throw new Error(failures[0].error);
         return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
       },
+      persistProjectDesigns: async ({ projectId, designs }) => {
+        await projectStore.addProjectDesigns({
+          workspaceId: workspace.workspace.workspaceId,
+          projectId,
+          designs,
+        });
+      },
       persistDesignerArtwork: async ({ images }) => {
         const generated = await Promise.all(images.map(generatedImageBytes));
         const saved = await Promise.all(generated.map((image) => saveDesignerArtwork(
@@ -266,19 +273,22 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         return image ? { name: image.name, mimeType: image.mimeType, bytes: image.bytes } : null;
       },
       resolveDesignContext: async ({ input, attachmentAssetIds }) => {
-        if (!input.projectId || !input.documentId || !input.workspaceId) throw new Error('DESIGN_CONTEXT_BINDING_REQUIRED');
+        if (!input.projectId || !input.workspaceId) throw new Error('DESIGN_CONTEXT_BINDING_REQUIRED');
         const metadata = await projectStore.getProjectMetadata(input.projectId);
         if (!metadata || metadata.workspaceId !== input.workspaceId) throw new Error('PROJECT_NOT_FOUND');
-        const scene = await loadDocumentScene(workspace, input.workspaceId, input.projectId, input.documentId);
-        const document = metadata.documents.find((entry) => entry.id === input.documentId);
-        const currentImageAssetIds = scene?.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder').map((layer) => layer.assetId) ?? [];
+        const documentId = input.documentId ?? `${input.projectId}-canvas`;
+        const scene = input.documentId ? await loadDocumentScene(workspace, input.workspaceId, input.projectId, input.documentId) : null;
+        const document = input.documentId ? metadata.documents.find((entry) => entry.id === input.documentId) : undefined;
+        const currentImageAssetIds = scene?.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder').map((layer) => layer.assetId)
+          ?? (metadata.designs ?? []).map((design) => design.assetId);
+        const firstDesign = metadata.designs?.[0];
         return {
           version: 1 as const,
           workspaceId: input.workspaceId,
           projectId: input.projectId,
-          documentId: input.documentId,
+          documentId,
           brief: metadata.brief ?? '',
-          document: { width: document?.width ?? scene?.width ?? 1080, height: document?.height ?? scene?.height ?? 1440, currentImageAssetIds },
+          document: { width: document?.width ?? scene?.width ?? firstDesign?.width ?? 1080, height: document?.height ?? scene?.height ?? firstDesign?.height ?? 1440, currentImageAssetIds },
           attachmentAssetIds: [...attachmentAssetIds],
           userMessage: input.message,
           ...(metadata.designerSnapshot && typeof metadata.designerSnapshot === 'object' ? { designerSnapshot: structuredClone(metadata.designerSnapshot) as Record<string, unknown> } : {}),
@@ -387,6 +397,22 @@ app.whenReady().then(async () => {
   ipcMain.handle(projectMetadataUpdateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return updateProjectMetadataHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, metadataInput) => createProjectStore(workspace).updateProjectMetadata(metadataInput))(event, input);
+  });
+  ipcMain.handle(projectDesignsAddChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return addProjectDesignsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, designsInput) => createProjectStore(workspace).addProjectDesigns(designsInput))(event, input);
+  });
+  ipcMain.handle(projectDesignsListChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return listProjectDesignsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, designsInput) => createProjectStore(workspace).listProjectDesigns(designsInput))(event, input);
+  });
+  ipcMain.handle(projectCanvasLayoutLoadChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return loadProjectCanvasLayoutHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, layoutInput) => createProjectStore(workspace).loadProjectCanvasLayout(layoutInput))(event, input);
+  });
+  ipcMain.handle(projectCanvasLayoutSaveChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return saveProjectCanvasLayoutHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, layoutInput) => createProjectStore(workspace).saveProjectCanvasLayout(layoutInput))(event, input);
   });
   ipcMain.handle(projectListTrashChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
@@ -507,10 +533,10 @@ app.whenReady().then(async () => {
     return createDesignGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, generationInput) => {
       const projectStore = createProjectStore(_workspace);
       const metadata = await projectStore.getProjectMetadata(generationInput.projectId);
-      if (!metadata || metadata.workspaceId !== generationInput.workspaceId || !metadata.documents.some((document) => document.id === generationInput.documentId)) {
+      if (!metadata || metadata.workspaceId !== generationInput.workspaceId || (generationInput.documentId && !metadata.documents.some((document) => document.id === generationInput.documentId))) {
         throw new Error('DOCUMENT_NOT_FOUND');
       }
-      if (generationInput.baseRevisionId) {
+      if (generationInput.baseRevisionId && generationInput.documentId) {
         const revisions = await loadDocumentRevisions(_workspace, generationInput.workspaceId, generationInput.projectId, generationInput.documentId);
         if (!revisions.revisions.some((revision) => revision.revisionId === generationInput.baseRevisionId)) throw new Error('REVISION_NOT_FOUND');
       }
@@ -523,9 +549,9 @@ app.whenReady().then(async () => {
     return createDesignGenerationSlotRetryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, retryInput) => {
       const service = await getAgentTaskService();
       const existing = service.getTask(retryInput.taskId);
-      if (!existing || existing.source?.kind !== 'project' || !existing.documentId) throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
+      if (!existing || existing.source?.kind !== 'project') throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
       const metadata = await createProjectStore(workspace).getProjectMetadata(existing.source.id);
-      if (!metadata || metadata.workspaceId !== retryInput.workspaceId || !metadata.documents.some((document) => document.id === existing.documentId)) throw new Error('DOCUMENT_NOT_FOUND');
+      if (!metadata || metadata.workspaceId !== retryInput.workspaceId || (existing.documentId && !metadata.documents.some((document) => document.id === existing.documentId))) throw new Error('DOCUMENT_NOT_FOUND');
       return service.retryDesignGenerationSlot(retryInput);
     })(event, input);
   });

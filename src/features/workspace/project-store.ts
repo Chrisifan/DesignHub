@@ -1,4 +1,4 @@
-import type { ProjectDocumentMetadata, ProjectMetadata, ProjectMetadataPatch } from '../projects/metadata';
+import type { ProjectCanvasLayout, ProjectDesign, ProjectDocumentMetadata, ProjectMetadata, ProjectMetadataPatch } from '../projects/metadata';
 
 export type CreateProjectContainerInput = {
   workspaceId: string;
@@ -10,6 +10,8 @@ export type CreateProjectContainerInput = {
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
   coverAssetId?: string;
+  designs?: ProjectDesign[];
+  canvasLayout?: ProjectCanvasLayout;
   documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
 };
 
@@ -43,6 +45,8 @@ export type ActiveProject = {
   designerSnapshot?: unknown;
   brandSnapshot?: unknown;
   coverAssetId?: string;
+  designs?: ProjectDesign[];
+  canvasLayout?: ProjectCanvasLayout;
   documents?: ProjectDocumentMetadata[];
   archived?: boolean;
   createdAt?: string;
@@ -78,6 +82,10 @@ export type ProjectStore = {
   listActiveProjects: () => Promise<ActiveProject[]>;
   getProjectMetadata: (projectId: string) => Promise<ProjectMetadata | null>;
   updateProjectMetadata: (input: UpdateProjectMetadataInput) => Promise<ProjectMetadata>;
+  addProjectDesigns: (input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[]>;
+  listProjectDesigns: (input: { workspaceId: string; projectId: string }) => Promise<ProjectDesign[]>;
+  loadProjectCanvasLayout: (input: { workspaceId: string; projectId: string }) => Promise<ProjectCanvasLayout | null>;
+  saveProjectCanvasLayout: (input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout>;
   moveProjectToTrash: (input: TrashProjectInput) => Promise<TrashedProject>;
   listTrashedProjects: () => Promise<TrashedProject[]>;
   restoreProjectFromTrash: (input: TrashProjectInput) => Promise<RestoreProjectResult>;
@@ -93,6 +101,10 @@ export const createProjectStore = (
   listActiveProjects: () => implementation.listActiveProjects(),
   getProjectMetadata: (projectId) => implementation.getProjectMetadata(projectId),
   updateProjectMetadata: (input) => implementation.updateProjectMetadata(input),
+  addProjectDesigns: (input) => implementation.addProjectDesigns(input),
+  listProjectDesigns: (input) => implementation.listProjectDesigns(input),
+  loadProjectCanvasLayout: (input) => implementation.loadProjectCanvasLayout(input),
+  saveProjectCanvasLayout: (input) => implementation.saveProjectCanvasLayout(input),
   moveProjectToTrash: (input) => implementation.moveProjectToTrash(input),
   listTrashedProjects: () => implementation.listTrashedProjects(),
   restoreProjectFromTrash: (input) => implementation.restoreProjectFromTrash(input),

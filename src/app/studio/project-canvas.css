@@ -1,0 +1,216 @@
+.project-canvas-surface {
+  position: relative;
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.project-canvas-stage {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+}
+
+.project-canvas-stage:active { cursor: grabbing; }
+
+.project-canvas-toolbar {
+  position: absolute;
+  z-index: 3;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.project-canvas-toolbar > * { pointer-events: auto; }
+
+.project-canvas-toolbar--bottom {
+  top: auto;
+  bottom: 18px;
+  height: auto;
+  left: 50%;
+  right: auto;
+  width: min(720px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+
+.project-canvas-toolbar--bottom .conversation-dock { width: 100%; }
+
+/* The toolbar owns the bottom offset; keeping the dock in normal flow gives
+ * the absolute toolbar a real height instead of positioning its child against
+ * a zero-height containing block. */
+.project-canvas-toolbar--bottom .conversation-dock--compact {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  transform: none;
+}
+
+.project-canvas-toolbar__group,
+.project-canvas-toolbar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--shell-glass-border);
+  border-radius: 22px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--on-surface) 9%, transparent), transparent 45%),
+    var(--shell-glass);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 11%, transparent);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+  backdrop-filter: var(--shell-backdrop);
+}
+
+.project-canvas-toolbar__actions {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  flex-direction: column;
+  width: 42px;
+  padding: 6px;
+  gap: 4px;
+  transform: translateY(-50%);
+  border-radius: 18px;
+}
+
+.project-canvas-toolbar__actions .icon-button {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.project-canvas-toolbar__title { font-weight: 650; padding: 0 8px; }
+
+.project-canvas-toolbar__group { align-self: flex-start; }
+
+.project-canvas-toolbar__selection {
+  position: absolute;
+  top: 68px;
+  right: 16px;
+  z-index: 3;
+  max-width: 260px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--studio-border, #cbd5e1) 65%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--studio-surface, #fff) 66%, transparent);
+  box-shadow: 0 12px 32px rgb(15 23 42 / 10%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.project-canvas-menu { position: relative; }
+
+.project-canvas-menu__popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 12;
+  display: grid;
+  width: 190px;
+  gap: 2px;
+  padding: 7px;
+  border: 1px solid var(--shell-glass-border);
+  border-radius: 16px;
+  background: var(--shell-glass);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+  backdrop-filter: var(--shell-backdrop);
+  box-shadow: 0 16px 38px rgb(0 0 0 / 22%);
+}
+
+.project-canvas-menu__popover button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--on-surface);
+  background: transparent;
+  font-size: 11px;
+  text-align: left;
+}
+
+.project-canvas-menu__popover button:hover:not(:disabled) { background: color-mix(in srgb, var(--on-surface) 9%, transparent); }
+.project-canvas-menu__popover button:disabled { opacity: .45; }
+
+.project-canvas-analysis-column {
+  position: absolute;
+  z-index: 9;
+  top: 50%;
+  left: 16px;
+  width: min(286px, calc(100% - 36px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(70vh, 600px);
+  transform: translateY(-50%);
+}
+
+.project-canvas-analysis-column .workbench-analysis-panel {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  max-height: min(58vh, 500px);
+  transform: none;
+}
+
+.project-canvas-analysis-history {
+  overflow: hidden;
+  border: 1px solid var(--shell-glass-border);
+  border-radius: 14px;
+  background: var(--shell-glass);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+  backdrop-filter: var(--shell-backdrop);
+}
+
+.project-canvas-analysis-history__trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 36px;
+  gap: 8px;
+  padding: 0 11px;
+  border: 0;
+  color: var(--on-surface);
+  background: transparent;
+  font-size: 11px;
+  text-align: left;
+}
+
+.project-canvas-analysis-history__trigger:hover { background: color-mix(in srgb, var(--on-surface) 7%, transparent); }
+.project-canvas-analysis-history__count { margin-left: auto; color: var(--on-surface-variant); }
+
+.project-canvas-analysis-history__list {
+  display: grid;
+  max-height: 180px;
+  overflow-y: auto;
+  border-top: 1px solid var(--shell-glass-border);
+}
+
+.project-canvas-analysis-history__item {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--shell-glass-border) 70%, transparent);
+  color: var(--on-surface);
+  background: transparent;
+  text-align: left;
+}
+
+.project-canvas-analysis-history__item:hover { background: color-mix(in srgb, var(--on-surface) 7%, transparent); }
+.project-canvas-analysis-history__item.is-selected { background: color-mix(in srgb, var(--primary) 12%, transparent); }
+.project-canvas-analysis-history__item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; }
+.project-canvas-analysis-history__item span { color: var(--on-surface-variant); font-size: 10px; }

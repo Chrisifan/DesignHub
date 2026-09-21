@@ -16,6 +16,7 @@ import type { Region } from '../canvas/selection';
 import { validateToolParams, type ImageTool, type ToolParams } from '../image-tools/target';
 import { analyzePortfolio, type PortfolioImageSource } from './analyze-portfolio';
 import { buildDesignContextPrompt, type DesignGenerationContext } from './context';
+import type { ProjectDesign } from '../projects/metadata';
 
 export type ConversationInput = {
   workspaceId?: string;
@@ -35,7 +36,7 @@ export type ConversationInput = {
 export type DesignGenerationInput = {
   workspaceId: string;
   projectId: string;
-  documentId: string;
+  documentId?: string;
   conversationTaskId: string;
   baseRevisionId?: string | null;
   connectionId: string;
@@ -148,6 +149,7 @@ export type AgentTaskServiceOptions = {
   resolveAdapter: (connectionId: string) => Promise<ConversationAdapter>;
   imageRetryDelayMs?: number;
   persistGeneratedImages?: (input: { projectId: string; images: GeneratedImage[] }) => Promise<string[]>;
+  persistProjectDesigns?: (input: { projectId: string; designs: ProjectDesign[] }) => Promise<void>;
   persistDesignerArtwork?: (input: { designerDraftId: string; images: GeneratedImage[] }) => Promise<string[]>;
   loadSourceImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
   resolveDesignContext?: (input: { input: ConversationInput; attachmentAssetIds: string[] }) => Promise<DesignGenerationContext>;
@@ -454,7 +456,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const context = task.designContext;
     if (!context || task.source?.kind !== 'project' || !task.providerId) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
     const adapter = await options.resolveAdapter(task.providerId);
-    const sourceAssetId = context.document.currentImageAssetIds[0];
+    const sourceAssetId = task.documentId ? context.document.currentImageAssetIds[0] : undefined;
     const sourceImage = sourceAssetId && options.loadSourceImage
       ? await options.loadSourceImage({ projectId: task.source.id, assetId: sourceAssetId })
       : null;
@@ -520,6 +522,22 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
             : [];
           const assetId = assetIds[0];
           if (!assetId) throw new Error('IMAGE_ASSET_PERSIST_FAILED');
+          if (options.persistProjectDesigns) {
+            await options.persistProjectDesigns({
+              projectId: task.source!.id,
+              designs: [{
+                id: `design-${crypto.randomUUID()}`,
+                projectId: task.source!.id,
+                assetId,
+                sourceTaskId: task.id,
+                ...(task.parentConversationTaskId ? { sourceConversationTaskId: task.parentConversationTaskId } : {}),
+                width: prepared.context.document.width,
+                height: prepared.context.document.height,
+                title: `Design ${new Date().toLocaleString()}`,
+                createdAt: new Date().toISOString(),
+              }],
+            });
+          }
           const candidate: TaskCandidate = {
             id: `candidate-${task.id}-${slotId}`,
             baseRevisionId: task.baseRevisionId ?? null,
@@ -552,17 +570,17 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     void execution.finally(() => pending.delete(execution));
   };
   const submitDesignGeneration = async (input: DesignGenerationInput): Promise<TaskRecord> => {
-    if (!input.projectId.trim() || !input.documentId.trim() || !input.conversationTaskId.trim() || !input.connectionId.trim()) throw new Error('DESIGN_GENERATION_BINDING_REQUIRED');
+    if (!input.projectId.trim() || !input.conversationTaskId.trim() || !input.connectionId.trim()) throw new Error('DESIGN_GENERATION_BINDING_REQUIRED');
     const parent = options.runtime.get(input.conversationTaskId);
-    if (!parent || parent.state !== 'completed' || parent.capability !== 'conversation' || parent.source?.kind !== 'project' || parent.source.id !== input.projectId || parent.documentId !== input.documentId) throw new Error('CONVERSATION_CONTEXT_REQUIRED');
+    if (!parent || parent.state !== 'completed' || parent.capability !== 'conversation' || parent.source?.kind !== 'project' || parent.source.id !== input.projectId || (input.documentId && parent.documentId !== input.documentId)) throw new Error('CONVERSATION_CONTEXT_REQUIRED');
     if (parent.analysisThreadId) {
-      const latest = options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && candidate.documentId === input.documentId && candidate.state === 'completed').sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
+      const latest = options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && (!input.documentId || candidate.documentId === input.documentId) && candidate.state === 'completed').sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
       if (!latest || latest.id !== parent.id) throw new Error('CONVERSATION_CONTEXT_STALE');
     }
     if (!parent.designContext) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
     if (parent.designContext.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_CONTEXT_MISMATCH');
     const threadCandidates = parent.analysisThreadId
-      ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && candidate.documentId === input.documentId)
+      ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && (!input.documentId || candidate.documentId === input.documentId))
       : [parent];
     const threadAssetIds = [...new Set([
       ...threadCandidates.flatMap((candidate) => candidate.contextAssetIds ?? []),
@@ -582,7 +600,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       requestId: requestId(),
       requestText: generationPrompt({ ...parent.designContext, ...(threadUserMessage ? { userMessage: threadUserMessage } : {}) }, parent.result?.text),
       source: { kind: 'project', id: input.projectId },
-      documentId: input.documentId,
+      ...(input.documentId ? { documentId: input.documentId } : {}),
       baseRevisionId: input.baseRevisionId ?? parent.baseRevisionId ?? null,
       generationSlots: createDesignGenerationSlots(),
       ...(parent.designerVersionId ? { designerVersionId: parent.designerVersionId } : {}),
@@ -604,7 +622,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   };
   const retryDesignGenerationSlot = async (input: DesignGenerationSlotRetryInput): Promise<TaskRecord> => {
     const task = options.runtime.get(input.taskId);
-    if (!task || task.capability !== 'design-generation' || !task.generationSlots || task.source?.kind !== 'project' || !task.documentId) throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
+    if (!task || task.capability !== 'design-generation' || !task.generationSlots || task.source?.kind !== 'project') throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
     if (task.designContext?.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_CONTEXT_MISMATCH');
     const slot = task.generationSlots.find((candidate) => candidate.id === input.slotId);
     if (!slot) throw new Error('GENERATION_SLOT_NOT_FOUND');
@@ -734,7 +752,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       return running;
     }
     if (previous.capability === 'design-generation') {
-      if (!previous.parentConversationTaskId || previous.source.kind !== 'project' || !previous.documentId) return undefined;
+      if (!previous.parentConversationTaskId || previous.source.kind !== 'project') return undefined;
       if (previous.generationSlots?.length) return undefined;
       const retried = options.runtime.retry(taskId);
       if (!retried) return undefined;

@@ -11,7 +11,7 @@ import { portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChanne
 import { exportDocumentChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
 import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
-import { projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
+import { projectCanvasLayoutLoadChannel, projectCanvasLayoutSaveChannel, projectDesignsAddChannel, projectDesignsListChannel, projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
 import { projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 import { revisionCommitChannel, revisionFinalizeChannel, revisionLoadChannel } from './ipc/revisions';
 import { brandLoadChannel, brandSaveChannel } from './ipc/brands';
@@ -30,6 +30,10 @@ const api: DesktopApi = {
   importProjectPackage: (input) => ipcRenderer.invoke(projectPackageImportChannel, input),
   getProjectMetadata: (workspaceId, projectId) => ipcRenderer.invoke('project:get-metadata', { workspaceId, projectId }),
   updateProjectMetadata: (input) => ipcRenderer.invoke('project:update-metadata', input),
+  addProjectDesigns: (input) => ipcRenderer.invoke(projectDesignsAddChannel, input),
+  listProjectDesigns: (input) => ipcRenderer.invoke(projectDesignsListChannel, input),
+  loadProjectCanvasLayout: (input) => ipcRenderer.invoke(projectCanvasLayoutLoadChannel, input),
+  saveProjectCanvasLayout: (input) => ipcRenderer.invoke(projectCanvasLayoutSaveChannel, input),
   listTrashedProjects: (workspaceId) => ipcRenderer.invoke(projectListTrashChannel, workspaceId),
   moveProjectToTrash: (input) => ipcRenderer.invoke(projectTrashChannel, input),
   restoreProjectFromTrash: (input) => ipcRenderer.invoke(projectRestoreTrashChannel, input),

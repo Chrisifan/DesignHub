@@ -18,7 +18,7 @@ import type {
   TrashProjectInput,
   UpdateProjectMetadataInput,
 } from '../../features/workspace/project-store';
-import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata, type ProjectMetadataInput } from '../../features/projects/metadata';
+import { createProjectMetadata, updateProjectMetadata, type ProjectCanvasLayout, type ProjectDesign, type ProjectMetadata, type ProjectMetadataInput } from '../../features/projects/metadata';
 import { canPurge } from '../../features/workspace/trash-policy';
 import { decodeProjectPackage } from '../../features/delivery/project-package';
 import { isSafePackagePath } from '../../features/delivery/package-policy';
@@ -526,6 +526,8 @@ const initializeProject = (
     designerSnapshot: input.designerSnapshot,
     brandSnapshot: input.brandSnapshot,
     coverAssetId: input.coverAssetId,
+    designs: input.designs,
+    canvasLayout: input.canvasLayout,
     documents: input.documents,
     createdAt,
     updatedAt: createdAt,
@@ -551,7 +553,7 @@ const initializeProject = (
     name,
     formatVersion: projectFormatVersion,
     createdAt,
-    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.contributorDesignerVersionIds !== undefined || input.designerSnapshot !== undefined || input.brandSnapshot !== undefined || input.coverAssetId !== undefined || input.documents !== undefined ? { metadata } : {}),
+    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.contributorDesignerVersionIds !== undefined || input.designerSnapshot !== undefined || input.brandSnapshot !== undefined || input.coverAssetId !== undefined || input.designs !== undefined || input.canvasLayout !== undefined || input.documents !== undefined ? { metadata } : {}),
   };
   writeFileSync(join(temporaryDirectory, projectManifestName), `${JSON.stringify(projectManifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
   writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ formatVersion: projectFormatVersion, projectId: operation.projectId, assets: [] }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
@@ -672,6 +674,8 @@ const toActiveProject = (manifest: ProjectManifest): ActiveProject => {
     ...(metadata.contributorDesignerVersionIds === undefined ? {} : { contributorDesignerVersionIds: [...metadata.contributorDesignerVersionIds] }),
     ...(metadata.designerSnapshot === undefined ? {} : { designerSnapshot: structuredClone(metadata.designerSnapshot) }),
     ...(metadata.brandSnapshot === undefined ? {} : { brandSnapshot: structuredClone(metadata.brandSnapshot) }),
+    ...(metadata.designs === undefined ? {} : { designs: structuredClone(metadata.designs) }),
+    ...(metadata.canvasLayout === undefined ? {} : { canvasLayout: structuredClone(metadata.canvasLayout) }),
     documents: structuredClone(metadata.documents),
     archived: metadata.archived,
     createdAt: metadata.createdAt,
@@ -747,6 +751,40 @@ const updateProjectMetadataForHandle = (handle: WorkspaceHandle, input: UpdatePr
   }
 };
 
+const addProjectDesignsForHandle = (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }): ProjectDesign[] => {
+  if (handle.workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const current = getProjectMetadata(handle, input.projectId);
+  if (!current) throw new Error('PROJECT_NOT_FOUND');
+  const existing = current.designs ?? [];
+  const merged = [...existing, ...input.designs];
+  const next = updateProjectMetadataForHandle(handle, { workspaceId: input.workspaceId, projectId: input.projectId, patch: { designs: merged } });
+  return structuredClone(next.designs ?? []);
+};
+
+const listProjectDesignsForHandle = (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string }): ProjectDesign[] => {
+  if (handle.workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const metadata = getProjectMetadata(handle, input.projectId);
+  if (!metadata) throw new Error('PROJECT_NOT_FOUND');
+  return structuredClone(metadata.designs ?? []);
+};
+
+const loadProjectCanvasLayoutForHandle = (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string }): ProjectCanvasLayout | null => {
+  if (handle.workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const metadata = getProjectMetadata(handle, input.projectId);
+  if (!metadata) throw new Error('PROJECT_NOT_FOUND');
+  return metadata.canvasLayout ? structuredClone(metadata.canvasLayout) : null;
+};
+
+const saveProjectCanvasLayoutForHandle = (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }): ProjectCanvasLayout => {
+  const next = updateProjectMetadataForHandle(handle, {
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    patch: { canvasLayout: input.layout },
+  });
+  if (!next.canvasLayout) throw new Error('INVALID_PROJECT_CANVAS_LAYOUT');
+  return structuredClone(next.canvasLayout);
+};
+
 const duplicateProject = async (handle: WorkspaceHandle, input: DuplicateProjectInput): Promise<CreateProjectContainerResult> => {
   const workspace = getWritableWorkspaceLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
@@ -764,6 +802,8 @@ const duplicateProject = async (handle: WorkspaceHandle, input: DuplicateProject
     designerSnapshot: sourceMetadata.designerSnapshot,
     brandSnapshot: sourceMetadata.brandSnapshot,
     coverAssetId: sourceMetadata.coverAssetId,
+    designs: sourceMetadata.designs?.map((design) => ({ ...design })),
+    canvasLayout: sourceMetadata.canvasLayout,
     documents: sourceMetadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
       id,
       name,
@@ -1050,6 +1090,10 @@ export const createProjectStore = (handle: WorkspaceHandle, options: ProjectStor
   listActiveProjects: async (): Promise<ActiveProject[]> => listActiveProjects(handle),
   getProjectMetadata: async (projectId): Promise<ProjectMetadata | null> => getProjectMetadata(handle, projectId),
   updateProjectMetadata: async (input): Promise<ProjectMetadata> => updateProjectMetadataForHandle(handle, input),
+  addProjectDesigns: async (input) => addProjectDesignsForHandle(handle, input),
+  listProjectDesigns: async (input) => listProjectDesignsForHandle(handle, input),
+  loadProjectCanvasLayout: async (input) => loadProjectCanvasLayoutForHandle(handle, input),
+  saveProjectCanvasLayout: async (input) => saveProjectCanvasLayoutForHandle(handle, input),
   moveProjectToTrash: async (input): Promise<TrashedProject> => moveProjectToTrash(handle, options, input),
   listTrashedProjects: async (): Promise<TrashedProject[]> => listTrashedProjects(handle),
   restoreProjectFromTrash: async (input): Promise<RestoreProjectResult> => restoreProjectFromTrash(handle, options, input),

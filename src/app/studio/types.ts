@@ -1,5 +1,7 @@
 import type { Locale } from '../i18n';
+import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { ProjectCoverFile } from './project-cover';
+import type { ProjectCanvasLayout, ProjectDesign } from '../../features/projects/metadata';
 export type View =
   | 'projects'
   | 'designers'
@@ -40,9 +42,24 @@ export type Project = {
   coverAssetId?: string;
   coverPreviewUrl?: string;
   artwork: Artwork;
+  designs?: ProjectDesign[];
+  canvasLayout?: ProjectCanvasLayout;
   documents: number;
   documentEntries?: Array<{ id: string; name: string; width: number; height: number; sourceDocumentId?: string; sourceRevisionId?: string | null; finalizedRevisionId?: string | null }>;
   archived?: boolean;
+  updatedAt?: string;
+};
+export type HomeConversationRequest = {
+  message: string;
+  attachments: ConversationImageAttachment[];
+  designerId?: string;
+};
+export type PendingHomeConversation = {
+  id: string;
+  projectId: string;
+  documentId?: string;
+  message: string;
+  attachments: ConversationImageAttachment[];
 };
 export type PageProps = {
   locale: Locale;

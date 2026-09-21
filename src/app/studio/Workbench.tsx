@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 
 import type { Locale } from '../i18n';
-import type { Project } from './types';
+import type { PendingHomeConversation, Project } from './types';
 import { Drawer } from './Drawer';
-import { PersonaArtwork } from './PersonaArtwork';
+import { ConversationDock, type ConversationDockAttachment } from './ConversationDock';
 import { CanvasWorkspace, type CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import { AnalysisPanel } from './AnalysisPanel';
 import { CandidateBoard } from './CandidateBoard';
@@ -42,6 +42,9 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
   }
   return btoa(binary);
 };
+
+const toPreviewUrl = (attachment: ConversationImageAttachment): string =>
+  `data:${attachment.mimeType || 'image/png'};base64,${bytesToBase64(attachment.bytes)}`;
 
 const toolPrompt: Record<ImageTool, string> = {
   'remove-background': 'Remove the background and preserve the subject with clean edges',
@@ -82,13 +85,14 @@ export type WorkbenchProps = {
   onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
-  onCandidateFinalized?: (input: { documentId: string; revisionId: string; scene: DesignScene }) => void | Promise<void>;
   operatorName?: string;
   modelConnected?: boolean;
   readOnly?: boolean;
   notify: (message: string) => void;
   assetAction?: CanvasAssetAction;
   onAssetActionHandled?: (actionId: string) => void;
+  initialConversation?: PendingHomeConversation;
+  onInitialConversationConsumed?: (id: string) => void;
 };
 
 const createInitialScene = (project: Project, documentId?: string): DesignScene => {
@@ -139,12 +143,14 @@ export const Workbench = ({
   onSubmitDesignGeneration,
   onSubmitImageTask,
   onSubmitImageGeneration,
-  onCandidateFinalized,
   operatorName = '',
+  modelConnected = false,
   readOnly = false,
   notify,
   assetAction,
   onAssetActionHandled,
+  initialConversation,
+  onInitialConversationConsumed,
 }: WorkbenchProps) => {
   const layersTitleId = useId();
   const [selectedLayer, setSelectedLayer] = useState<LayerId>('text');
@@ -170,15 +176,14 @@ export const Workbench = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
   const [prompt, setPrompt] = useState('');
-  const [conversationAttachments, setConversationAttachments] = useState<Array<ConversationImageAttachment & { previewUrl: string }>>([]);
-  const [previewAttachment, setPreviewAttachment] = useState<(ConversationImageAttachment & { previewUrl: string }) | null>(null);
+  const [conversationAttachments, setConversationAttachments] = useState<ConversationDockAttachment[]>([]);
   const [toolRegion, setToolRegion] = useState<Region | undefined>();
   const [activeTool, setActiveTool] = useState<ImageTool | null>(null);
   const [toolParams, setToolParams] = useState<ToolParams>({});
   const [canvasInspectorRequestId, setCanvasInspectorRequestId] = useState(0);
   const [canvasSelectionRequest, setCanvasSelectionRequest] = useState<{ id: number; type: LayerId }>();
   const promptRef = useRef<HTMLTextAreaElement>(null);
-  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const consumedInitialConversationIds = useRef(new Set<string>());
   const canvasStageRef = useRef<HTMLDivElement>(null);
   const [canvasOverlayHost, setCanvasOverlayHost] = useState<HTMLElement | null>(null);
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
@@ -299,85 +304,6 @@ export const Workbench = ({
     } catch {
       notify(t(locale, '版本保存失败', 'Could not save version'));
     } finally { setRevisionBusy(false); }
-  };
-  const finalizeRevision = async (revisionId: string): Promise<void> => {
-    if (readOnly || !workspaceId || !documentId || revisionBusy) return;
-    setRevisionBusy(true);
-    try {
-      const result = await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId });
-      if (result) setRevisionState((current) => ({ ...current, finalRevisionId: revisionId, timeline: current.timeline }));
-    } catch { notify(t(locale, '定稿失败', 'Could not finalize version')); }
-    finally { setRevisionBusy(false); }
-  };
-  const finalizeCandidate = async (candidateId: string): Promise<void> => {
-    const entry = candidateFor(candidateId);
-    if (readOnly || !workspaceId || !documentId || !entry || revisionBusy || entry.candidate.assetIds.length === 0) return;
-    const confirmed = typeof window === 'undefined' || typeof window.confirm !== 'function'
-      ? true
-      : window.confirm(t(locale, '确认后其他候选稿将移除。是否定稿？', 'Other candidate drafts will be removed after finalizing. Continue?'));
-    if (confirmed === false) return;
-    setRevisionBusy(true);
-    try {
-      const contribution = entry.candidate.designerVersionId
-        ? [{ designerVersionId: entry.candidate.designerVersionId, role: 'revision' as const }]
-        : revisionContributions('revision');
-      const imageLayer = scene.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => (
-        layer.type === 'image'
-        && layer.role !== 'reference'
-        && layer.assetId !== 'placeholder'
-      ));
-      const selectedAssetId = entry.candidate.sceneAssetId ?? entry.candidate.assetIds[0]!;
-      const contentLayerId = (() => {
-        const base = `content-${selectedAssetId}`;
-        let id = base;
-        let suffix = 2;
-        while (scene.layers.some((layer) => layer.id === id)) id = `${base}-${suffix++}`;
-        return id;
-      })();
-      const candidateScene = imageLayer
-        ? replaceSceneLayer(scene, { ...imageLayer, assetId: selectedAssetId, role: 'content' })
-        : createScene({ ...scene, layers: [...scene.layers, {
-          id: contentLayerId,
-          type: 'image',
-          assetId: selectedAssetId,
-          role: 'content',
-          x: 0,
-          y: 0,
-          width: scene.width,
-          height: scene.height,
-          rotation: 0,
-          opacity: 1,
-          visible: true,
-          locked: false,
-        }] });
-      const committed = await getDesktopApi().commitDocumentRevision?.({
-        workspaceId,
-        projectId: project.id,
-        documentId,
-        baseRevisionId: entry.candidate.baseRevisionId,
-        operationId: `candidate-${entry.candidate.id}`,
-        sceneAssetId: selectedAssetId,
-        assetIds: [...entry.candidate.assetIds],
-        contributions: contribution,
-        ...(operatorName.trim() ? { operatorName: operatorName.trim() } : {}),
-        scene: candidateScene,
-      });
-      if (!committed) throw new Error('REVISION_COMMIT_FAILED');
-      const finalized = await getDesktopApi().setFinalDocumentRevision?.({ workspaceId, projectId: project.id, documentId, revisionId: committed.revisionId });
-      if (finalized === false || finalized === null) throw new Error('FINALIZE_FAILED');
-      const saved = await getDesktopApi().saveDocumentScene?.({ workspaceId, projectId: project.id, documentId, scene: candidateScene });
-      if (saved !== true) throw new Error('SCENE_SAVE_FAILED');
-      setScene(candidateScene);
-      await onCandidateFinalized?.({ documentId, revisionId: committed.revisionId, scene: candidateScene });
-      const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
-      if (loaded) setRevisionState(loaded);
-      notify(t(locale, '候选已定稿', 'Candidate finalized'));
-      setSelectedCandidateId(null);
-      setAnalysisThreadId(undefined);
-      setPendingConversationTaskId(null);
-      onBack();
-    } catch { notify(t(locale, '候选定稿失败', 'Could not finalize candidate')); }
-    finally { setRevisionBusy(false); }
   };
   const exportSelectedCandidate = async (): Promise<void> => {
     if (!workspaceId || !documentId || !selectedCandidateId || exportBusy) return;
@@ -574,58 +500,65 @@ export const Workbench = ({
     setViewportFocusRequest((current) => ({ id: current.id + 1, candidateId: selectedCandidateId }));
     notify(t(locale, '缩放已重置', 'Preview zoom reset'));
   };
-  const submitPrompt = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    submitPromptRequest();
-  };
   const clearConversationAttachments = (): void => {
     setConversationAttachments([]);
   };
-  const addConversationFiles = (files: readonly File[]): void => {
-    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
-    if (imageFiles.length !== files.length) notify(t(locale, '只能添加图片文件。', 'Only image files can be attached.'));
-    const remaining = Math.max(0, 8 - conversationAttachments.length);
-    imageFiles.slice(0, remaining).forEach((file) => {
-      if (file.size > 8 * 1024 * 1024) {
-        notify(t(locale, '图片不能超过 8 MiB。', 'Images must be 8 MiB or smaller.'));
-        return;
-      }
-      const bytes = typeof file.arrayBuffer === 'function'
-        ? file.arrayBuffer()
-        : new Promise<ArrayBuffer>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => reader.result instanceof ArrayBuffer ? resolve(reader.result) : reject(new Error('IMAGE_READ_FAILED'));
-            reader.onerror = () => reject(new Error('IMAGE_READ_FAILED'));
-            reader.readAsArrayBuffer(file);
-          });
-      void bytes.then((buffer) => {
-        const attachment = {
-          name: file.name || `image-${Date.now()}.png`,
-          mimeType: file.type || 'image/png',
-          bytes: new Uint8Array(buffer),
-          previewUrl: `data:${file.type || 'image/png'};base64,${bytesToBase64(new Uint8Array(buffer))}`,
-        };
-        setConversationAttachments((current) => [...current, attachment]);
-      }).catch(() => notify(t(locale, '无法读取图片。', 'The image could not be read.')));
-    });
-  };
-  const onAttachmentInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    addConversationFiles(Array.from(event.target.files ?? []));
-    event.currentTarget.value = '';
-  };
-  const onPromptPaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
-    const files = Array.from(event.clipboardData.files);
-    if (files.length > 0) {
-      event.preventDefault();
-      addConversationFiles(files);
+  const submitConversationRequest = useCallback((
+    message: string,
+    attachments: ConversationImageAttachment[],
+    context: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] } = {},
+  ): Promise<TaskRecord | null | undefined> => {
+    const previewAttachments = attachments.map((attachment) => ({
+      ...attachment,
+      previewUrl: toPreviewUrl(attachment),
+    }));
+    setAnalysisMessage(message);
+    setAnalysisAttachments(previewAttachments);
+    setAnalysisThreadId((current) => current ?? `analysis-${crypto.randomUUID()}`);
+    setPanel('conversation');
+    setPanelOpen(true);
+    setPendingConversationTaskId(null);
+    if (!onSubmitConversation) return Promise.resolve(undefined);
+
+    const submitted = Object.keys(context).length > 0
+      ? onSubmitConversation(message, attachments, context)
+      : onSubmitConversation(message, attachments);
+    if (submitted === undefined) {
+      setReferencedAssetIds([]);
+      return Promise.resolve(undefined);
     }
-  };
-  const removeConversationAttachment = (previewUrl: string): void => {
-    setConversationAttachments((current) => {
-      return current.filter((attachment) => attachment.previewUrl !== previewUrl);
+    return Promise.resolve(submitted).then((task) => {
+      if (task === null) return null;
+      if (!task) return undefined;
+      setPendingConversationTaskId(task.id);
+      setAnalysisThreadId(task.analysisThreadId ?? `analysis-${task.id}`);
+      setTasks((current) => [...current.filter((entry) => entry.id !== task.id), task]);
+      setReferencedAssetIds([]);
+      return task;
     });
-    if (previewAttachment?.previewUrl === previewUrl) setPreviewAttachment(null);
-  };
+  }, [onSubmitConversation]);
+
+  useEffect(() => {
+    if (!initialConversation || consumedInitialConversationIds.current.has(initialConversation.id)) return;
+    consumedInitialConversationIds.current.add(initialConversation.id);
+    onInitialConversationConsumed?.(initialConversation.id);
+    void submitConversationRequest(initialConversation.message, initialConversation.attachments).then((task) => {
+      if (task) return;
+      setPrompt(initialConversation.message);
+      setConversationAttachments(initialConversation.attachments.map((attachment) => ({
+        ...attachment,
+        previewUrl: toPreviewUrl(attachment),
+      })));
+    }).catch(() => {
+      setPrompt(initialConversation.message);
+      setConversationAttachments(initialConversation.attachments.map((attachment) => ({
+        ...attachment,
+        previewUrl: toPreviewUrl(attachment),
+      })));
+      notify(t(locale, '任务提交失败', 'Task submission failed'));
+    });
+  }, [initialConversation, locale, notify, onInitialConversationConsumed, submitConversationRequest]);
+
   const submitPromptRequest = (): void => {
     if (readOnly) return;
     if (!prompt.trim()) {
@@ -644,28 +577,10 @@ export const Workbench = ({
         ...(pendingConversationTaskId ? { conversationParentTaskId: pendingConversationTaskId } : {}),
         ...(referencedAssetIds.length ? { referencedAssetIds } : {}),
       };
-      setAnalysisMessage(message);
-      setAnalysisAttachments(conversationAttachments);
-      setAnalysisThreadId((current) => current ?? `analysis-${crypto.randomUUID()}`);
-      setPanel('conversation');
-      setPanelOpen(true);
       setPrompt('');
       clearConversationAttachments();
-      setPendingConversationTaskId(null);
-      const submitted = Object.keys(context).length > 0
-        ? onSubmitConversation(message, attachments, context)
-        : onSubmitConversation(message, attachments);
-      if (submitted === undefined) {
-        setReferencedAssetIds([]);
-      } else {
-        void Promise.resolve(submitted).then((task) => {
-          if (!task) return;
-          setPendingConversationTaskId(task.id);
-          setAnalysisThreadId(task.analysisThreadId ?? analysisThreadId ?? `analysis-${task.id}`);
-          setTasks((current) => [...current.filter((entry) => entry.id !== task.id), task]);
-          setReferencedAssetIds([]);
-        }).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
-      }
+      void submitConversationRequest(message, attachments, context)
+        .catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
       return;
     }
     onConnections();
@@ -1129,13 +1044,6 @@ export const Workbench = ({
               disabled={exportBusy || !workspaceId || !documentId || !selectedCandidateId}
               onClick={() => { void exportSelectedCandidate(); }}
             />
-            <IconButton
-              className="icon-button workbench-context-tools__finalize"
-              name="circle-check"
-              label={t(locale, '定稿所选候选', 'Finalize selected candidate')}
-              disabled={readOnly || revisionBusy || !selectedCandidateId}
-              onClick={() => { if (selectedCandidateId) void finalizeCandidate(selectedCandidateId); }}
-            />
           </div>
           {propertiesOpen && (
             <aside className="workbench-properties-float" aria-label={panelCopy.properties.label}>
@@ -1149,73 +1057,30 @@ export const Workbench = ({
               {propertiesContent}
             </aside>
           )}
-          <form
-            className="workbench-command-dock"
-            aria-label={t(locale, 'AI 操作坞', 'AI command dock')}
-            onSubmit={submitPrompt}
-          >
-            {conversationAttachments.length > 0 && (
-              <div className="workbench-command-dock__attachments" aria-label={t(locale, '已添加图片', 'Attached images')}>
-                {conversationAttachments.map((attachment) => (
-                  <div className="workbench-command-dock__attachment" key={attachment.previewUrl}>
-                    <button type="button" className="workbench-command-dock__attachment-preview" aria-label={t(locale, `预览 ${attachment.name}`, `Preview ${attachment.name}`)} onClick={() => setPreviewAttachment(attachment)}>
-                      <img src={attachment.previewUrl} alt="" />
-                      <span>{attachment.name}</span>
-                    </button>
-                    <IconButton name="x" label={t(locale, `删除 ${attachment.name}`, `Remove ${attachment.name}`)} onClick={() => removeConversationAttachment(attachment.previewUrl)} />
-                  </div>
-                ))}
-              </div>
-            )}
-            {referencedAssetIds.length > 0 && (
-              <div className="workbench-command-dock__references" aria-label={t(locale, '候选参考图', 'Candidate references')}>
-                <Icon name="image" size={14} />
-                <span>{referencedAssetIds.length} {t(locale, '张候选图将用于下一轮对话', 'candidate image(s) referenced in the next conversation')}</span>
-              </div>
-            )}
-            <div className="workbench-command-dock__input-wrap">
-              <textarea
-                ref={promptRef}
-                rows={2}
-                value={prompt}
-                disabled={readOnly}
-                aria-label={t(locale, '修改说明', 'Edit request')}
-                placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
-                onChange={(event) => setPrompt(event.target.value)}
-                onPaste={onPromptPaste}
-              />
-            </div>
-            <div className="workbench-command-dock__toolbar">
-              <div className="workbench-command-dock__toolbar-leading">
-                <input ref={attachmentInputRef} type="file" accept="image/*" multiple hidden onChange={onAttachmentInputChange} />
-                <IconButton name="plus" label={t(locale, '添加图片', 'Add image')} disabled={readOnly} onClick={() => attachmentInputRef.current?.click()} />
-                <span className="workbench-command-dock__shortcut" aria-hidden="true">/</span>
-              </div>
-              <div className="workbench-command-dock__toolbar-actions">
-                <button
-                  type="button"
-                  className="workbench-command-dock__connection"
-                  onClick={onConnections}
-                  disabled={readOnly}
-                  aria-label={t(locale, `设计师：${conversationDesigner}`, `Designer: ${conversationDesigner}`)}
-                  data-tooltip={t(locale, `设计师：${conversationDesigner}`, `Designer: ${conversationDesigner}`)}
-                  title={t(locale, '对话设计师', 'Conversation designer')}
-                >
-                  <PersonaArtwork locale={locale} personaId={conversationDesignerProfile.id} profile={conversationDesignerProfile} crop="avatar" />
-                  <span className="workbench-command-dock__designer"><strong>{conversationDesigner}</strong></span>
-                </button>
-                <IconButton name="list" label={t(locale, '模型任务', 'Model tasks')} onClick={() => onTasks?.()} />
-                <IconButton name="history" label={t(locale, '版本历史', 'Version history')} onClick={() => showPanel('history')} />
-                {!analysisThreadId && <IconButton name="sparkles" label={t(locale, '生成', 'Generate')} disabled={readOnly || Boolean(onSubmitDesignGeneration && pendingConversationTaskId)} onClick={submitGeneration} />}
-                <IconButton name="arrow-up-right" label={t(locale, '发送', 'Send')} disabled={readOnly} onClick={submitPromptRequest} />
-              </div>
-            </div>
-          </form>
-          {previewAttachment && (
-            <Modal locale={locale} title={previewAttachment.name} onClose={() => setPreviewAttachment(null)} wide>
-              <img className="workbench-command-dock__attachment-full" src={previewAttachment.previewUrl} alt={previewAttachment.name} />
-            </Modal>
-          )}
+          <ConversationDock
+            variant="compact"
+            locale={locale}
+            value={prompt}
+            attachments={conversationAttachments}
+            readOnly={readOnly}
+            conversationConnected={modelConnected}
+            designer={designerSnapshot ? conversationDesignerProfile : null}
+            textareaLabel={t(locale, '修改说明', 'Edit request')}
+            placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
+            submitLabel={t(locale, '发送', 'Send')}
+            textareaRef={promptRef}
+            referencedAssetCount={referencedAssetIds.length}
+            showGenerate={!analysisThreadId}
+            generateDisabled={readOnly || Boolean(onSubmitDesignGeneration && pendingConversationTaskId)}
+            onValueChange={setPrompt}
+            onAttachmentsChange={setConversationAttachments}
+            onSubmit={submitPromptRequest}
+            onDesignerClick={onConnections}
+            onOpenTasks={() => onTasks?.()}
+            onOpenHistory={() => showPanel('history')}
+            onGenerate={submitGeneration}
+            notify={notify}
+          />
         </section>
 
       </div>
@@ -1262,7 +1127,6 @@ export const Workbench = ({
                         <Button variant="ghost" onClick={() => setCandidatePreviewId((current) => current === candidate.id ? null : candidate.id)}>{t(locale, '查看', 'View')}</Button>
                         {latest && <Button variant="ghost" onClick={() => setCompareRevisionId((current) => current === candidate.id ? null : candidate.id)}>{t(locale, '比较', 'Compare')}</Button>}
                         <Button variant="ghost" disabled={readOnly || revisionBusy} onClick={() => continueCandidate(candidate.id)}>{t(locale, '继续', 'Continue')}</Button>
-                        <Button variant="ghost" disabled={readOnly || revisionBusy} onClick={() => { void finalizeCandidate(candidate.id); }}>{t(locale, '定稿', 'Finalize')}</Button>
                       </div>
                       {candidatePreviewId === candidate.id && <p role="status">{t(locale, `候选素材 ${candidate.assetIds.join(', ')}`, `Candidate assets ${candidate.assetIds.join(', ')}`)}</p>}
                       {compareRevisionId === candidate.id && latest && <CompareRevisions left={{ revisionId: candidate.id, sceneAssetId: candidate.sceneAssetId ?? candidate.assetIds[0] ?? 'candidate', assetIds: candidate.assetIds }} right={latest} />}
@@ -1272,13 +1136,12 @@ export const Workbench = ({
                 {revisionState.revisions.length > 0 ? revisionState.revisions.map((revision) => <li key={revision.revisionId}>
                     <span className="workbench-history-marker" aria-hidden="true" />
                     <div>
-                      <Badge tone={revisionState.finalRevisionId === revision.revisionId ? 'success' : ''}>{revisionState.finalRevisionId === revision.revisionId ? t(locale, '定稿', 'Final') : t(locale, '版本', 'Version')}</Badge>
+                      <Badge>{t(locale, '版本', 'Version')}</Badge>
                       <strong>{revision.revisionId.slice(0, 8)}</strong>
                       <p>{new Date(revision.createdAt).toLocaleString(locale === 'zh-CN' ? 'zh-CN' : 'en-US')}</p>
                       {revision.contributions.length > 0 && <p className="workbench-history-contributors"><span>{t(locale, '贡献', 'Contributors')}:</span> {revision.contributions.map((contribution) => `${contribution.designerName ?? contribution.designerVersionId} · ${contributionRoleLabel(locale, contribution.role)}`).join('，')}</p>}
                       {revision.operatorName && <p className="workbench-history-operator"><span>{t(locale, '操作者', 'Operator')}:</span> {revision.operatorName}</p>}
                       <div className="workbench-history-actions">
-                        {revisionState.finalRevisionId !== revision.revisionId && <Button variant="ghost" disabled={readOnly || revisionBusy} onClick={() => { void finalizeRevision(revision.revisionId); }}>{t(locale, '定稿', 'Finalize')}</Button>}
                         {revision.scene && <Button variant="ghost" disabled={readOnly || revisionBusy} onClick={() => { persistScene(revision.scene!); syncTextState(revision.scene!); setRevisionBaseId(revision.revisionId); notify(t(locale, '已载入旧版', 'Older version loaded')); }}>{t(locale, '继续', 'Continue')}</Button>}
                         {revisionState.revisions.length > 1 && <Button variant="ghost" onClick={() => setCompareRevisionId((current) => current === revision.revisionId ? null : revision.revisionId)}>{t(locale, '比较', 'Compare')}</Button>}
                       </div>

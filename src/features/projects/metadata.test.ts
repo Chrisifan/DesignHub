@@ -2,6 +2,34 @@ import { expect, it } from 'vitest';
 
 import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata } from './metadata';
 
+it('creates a project design collection and canvas layout snapshot', () => {
+  const metadata = createProjectMetadata({
+    projectId: 'project-1',
+    name: 'Canvas project',
+    workspaceId: 'workspace-1',
+    designs: [{ id: 'design-1', assetId: 'asset-123', sourceTaskId: 'task-1', width: 1080, height: 1440, title: 'Poster', createdAt: '2026-09-21T00:00:00.000Z' }],
+    canvasLayout: { viewport: { zoom: 1, offsetX: 0, offsetY: 0 }, nodes: { 'design-1': { x: 40, y: 60 } } },
+  });
+
+  expect(metadata.designs).toHaveLength(1);
+  expect(metadata.designs?.[0]).toMatchObject({ id: 'design-1', assetId: 'asset-123', width: 1080, height: 1440 });
+  expect(metadata.canvasLayout?.nodes['design-1']).toEqual({ x: 40, y: 60 });
+});
+
+it('rejects invalid or duplicate project designs', () => {
+  expect(() => createProjectMetadata({
+    projectId: 'project-1', name: 'Canvas project', workspaceId: 'workspace-1',
+    designs: [{ id: 'design-1', assetId: '', sourceTaskId: 'task-1', width: 1080, height: 1440, title: 'Poster', createdAt: '2026-09-21T00:00:00.000Z' }],
+  })).toThrow('INVALID_PROJECT_DESIGN');
+  expect(() => createProjectMetadata({
+    projectId: 'project-1', name: 'Canvas project', workspaceId: 'workspace-1',
+    designs: [
+      { id: 'design-1', assetId: 'asset-1', sourceTaskId: 'task-1', width: 1080, height: 1440, title: 'Poster', createdAt: '2026-09-21T00:00:00.000Z' },
+      { id: 'design-1', assetId: 'asset-2', sourceTaskId: 'task-2', width: 1080, height: 1440, title: 'Poster 2', createdAt: '2026-09-21T00:00:00.000Z' },
+    ],
+  })).toThrow('INVALID_PROJECT_DESIGN');
+});
+
 it('creates a project metadata snapshot with an independent document list', () => {
   const documents = [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }];
   const metadata = createProjectMetadata({

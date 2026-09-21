@@ -1,5 +1,5 @@
 import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, DuplicateProjectInput, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../../features/workspace/project-store';
-import type { ProjectMetadata } from '../../features/projects/metadata';
+import type { ProjectCanvasLayout, ProjectDesign, ProjectMetadata } from '../../features/projects/metadata';
 import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import { isTrustedWorkspaceRequest } from './workspace';
 
@@ -12,6 +12,10 @@ export const projectListTrashChannel = 'project:list-trash';
 export const projectTrashChannel = 'project:trash';
 export const projectRestoreTrashChannel = 'project:restore-trash';
 export const projectPurgeTrashChannel = 'project:purge-trash';
+export const projectDesignsAddChannel = 'project:add-designs';
+export const projectDesignsListChannel = 'project:list-designs';
+export const projectCanvasLayoutLoadChannel = 'project:load-canvas-layout';
+export const projectCanvasLayoutSaveChannel = 'project:save-canvas-layout';
 
 type ProjectSender = {
   mainFrame: { url: string };
@@ -57,6 +61,33 @@ const isMetadataInput = (value: unknown): value is UpdateProjectMetadataInput =>
   const input = value as Record<string, unknown>;
   if (!isWorkspaceId(input.workspaceId) || !isWorkspaceId(input.projectId) || typeof input.patch !== 'object' || input.patch === null || Array.isArray(input.patch)) return false;
   return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'activeDesignerVersionId', 'contributorDesignerVersionIds', 'designerSnapshot', 'brandSnapshot', 'coverAssetId', 'documents', 'archived'].includes(key));
+};
+
+const isProjectRef = (value: unknown): value is { workspaceId: string; projectId: string } => {
+  if (!value || typeof value !== 'object') return false;
+  const input = value as Record<string, unknown>;
+  return isWorkspaceId(input.workspaceId) && isWorkspaceId(input.projectId);
+};
+const isProjectDesign = (value: unknown): value is ProjectDesign => {
+  if (!value || typeof value !== 'object') return false;
+  const design = value as Record<string, unknown>;
+  return isWorkspaceId(design.id) && isWorkspaceId(design.assetId) && isWorkspaceId(design.sourceTaskId)
+    && isWorkspaceId(design.title) && typeof design.width === 'number' && design.width > 0
+    && typeof design.height === 'number' && design.height > 0 && typeof design.createdAt === 'string';
+};
+const isProjectDesignsInput = (value: unknown): value is { workspaceId: string; projectId: string; designs: ProjectDesign[] } => {
+  if (!isProjectRef(value)) return false;
+  const designs = (value as Record<string, unknown>).designs;
+  return Array.isArray(designs) && designs.every(isProjectDesign);
+};
+const isCanvasLayoutInput = (value: unknown): value is { workspaceId: string; projectId: string; layout: ProjectCanvasLayout } => {
+  if (!isProjectRef(value)) return false;
+  const layout = (value as Record<string, unknown>).layout;
+  if (!layout || typeof layout !== 'object') return false;
+  const viewport = (layout as Record<string, unknown>).viewport;
+  return Boolean(viewport && typeof viewport === 'object' && typeof (viewport as Record<string, unknown>).zoom === 'number'
+    && typeof (viewport as Record<string, unknown>).offsetX === 'number' && typeof (viewport as Record<string, unknown>).offsetY === 'number'
+    && (layout as Record<string, unknown>).nodes && typeof (layout as Record<string, unknown>).nodes === 'object');
 };
 
 export const listActiveProjectsHandler = (
@@ -119,6 +150,54 @@ export const updateProjectMetadataHandler = (
   const workspace = getWorkspace();
   if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
   return updateMetadata(workspace, input);
+};
+
+export const addProjectDesignsHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  addDesigns: (workspace: WorkspaceHandle, input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[]>,
+) => async (event: ProjectRequest, input: unknown): Promise<ProjectDesign[] | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isProjectDesignsInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  return addDesigns(workspace, input);
+};
+
+export const listProjectDesignsHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  listDesigns: (workspace: WorkspaceHandle, input: { workspaceId: string; projectId: string }) => Promise<ProjectDesign[]>,
+) => async (event: ProjectRequest, input: unknown): Promise<ProjectDesign[] | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isProjectRef(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return listDesigns(workspace, input);
+};
+
+export const loadProjectCanvasLayoutHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  loadLayout: (workspace: WorkspaceHandle, input: { workspaceId: string; projectId: string }) => Promise<ProjectCanvasLayout | null>,
+) => async (event: ProjectRequest, input: unknown): Promise<ProjectCanvasLayout | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isProjectRef(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  return loadLayout(workspace, input);
+};
+
+export const saveProjectCanvasLayoutHandler = (
+  window: ProjectWindow,
+  trustedUrl: string,
+  getWorkspace: () => WorkspaceHandle | null,
+  saveLayout: (workspace: WorkspaceHandle, input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout>,
+) => async (event: ProjectRequest, input: unknown): Promise<ProjectCanvasLayout | null> => {
+  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCanvasLayoutInput(input)) return null;
+  const workspace = getWorkspace();
+  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  return saveLayout(workspace, input);
 };
 
 export const listTrashedProjectsHandler = (

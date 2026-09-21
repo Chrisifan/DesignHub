@@ -83,8 +83,9 @@ const isConversationTestInput = (value: unknown): value is ConversationTestBridg
 const isDesignGenerationInput = (value: unknown): value is DesignGenerationBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  return isNonEmpty(input.workspaceId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId)
+  return isNonEmpty(input.workspaceId) && isNonEmpty(input.projectId)
     && isNonEmpty(input.conversationTaskId) && isNonEmpty(input.connectionId)
+    && (input.documentId === undefined || isNonEmpty(input.documentId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId));
 };
 const isPortfolioImage = (value: unknown): value is PortfolioImageSource['image'] => {
