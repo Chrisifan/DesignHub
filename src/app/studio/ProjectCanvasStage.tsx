@@ -76,6 +76,7 @@ type ProjectCanvasStageProps = {
   readOnly?: boolean;
   onSelect: (designId: string | null) => void;
   onAddToConversation?: (designId: string) => void;
+  onCanvasBackground?: () => void;
   onLayoutChange?: (layout: { viewport: CanvasViewport; nodes: Record<string, { x: number; y: number }> }) => void;
   onViewportChange?: (viewport: CanvasViewport) => void;
   onReady?: (size: CanvasSize) => void;
@@ -127,6 +128,7 @@ export const ProjectCanvasStage = ({
   readOnly = false,
   onSelect,
   onAddToConversation,
+  onCanvasBackground,
   onLayoutChange,
   onViewportChange,
   onReady,
@@ -233,6 +235,7 @@ export const ProjectCanvasStage = ({
     const pointer = stage?.getPointerPosition?.() ?? { x: 0, y: 0 };
     dragRef.current = { start: pointer, viewport };
     onSelect(null);
+    onCanvasBackground?.();
   };
   const handlePointerMove = (): void => {
     if (!dragRef.current) return;
