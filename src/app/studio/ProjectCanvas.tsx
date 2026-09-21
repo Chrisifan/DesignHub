@@ -40,6 +40,31 @@ const bytesToDataUrl = (mimeType: string, bytes: Uint8Array): string => {
   }
   return `data:${mimeType};base64,${btoa(binary)}`;
 };
+
+export const getAnalysisHistory = (
+  tasks: TaskRecord[],
+  threadId: string | undefined,
+  displayedTask?: TaskRecord,
+): TaskRecord[] => {
+  const activeThreadId = threadId ?? displayedTask?.analysisThreadId;
+  const history = tasks.filter((task) => (
+    task.capability === 'conversation'
+    && task.analysisThreadId === activeThreadId
+  ));
+  if (displayedTask?.capability === 'conversation' && !history.some((task) => task.id === displayedTask.id)) {
+    history.push(displayedTask);
+  }
+  return history.sort((a, b) => (
+    (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id)
+  ));
+};
+
+export const getLatestConversationTask = (tasks: TaskRecord[]): TaskRecord | undefined => tasks
+  .filter((task) => task.capability === 'conversation')
+  .sort((a, b) => (
+    (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id)
+  ))[0];
+
 export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversationConnected, designer, notify, onBack, onRename, onDuplicate, onArchive, onConnections, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
   const [layout, setLayout] = useState<ProjectCanvasLayout | undefined>(project.canvasLayout);
@@ -65,9 +90,21 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
     ]);
     if (nextDesigns) setDesigns(nextDesigns);
     if (nextLayout) setLayout(nextLayout);
-    if (nextTasks) setTasks(nextTasks.filter((task) => task.source?.kind === 'project' && task.source.id === project.id));
+    if (nextTasks) {
+      const projectTasks = nextTasks.filter((task) => task.source?.kind === 'project' && task.source.id === project.id);
+      const persistedLatest = getLatestConversationTask(projectTasks);
+      setTasks(projectTasks);
+      setLatestConversation((current) => current ?? persistedLatest);
+      setThreadId((current) => current ?? persistedLatest?.analysisThreadId);
+    }
   }, [project.id, workspaceId]);
   useEffect(() => { void refresh(); const timer = window.setInterval(() => { void refresh(); }, 1200); return () => window.clearInterval(timer); }, [refresh]);
+  useEffect(() => {
+    setThreadId(undefined);
+    setLatestConversation(undefined);
+    setSelectedAnalysisTaskId(undefined);
+    setAnalysisAttachments([]);
+  }, [project.id]);
 
   const latestAnalysisTask = (latestConversation ? tasks.find((task) => task.id === latestConversation.id) ?? latestConversation : undefined)
     ?? (threadId ? tasks.filter((task) => task.capability === 'conversation' && task.analysisThreadId === threadId).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))[0] : undefined);
@@ -78,9 +115,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
   const designTasks = tasks.filter((task) => task.capability === 'design-generation' && task.analysisThreadId === threadId);
   const pendingDesigns = designTasks.flatMap((task) => task.generationSlots?.filter((slot) => slot.state === 'queued' || slot.state === 'running').map((slot) => ({ id: `${task.id}-${slot.id}`, rowKey: task.id, width: analysisTask?.designContext?.document.width ?? 1080, height: analysisTask?.designContext?.document.height ?? 1440 })) ?? []);
   const selected = designs.find((design) => design.id === selectedDesignId);
-  const analysisHistory = tasks
-    .filter((task) => task.capability === 'conversation' && task.analysisThreadId === threadId && task.id !== analysisTask?.id)
-    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+  const analysisHistory = getAnalysisHistory(tasks, threadId, analysisTask);
   const submit = async (): Promise<void> => {
     if (readOnly || !message.trim()) return;
     const currentMessage = message;
@@ -163,15 +198,15 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
         onSelect={setSelectedDesignId}
         onLayoutChange={saveLayout}
       />
-      {analysisOpen && analysisTask && <div className="project-canvas-analysis-column">
+      {analysisOpen && analysisTask && <div className="project-canvas-analysis-panel">
         <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} onGenerate={() => { void generate(); }} />
-        {analysisHistory.length > 0 && <section className={`project-canvas-analysis-history${analysisHistoryOpen ? ' is-open' : ''}`} aria-label={t(locale, '分析结果列表', 'Analysis results')}>
-          <button type="button" className="project-canvas-analysis-history__trigger" aria-expanded={analysisHistoryOpen} onClick={() => setAnalysisHistoryOpen((open) => !open)}>
-            <span>{t(locale, '分析结果', 'Analysis results')}</span><span className="project-canvas-analysis-history__count">{analysisHistory.length}</span><Icon name={analysisHistoryOpen ? 'chevron-up' : 'chevron-down'} size={14} />
-          </button>
-          {analysisHistoryOpen && <div className="project-canvas-analysis-history__list">{analysisHistory.map((task) => <button type="button" className={`project-canvas-analysis-history__item${task.id === selectedAnalysisTaskId ? ' is-selected' : ''}`} key={task.id} onClick={() => { setSelectedAnalysisTaskId(task.id); setAnalysisHistoryOpen(false); }}><strong>{task.requestText || t(locale, '未命名分析', 'Untitled analysis')}</strong><span>{task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'failed' ? t(locale, '失败', 'Failed') : t(locale, '处理中', 'Processing')}</span></button>)}</div>}
-        </section>}
       </div>}
+      {analysisOpen && analysisHistory.length > 0 && <section className={`project-canvas-analysis-history${analysisHistoryOpen ? ' is-open' : ''}`} aria-label={t(locale, '分析结果列表', 'Analysis results')}>
+        {analysisHistoryOpen && <div className="project-canvas-analysis-history__list">{analysisHistory.map((task) => <button type="button" className={`project-canvas-analysis-history__item${task.id === selectedAnalysisTaskId ? ' is-selected' : ''}`} key={task.id} onClick={() => { setSelectedAnalysisTaskId(task.id); setAnalysisHistoryOpen(false); }}><strong>{task.requestText || t(locale, '未命名分析', 'Untitled analysis')}</strong><span>{task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'failed' ? t(locale, '失败', 'Failed') : t(locale, '处理中', 'Processing')}</span></button>)}</div>}
+        <button type="button" className="project-canvas-analysis-history__trigger" aria-expanded={analysisHistoryOpen} onClick={() => setAnalysisHistoryOpen((open) => !open)}>
+          <span>{t(locale, '分析结果', 'Analysis results')}</span><span className="project-canvas-analysis-history__count">{analysisHistory.length}</span><Icon name={analysisHistoryOpen ? 'chevron-up' : 'chevron-down'} size={14} />
+        </button>
+      </section>}
       <div className="project-canvas-toolbar project-canvas-toolbar--bottom">
         <ConversationDock
           variant="compact"

@@ -1,4 +1,7 @@
 .project-canvas-surface {
+  --project-canvas-panel-background: var(--shell-solid);
+  --project-canvas-panel-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent), 0 8px 24px rgb(15 23 42 / 10%);
+
   position: relative;
   display: flex;
   flex: 1;
@@ -39,11 +42,15 @@
   height: auto;
   left: 50%;
   right: auto;
-  width: min(720px, calc(100% - 32px));
+  width: min(620px, calc(100% - 32px));
   transform: translateX(-50%);
 }
 
-.project-canvas-toolbar--bottom .conversation-dock { width: 100%; }
+.project-canvas-toolbar--bottom .conversation-dock {
+  width: 100%;
+  background: var(--project-canvas-panel-background);
+  box-shadow: var(--project-canvas-panel-shadow);
+}
 
 /* The toolbar owns the bottom offset; keeping the dock in normal flow gives
  * the absolute toolbar a real height instead of positioning its child against
@@ -171,43 +178,46 @@
 .project-canvas-menu__popover button:hover:not(:disabled) { background: color-mix(in srgb, var(--on-surface) 9%, transparent); }
 .project-canvas-menu__popover button:disabled { opacity: .45; }
 
-.project-canvas-analysis-column {
+.project-canvas-analysis-panel {
   position: absolute;
   z-index: 9;
   top: 78px;
   left: 16px;
   width: min(286px, calc(100% - 36px));
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: min(70vh, 560px);
+  max-height: min(62vh, 520px);
 }
 
-.project-canvas-analysis-column .workbench-analysis-panel {
+.project-canvas-analysis-panel .workbench-analysis-panel {
   position: relative;
   inset: auto;
   width: 100%;
   max-height: min(62vh, 520px);
   transform: none;
   border-color: var(--shell-glass-border);
-  background: var(--shell-glass);
+  background: var(--project-canvas-panel-background);
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent), var(--shadow-overlay);
+  box-shadow: var(--project-canvas-panel-shadow);
 }
 
-.project-canvas-analysis-column .workbench-analysis-panel__header,
-.project-canvas-analysis-column .workbench-analysis-panel__footer {
+.project-canvas-analysis-panel .workbench-analysis-panel__header,
+.project-canvas-analysis-panel .workbench-analysis-panel__footer {
   background: transparent;
 }
 
 .project-canvas-analysis-history {
+  position: absolute;
+  z-index: 9;
+  left: 16px;
+  bottom: 18px;
+  width: min(286px, calc(100% - 36px));
   overflow: hidden;
   border: 1px solid var(--shell-glass-border);
-  border-radius: 14px;
-  background: var(--shell-glass);
+  border-radius: 10px;
+  background: var(--project-canvas-panel-background);
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);
+  box-shadow: var(--project-canvas-panel-shadow);
 }
 
 .project-canvas-analysis-history__trigger {
@@ -218,6 +228,7 @@
   gap: 8px;
   padding: 0 11px;
   border: 0;
+  border-top: 1px solid var(--border-subtle);
   color: var(--on-surface);
   background: transparent;
   font-size: 11px;
@@ -231,7 +242,8 @@
   display: grid;
   max-height: 180px;
   overflow-y: auto;
-  border-top: 1px solid var(--shell-glass-border);
+  min-height: 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .project-canvas-analysis-history__item {
