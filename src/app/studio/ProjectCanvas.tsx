@@ -8,7 +8,7 @@ import type { Locale } from '../i18n';
 import type { PersonaProfile } from './personas';
 import type { Project } from './types';
 import { ConversationDock, type ConversationDockAttachment } from './ConversationDock';
-import { AnalysisPanel } from './AnalysisPanel';
+import { AnalysisPanel, type AnalysisPanelRequest } from './AnalysisPanel';
 import { ProjectCanvasStage } from './ProjectCanvasStage';
 import { Icon, IconButton, t } from './ui';
 import './project-canvas.css';
@@ -39,6 +39,11 @@ const bytesToDataUrl = (mimeType: string, bytes: Uint8Array): string => {
     binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + chunkSize, bytes.length)));
   }
   return `data:${mimeType};base64,${btoa(binary)}`;
+};
+
+const attachmentIdentity = (attachment: ConversationDockAttachment): string => {
+  if (attachment.assetId) return `asset:${attachment.assetId}`;
+  return `upload:${attachment.name}:${attachment.mimeType}:${Array.from(attachment.bytes).join(',')}`;
 };
 
 export const getAnalysisHistory = (
@@ -112,11 +117,33 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
   const analysisTask = selectedAnalysisTaskId
     ? tasks.find((task) => task.id === selectedAnalysisTaskId) ?? latestAnalysisTask
     : latestAnalysisTask;
+  const analysisAssetKey = (analysisTask?.contextAssetIds ?? []).join('\0');
   const canGenerate = analysisTask?.state === 'completed' && Boolean(analysisTask.result?.text) && !tasks.some((task) => task.capability === 'design-generation' && (task.state === 'queued' || task.state === 'running'));
   const designTasks = tasks.filter((task) => task.capability === 'design-generation' && task.analysisThreadId === threadId);
   const pendingDesigns = designTasks.flatMap((task) => task.generationSlots?.filter((slot) => slot.state === 'queued' || slot.state === 'running').map((slot) => ({ id: `${task.id}-${slot.id}`, rowKey: task.id, width: analysisTask?.designContext?.document.width ?? 1080, height: analysisTask?.designContext?.document.height ?? 1440 })) ?? []);
   const selectedDesigns = designs.filter((design) => selectedDesignIds.includes(design.id));
   const analysisHistory = getAnalysisHistory(tasks, threadId, analysisTask);
+  useEffect(() => {
+    let cancelled = false;
+    const assetIds = analysisAssetKey ? analysisAssetKey.split('\0') : [];
+    if (!workspaceId || assetIds.length === 0) {
+      setAnalysisAttachments([]);
+      return () => { cancelled = true; };
+    }
+    void (async () => {
+      const managed = await getDesktopApi().listAssets?.({ workspaceId, projectId: project.id, includeContextAssets: true }) ?? [];
+      const byId = new Map(managed.map((asset) => [asset.id, asset]));
+      const loaded = await Promise.all(assetIds.map(async (assetId) => {
+        const asset = byId.get(assetId);
+        if (!asset?.mimeType.startsWith('image/')) return null;
+        const bytes = await getDesktopApi().readAsset?.({ workspaceId, projectId: project.id, assetId });
+        if (!bytes) return null;
+        return { assetId, name: asset.name, mimeType: asset.mimeType, bytes, previewUrl: bytesToDataUrl(asset.mimeType, bytes) } satisfies ConversationDockAttachment;
+      }));
+      if (!cancelled) setAnalysisAttachments(loaded.filter((entry): entry is ConversationDockAttachment => entry !== null));
+    })();
+    return () => { cancelled = true; };
+  }, [analysisAssetKey, analysisTask?.id, project.id, workspaceId]);
   const submit = async (): Promise<void> => {
     if (readOnly || !message.trim()) return;
     const currentMessage = message;
@@ -174,6 +201,27 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
       : [...current, { assetId: design.assetId, name: design.title || `${design.id}.png`, mimeType: 'image/png', bytes, previewUrl: bytesToDataUrl('image/png', bytes) }]);
     setReferencedAssetIds((current) => current.includes(design.assetId) ? current : [...current, design.assetId]);
   };
+  const copyAnalysisRequest = ({ message: copiedMessage, attachments: copiedAttachments }: AnalysisPanelRequest): void => {
+    const normalized = copiedMessage.trim();
+    if (normalized) {
+      setMessage((current) => {
+        const existing = current.trimEnd();
+        if (!existing) return normalized;
+        if (existing.endsWith(normalized)) return current;
+        return `${existing}\n\n${normalized}`;
+      });
+    }
+    setAttachments((current) => {
+      const identities = new Set(current.map(attachmentIdentity));
+      return [...current, ...copiedAttachments.filter((attachment) => {
+        const identity = attachmentIdentity(attachment);
+        if (identities.has(identity)) return false;
+        identities.add(identity);
+        return true;
+      })];
+    });
+    setReferencedAssetIds((current) => [...new Set([...current, ...copiedAttachments.flatMap((attachment) => attachment.assetId ? [attachment.assetId] : [])])]);
+  };
   return (
     <section className="project-canvas-surface" data-testid="project-canvas" aria-label={t(locale, '设计画布', 'Design canvas')}>
       <div className="project-canvas-toolbar">
@@ -208,7 +256,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
         onLayoutChange={saveLayout}
       />
       {analysisOpen && analysisTask && <div className="project-canvas-analysis-panel">
-        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} onGenerate={() => { void generate(); }} />
+        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} onGenerate={() => { void generate(); }} onCopyRequest={copyAnalysisRequest} />
       </div>}
       {analysisOpen && analysisHistory.length > 0 && <section className={`project-canvas-analysis-history${analysisHistoryOpen ? ' is-open' : ''}`} aria-label={t(locale, '分析结果列表', 'Analysis results')}>
         {analysisHistoryOpen && <div className="project-canvas-analysis-history__list">{analysisHistory.map((task) => <button type="button" className={`project-canvas-analysis-history__item${task.id === selectedAnalysisTaskId ? ' is-selected' : ''}`} key={task.id} onClick={() => selectAnalysis(task.id)}><strong>{task.requestText || t(locale, '未命名分析', 'Untitled analysis')}</strong><span>{task.state === 'completed' ? t(locale, '已完成', 'Completed') : task.state === 'failed' ? t(locale, '失败', 'Failed') : t(locale, '处理中', 'Processing')}</span></button>)}</div>}

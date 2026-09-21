@@ -210,4 +210,46 @@ describe('ProjectCanvas design references', () => {
     await waitFor(() => expect(exportDocument).toHaveBeenCalledTimes(2));
     expect(exportDocument.mock.calls.map(([input]) => input.documentId)).toEqual(['design-1', 'design-2']);
   });
+
+  it('loads an analysis image and appends its request to the conversation draft once', async () => {
+    const analysis = {
+      ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '加入春季植物元素' }),
+      source: { kind: 'project' as const, id: 'project-1' },
+      contextAssetIds: ['asset-1'],
+      result: { text: '使用暖色植物插画。' },
+    };
+    window.designhub = {
+      chooseWorkspaceDirectory: async () => null,
+      listProjectDesigns: vi.fn(async () => []),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => [analysis]),
+      listAssets: vi.fn(async () => [{ id: 'asset-1', name: 'plant.png', format: 'PNG', mimeType: 'image/png', contentHash: 'hash-1', managed: true }]),
+      readAsset: vi.fn(async () => new Uint8Array([1, 2, 3])),
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
+        workspaceId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('设计需求'), { target: { value: '保留现有草稿' } });
+    fireEvent.click(await screen.findByRole('button', { name: '展开本轮输入' }));
+    expect(await screen.findByRole('img', { name: 'plant.png' })).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: '复制到对话框' }));
+    fireEvent.click(screen.getByRole('button', { name: '复制到对话框' }));
+
+    expect(screen.getByLabelText('设计需求')).toHaveValue('保留现有草稿\n\n加入春季植物元素');
+    expect(screen.getAllByRole('button', { name: '预览 plant.png' })).toHaveLength(1);
+  });
 });
