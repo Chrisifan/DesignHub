@@ -9,7 +9,7 @@ import { afterEach, expect, it } from 'vitest';
 import { createTaskRuntime } from '../../src/features/tasks/runtime';
 import { createDesignGenerationSlots, type TaskRecord } from '../../src/features/tasks/state';
 import { loadTaskState, saveTaskState } from '../../src/desktop/storage/task-store';
-import { createWorkspace, openWorkspace } from '../../src/desktop/storage/workspace-store';
+import { initializeProjectLibrary, openProjectLibrary } from '../../src/desktop/storage/project-library-store';
 
 const temporaryDirectories: string[] = [];
 
@@ -20,7 +20,7 @@ afterEach(async () => {
 it('recovers unfinished generation slots without losing successful or legacy candidates', async () => {
   const parentDirectory = await mkdtemp(join(tmpdir(), 'designhub-generation-batch-'));
   temporaryDirectories.push(parentDirectory);
-  const workspace = await createWorkspace({ parentDirectory, name: 'workspace' });
+  const workspace = await initializeProjectLibrary(parentDirectory);
   const slots = createDesignGenerationSlots();
   slots[0] = { ...slots[0]!, state: 'completed', assetId: 'asset-primary', candidateId: 'candidate-design-batch-1-primary', cost: 0.1 };
   slots[1] = { ...slots[1]!, state: 'running' };
@@ -40,12 +40,12 @@ it('recovers unfinished generation slots without losing successful or legacy can
     id: 'design-legacy', requestId: 'request-legacy', state: 'completed', cancelRequested: false, attempt: 1,
     result: { candidate: { id: 'candidate-legacy', baseRevisionId: null, assetIds: ['asset-legacy'], createdAt: '2026-09-19T00:00:00.000Z' } },
   };
-  await saveTaskState(workspace, workspace.workspace.workspaceId, [batch, legacy]);
+  await saveTaskState(workspace, workspace.library.libraryId, [batch, legacy]);
   workspace.close();
 
-  const reopened = await openWorkspace(join(parentDirectory, 'workspace'));
+  const reopened = await openProjectLibrary(parentDirectory);
   try {
-    const loaded = await loadTaskState(reopened, reopened.workspace.workspaceId);
+    const loaded = await loadTaskState(reopened, reopened.library.libraryId);
     const recovered = createTaskRuntime({ initialTasks: loaded });
     expect(recovered.get('design-batch-1')).toMatchObject({
       state: 'completed',

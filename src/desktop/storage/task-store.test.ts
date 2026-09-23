@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 import { afterEach, expect, it } from 'vitest';
 
-import { createWorkspace, openWorkspace } from './workspace-store';
+import { initializeProjectLibrary, openProjectLibrary } from './project-library-store';
 import { loadTaskState, saveTaskState, tasksFileName } from './task-store';
 import type { TaskRecord } from '../../features/tasks/state';
 
@@ -16,7 +16,7 @@ const temporaryDirectories: string[] = [];
 const createTemporaryWorkspace = async () => {
   const parentDirectory = await mkdtemp(join(tmpdir(), 'designhub-task-store-'));
   temporaryDirectories.push(parentDirectory);
-  return createWorkspace({ parentDirectory, name: 'workspace' });
+  return initializeProjectLibrary(parentDirectory);
 };
 
 const task: TaskRecord = {
@@ -39,16 +39,16 @@ afterEach(async () => {
 
 it('persists task state across workspace reopen without secret fields', async () => {
   const workspace = await createTemporaryWorkspace();
-  await saveTaskState(workspace, workspace.workspace.workspaceId, [task]);
-  const path = join(workspace.workspace.directory, '.designhub', tasksFileName);
+  await saveTaskState(workspace, workspace.library.libraryId, [task]);
+  const path = join(workspace.library.directory, '.designhub', tasksFileName);
   expect(existsSync(path)).toBe(true);
   const serialized = await readFile(path, 'utf8');
   expect(serialized).not.toContain('secret');
   workspace.close();
 
-  const reopened = await openWorkspace(join(temporaryDirectories[0]!, 'workspace'));
+  const reopened = await openProjectLibrary(temporaryDirectories[0]!);
   try {
-    await expect(loadTaskState(reopened, reopened.workspace.workspaceId)).resolves.toEqual([task]);
+    await expect(loadTaskState(reopened, reopened.library.libraryId)).resolves.toEqual([task]);
   } finally {
     reopened.close();
   }
@@ -69,8 +69,8 @@ it('round-trips a three-slot generation batch and plural candidates', async () =
     },
   };
 
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [batch])).resolves.toBe(true);
-  await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).resolves.toEqual([batch]);
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [batch])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.library.libraryId)).resolves.toEqual([batch]);
   workspace.close();
 });
 
@@ -93,8 +93,8 @@ it('rejects duplicate or unknown generation slots', async () => {
     ],
   } as unknown as TaskRecord;
 
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [duplicate])).rejects.toThrow('INVALID_TASK_STATE');
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [unknown])).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [duplicate])).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [unknown])).rejects.toThrow('INVALID_TASK_STATE');
   workspace.close();
 });
 
@@ -109,13 +109,13 @@ it('rejects malformed generation slot diagnostics and plural candidates', async 
     ],
   } as TaskRecord;
 
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
     ...baseBatch,
     generationSlots: baseBatch.generationSlots?.map((slot) => slot.id === 'primary'
       ? { ...slot, providerFailure: { kind: 'http', status: 400, message: 'private' } as never }
       : slot),
   }])).rejects.toThrow('INVALID_TASK_STATE');
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
     ...baseBatch,
     result: { candidates: [{ id: '', baseRevisionId: null, assetIds: ['asset-a'], createdAt: 'bad' }] },
   }])).rejects.toThrow('INVALID_TASK_STATE');
@@ -132,12 +132,12 @@ it('persists the managed source asset binding used for image retries', async () 
     tool: 'remove-object',
     toolParams: { feather: 10 },
   };
-  await saveTaskState(workspace, workspace.workspace.workspaceId, [imageTask]);
+  await saveTaskState(workspace, workspace.library.libraryId, [imageTask]);
   workspace.close();
 
-  const reopened = await openWorkspace(join(temporaryDirectories[0]!, 'workspace'));
+  const reopened = await openProjectLibrary(temporaryDirectories[0]!);
   try {
-    await expect(loadTaskState(reopened, reopened.workspace.workspaceId)).resolves.toEqual([imageTask]);
+    await expect(loadTaskState(reopened, reopened.library.libraryId)).resolves.toEqual([imageTask]);
   } finally {
     reopened.close();
   }
@@ -150,12 +150,12 @@ it('accepts only selected portfolio IDs and a rights acknowledgement in task sta
     capability: 'vision-analysis',
     portfolio: { sourceIds: ['portfolio-source-1'], rightsConfirmed: true },
   };
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [portfolioTask])).resolves.toBe(true);
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [portfolioTask])).resolves.toBe(true);
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
     ...portfolioTask,
     portfolio: { sourceIds: ['portfolio-source-1'], rightsConfirmed: true, rawBytes: 'not-allowed' },
   } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
     ...portfolioTask,
     portfolio: { sourceIds: [], rightsConfirmed: true },
   }])).rejects.toThrow('INVALID_TASK_STATE');
@@ -170,13 +170,13 @@ it('persists only validated safe provider failure diagnostics', async () => {
     errorCode: 'http',
     providerFailure: { kind: 'http', status: 400, providerCode: 'invalid_image_format', retryAfterSeconds: 12 },
   };
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [failedTask])).resolves.toBe(true);
-  await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).resolves.toEqual([failedTask]);
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [failedTask])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.library.libraryId)).resolves.toEqual([failedTask]);
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
     ...failedTask,
     providerFailure: { kind: 'http', status: 400, providerCode: 'invalid_image_format', message: 'private provider error' },
   } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
     ...failedTask,
     providerMessage: 'private provider error',
   } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
@@ -191,13 +191,13 @@ it('persists only known portfolio analysis diagnostics and accepts historical re
     errorCode: 'VISION_ANALYSIS_INVALID_RESPONSE',
     analysisDiagnostic: 'payload.invalid_json',
   };
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [failedTask])).resolves.toBe(true);
-  await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).resolves.toEqual([failedTask]);
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [failedTask])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.library.libraryId)).resolves.toEqual([failedTask]);
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
     ...failedTask,
     analysisDiagnostic: 'private response text',
   } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [{
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
     ...failedTask,
     analysisDiagnostic: undefined,
   }])).resolves.toBe(true);
@@ -212,23 +212,23 @@ it('rejects invalid persisted image-tool parameters', async () => {
     tool: 'smart-crop',
     toolParams: { width: -1, height: 640, focus: 'subject' },
   } as unknown as TaskRecord;
-  await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [invalidTask])).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [invalidTask])).rejects.toThrow('INVALID_TASK_STATE');
   workspace.close();
 });
 
 it('rejects malformed task state without treating it as an empty list', async () => {
   const workspace = await createTemporaryWorkspace();
-  const path = join(workspace.workspace.directory, '.designhub', tasksFileName);
+  const path = join(workspace.library.directory, '.designhub', tasksFileName);
   await writeFile(path, '{bad json', 'utf8');
-  await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).rejects.toThrow('INVALID_TASK_STATE');
+  await expect(loadTaskState(workspace, workspace.library.libraryId)).rejects.toThrow('INVALID_TASK_STATE');
   workspace.close();
 });
 
 it('does not write task state in a read-only workspace', async () => {
   const workspace = await createTemporaryWorkspace();
-  const readOnly = await openWorkspace(workspace.workspace.directory);
+  const readOnly = await openProjectLibrary(workspace.library.directory);
   try {
-    await expect(saveTaskState(readOnly, readOnly.workspace.workspaceId, [task])).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
+    await expect(saveTaskState(readOnly, readOnly.library.libraryId, [task])).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
   } finally {
     readOnly.close();
     workspace.close();
@@ -239,12 +239,12 @@ it('rejects task state symlinks instead of reading or replacing external files',
   const workspace = await createTemporaryWorkspace();
   const externalRoot = await mkdtemp(join(tmpdir(), 'designhub-task-external-'));
   try {
-    const path = join(workspace.workspace.directory, '.designhub', tasksFileName);
+    const path = join(workspace.library.directory, '.designhub', tasksFileName);
     const externalPath = join(externalRoot, 'tasks.json');
     await writeFile(externalPath, `${JSON.stringify([task])}\n`);
     await symlink(externalPath, path);
-    await expect(loadTaskState(workspace, workspace.workspace.workspaceId)).rejects.toThrow('INVALID_TASK_STATE');
-    await expect(saveTaskState(workspace, workspace.workspace.workspaceId, [task])).rejects.toThrow('INVALID_TASK_STATE');
+    await expect(loadTaskState(workspace, workspace.library.libraryId)).rejects.toThrow('INVALID_TASK_STATE');
+    await expect(saveTaskState(workspace, workspace.library.libraryId, [task])).rejects.toThrow('INVALID_TASK_STATE');
     await expect(readFile(externalPath, 'utf8')).resolves.toContain('task-1');
   } finally {
     workspace.close();

@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 import type { Brand } from '../../features/brands/constraints';
 import { brandLoadChannel, brandSaveChannel, loadBrandStateHandler, saveBrandStateHandler } from './brands';
 
-const workspace = { workspace: { workspaceId: 'workspace-1', name: 'Studio', directory: '/tmp/studio', formatVersion: 1, openMode: 'writable' as const }, close: vi.fn() };
+const workspace = { library: { libraryId: 'workspace-1', directory: '/tmp/studio', formatVersion: 1, openMode: 'writable' as const }, close: vi.fn() };
 const sender = { mainFrame: { url: 'http://localhost:5173/' }, getURL: () => 'http://localhost:5173/' };
 const event = { sender, senderFrame: sender.mainFrame };
 const window = { webContents: event.sender };
@@ -23,7 +23,7 @@ it('rejects malformed saves and read-only writes before storage', async () => {
   const handler = saveBrandStateHandler(window, 'http://localhost:5173/', () => workspace, save);
   await expect(handler(event, { workspaceId: 'workspace-1', state: { brands: [brand] } })).resolves.toBe(true);
   await expect(handler(event, { workspaceId: 'workspace-1', state: { brands: [{ id: '' }] } })).resolves.toBe(false);
-  const readOnly = { ...workspace, workspace: { ...workspace.workspace, openMode: 'read-only' as const } };
+  const readOnly = { ...workspace, library: { ...workspace.library, openMode: 'read-only' as const } };
   await expect(saveBrandStateHandler(window, 'http://localhost:5173/', () => readOnly, save)(event, { workspaceId: 'workspace-1', state: { brands: [brand] } })).resolves.toBe(false);
   expect(save).toHaveBeenCalledTimes(1);
 });

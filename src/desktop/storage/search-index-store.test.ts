@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 
-import { createWorkspace, openWorkspace } from './workspace-store';
+import { initializeProjectLibrary, openProjectLibrary } from './project-library-store';
 import { createSearchIndexStore, type SearchIndexStore } from './search-index-store';
 import type { SearchRecord } from '../../features/library/indexer';
 
@@ -14,11 +14,11 @@ const record = (workspaceId: string, projectId: string, title: string, contribut
   tags: [], contributorIds,
 });
 
-const openStore = async (): Promise<{ root: string; directory: string; workspaceId: string; store: SearchIndexStore; workspace: Awaited<ReturnType<typeof createWorkspace>> }> => {
+const openStore = async (): Promise<{ root: string; directory: string; workspaceId: string; store: SearchIndexStore; workspace: Awaited<ReturnType<typeof initializeProjectLibrary>> }> => {
   const root = await mkdtemp(join(tmpdir(), 'designhub-search-'));
-  const workspace = await createWorkspace({ parentDirectory: root, name: 'Studio' });
+  const workspace = await initializeProjectLibrary(root);
   const store = createSearchIndexStore(workspace);
-  return { root, directory: workspace.workspace.directory, workspaceId: workspace.workspace.workspaceId, store, workspace };
+  return { root, directory: workspace.library.directory, workspaceId: workspace.library.libraryId, store, workspace };
 };
 
 it('persists a rebuildable index and supports Chinese, English and contributor queries', async () => {
@@ -34,7 +34,7 @@ it('persists a rebuildable index and supports Chinese, English and contributor q
     await expect(fixture.store.search({ workspaceId, designerId: 'designer-a' })).resolves.toHaveLength(1);
 
     fixture.store.close();
-    const reopened = await openWorkspace(fixture.directory);
+    const reopened = await openProjectLibrary(fixture.directory);
     try {
       const persisted = createSearchIndexStore(reopened);
       await expect(persisted.search({ workspaceId, query: '春间' })).resolves.toHaveLength(1);

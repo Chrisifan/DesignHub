@@ -10,19 +10,19 @@ import { afterEach, expect, it } from 'vitest';
 import { createScene, type DesignScene } from '../../features/canvas/scene';
 import { createProjectStore } from './project-store';
 import { sceneFileName, loadDocumentScene, saveDocumentScene } from './scene-store';
-import { createWorkspace, openWorkspace } from './workspace-store';
+import { initializeProjectLibrary, openProjectLibrary } from './project-library-store';
 
 const temporaryDirectories: string[] = [];
 
 const createTemporaryWorkspace = async () => {
   const parentDirectory = await mkdtemp(join(tmpdir(), 'designhub-scene-store-'));
   temporaryDirectories.push(parentDirectory);
-  return createWorkspace({ parentDirectory, name: 'workspace' });
+  return initializeProjectLibrary(parentDirectory);
 };
 
 const createProject = async (workspace: Awaited<ReturnType<typeof createTemporaryWorkspace>>) => {
   const result = await createProjectStore(workspace).createProjectContainer({
-    workspaceId: workspace.workspace.workspaceId,
+    workspaceId: workspace.library.libraryId,
     operationId: 'scene-project',
     name: 'Scene project',
   });
@@ -39,15 +39,15 @@ it('persists and reloads a validated document scene across workspace reopen', as
   const workspace = await createTemporaryWorkspace();
   const projectId = await createProject(workspace);
 
-  await expect(saveDocumentScene(workspace, workspace.workspace.workspaceId, projectId, 'doc-1', scene)).resolves.toBe(true);
-  const path = join(workspace.workspace.directory, 'projects', projectId, 'documents', sceneFileName('doc-1'));
+  await expect(saveDocumentScene(workspace, workspace.library.libraryId, projectId, 'doc-1', scene)).resolves.toBe(true);
+  const path = join(workspace.library.directory, 'projects', projectId, 'documents', sceneFileName('doc-1'));
   expect(existsSync(path)).toBe(true);
   expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(scene);
   workspace.close();
 
-  const reopened = await openWorkspace(workspace.workspace.directory);
+  const reopened = await openProjectLibrary(workspace.library.directory);
   try {
-    await expect(loadDocumentScene(reopened, reopened.workspace.workspaceId, projectId, 'doc-1')).resolves.toEqual(scene);
+    await expect(loadDocumentScene(reopened, reopened.library.libraryId, projectId, 'doc-1')).resolves.toEqual(scene);
   } finally {
     reopened.close();
   }
@@ -56,17 +56,17 @@ it('persists and reloads a validated document scene across workspace reopen', as
 it('does not expose malformed scenes and refuses writes in read-only or invalid targets', async () => {
   const workspace = await createTemporaryWorkspace();
   const projectId = await createProject(workspace);
-  await saveDocumentScene(workspace, workspace.workspace.workspaceId, projectId, 'doc-1', scene);
-  const path = join(workspace.workspace.directory, 'projects', projectId, 'documents', sceneFileName('doc-1'));
+  await saveDocumentScene(workspace, workspace.library.libraryId, projectId, 'doc-1', scene);
+  const path = join(workspace.library.directory, 'projects', projectId, 'documents', sceneFileName('doc-1'));
   await writeFile(path, '{bad json', 'utf8');
-  await expect(loadDocumentScene(workspace, workspace.workspace.workspaceId, projectId, 'doc-1')).resolves.toBeNull();
+  await expect(loadDocumentScene(workspace, workspace.library.libraryId, projectId, 'doc-1')).resolves.toBeNull();
   expect(() => sceneFileName('../escape')).toThrow('INVALID_DOCUMENT_ID');
-  await expect(saveDocumentScene(workspace, workspace.workspace.workspaceId, projectId, '../escape', scene)).rejects.toThrow('INVALID_DOCUMENT_ID');
-  await expect(loadDocumentScene(workspace, workspace.workspace.workspaceId, '00000000-0000-4000-8000-000000000000', 'doc-1')).resolves.toBeNull();
+  await expect(saveDocumentScene(workspace, workspace.library.libraryId, projectId, '../escape', scene)).rejects.toThrow('INVALID_DOCUMENT_ID');
+  await expect(loadDocumentScene(workspace, workspace.library.libraryId, '00000000-0000-4000-8000-000000000000', 'doc-1')).resolves.toBeNull();
 
-  const reopened = await openWorkspace(workspace.workspace.directory);
+  const reopened = await openProjectLibrary(workspace.library.directory);
   try {
-    await expect(saveDocumentScene(reopened, reopened.workspace.workspaceId, projectId, 'doc-1', scene)).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
+    await expect(saveDocumentScene(reopened, reopened.library.libraryId, projectId, 'doc-1', scene)).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
   } finally {
     reopened.close();
   }

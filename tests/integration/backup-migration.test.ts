@@ -19,7 +19,7 @@ import {
   projectDatabaseName,
   workspaceProjectIndexName,
 } from '../../src/desktop/storage/project-store';
-import { createWorkspace, openWorkspace, workspaceManifestName } from '../../src/desktop/storage/workspace-store';
+import { initializeProjectLibrary, openProjectLibrary, projectLibraryManifestName } from '../../src/desktop/storage/project-library-store';
 import { saveWorkspaceSettings } from '../../src/desktop/storage/settings-store';
 import { createSearchIndexStore } from '../../src/desktop/storage/search-index-store';
 import type { BackupManifest } from '../../src/features/workspace/backup';
@@ -59,8 +59,8 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
   await mkdir(existingDirectory);
   await writeFile(join(existingDirectory, 'keep.txt'), 'keep');
 
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Workspace' });
-  await saveWorkspaceSettings(workspace, workspace.workspace.workspaceId, {
+  const workspace = await initializeProjectLibrary(sourceParent);
+  await saveWorkspaceSettings(workspace, workspace.library.libraryId, {
     formatVersion: 1,
     backup: {
       destinationParentDirectory: destinationParent,
@@ -71,7 +71,7 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
   });
   const searchStore = createSearchIndexStore(workspace);
   await searchStore.replace([{
-    workspaceId: workspace.workspace.workspaceId,
+    workspaceId: workspace.library.libraryId,
     projectId: 'project-indexed',
     documentId: 'doc-indexed',
     title: 'Indexed project',
@@ -80,22 +80,22 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
   searchStore.close();
   const projects = createProjectStore(workspace);
   const active = await projects.createProjectContainer({
-    workspaceId: workspace.workspace.workspaceId,
+    workspaceId: workspace.library.libraryId,
     operationId: 'backup-active',
     name: 'Active project',
   });
   const trashed = await projects.createProjectContainer({
-    workspaceId: workspace.workspace.workspaceId,
+    workspaceId: workspace.library.libraryId,
     operationId: 'backup-trash',
     name: 'Trashed project',
   });
-  await projects.moveProjectToTrash({ workspaceId: workspace.workspace.workspaceId, projectId: trashed.projectId });
-  await mkdir(join(workspace.workspace.directory, 'shared-assets', 'nested'));
-  await writeFile(join(workspace.workspace.directory, 'shared-assets', 'nested', 'asset.txt'), 'managed asset');
-  await writeFile(join(workspace.workspace.directory, 'shared-assets', 'nested', 'raw.sqlite'), 'ordinary asset with a database-like suffix');
-  await writeFile(join(workspace.workspace.directory, 'shared-assets', 'nested', 'texture.sqlite-wal'), 'ordinary sidecar-like asset');
+  await projects.moveProjectToTrash({ workspaceId: workspace.library.libraryId, projectId: trashed.projectId });
+  await mkdir(join(workspace.library.directory, 'shared-assets', 'nested'));
+  await writeFile(join(workspace.library.directory, 'shared-assets', 'nested', 'asset.txt'), 'managed asset');
+  await writeFile(join(workspace.library.directory, 'shared-assets', 'nested', 'raw.sqlite'), 'ordinary asset with a database-like suffix');
+  await writeFile(join(workspace.library.directory, 'shared-assets', 'nested', 'texture.sqlite-wal'), 'ordinary sidecar-like asset');
 
-  const sourceDatabasePath = join(workspace.workspace.directory, 'projects', active.projectId, projectDatabaseName);
+  const sourceDatabasePath = join(workspace.library.directory, 'projects', active.projectId, projectDatabaseName);
   const liveDatabase = new Database(sourceDatabasePath);
   liveDatabase.pragma('journal_mode = WAL');
   liveDatabase.pragma('wal_autocheckpoint = 0');
@@ -111,11 +111,11 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
     expect(manifest).toMatchObject({
       kind: 'designhub-backup',
       formatVersion: 1,
-      workspaceId: workspace.workspace.workspaceId,
+      workspaceId: workspace.library.libraryId,
       workspaceFormatVersion: 1,
     });
     expect(paths).toEqual(expect.arrayContaining([
-      workspaceManifestName,
+      projectLibraryManifestName,
       `.designhub/${workspaceProjectIndexName}`,
       '.designhub/settings.json',
       '.designhub/search-index.sqlite',
@@ -130,7 +130,7 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
     expect(paths).not.toContain(`projects/${active.projectId}/${projectDatabaseName}-wal`);
     expect(paths).not.toContain(`projects/${active.projectId}/${projectDatabaseName}-shm`);
     expect(manifest.directories).toEqual(expect.arrayContaining(['.designhub', 'projects', 'shared-assets', 'shared-assets/nested', 'trash']));
-    expect(JSON.stringify(manifest)).not.toContain(workspace.workspace.directory);
+    expect(JSON.stringify(manifest)).not.toContain(workspace.library.directory);
     expect(Object.keys(manifest)).not.toEqual(expect.arrayContaining(['key', 'credentials', 'sourceDirectory']));
     manifest.files.forEach((entry) => {
       expect(entry.path.startsWith('/')).toBe(false);
@@ -153,8 +153,8 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
       restoredDatabase.close();
     }
 
-    const restoredWorkspace = await openWorkspace(restored.directory);
-    expect(restoredWorkspace.workspace).toMatchObject({ workspaceId: workspace.workspace.workspaceId, openMode: 'writable' });
+    const restoredWorkspace = await openProjectLibrary(restored.directory);
+    expect(restoredWorkspace.library).toMatchObject({ libraryId: workspace.library.libraryId, openMode: 'writable' });
     restoredWorkspace.close();
   } finally {
     liveDatabase.close();
@@ -164,8 +164,8 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
 
 it('rejects a backup destination inside the source workspace before staging', async () => {
   const sourceParent = await createTemporaryDirectory('designhub-backup-nested-source-');
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Workspace' });
-  const nestedDestination = join(workspace.workspace.directory, 'projects');
+  const workspace = await initializeProjectLibrary(sourceParent);
+  const nestedDestination = join(workspace.library.directory, 'projects');
   await expect(createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory: nestedDestination }))
     .rejects.toThrow('INVALID_BACKUP_DESTINATION');
   await expect(readdir(nestedDestination)).resolves.not.toContain(expect.stringContaining('.designhub-backup-'));
@@ -175,18 +175,18 @@ it('rejects a backup destination inside the source workspace before staging', as
 it.each(['file-copy', 'database-backup', 'backup-publish'] as const)('does not publish a completed backup or modify the source after an injected %s failure', async (failAt) => {
   const sourceParent = await createTemporaryDirectory(`designhub-backup-failure-source-${failAt}-`);
   const destinationParent = await createTemporaryDirectory(`designhub-backup-failure-target-${failAt}-`);
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: `Failure ${failAt}` });
+  const workspace = await initializeProjectLibrary(sourceParent);
   const project = await createProjectStore(workspace).createProjectContainer({
-    workspaceId: workspace.workspace.workspaceId,
+    workspaceId: workspace.library.libraryId,
     operationId: `failure-${failAt}`,
     name: `Failure ${failAt}`,
   });
-  const sourceDatabasePath = join(workspace.workspace.directory, 'projects', project.projectId, projectDatabaseName);
+  const sourceDatabasePath = join(workspace.library.directory, 'projects', project.projectId, projectDatabaseName);
 
   try {
     await expect(createWorkspaceBackupStore(workspace, { failAt }).createBackup({ destinationParentDirectory: destinationParent })).rejects.toThrow('INJECTED');
     expect(await readdir(destinationParent)).toEqual([]);
-    await expect(readFile(join(workspace.workspace.directory, workspaceManifestName), 'utf8')).resolves.toContain(workspace.workspace.workspaceId);
+    await expect(readFile(join(workspace.library.directory, projectLibraryManifestName), 'utf8')).resolves.toContain(workspace.library.libraryId);
     const sourceDatabase = new Database(sourceDatabasePath, { readonly: true });
     try {
       expect(sourceDatabase.pragma('integrity_check', { simple: true })).toBe('ok');
@@ -203,8 +203,8 @@ it('rejects a managed source file replaced by an external symlink after enumerat
   const destinationParent = await createTemporaryDirectory('designhub-backup-source-race-target-');
   const externalDirectory = await createTemporaryDirectory('designhub-backup-source-race-external-');
   const externalFile = join(externalDirectory, 'external.txt');
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Source replacement' });
-  const managedAsset = join(workspace.workspace.directory, 'shared-assets', 'asset.txt');
+  const workspace = await initializeProjectLibrary(sourceParent);
+  const managedAsset = join(workspace.library.directory, 'shared-assets', 'asset.txt');
   await writeFile(managedAsset, 'managed content');
   await writeFile(externalFile, 'external sentinel');
 
@@ -228,8 +228,8 @@ it('rejects a backup staging root replaced by a symlink before creating any exte
   const externalDirectory = await createTemporaryDirectory('designhub-backup-staging-race-external-');
   const externalSentinel = join(externalDirectory, 'sentinel.txt');
   await writeFile(externalSentinel, 'external sentinel');
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Backup staging replacement' });
-  await writeFile(join(workspace.workspace.directory, 'shared-assets', 'asset.txt'), 'managed content');
+  const workspace = await initializeProjectLibrary(sourceParent);
+  await writeFile(join(workspace.library.directory, 'shared-assets', 'asset.txt'), 'managed content');
 
   try {
     await expect(createWorkspaceBackupStore(workspace, {
@@ -249,14 +249,14 @@ it('rejects a backup staging root replaced by a symlink before creating any exte
 it('rejects non-M02 credential-like files inside the internal directory', async () => {
   const sourceParent = await createTemporaryDirectory('designhub-backup-internal-policy-source-');
   const destinationParent = await createTemporaryDirectory('designhub-backup-internal-policy-target-');
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Internal policy' });
+  const workspace = await initializeProjectLibrary(sourceParent);
   const credentialContent = 'api-key=do-not-back-up';
-  await writeFile(join(workspace.workspace.directory, '.designhub', 'credentials.json'), credentialContent);
+  await writeFile(join(workspace.library.directory, '.designhub', 'credentials.json'), credentialContent);
 
   try {
     await expect(createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory: destinationParent })).rejects.toThrow('UNMANAGED_INTERNAL_FILE');
     expect(await readdir(destinationParent)).toEqual([]);
-    await expect(readFile(join(workspace.workspace.directory, '.designhub', 'credentials.json'), 'utf8')).resolves.toBe(credentialContent);
+    await expect(readFile(join(workspace.library.directory, '.designhub', 'credentials.json'), 'utf8')).resolves.toBe(credentialContent);
   } finally {
     workspace.close();
   }
@@ -266,7 +266,7 @@ it('rejects a checksum-consistent backup artifact containing a non-M02 internal 
   const sourceParent = await createTemporaryDirectory('designhub-backup-internal-artifact-source-');
   const backupParent = await createTemporaryDirectory('designhub-backup-internal-artifact-backup-');
   const restoreParent = await createTemporaryDirectory('designhub-backup-internal-artifact-restore-');
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Internal artifact policy' });
+  const workspace = await initializeProjectLibrary(sourceParent);
   const credentialRelativePath = '.designhub/credentials.json';
   const credentialContent = 'api-key=do-not-restore';
 
@@ -298,9 +298,9 @@ it('rejects incomplete, tampered, and internally corrupt backup artifacts withou
   const sourceParent = await createTemporaryDirectory('designhub-invalid-backup-source-');
   const backupParent = await createTemporaryDirectory('designhub-invalid-backup-artifacts-');
   const restoreParent = await createTemporaryDirectory('designhub-invalid-restore-target-');
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: 'Integrity' });
+  const workspace = await initializeProjectLibrary(sourceParent);
   const project = await createProjectStore(workspace).createProjectContainer({
-    workspaceId: workspace.workspace.workspaceId,
+    workspaceId: workspace.library.libraryId,
     operationId: 'integrity-project',
     name: 'Integrity project',
   });
@@ -354,8 +354,8 @@ it.each(['staging', 'final'] as const)('rejects a %s restore directory replaced 
   const externalDirectory = await createTemporaryDirectory(`designhub-restore-${phase}-external-`);
   const externalSentinel = join(externalDirectory, 'sentinel.txt');
   await writeFile(externalSentinel, 'external sentinel');
-  const workspace = await createWorkspace({ parentDirectory: sourceParent, name: `Restore ${phase}` });
-  await writeFile(join(workspace.workspace.directory, 'shared-assets', 'asset.txt'), 'managed content');
+  const workspace = await initializeProjectLibrary(sourceParent);
+  await writeFile(join(workspace.library.directory, 'shared-assets', 'asset.txt'), 'managed content');
 
   try {
     const artifact = await createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory: backupParent });
@@ -383,14 +383,14 @@ it.each(['staging', 'final'] as const)('rejects a %s restore directory replaced 
 it('requires a verified matching backup and rolls back a failed metadata-format publication', async () => {
   const sourceParent = await createTemporaryDirectory('designhub-migration-source-');
   const backupParent = await createTemporaryDirectory('designhub-migration-backup-');
-  const created = await createWorkspace({ parentDirectory: sourceParent, name: 'Migration' });
+  const created = await initializeProjectLibrary(sourceParent);
   created.close();
-  const migrating = await openWorkspace(created.workspace.directory, 2);
-  expect(migrating.workspace.openMode).toBe('migration-required');
+  const migrating = await openProjectLibrary(created.library.directory, 2);
+  expect(migrating.library.openMode).toBe('migration-required');
 
   try {
     const artifact = await createWorkspaceBackupStore(migrating).createBackup({ destinationParentDirectory: backupParent });
-    const manifestPath = join(migrating.workspace.directory, workspaceManifestName);
+    const manifestPath = join(migrating.library.directory, projectLibraryManifestName);
     const originalManifest = await readFile(manifestPath, 'utf8');
 
     await expect(createWorkspaceBackupStore(migrating).migrateMetadata({
@@ -425,18 +425,18 @@ it('requires a verified matching backup and rolls back a failed metadata-format 
     migrating.close();
   }
 
-  const reopened = await openWorkspace(created.workspace.directory, 2);
-  expect(reopened.workspace.openMode).toBe('writable');
+  const reopened = await openProjectLibrary(created.library.directory, 2);
+  expect(reopened.library.openMode).toBe('writable');
   reopened.close();
 });
 
 it('recovers the original manifest after interruption between its move and migration publication', async () => {
   const sourceParent = await createTemporaryDirectory('designhub-migration-interruption-source-');
   const backupParent = await createTemporaryDirectory('designhub-migration-interruption-backup-');
-  const created = await createWorkspace({ parentDirectory: sourceParent, name: 'Migration interruption' });
+  const created = await initializeProjectLibrary(sourceParent);
   created.close();
-  const migrating = await openWorkspace(created.workspace.directory, 2);
-  const manifestPath = join(migrating.workspace.directory, workspaceManifestName);
+  const migrating = await openProjectLibrary(created.library.directory, 2);
+  const manifestPath = join(migrating.library.directory, projectLibraryManifestName);
   const originalManifest = await readFile(manifestPath, 'utf8');
 
   const artifact = await createWorkspaceBackupStore(migrating).createBackup({ destinationParentDirectory: backupParent });
@@ -445,23 +445,23 @@ it('recovers the original manifest after interruption between its move and migra
     toFormatVersion: 2,
   })).rejects.toThrow('INJECTED_MIGRATION_INTERRUPTION');
   expect(existsSync(manifestPath)).toBe(false);
-  expect((await readdir(migrating.workspace.directory)).some((name) => name.includes('.rollback-'))).toBe(true);
+  expect((await readdir(migrating.library.directory)).some((name) => name.includes('.rollback-'))).toBe(true);
   migrating.close();
 
-  const recovered = await openWorkspace(created.workspace.directory, 2);
+  const recovered = await openProjectLibrary(created.library.directory, 2);
   try {
-    expect(recovered.workspace).toMatchObject({
-      workspaceId: created.workspace.workspaceId,
+    expect(recovered.library).toMatchObject({
+      libraryId: created.library.libraryId,
       formatVersion: 1,
       openMode: 'migration-required',
     });
     await expect(readFile(manifestPath, 'utf8')).resolves.toBe(originalManifest);
-    expect((await readdir(recovered.workspace.directory)).some((name) => name.includes('.rollback-') || name.includes('.migration-'))).toBe(false);
+    expect((await readdir(recovered.library.directory)).some((name) => name.includes('.rollback-') || name.includes('.migration-'))).toBe(false);
   } finally {
     recovered.close();
   }
 
-  const reopened = await openWorkspace(created.workspace.directory, 2);
-  expect(reopened.workspace.formatVersion).toBe(1);
+  const reopened = await openProjectLibrary(created.library.directory, 2);
+  expect(reopened.library.formatVersion).toBe(1);
   reopened.close();
 });

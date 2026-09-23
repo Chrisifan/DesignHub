@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 import { afterEach, expect, it } from 'vitest';
 
-import { createWorkspace, openWorkspace } from './workspace-store';
+import { initializeProjectLibrary, openProjectLibrary } from './project-library-store';
 import { appendWorkspaceExportHistory, loadWorkspaceExportHistory } from './export-history-store';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 
@@ -23,13 +23,13 @@ afterEach(async () => {
 it('persists workspace export history and filters it by project', async () => {
   const parent = await mkdtemp(join(tmpdir(), 'designhub-export-history-'));
   directories.push(parent);
-  const workspace = await createWorkspace({ parentDirectory: parent, name: 'workspace' });
-  await appendWorkspaceExportHistory(workspace, workspace.workspace.workspaceId, record);
-  await appendWorkspaceExportHistory(workspace, workspace.workspace.workspaceId, { ...record, id: 'export-2', projectId: 'project-2' });
+  const workspace = await initializeProjectLibrary(parent);
+  await appendWorkspaceExportHistory(workspace, workspace.library.libraryId, record);
+  await appendWorkspaceExportHistory(workspace, workspace.library.libraryId, { ...record, id: 'export-2', projectId: 'project-2' });
   workspace.close();
-  const reopened = await openWorkspace(join(parent, 'workspace'));
+  const reopened = await openProjectLibrary(parent);
   try {
-    await expect(loadWorkspaceExportHistory(reopened, reopened.workspace.workspaceId, 'project-1')).resolves.toEqual([record]);
+    await expect(loadWorkspaceExportHistory(reopened, reopened.library.libraryId, 'project-1')).resolves.toEqual([record]);
   } finally {
     reopened.close();
   }

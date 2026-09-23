@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, realpath, readdir, rm, writeFile } from 'node:fs/promises';
-import { constants, lstatSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { constants, existsSync, lstatSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -16,7 +16,7 @@ const projectLibraryFormatVersion = 1;
 const internalDirectoryName = '.designhub';
 const writerLockName = 'writer-lock.sqlite';
 const managedDirectoryNames = [internalDirectoryName, 'projects', 'shared-assets', 'trash'] as const;
-const staleProjectStagingName = /^\.[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.creating-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/iu;
+const staleProjectStagingName = /^\.[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.creating-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 type ProjectLibraryManifest = {
@@ -24,6 +24,15 @@ type ProjectLibraryManifest = {
   libraryId: string;
   formatVersion: number;
   createdAt: string;
+};
+
+type ProjectLibraryMigrationState = {
+  kind: 'designhub-workspace-migration';
+  migrationId: string;
+  workspaceId: string;
+  fromFormatVersion: number;
+  toFormatVersion: number;
+  originalManifestSha256: string;
 };
 
 type DirectoryIdentity = {
@@ -102,6 +111,42 @@ const readProjectLibraryManifest = async (directory: string): Promise<ProjectLib
   return value;
 };
 
+const removeMigrationFile = (path: string): void => {
+  if (!existsSync(path)) return;
+  const status = lstatSync(path);
+  if (!status.isFile() || status.isSymbolicLink()) throw new Error('INVALID_PROJECT_LIBRARY_MIGRATION_STATE');
+  rmSync(path);
+};
+
+const readProjectLibraryMigrationState = (directory: string): ProjectLibraryMigrationState | null => {
+  const statePath = join(directory, internalDirectoryName, projectLibraryMigrationStateName);
+  if (!existsSync(statePath)) return null;
+  let value: unknown;
+  try {
+    const status = lstatSync(statePath);
+    if (!status.isFile() || status.isSymbolicLink()) throw new Error('INVALID_PROJECT_LIBRARY_MIGRATION_STATE');
+    value = JSON.parse(readFileSync(statePath, 'utf8')) as unknown;
+  } catch {
+    throw new Error('INVALID_PROJECT_LIBRARY_MIGRATION_STATE');
+  }
+  if (typeof value !== 'object' || value === null) throw new Error('INVALID_PROJECT_LIBRARY_MIGRATION_STATE');
+  const state = value as Record<string, unknown>;
+  if (state.kind !== 'designhub-workspace-migration'
+    || typeof state.migrationId !== 'string'
+    || !uuidPattern.test(state.migrationId)
+    || typeof state.workspaceId !== 'string'
+    || !uuidPattern.test(state.workspaceId)
+    || !Number.isInteger(state.fromFormatVersion)
+    || Number(state.fromFormatVersion) < 1
+    || !Number.isInteger(state.toFormatVersion)
+    || Number(state.toFormatVersion) <= Number(state.fromFormatVersion)
+    || typeof state.originalManifestSha256 !== 'string'
+    || !/^[0-9a-f]{64}$/u.test(state.originalManifestSha256)) {
+    throw new Error('INVALID_PROJECT_LIBRARY_MIGRATION_STATE');
+  }
+  return state as ProjectLibraryMigrationState;
+};
+
 export const initializeProjectLibraryWriterLock = (directory: string): void => {
   const database = new Database(join(directory, internalDirectoryName, writerLockName));
   try {
@@ -139,6 +184,58 @@ const acquireWriterLock = (directory: string, expectedIdentity: DirectoryIdentit
 const closeWriterLock = (database: Database.Database): void => {
   database.exec('ROLLBACK');
   database.close();
+};
+
+const recoverInterruptedProjectLibraryMigration = (directory: string, expectedIdentity: DirectoryIdentity): void => {
+  const stateBeforeLock = readProjectLibraryMigrationState(directory);
+  if (!stateBeforeLock) return;
+
+  const statePath = join(directory, internalDirectoryName, projectLibraryMigrationStateName);
+  const writerLock = acquireWriterLock(directory, expectedIdentity);
+  const manifestPath = join(directory, projectLibraryManifestName);
+  if (!writerLock) {
+    assertDirectoryIdentity(directory, expectedIdentity);
+    if (!existsSync(manifestPath)) throw new Error('PROJECT_LIBRARY_MIGRATION_IN_PROGRESS');
+    return;
+  }
+
+  try {
+    assertDirectoryIdentity(directory, expectedIdentity);
+    const state = readProjectLibraryMigrationState(directory);
+    if (!state) return;
+    const temporaryPath = join(directory, `.${projectLibraryManifestName}.migration-${state.migrationId}`);
+    const rollbackPath = join(directory, `.${projectLibraryManifestName}.rollback-${state.migrationId}`);
+    const matchesOriginal = (path: string): boolean => {
+      const content = readFileSync(path, 'utf8');
+      let value: unknown;
+      try {
+        value = JSON.parse(content) as unknown;
+      } catch {
+        return false;
+      }
+      return isProjectLibraryManifest(value)
+        && value.libraryId === state.workspaceId
+        && value.formatVersion === state.fromFormatVersion
+        && createHash('sha256').update(content).digest('hex') === state.originalManifestSha256;
+    };
+
+    if (!existsSync(manifestPath)) {
+      if (!existsSync(rollbackPath) || !matchesOriginal(rollbackPath)) throw new Error('INVALID_PROJECT_LIBRARY_MIGRATION_STATE');
+      renameSync(rollbackPath, manifestPath);
+    } else {
+      const current = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown;
+      const published = isProjectLibraryManifest(current)
+        && current.libraryId === state.workspaceId
+        && current.formatVersion === state.toFormatVersion;
+      if (!published && !matchesOriginal(manifestPath)) throw new Error('INVALID_PROJECT_LIBRARY_MIGRATION_STATE');
+      if (existsSync(rollbackPath) && !matchesOriginal(rollbackPath)) throw new Error('INVALID_PROJECT_LIBRARY_MIGRATION_STATE');
+    }
+    removeMigrationFile(temporaryPath);
+    removeMigrationFile(rollbackPath);
+    removeMigrationFile(statePath);
+  } finally {
+    closeWriterLock(writerLock);
+  }
 };
 
 const getManagedDirectory = (rootDirectory: string, name: string): string => {
@@ -284,6 +381,22 @@ export const openProjectLibrary = async (directory: string, supportedFormat = pr
   if (!Number.isInteger(supportedFormat) || supportedFormat < 1) throw new Error('INVALID_SUPPORTED_FORMAT');
   const canonicalDirectory = await realpath(directory);
   const directoryIdentity = readRequiredDirectoryIdentity(canonicalDirectory);
+  let manifestBeforeRecovery: ProjectLibraryManifest | null = null;
+  try {
+    manifestBeforeRecovery = await readProjectLibraryManifest(canonicalDirectory);
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== 'NOT_A_PROJECT_LIBRARY') throw error;
+  }
+  assertDirectoryIdentity(canonicalDirectory, directoryIdentity);
+  const migrationState = readProjectLibraryMigrationState(canonicalDirectory);
+  if (manifestBeforeRecovery && migrationState && migrationState.toFormatVersion > supportedFormat) {
+    throw new Error('PROJECT_LIBRARY_MIGRATION_REQUIRES_NEWER_VERSION');
+  }
+  if (!manifestBeforeRecovery && migrationState && migrationState.toFormatVersion > supportedFormat) {
+    throw new Error('PROJECT_LIBRARY_MIGRATION_REQUIRES_NEWER_VERSION');
+  }
+  recoverInterruptedProjectLibraryMigration(canonicalDirectory, directoryIdentity);
+  assertDirectoryIdentity(canonicalDirectory, directoryIdentity);
   const manifest = await readProjectLibraryManifest(canonicalDirectory);
   assertDirectoryIdentity(canonicalDirectory, directoryIdentity);
   return createHandle(canonicalDirectory, manifest, supportedFormat, directoryIdentity);

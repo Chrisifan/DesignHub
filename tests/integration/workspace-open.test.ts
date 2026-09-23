@@ -239,16 +239,17 @@ it('releases the writer lock when writable staging cleanup fails', async () => {
 
 it('rejects project storage when the workspace manifest changes after opening', async () => {
   const parent = await createTemporaryDirectory();
-  const workspace = await createWorkspace({ parentDirectory: parent, name: '格式漂移' });
-  const manifestPath = join(workspace.workspace.directory, workspaceManifestName);
+  const { initializeProjectLibrary, projectLibraryManifestName } = await import('../../src/desktop/storage/project-library-store');
+  const library = await initializeProjectLibrary(parent);
+  const manifestPath = join(library.library.directory, projectLibraryManifestName);
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>;
   await writeFile(manifestPath, `${JSON.stringify({ ...manifest, formatVersion: 2 }, null, 2)}\n`);
 
   const { createProjectStore } = await import('../../src/desktop/storage/project-store');
-  await expect(createProjectStore(workspace).createProjectContainer({
-    workspaceId: workspace.workspace.workspaceId,
+  await expect(createProjectStore(library).createProjectContainer({
+    workspaceId: library.library.libraryId,
     operationId: 'format-drift',
     name: 'Format drift',
   })).rejects.toThrow('WORKSPACE_FORMAT_CHANGED');
-  workspace.close();
+  library.close();
 });

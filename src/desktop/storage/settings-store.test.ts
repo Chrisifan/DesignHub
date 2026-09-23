@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 
-import { createWorkspace, openWorkspace } from './workspace-store';
+import { initializeProjectLibrary, openProjectLibrary } from './project-library-store';
 import {
   loadWorkspaceSettings,
   saveWorkspaceSettings,
@@ -24,12 +24,12 @@ const settings: WorkspaceSettings = {
 it('persists workspace backup settings and restores them after reopening', async () => {
   const root = await mkdtemp(join(tmpdir(), 'designhub-settings-'));
   try {
-    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
-    await saveWorkspaceSettings(handle, handle.workspace.workspaceId, settings);
-    const directory = handle.workspace.directory;
+    const handle = await initializeProjectLibrary(root);
+    await saveWorkspaceSettings(handle, handle.library.libraryId, settings);
+    const directory = handle.library.directory;
     handle.close();
-    const reopened = await openWorkspace(directory);
-    await expect(loadWorkspaceSettings(reopened, reopened.workspace.workspaceId)).resolves.toEqual(settings);
+    const reopened = await openProjectLibrary(directory);
+    await expect(loadWorkspaceSettings(reopened, reopened.library.libraryId)).resolves.toEqual(settings);
     reopened.close();
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -39,12 +39,12 @@ it('persists workspace backup settings and restores them after reopening', async
 it('writes an atomic settings file and rejects malformed content', async () => {
   const root = await mkdtemp(join(tmpdir(), 'designhub-settings-'));
   try {
-    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
-    await saveWorkspaceSettings(handle, handle.workspace.workspaceId, settings);
-    const path = join(handle.workspace.directory, '.designhub', workspaceSettingsFileName);
+    const handle = await initializeProjectLibrary(root);
+    await saveWorkspaceSettings(handle, handle.library.libraryId, settings);
+    const path = join(handle.library.directory, '.designhub', workspaceSettingsFileName);
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(settings);
     await writeFile(path, '{"formatVersion":1,"backup":{"schedule":"hourly"}}');
-    await expect(loadWorkspaceSettings(handle, handle.workspace.workspaceId)).rejects.toThrow('INVALID_WORKSPACE_SETTINGS');
+    await expect(loadWorkspaceSettings(handle, handle.library.libraryId)).rejects.toThrow('INVALID_WORKSPACE_SETTINGS');
     handle.close();
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -54,12 +54,12 @@ it('writes an atomic settings file and rejects malformed content', async () => {
 it('rejects settings writes from a read-only workspace', async () => {
   const root = await mkdtemp(join(tmpdir(), 'designhub-settings-'));
   try {
-    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
-    const directory = handle.workspace.directory;
+    const handle = await initializeProjectLibrary(root);
+    const directory = handle.library.directory;
     handle.close();
-    const writable = await openWorkspace(directory);
-    const readonly = await openWorkspace(directory);
-    await expect(saveWorkspaceSettings(readonly, readonly.workspace.workspaceId, settings)).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
+    const writable = await openProjectLibrary(directory);
+    const readonly = await openProjectLibrary(directory);
+    await expect(saveWorkspaceSettings(readonly, readonly.library.libraryId, settings)).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
     readonly.close();
     writable.close();
   } finally {
@@ -71,13 +71,13 @@ it('rejects settings symlinks instead of reading or replacing an external file',
   const root = await mkdtemp(join(tmpdir(), 'designhub-settings-'));
   const externalRoot = await mkdtemp(join(tmpdir(), 'designhub-settings-external-'));
   try {
-    const handle = await createWorkspace({ parentDirectory: root, name: 'Studio' });
-    const settingsPath = join(handle.workspace.directory, '.designhub', workspaceSettingsFileName);
+    const handle = await initializeProjectLibrary(root);
+    const settingsPath = join(handle.library.directory, '.designhub', workspaceSettingsFileName);
     const externalPath = join(externalRoot, 'settings.json');
     await writeFile(externalPath, `${JSON.stringify(settings)}\n`);
     await symlink(externalPath, settingsPath);
-    await expect(loadWorkspaceSettings(handle, handle.workspace.workspaceId)).rejects.toThrow('INVALID_WORKSPACE_SETTINGS');
-    await expect(saveWorkspaceSettings(handle, handle.workspace.workspaceId, settings)).rejects.toThrow('INVALID_WORKSPACE_SETTINGS');
+    await expect(loadWorkspaceSettings(handle, handle.library.libraryId)).rejects.toThrow('INVALID_WORKSPACE_SETTINGS');
+    await expect(saveWorkspaceSettings(handle, handle.library.libraryId, settings)).rejects.toThrow('INVALID_WORKSPACE_SETTINGS');
     await expect(readFile(externalPath, 'utf8')).resolves.toContain('Volumes/backup');
     handle.close();
   } finally {
