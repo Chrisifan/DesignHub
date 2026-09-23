@@ -167,7 +167,10 @@ export const Studio = ({
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(initialDesignerOptions);
   const [conversationConnected, setConversationConnected] = useState(false);
   const [pendingHomeConversation, setPendingHomeConversation] = useState<PendingHomeConversation | null>(null);
-  const [operatorName, setOperatorName] = useState(readOperatorName);
+  const [operatorName, setOperatorName] = useState(() => profile?.displayName ?? readOperatorName());
+  useEffect(() => {
+    if (profile?.displayName !== undefined) setOperatorName(profile.displayName);
+  }, [profile?.displayName]);
   const [pendingAssetAction, setPendingAssetAction] = useState<(CanvasAssetAction & { projectId?: string }) | null>(null);
   useEffect(() => () => {
     previewCoverUrls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -176,7 +179,7 @@ export const Studio = ({
   const updateOperatorName = (value: string): void => {
     const next = value.slice(0, 80);
     setOperatorName(next);
-    try { localStorage.setItem('designhub.operator.name', next); } catch { /* in-memory fallback */ }
+    void getDesktopApi().saveProfile?.({ displayName: next });
   };
   useEffect(() => {
     let cancelled = false;
@@ -736,7 +739,7 @@ export const Studio = ({
         userMenu={(
           <StudioUserMenu
             locale={locale}
-            operatorName={profile?.displayName ?? operatorName}
+            operatorName={operatorName}
             avatarDataUrl={profile?.avatarDataUrl}
             currentView={view}
             onNavigate={navigate}

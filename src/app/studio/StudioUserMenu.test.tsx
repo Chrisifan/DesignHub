@@ -90,3 +90,20 @@ it('disables project creation and import when requested', () => {
   expect(screen.getByRole('menuitem', { name: '新建项目' })).toBeDisabled();
   expect(screen.getByRole('menuitem', { name: '导入项目包' })).toBeDisabled();
 });
+
+it('renders the persisted avatar instead of the initial fallback', () => {
+  render(
+    <StudioUserMenu
+      locale="zh-CN"
+      operatorName="Sifan"
+      avatarDataUrl="data:image/webp;base64,AA=="
+      currentView="projects"
+      onNavigate={vi.fn()}
+      onNewProject={vi.fn()}
+      onImportProject={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole('img', { name: '用户头像' })).toHaveAttribute('src', 'data:image/webp;base64,AA==');
+  expect(screen.queryByText('S')).toBeNull();
+});
