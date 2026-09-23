@@ -314,6 +314,21 @@ it('submits a conversation through the active project service when provided', ()
   expect(prompt).toHaveValue('');
 });
 
+it('disables the conversation send control while submission is in flight', () => {
+  const onSubmitConversation = vi.fn(() => new Promise<null>(() => undefined));
+  render(<Workbench {...makeProps({ onSubmitConversation })} />);
+  fireEvent.click(screen.getByRole('button', { name: '对话' }));
+  const panel = screen.getByRole('form', { name: 'AI 操作坞' });
+  const prompt = within(panel).getByRole('textbox', { name: '修改说明' });
+  fireEvent.change(prompt, { target: { value: '发送时保持按钮忙碌' } });
+  const send = within(panel).getByRole('button', { name: '发送' });
+
+  fireEvent.click(send);
+
+  expect(onSubmitConversation).toHaveBeenCalledOnce();
+  expect(send).toBeDisabled();
+});
+
 it('consumes a home conversation once through the normal analysis path', async () => {
   const onSubmitConversation = vi.fn(async () => ({
     id: 'conversation-home',
@@ -384,8 +399,8 @@ it('chains a completed conversation into design generation', async () => {
   expect(screen.queryByRole('complementary', { name: '设计分析' })).not.toBeInTheDocument();
   fireEvent.click(conversationButton);
   expect(screen.getByRole('complementary', { name: '设计分析' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '生成' }));
-  await waitFor(() => expect(onSubmitDesignGeneration).toHaveBeenCalledWith('conversation-1', null));
+  fireEvent.click(screen.getByRole('button', { name: '生成多张' }));
+  await waitFor(() => expect(onSubmitDesignGeneration).toHaveBeenCalledWith('conversation-1', null, '3:4', 3));
   expect(document.querySelector('.workbench-canvas-world .workbench-candidate-board')).toBeInTheDocument();
   await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ left: 940, top: 786.5, behavior: 'smooth' }));
   rectSpy.mockRestore();
@@ -426,8 +441,8 @@ it('supports plural candidates and retries a failed generation slot', async () =
 
   fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成海报' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: '生成' })).toBeEnabled());
-  fireEvent.click(screen.getByRole('button', { name: '生成' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '生成多张' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '生成多张' }));
 
   await waitFor(() => expect(screen.getByRole('button', { name: '重新生成构图探索' })).toBeVisible());
   expect(screen.getByRole('button', { name: '主方案' })).toBeVisible();

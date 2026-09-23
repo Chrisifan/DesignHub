@@ -5,6 +5,8 @@ import type { Locale } from '../i18n';
 import { HomeConversationComposer } from './HomeConversationComposer';
 import { HomeDesignerRail } from './HomeDesignerRail';
 import { HomeProjectPanel } from './HomeProjectPanel';
+import { Drawer } from './Drawer';
+import { PersonaInspector } from './PersonaInspector';
 import type { PersonaProfile } from './personas';
 import type { HomeConversationRequest, Project } from './types';
 import { t } from './ui';
@@ -17,6 +19,7 @@ type StudioHomeProps = {
   visibleProjects: Project[];
   profiles: PersonaProfile[];
   filter: 'active' | 'archived' | 'all';
+  transitionDirection?: 'forward' | 'backward';
   query: string;
   loadFailed: boolean;
   readOnly: boolean;
@@ -25,11 +28,12 @@ type StudioHomeProps = {
   onQueryChange: (value: string) => void;
   onOpenProject: (project: Project) => void;
   onRetry: () => void;
-  onViewAllDesigners: () => void;
-  onNewProject?: () => void;
+  onNewProject?: (input: { designerId?: string; generationRatio: HomeConversationRequest['generationRatio'] }) => void;
   onSubmit: (input: HomeConversationRequest) => Promise<boolean>;
   notify: (message: string) => void;
 };
+
+const projectFilterOrder: StudioHomeProps['filter'][] = ['active', 'archived', 'all'];
 
 export const StudioHome = ({
   workspaceId,
@@ -38,6 +42,7 @@ export const StudioHome = ({
   visibleProjects,
   profiles,
   filter,
+  transitionDirection = 'forward',
   query,
   loadFailed,
   readOnly,
@@ -46,12 +51,13 @@ export const StudioHome = ({
   onQueryChange,
   onOpenProject,
   onRetry,
-  onViewAllDesigners,
   onNewProject,
   onSubmit,
   notify,
 }: StudioHomeProps) => {
   const [selectedDesignerId, setSelectedDesignerId] = useState('');
+  const [inspectedDesignerId, setInspectedDesignerId] = useState<string | null>(null);
+  const [projectFilterDirection, setProjectFilterDirection] = useState<'forward' | 'backward' | null>(null);
   useEffect(() => setSelectedDesignerId(''), [workspaceId]);
   useEffect(() => {
     if (selectedDesignerId && !profiles.some((profile) => profile.id === selectedDesignerId && profile.status !== 'archived')) {
@@ -64,6 +70,7 @@ export const StudioHome = ({
   const hasProjects = projects.length > 0;
   const showProjectPanel = hasProjects || loadFailed;
   const hasDesigners = profiles.some((profile) => profile.status !== 'archived');
+  const inspectedDesigner = profiles.find((profile) => profile.id === inspectedDesignerId && profile.status !== 'archived') ?? null;
   const submit = async (input: { message: string; attachments: ConversationImageAttachment[]; generationRatio: HomeConversationRequest['generationRatio'] }): Promise<boolean> => {
     const succeeded = await onSubmit({
       ...input,
@@ -72,9 +79,15 @@ export const StudioHome = ({
     if (succeeded) setSelectedDesignerId('');
     return succeeded;
   };
+  const handleFilterChange = (nextFilter: StudioHomeProps['filter']): void => {
+    const currentIndex = projectFilterOrder.indexOf(filter);
+    const nextIndex = projectFilterOrder.indexOf(nextFilter);
+    setProjectFilterDirection(nextIndex >= currentIndex ? 'forward' : 'backward');
+    onFilterChange(nextFilter);
+  };
 
   return (
-    <main className={`studio-home${showProjectPanel ? '' : ' studio-home--empty'}`}>
+    <main className={`studio-home studio-view-enter studio-view-enter-${transitionDirection}${showProjectPanel ? '' : ' studio-home--empty'}`}>
       <div className="studio-home__brand" aria-label="Design Hub">
         <picture>
           <img className="studio-home__brand-mark studio-home__brand-mark--light" src="./designhub-logo-light.png" alt="Design Hub" />
@@ -88,9 +101,10 @@ export const StudioHome = ({
           allProjects={projects}
           projects={visibleProjects}
           filter={filter}
+          transitionDirection={projectFilterDirection}
           query={query}
           loadFailed={loadFailed}
-          onFilterChange={onFilterChange}
+          onFilterChange={handleFilterChange}
           onQueryChange={onQueryChange}
           onOpenProject={onOpenProject}
           onRetry={onRetry}
@@ -105,7 +119,9 @@ export const StudioHome = ({
           readOnly={readOnly}
           conversationConnected={conversationConnected}
           designer={selectedDesigner}
-          onNewProject={onNewProject}
+          designerOptions={profiles}
+          onDesignerChange={setSelectedDesignerId}
+          onNewProject={(input) => onNewProject?.({ ...input, ...(selectedDesignerId ? { designerId: selectedDesignerId } : {}) })}
           onSubmit={submit}
           notify={notify}
         />
@@ -114,11 +130,24 @@ export const StudioHome = ({
             locale={locale}
             profiles={profiles}
             selectedId={selectedDesignerId}
-            onChange={setSelectedDesignerId}
-            onViewAll={onViewAllDesigners}
+            onInspect={(profile) => setInspectedDesignerId(profile.id)}
           />
         ) : null}
       </section>
+      <Drawer
+        open={Boolean(inspectedDesigner)}
+        title={t(locale, '设计师信息', 'Designer profile')}
+        locale={locale}
+        onClose={() => setInspectedDesignerId(null)}
+      >
+        <PersonaInspector
+          locale={locale}
+          profile={inspectedDesigner ?? undefined}
+          workspaceId={workspaceId}
+          readOnly={readOnly}
+          showActions={false}
+        />
+      </Drawer>
     </main>
   );
 };

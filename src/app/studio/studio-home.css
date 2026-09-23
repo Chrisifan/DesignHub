@@ -60,6 +60,16 @@
 .studio-home-projects__search input { min-width: 0; width: 100%; height: 36px; border: 0; outline: 0; background: transparent; color: var(--on-surface); font: inherit; font-size: 12px; }
 .studio-home-projects__list { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .studio-home-projects__list::-webkit-scrollbar { display: none; }
+.studio-project-list-enter-forward { animation: studio-project-list-enter-forward 280ms ease-out both; }
+.studio-project-list-enter-backward { animation: studio-project-list-enter-backward 280ms ease-out both; }
+@keyframes studio-project-list-enter-forward {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes studio-project-list-enter-backward {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 .studio-home-project-row { flex: 0 0 auto; gap: 11px; width: 100%; padding: 8px; border: 0; border-radius: var(--radius-ui); background: transparent; color: inherit; text-align: left; }
 .studio-home-project-row:hover { background: color-mix(in srgb, var(--on-surface) 6%, transparent); }
 .studio-home-project-row__cover { flex: 0 0 48px; width: 48px; height: 48px; overflow: hidden; border-radius: var(--radius-ui); background: var(--surface-container-high); }

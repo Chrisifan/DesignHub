@@ -53,7 +53,7 @@ const designGenerationDirections: Record<DesignGenerationSlotId, string> = {
   expressive: '视觉突破：保持核心需求和可用性，采用更大胆但仍可交付的视觉表达。',
 };
 
-export const createDesignGenerationSlots = (): DesignGenerationSlot[] => designGenerationSlotIds.map((id) => ({
+export const createDesignGenerationSlots = (count: 1 | 3 = 3): DesignGenerationSlot[] => designGenerationSlotIds.slice(0, count === 1 ? 1 : 3).map((id) => ({
   id,
   direction: designGenerationDirections[id],
   state: 'queued',

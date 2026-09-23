@@ -99,6 +99,132 @@ it('merges a conversation thread in order and streams analysis progress', async 
   expect(messages.at(-1)?.content).toEqual(expect.arrayContaining([{ type: 'image_url', image_url: { url: 'data:image/png;base64,AQID' } }]));
 });
 
+it('fails an empty conversation response instead of marking it complete', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      streamChat: () => ({ [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true as const, value: undefined }) }) }),
+    }),
+  });
+
+  const task = await service.submitConversation({ projectId: 'project-1', connectionId: 'provider-1', message: 'empty response' });
+  await service.flush();
+
+  expect(runtime.get(task.id)).toMatchObject({ state: 'failed', errorCode: 'EMPTY_PROVIDER_RESPONSE' });
+});
+
+it('coalesces high-frequency streamed progress updates', async () => {
+  const runtime = createTaskRuntime();
+  const updateProgress = vi.spyOn(runtime, 'updateProgress');
+  const events = Array.from({ length: 100 }, (_, index) => ({ text: `片段${index}` }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: 'fallback', cost: null }),
+      streamChat: () => {
+        let index = 0;
+        return { [Symbol.asyncIterator]: () => ({ next: async () => index < events.length ? { done: false as const, value: events[index++]! } : { done: true as const, value: undefined } }) };
+      },
+    }),
+  });
+
+  const task = await service.submitConversation({ projectId: 'project-1', connectionId: 'provider-1', message: 'long response' });
+  await service.flush();
+
+  expect(runtime.get(task.id)?.state).toBe('completed');
+  expect(updateProgress.mock.calls.length).toBeLessThanOrEqual(3);
+});
+
+it('uses only explicitly selected images for the current conversation turn', async () => {
+  const runtime = createTaskRuntime();
+  const requests: Array<{ messages: unknown[] }> = [];
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: 'fallback', cost: null }),
+      streamChat: (request) => {
+        requests.push(request);
+        return { [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true as const, value: undefined }) }) };
+      },
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId ?? 'workspace-1', projectId: input.projectId!, documentId: input.documentId!,
+      brief: '固定 brief', document: { width: 100, height: 200, currentImageAssetIds: ['canvas-image'] }, attachmentAssetIds,
+      userMessage: input.message, baseRevisionId: null,
+    }),
+    persistConversationAttachments: async ({ attachments }) => attachments.map((attachment) => attachment.name),
+    loadContextImage: async ({ assetId }) => ({ name: assetId, mimeType: 'image/png', bytes: new Uint8Array([assetId === 'selected-image' ? 2 : 9]) }),
+  });
+
+  const first = await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: '第一轮',
+  });
+  await service.flush();
+  await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', analysisThreadId: first.analysisThreadId,
+    conversationParentTaskId: first.id, connectionId: 'provider-1', message: '第二轮', referencedAssetIds: ['selected-image'],
+  });
+  await service.flush();
+
+  const secondMessages = requests[1]!.messages as Array<{ content: string | Array<{ type: string; image_url?: { url: string } }> }>;
+  expect(secondMessages.at(-1)?.content).toEqual([
+    { type: 'text', text: '第二轮' },
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,Ag==' } },
+  ]);
+});
+
+it('uses the latest generated image group when a continued turn has no image selection', async () => {
+  const runtime = createTaskRuntime();
+  let generatedIndex = 0;
+  const generationRequests: Array<{ referenceImages?: Blob[] }> = [];
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: 'brief', cost: null }),
+      generateImage: async (request) => {
+        generationRequests.push(request);
+        return { images: [{ base64: 'latest-generated' }], cost: null };
+      },
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId ?? 'workspace-1', projectId: input.projectId!, documentId: input.documentId!,
+      brief: '固定 brief', document: { width: 100, height: 200, currentImageAssetIds: ['canvas-image'] }, attachmentAssetIds,
+      userMessage: input.message, baseRevisionId: null,
+    }),
+    persistGeneratedImages: async () => [`generated-${generatedIndex += 1}`],
+    loadContextImage: async ({ assetId }) => ({ name: assetId, mimeType: 'image/png', bytes: new Uint8Array([assetId === 'latest-generated' ? 7 : 3]) }),
+  });
+
+  const first = await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: '第一轮',
+  });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: first.id, connectionId: 'provider-1',
+  });
+  await service.flush();
+  const latestGeneratedIds = runtime.get(generation.id)?.result?.assetIds ?? [];
+
+  const second = await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', analysisThreadId: first.analysisThreadId,
+    conversationParentTaskId: first.id, connectionId: 'provider-1', message: '第二轮不选图',
+  });
+  await service.flush();
+
+  expect(latestGeneratedIds).toHaveLength(3);
+  expect(second.contextAssetIds).toEqual(latestGeneratedIds);
+  const secondGeneration = await service.submitDesignGeneration({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: second.id, connectionId: 'provider-1',
+  });
+  await service.flush();
+
+  expect(secondGeneration.capability).toBe('design-generation');
+  expect(generationRequests.slice(-3).every((request) => Boolean(request.referenceImages))).toBe(true);
+  expect(generationRequests.slice(-3).map((request) => request.referenceImages?.length)).toEqual([3, 3, 3]);
+});
+
 it('uses a completed conversation context to create a design candidate', async () => {
   const runtime = createTaskRuntime();
   const chat = vi.fn(async () => ({ text: 'Use a calm editorial composition.', cost: null }));
@@ -144,6 +270,59 @@ it('uses a completed conversation context to create a design candidate', async (
     capability: 'design-generation',
     parentConversationTaskId: conversation.id,
     result: { imageCount: 3, candidates: [{ assetIds: ['asset-generated'], baseRevisionId: null }, { assetIds: ['asset-generated'], baseRevisionId: null }, { assetIds: ['asset-generated'], baseRevisionId: null }] },
+  });
+});
+
+it('generates one design slot when a single image is requested', async () => {
+  const runtime = createTaskRuntime();
+  const generateImage = vi.fn(async () => ({ images: [{ base64: 'generated' }], cost: null }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'analysis brief', cost: null }), generateImage }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1, workspaceId: input.workspaceId!, projectId: input.projectId!, documentId: input.documentId!,
+      brief: 'Project brief', document: { width: 1080, height: 1440, currentImageAssetIds: [] }, attachmentAssetIds,
+      userMessage: input.message, baseRevisionId: null,
+    }),
+    persistGeneratedImages: async () => ['asset-generated'],
+    persistProjectDesigns: async () => undefined,
+  });
+
+  const conversation = await service.submitConversation({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', message: 'Poster',
+  });
+  await service.flush();
+  const generation = await service.submitDesignGeneration({
+    workspaceId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: conversation.id, connectionId: 'provider-1', count: 1,
+  });
+  await service.flush();
+
+  expect(generation.generationSlots).toHaveLength(1);
+  expect(generateImage).toHaveBeenCalledTimes(1);
+  expect(runtime.get(generation.id)?.result?.imageCount).toBe(1);
+});
+
+it('persists a single background-removed image beside its source design', async () => {
+  const runtime = createTaskRuntime();
+  const persistProjectDesigns = vi.fn(async () => undefined);
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: '', cost: null }), editImage: async () => ({ images: [{ base64: 'removed-background' }], cost: null }) }),
+    persistGeneratedImages: async () => ['asset-removed'],
+    persistProjectDesigns,
+  });
+
+  const task = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'Remove background', image: new Blob(['image']),
+    tool: 'remove-background', toolParams: { edgeRefinement: 50 },
+    projectDesign: { sourceTaskId: 'generation-1', sourceConversationTaskId: 'conversation-1', width: 1080, height: 1440, title: '春日海报（去除背景）' },
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)).toMatchObject({ state: 'completed', result: { assetIds: ['asset-removed'], imageCount: 1 } });
+  expect(persistProjectDesigns).toHaveBeenCalledWith({
+    projectId: 'project-1',
+    designs: [expect.objectContaining({ assetId: 'asset-removed', sourceTaskId: 'generation-1', sourceConversationTaskId: 'conversation-1', width: 1080, height: 1440, title: '春日海报（去除背景）' })],
   });
 });
 

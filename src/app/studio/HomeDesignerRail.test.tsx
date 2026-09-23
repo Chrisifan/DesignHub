@@ -4,25 +4,26 @@ import { expect, it, vi } from 'vitest';
 import { personaProfiles } from '../../../tests/fixtures/personas';
 import { HomeDesignerRail } from './HomeDesignerRail';
 
-it('defaults to no designer and selects one available designer', () => {
-  const onChange = vi.fn();
-  render(<HomeDesignerRail locale="zh-CN" profiles={personaProfiles} selectedId="" onChange={onChange} onViewAll={vi.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: /选择设计师：纸感排版/ }));
-  expect(onChange).toHaveBeenCalledWith('paper-type');
+it('opens a designer profile when an available designer is clicked', () => {
+  const onInspect = vi.fn();
+  render(<HomeDesignerRail locale="zh-CN" profiles={personaProfiles} selectedId="" onInspect={onInspect} />);
+  fireEvent.click(screen.getByRole('button', { name: /查看设计师档案：纸感排版/ }));
+  expect(onInspect).toHaveBeenCalledWith(personaProfiles[0]);
 });
 
-it('cancels the selected designer and hides archived profiles', () => {
-  const onChange = vi.fn();
+it('marks the composer designer and hides archived profiles', () => {
+  const onInspect = vi.fn();
   render(
     <HomeDesignerRail
       locale="zh-CN"
       profiles={[...personaProfiles, { ...personaProfiles[0]!, id: 'archived', status: 'archived', name: { zh: '已归档', en: 'Archived' } }]}
       selectedId="paper-type"
-      onChange={onChange}
-      onViewAll={vi.fn()}
+      onInspect={onInspect}
     />,
   );
   expect(screen.queryByText('已归档')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /取消设计师：纸感排版/ }));
-  expect(onChange).toHaveBeenCalledWith('');
+  const card = screen.getByRole('button', { name: /查看设计师档案：纸感排版/ });
+  expect(card).toHaveClass('is-selected');
+  fireEvent.click(card);
+  expect(onInspect).toHaveBeenCalledWith(personaProfiles[0]);
 });

@@ -55,6 +55,20 @@ describe('project canvas math', () => {
     });
   });
 
+  it('centers each automatic row within the layout width', () => {
+    const positions = layoutProjectDesigns([
+      { id: 'a', width: 400, height: 300, rowKey: 'task-1' },
+      { id: 'b', width: 400, height: 300, rowKey: 'task-1' },
+      { id: 'c', width: 400, height: 300, rowKey: 'task-2' },
+    ], { maxWidth: 900, gap: 24, centerRows: true });
+
+    expect(positions).toEqual({
+      a: { x: 38, y: 0 },
+      b: { x: 462, y: 0 },
+      c: { x: 250, y: 324 },
+    });
+  });
+
   it('zooms around the pointer without moving the content under the pointer', () => {
     expect(zoomAroundPointer({ zoom: 1, offsetX: 0, offsetY: 0 }, { x: 200, y: 100 }, 2)).toEqual({ zoom: 2, offsetX: -200, offsetY: -100 });
   });

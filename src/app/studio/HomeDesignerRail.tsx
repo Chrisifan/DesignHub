@@ -9,11 +9,10 @@ type HomeDesignerRailProps = {
   locale: Locale;
   profiles: PersonaProfile[];
   selectedId: string;
-  onChange: (id: string) => void;
-  onViewAll: () => void;
+  onInspect: (profile: PersonaProfile) => void;
 };
 
-export const HomeDesignerRail = ({ locale, profiles, selectedId, onChange, onViewAll }: HomeDesignerRailProps) => {
+export const HomeDesignerRail = ({ locale, profiles, selectedId, onInspect }: HomeDesignerRailProps) => {
   const available = profiles.filter((profile) => profile.status !== 'archived');
   const scrollHorizontally = (event: WheelEvent<HTMLDivElement>): void => {
     const element = event.currentTarget;
@@ -29,10 +28,6 @@ export const HomeDesignerRail = ({ locale, profiles, selectedId, onChange, onVie
           <p>{t(locale, '需要灵感？', 'Need inspiration?')}</p>
           <span>{t(locale, '可选。风格只会应用于下一个项目。', 'Optional. Style applies only to the next project.')}</span>
         </div>
-        <button type="button" onClick={onViewAll}>
-          {t(locale, '查看全部', 'View all')}
-          <Icon name="arrow-up-right" size={14} />
-        </button>
       </div>
       <div className="home-designer-rail__list" onWheel={scrollHorizontally}>
         {available.map((profile) => {
@@ -42,10 +37,9 @@ export const HomeDesignerRail = ({ locale, profiles, selectedId, onChange, onVie
             <button
               type="button"
               className={`home-designer-card ${selected ? 'is-selected' : ''}`}
-              aria-label={selected ? t(locale, `取消设计师：${name}`, `Remove designer: ${name}`) : t(locale, `选择设计师：${name}`, `Select designer: ${name}`)}
-              aria-pressed={selected}
+              aria-label={t(locale, `查看设计师档案：${name}`, `View designer profile: ${name}`)}
               key={profile.id}
-              onClick={() => onChange(selected ? '' : profile.id)}
+              onClick={() => onInspect(profile)}
             >
               <PersonaArtwork personaId={profile.id} profile={profile} locale={locale} crop="avatar" />
               <span>

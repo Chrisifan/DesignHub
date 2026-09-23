@@ -10,6 +10,7 @@ type HomeProjectPanelProps = {
   allProjects: Project[];
   projects: Project[];
   filter: ProjectFilter;
+  transitionDirection?: 'forward' | 'backward' | null;
   query: string;
   loadFailed: boolean;
   onFilterChange: (value: ProjectFilter) => void;
@@ -29,6 +30,7 @@ export const HomeProjectPanel = ({
   allProjects,
   projects,
   filter,
+  transitionDirection,
   query,
   loadFailed,
   onFilterChange,
@@ -75,7 +77,10 @@ export const HomeProjectPanel = ({
           onChange={(event) => onQueryChange(event.target.value)}
         />
       </label>
-      <div className="studio-home-projects__list">
+      <div
+        key={filter}
+        className={`studio-home-projects__list${transitionDirection ? ` studio-project-list-enter-${transitionDirection}` : ''}`}
+      >
         {loadFailed ? (
           <div className="studio-home-projects__empty">
             <Icon name="circle-alert" size={22} />
@@ -104,8 +109,7 @@ export const HomeProjectPanel = ({
               <ProjectCoverImage
                 workspaceId={project.workspaceId}
                 projectId={project.id}
-                coverAssetId={project.coverAssetId}
-                previewUrl={project.coverPreviewUrl}
+                coverAssetId={project.designs?.[0]?.assetId}
                 alt=""
               />
             </span>

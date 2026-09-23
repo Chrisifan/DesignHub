@@ -56,7 +56,7 @@
   background: transparent;
 }
 
-.ui-drawer .details-panel {
+.ui-dialog--drawer .details-panel {
   min-height: 100%;
 }
 
@@ -379,7 +379,7 @@
 }
 
 /* Portfolio designer drawer */
-.ui-drawer.ui-drawer--portfolio {
+.ui-dialog--drawer.ui-drawer--portfolio {
   inline-size: min(520px, 92vw);
 }
 
@@ -1705,6 +1705,65 @@
 .provider-settings {
   min-width: 0;
   padding: 28px;
+}
+
+.connection-dialog-content > .provider-settings {
+  padding: 20px 0 0;
+}
+
+.ui-dialog--drawer.provider-connection-dialog {
+  block-size: min(540px, calc(100dvh - 64px));
+}
+
+.provider-connection-dialog .connection-dialog-content {
+  padding: 24px;
+}
+
+.connection-profile-switcher {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+}
+
+.connection-profile-switcher__button {
+  position: relative;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 36px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--on-surface-variant);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.connection-profile-switcher__button > .ui-icon {
+  position: absolute;
+  inset-inline-start: 12px;
+}
+
+.connection-profile-switcher__button > span {
+  min-width: 0;
+}
+
+.connection-profile-switcher__button:hover,
+.connection-profile-switcher__button.is-selected {
+  border-color: var(--border-subtle);
+  color: var(--on-surface);
+  background: var(--surface-container);
+}
+
+.connection-profile-switcher__button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 
 .provider-profile-section {

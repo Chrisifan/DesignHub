@@ -4,8 +4,8 @@ import type { ConversationImageAttachment } from '../../features/agent/task-serv
 import { isProjectGenerationRatio, projectGenerationRatios, type ProjectGenerationRatio } from '../../features/projects/size';
 import type { Locale } from '../i18n';
 import { PersonaArtwork } from './PersonaArtwork';
-import type { PersonaProfile } from './personas';
-import { Icon, IconButton, Modal, t } from './ui';
+import { localize, type PersonaProfile } from './personas';
+import { Icon, IconButton, Modal, Select, t } from './ui';
 import './conversation-dock.css';
 
 export type ConversationDockVariant = 'compact' | 'expanded';
@@ -25,6 +25,7 @@ type ConversationDockProps = {
   busy?: boolean;
   conversationConnected: boolean;
   designer: PersonaProfile | null;
+  designerOptions?: PersonaProfile[];
   textareaLabel: string;
   placeholder: string;
   submitLabel: string;
@@ -39,7 +40,7 @@ type ConversationDockProps = {
   onValueChange: (value: string) => void;
   onAttachmentsChange: (attachments: ConversationDockAttachment[]) => void;
   onSubmit: () => void;
-  onDesignerClick?: () => void;
+  onDesignerChange?: (designerId: string) => void;
   onOpenTasks?: () => void;
   onOpenHistory?: () => void;
   onGenerate?: () => void;
@@ -90,6 +91,7 @@ export const ConversationDock = ({
   busy = false,
   conversationConnected,
   designer,
+  designerOptions = [],
   textareaLabel,
   placeholder,
   submitLabel,
@@ -102,7 +104,7 @@ export const ConversationDock = ({
   onValueChange,
   onAttachmentsChange,
   onSubmit,
-  onDesignerClick,
+  onDesignerChange,
   onOpenTasks,
   onOpenHistory,
   onGenerate,
@@ -110,6 +112,7 @@ export const ConversationDock = ({
 }: ConversationDockProps) => {
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [previewAttachment, setPreviewAttachment] = useState<ConversationDockAttachment | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
   const compact = variant === 'compact';
 
   const addFiles = async (files: readonly File[]): Promise<void> => {
@@ -144,24 +147,28 @@ export const ConversationDock = ({
     event.preventDefault();
     void addFiles(files);
   };
-  const designerName = designer?.name[locale === 'zh-CN' ? 'zh' : 'en']
-    || t(locale, '未设置设计师', 'No designer selected');
-  const designerContents = designer ? (
-    <>
-      <PersonaArtwork locale={locale} personaId={designer.id} profile={designer} crop="avatar" />
-      <span className="conversation-dock__designer"><strong>{designerName}</strong></span>
-    </>
-  ) : (
-    <>
-      <span className="conversation-dock__designer-placeholder"><Icon name="users" size={14} /></span>
-      <span className="conversation-dock__designer"><strong>{designerName}</strong></span>
-    </>
-  );
+  const availableDesigners = [
+    ...(designer && !designerOptions.some((profile) => profile.id === designer.id) ? [designer] : []),
+    ...designerOptions.filter((profile) => profile.status !== 'archived'),
+  ];
+  const renderDesignerAvatar = (profile?: PersonaProfile) => profile
+    ? <PersonaArtwork locale={locale} personaId={profile.id} profile={profile} crop="avatar" />
+    : <span className="conversation-dock__designer-placeholder"><Icon name="users" size={14} /></span>;
+  const designerSelectOptions = [
+    {
+      value: '',
+      label: <span className="conversation-dock__designer-option">{renderDesignerAvatar()}<span>{t(locale, '未设置设计师', 'No designer selected')}</span></span>,
+    },
+    ...availableDesigners.map((profile) => ({
+      value: profile.id,
+      label: <span className="conversation-dock__designer-option">{renderDesignerAvatar(profile)}<span>{localize(locale, profile.name)}</span></span>,
+    })),
+  ];
 
   return (
     <>
       <form
-        className={`conversation-dock conversation-dock--${variant}`}
+        className={`conversation-dock conversation-dock--${variant}${inputFocused ? ' conversation-dock--input-focused' : ''}`}
         aria-label={t(locale, 'AI 操作坞', 'AI command dock')}
         aria-busy={busy}
         onSubmit={submit}
@@ -199,6 +206,8 @@ export const ConversationDock = ({
             disabled={readOnly}
             aria-label={textareaLabel}
             placeholder={placeholder}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             onChange={(event) => onValueChange(event.target.value)}
             onPaste={paste}
           />
@@ -237,44 +246,34 @@ export const ConversationDock = ({
             {compact && <span className="conversation-dock__shortcut" aria-hidden="true">/</span>}
           </div>
           <div className="conversation-dock__toolbar-actions">
-            <label className="conversation-dock__ratio">
-              <span className="visually-hidden">{t(locale, '设计稿比例', 'Design ratio')}</span>
-              <select
-                aria-label={t(locale, '设计稿比例', 'Design ratio')}
-                value={generationRatio}
-                disabled={readOnly}
-                onChange={(event) => {
-                  if (isProjectGenerationRatio(event.target.value)) onGenerationRatioChange?.(event.target.value);
-                }}
-              >
-                {projectGenerationRatios.map((ratio) => <option key={ratio} value={ratio}>{ratio}</option>)}
-              </select>
-            </label>
-            {onDesignerClick ? (
-              <button
-                type="button"
-                className="conversation-dock__connection"
-                onClick={onDesignerClick}
-                disabled={readOnly}
-                aria-label={t(locale, `设计师：${designerName}`, `Designer: ${designerName}`)}
-                data-tooltip={t(locale, `设计师：${designerName}`, `Designer: ${designerName}`)}
-              >
-                {designerContents}
-              </button>
-            ) : (
-              <div className="conversation-dock__connection" aria-label={t(locale, `设计师：${designerName}`, `Designer: ${designerName}`)}>
-                {designerContents}
-              </div>
-            )}
+            <Select
+              className="conversation-dock__ratio-select"
+              ariaLabel={t(locale, '设计稿比例', 'Design ratio')}
+              value={generationRatio}
+              options={projectGenerationRatios.map((ratio) => ({ value: ratio, label: ratio.replace(':', ' : ') }))}
+              disabled={readOnly}
+              onChange={(value) => {
+                if (isProjectGenerationRatio(value)) onGenerationRatioChange?.(value);
+              }}
+            />
+            <Select
+              className="conversation-dock__designer-select"
+              ariaLabel={t(locale, '设计师', 'Designer')}
+              value={designer?.id ?? ''}
+              options={designerSelectOptions}
+              disabled={readOnly || !onDesignerChange}
+              onChange={(value) => onDesignerChange?.(value)}
+              renderValue={(option) => renderDesignerAvatar(availableDesigners.find((profile) => profile.id === option?.value))}
+            />
             {compact && onOpenTasks && <IconButton name="list" label={t(locale, '模型任务', 'Model tasks')} onClick={onOpenTasks} />}
             {compact && onOpenHistory && <IconButton name="history" label={t(locale, '版本历史', 'Version history')} onClick={onOpenHistory} />}
             {compact && showGenerate && onGenerate && (
               <IconButton name="sparkles" label={t(locale, '生成', 'Generate')} disabled={generateDisabled} onClick={onGenerate} />
             )}
             {compact ? (
-              <IconButton name="arrow-up" label={submitLabel} disabled={busy || readOnly} onClick={onSubmit} />
+              <IconButton className="conversation-dock__send-control" name="arrow-up" label={submitLabel} disabled={busy || readOnly} onClick={onSubmit} />
             ) : (
-              <button className="conversation-dock__submit" type="submit" disabled={busy || readOnly || !value.trim()} aria-label={submitLabel}>
+              <button className="conversation-dock__submit conversation-dock__send-control" type="submit" disabled={busy || readOnly || !value.trim()} aria-label={submitLabel}>
                 <Icon name={busy ? 'clock' : 'arrow-up'} size={19} />
               </button>
             )}

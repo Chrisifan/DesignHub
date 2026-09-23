@@ -1,6 +1,12 @@
+// eslint-disable-next-line no-restricted-imports
+import { readFileSync } from 'node:fs';
+// eslint-disable-next-line no-restricted-imports
+import { resolve } from 'node:path';
+
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
+import { personaProfiles } from '../../../tests/fixtures/personas';
 import { ConversationDock, type ConversationDockAttachment } from './ConversationDock';
 
 const attachment: ConversationDockAttachment = {
@@ -62,6 +68,47 @@ it('uses a vertical up arrow for the expanded send control', () => {
   expect(submit.querySelector('.ui-icon')).not.toHaveAttribute('style', expect.stringContaining('arrow-up-right.svg'));
 });
 
+it('uses the same send control class in expanded and compact docks', () => {
+  const props = makeProps();
+  const { rerender } = render(<ConversationDock {...props} variant="expanded" />);
+  expect(screen.getByRole('button', { name: '发送并创建项目' })).toHaveClass('conversation-dock__send-control');
+
+  rerender(
+    <ConversationDock
+      {...props}
+      variant="compact"
+      onOpenTasks={vi.fn()}
+      onOpenHistory={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole('button', { name: '发送并创建项目' })).toHaveClass('conversation-dock__send-control');
+});
+
+it('marks the dock while its input is focused', () => {
+  const props = makeProps();
+  render(<ConversationDock {...props} variant="expanded" />);
+  const dock = screen.getByRole('form', { name: 'AI 操作坞' });
+  const input = screen.getByRole('textbox', { name: '设计需求' });
+
+  fireEvent.focus(input);
+  expect(dock).toHaveClass('conversation-dock--input-focused');
+  fireEvent.blur(input);
+  expect(dock).not.toHaveClass('conversation-dock--input-focused');
+});
+
+it('animates the focused border gradient without rotating the dock geometry', () => {
+  const stylesheet = readFileSync(resolve(process.cwd(), 'src/app/studio/conversation-dock.css'), 'utf8');
+
+  expect(stylesheet).toContain('@property --conversation-dock-border-angle');
+  expect(stylesheet).toContain('from var(--conversation-dock-border-angle)');
+  expect(stylesheet).toContain('color-mix(in srgb, white 92%, var(--primary)) 0%');
+  expect(stylesheet).toContain('color-mix(in srgb, white 42%, var(--secondary)) 8%');
+  expect(stylesheet).toContain('color-mix(in srgb, var(--tertiary) 35%, transparent) 22%');
+  expect(stylesheet).toContain('2.6s cubic-bezier(0.33, 1, 0.68, 1) infinite');
+  expect(stylesheet).toContain('--conversation-dock-border-angle: 360deg');
+  expect(stylesheet).not.toContain('transform: rotate(360deg)');
+});
+
 it('reads pasted images into controlled attachments', async () => {
   const props = makeProps();
   const file = new File([new Uint8Array([1, 2, 3])], 'reference.png', { type: 'image/png' });
@@ -109,7 +156,7 @@ it('shows no-designer state without a candidate reference count', () => {
   expect(screen.queryByLabelText('候选参考图')).not.toBeInTheDocument();
 });
 
-it('places the controlled generation ratio selector before the designer control', () => {
+it('uses a custom ratio menu without visible field copy', () => {
   const props = makeProps();
   const onGenerationRatioChange = vi.fn();
   render(
@@ -122,11 +169,42 @@ it('places the controlled generation ratio selector before the designer control'
   );
 
   const ratio = screen.getByRole('combobox', { name: '设计稿比例' });
-  const designer = screen.getByLabelText('设计师：未设置设计师');
+  expect(ratio.tagName).toBe('INPUT');
   expect(ratio).toHaveValue('3:4');
-  expect(ratio.compareDocumentPosition(designer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  fireEvent.change(ratio, { target: { value: '1:1' } });
+  expect(screen.queryByText('设计稿比例')).not.toBeInTheDocument();
+
+  fireEvent.click(ratio);
+  expect(screen.getByRole('option', { name: '3 : 4' })).toBeVisible();
+  expect(screen.getByRole('option', { name: '1 : 1' })).toBeVisible();
+  fireEvent.click(screen.getByRole('option', { name: '1 : 1' }));
   expect(onGenerationRatioChange).toHaveBeenCalledWith('1:1');
+});
+
+it('shows only the selected designer avatar until its custom menu opens', () => {
+  const props = makeProps();
+  const designer = personaProfiles[0]!;
+  const onDesignerChange = vi.fn();
+  render(
+    <ConversationDock
+      {...props}
+      variant="compact"
+      designer={designer}
+      designerOptions={personaProfiles}
+      onDesignerChange={onDesignerChange}
+    />,
+  );
+
+  const trigger = screen.getByRole('combobox', { name: '设计师' });
+  const value = trigger.parentElement?.querySelector('.ui-select__value');
+  expect(value?.querySelector('img')).toBeInTheDocument();
+  expect(value).not.toHaveTextContent('纸感排版');
+
+  fireEvent.click(trigger);
+  const option = screen.getByRole('option', { name: /清晰商业/u });
+  expect(option.querySelector('img')).toBeInTheDocument();
+  expect(option).toHaveTextContent('清晰商业');
+  fireEvent.click(option);
+  expect(onDesignerChange).toHaveBeenCalledWith('clear-commerce');
 });
 
 it('rejects invalid and oversized files without changing attachments', async () => {

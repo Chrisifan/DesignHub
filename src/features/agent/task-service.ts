@@ -17,6 +17,7 @@ import { validateToolParams, type ImageTool, type ToolParams } from '../image-to
 import { analyzePortfolio, type PortfolioImageSource } from './analyze-portfolio';
 import { buildDesignContextPrompt, type DesignGenerationContext } from './context';
 import type { ProjectDesign } from '../projects/metadata';
+import type { ProjectGenerationRatio } from '../projects/size';
 
 export type ConversationInput = {
   workspaceId?: string;
@@ -40,6 +41,8 @@ export type DesignGenerationInput = {
   conversationTaskId: string;
   baseRevisionId?: string | null;
   connectionId: string;
+  generationRatio?: ProjectGenerationRatio;
+  count?: 1 | 3;
 };
 
 export type DesignGenerationSlotRetryInput = {
@@ -90,6 +93,13 @@ export type ImageEditInput = {
   tool?: ImageTool;
   toolParams?: ToolParams;
   region?: Region;
+  projectDesign?: {
+    sourceTaskId: string;
+    sourceConversationTaskId?: string;
+    width: number;
+    height: number;
+    title: string;
+  };
 };
 
 export type PortfolioAnalysisInput = {
@@ -240,6 +250,22 @@ const generationPrompt = (context: DesignGenerationContext, assistantBrief?: str
   context.designerSnapshot && Object.keys(context.designerSnapshot).length > 0 ? 'The result must follow the designer profile and avoid every negative rule.' : '',
 ].filter(Boolean).join('\n\n');
 
+const conversationProgressIntervalMs = 80;
+
+const latestGeneratedAssetIds = (tasks: readonly TaskRecord[], input: ConversationInput, analysisThreadId: string): string[] => {
+  const latest = tasks
+    .filter((candidate) => candidate.capability === 'design-generation'
+      && candidate.state === 'completed'
+      && candidate.analysisThreadId === analysisThreadId
+      && candidate.source?.kind === 'project'
+      && candidate.source.id === input.projectId
+      && (input.documentId === undefined || candidate.documentId === input.documentId))
+    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
+  if (!latest) return [];
+  const candidateAssetIds = latest.result?.candidates?.flatMap((candidate) => candidate.assetIds) ?? [];
+  return [...new Set(candidateAssetIds.length > 0 ? candidateAssetIds : latest.result?.assetIds ?? [])];
+};
+
 export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentTaskService => {
   const controllers = new Map<string, AbortController>();
   const generationControllers = new Map<string, Map<DesignGenerationSlotId, AbortController>>();
@@ -267,7 +293,13 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           const historicalAttachments = historicalTask.contextAssetIds?.length ? await loadAssets(historicalTask.contextAssetIds) : [];
           messages.push({ role: 'user', content: [{ type: 'text', text: historicalTask.requestText ?? '' }, ...historicalAttachments.map(imagePart)] });
         }
-        const currentAssetIds = [...new Set([...(task.contextAssetIds ?? []), ...(task.designContext?.document.currentImageAssetIds ?? [])])];
+        const currentAssetIds = [...new Set(
+          task.contextAssetIds?.length
+            ? task.contextAssetIds
+            : task.conversationParentTaskId
+              ? []
+              : task.designContext?.document.currentImageAssetIds ?? [],
+        )];
         const storedAttachments = currentAssetIds.length ? await loadAssets(currentAssetIds) : [];
         const rawAttachments = input.attachments?.length ? input.attachments : [];
         const currentAttachments = [...rawAttachments, ...storedAttachments.filter((stored) => !rawAttachments.some((raw) => raw.name === stored.name))];
@@ -275,23 +307,32 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         const request = { messages };
         let text = '';
         let cost: number | null = null;
+        let lastProgressAt = 0;
+        const publishProgress = (value: string, force = false): void => {
+          const now = Date.now();
+          if (!force && lastProgressAt > 0 && now - lastProgressAt < conversationProgressIntervalMs) return;
+          lastProgressAt = now;
+          options.runtime.updateProgress(task.id, value);
+        };
         if (adapter.streamChat) {
           for await (const event of adapter.streamChat(request, controller.signal)) {
             if (event.text) {
               text += event.text;
-              options.runtime.updateProgress(task.id, text);
+              publishProgress(text);
             }
           }
         } else {
           const response = await adapter.chat(request, controller.signal);
           text = response.text;
           cost = response.cost;
-          options.runtime.updateProgress(task.id, text);
         }
+        if (!text.trim()) throw new Error('EMPTY_PROVIDER_RESPONSE');
+        publishProgress(text, true);
         await options.runtime.complete(task.id, { text, cost });
       } catch (error) {
         if (controller.signal.aborted) {
-          await options.runtime.complete(task.id);
+          if (options.runtime.get(task.id)?.cancelRequested) await options.runtime.complete(task.id);
+          else await failTask(options.runtime, task.id, new Error('CONVERSATION_ABORTED'));
         } else {
           await failTask(options.runtime, task.id, error);
         }
@@ -375,16 +416,36 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('tool' in input && input.tool ? { tool: input.tool } : {}), ...('toolParams' in input && input.toolParams ? { toolParams: { ...input.toolParams } } : {}), ...('region' in input && input.region ? { region: input.region } : {}) }, controller.signal) : undefined);
         if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
         if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
+        const projectDesign = operation === 'edit' && 'projectDesign' in input ? input.projectDesign : undefined;
+        const projectId = 'projectId' in input ? input.projectId : undefined;
+        const outputImages = projectDesign ? response.images.slice(0, 1) : response.images;
         const assetIds = task.source?.kind === 'designer-draft'
           ? (options.persistDesignerArtwork
-            ? await options.persistDesignerArtwork({ designerDraftId: task.source.id, images: response.images })
+            ? await options.persistDesignerArtwork({ designerDraftId: task.source.id, images: outputImages })
             : (() => { throw new Error('DESIGNER_ARTWORK_PERSISTENCE_UNAVAILABLE'); })())
           : (options.persistGeneratedImages && 'projectId' in input
-            ? await options.persistGeneratedImages({ projectId: input.projectId, images: response.images })
+            ? await options.persistGeneratedImages({ projectId: input.projectId, images: outputImages })
             : []);
+        if (projectDesign) {
+          if (!options.persistProjectDesigns || !projectId) throw new Error('PROJECT_DESIGN_PERSISTENCE_UNAVAILABLE');
+          await options.persistProjectDesigns({
+            projectId,
+            designs: assetIds.map((assetId) => ({
+              id: `design-${crypto.randomUUID()}`,
+              projectId,
+              assetId,
+              sourceTaskId: projectDesign.sourceTaskId,
+              ...(projectDesign.sourceConversationTaskId ? { sourceConversationTaskId: projectDesign.sourceConversationTaskId } : {}),
+              width: projectDesign.width,
+              height: projectDesign.height,
+              title: projectDesign.title,
+              createdAt: new Date().toISOString(),
+            })),
+          });
+        }
         await options.runtime.complete(task.id, {
           assetIds,
-          imageCount: response.images.length,
+          imageCount: outputImages.length,
           cost: response.cost,
           ...(task.source?.kind === 'project' ? {
             candidate: {
@@ -432,7 +493,11 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       : source.kind === 'project' && options.resolveDesignContext
         ? await options.resolveDesignContext({ input, attachmentAssetIds })
         : undefined;
-    const contextAssetIds = [...new Set([...attachmentAssetIds, ...referencedAssetIds])];
+    const explicitAssetIds = [...new Set([...attachmentAssetIds, ...referencedAssetIds])];
+    const inheritedGeneratedAssetIds = parent && explicitAssetIds.length === 0
+      ? latestGeneratedAssetIds(options.runtime.list(), input, analysisThreadId)
+      : [];
+    const contextAssetIds = [...new Set([...explicitAssetIds, ...inheritedGeneratedAssetIds])];
     const task = options.runtime.start({
       id: taskId(),
       requestId: requestId(),
@@ -460,10 +525,13 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const sourceImage = sourceAssetId && options.loadSourceImage
       ? await options.loadSourceImage({ projectId: task.source.id, assetId: sourceAssetId })
       : null;
-    const referenceAssetIds = [...new Set([
-      ...(task.contextAssetIds ?? context.attachmentAssetIds),
-      ...context.document.currentImageAssetIds,
-    ])].filter((assetId) => assetId !== sourceAssetId);
+    const referenceAssetIds = [...new Set(
+      task.contextAssetIds?.length
+        ? task.contextAssetIds
+        : context.attachmentAssetIds.length
+          ? context.attachmentAssetIds
+          : context.document.currentImageAssetIds,
+    )].filter((assetId) => assetId !== sourceAssetId);
     const loadedReferences = options.loadContextImage && referenceAssetIds.length
       ? await Promise.all(referenceAssetIds.map((assetId) => options.loadContextImage!({ projectId: task.source!.id, assetId })))
       : [];
@@ -475,7 +543,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   };
   const executeDesignGeneration = async (task: TaskRecord, onlySlots?: readonly DesignGenerationSlotId[]): Promise<void> => {
     const execution = (async (): Promise<void> => {
-      const slotIds = onlySlots ?? designGenerationSlotIds;
+      const slotIds = onlySlots ?? task.generationSlots?.map((slot) => slot.id) ?? designGenerationSlotIds;
       let prepared: Awaited<ReturnType<typeof prepareDesignGeneration>>;
       try {
         prepared = await prepareDesignGeneration(task);
@@ -582,10 +650,11 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const threadCandidates = parent.analysisThreadId
       ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && (!input.documentId || candidate.documentId === input.documentId))
       : [parent];
-    const threadAssetIds = [...new Set([
-      ...threadCandidates.flatMap((candidate) => candidate.contextAssetIds ?? []),
-      ...parent.designContext.document.currentImageAssetIds,
-    ])];
+    const threadAssetIds = [...new Set(
+      parent.contextAssetIds?.length
+        ? parent.contextAssetIds
+        : parent.designContext.document.currentImageAssetIds,
+    )];
     const threadUserMessage = threadCandidates
       .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id))
       .map((candidate) => candidate.requestText?.trim())
@@ -602,7 +671,8 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       source: { kind: 'project', id: input.projectId },
       ...(input.documentId ? { documentId: input.documentId } : {}),
       baseRevisionId: input.baseRevisionId ?? parent.baseRevisionId ?? null,
-      generationSlots: createDesignGenerationSlots(),
+      generationSlots: createDesignGenerationSlots(input.count ?? 3),
+      count: input.count ?? 3,
       ...(parent.designerVersionId ? { designerVersionId: parent.designerVersionId } : {}),
       ...(threadAssetIds.length ? { contextAssetIds: threadAssetIds } : {}),
       ...(parent.analysisThreadId ? { analysisThreadId: parent.analysisThreadId } : {}),
@@ -626,7 +696,11 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     if (task.designContext?.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_CONTEXT_MISMATCH');
     const slot = task.generationSlots.find((candidate) => candidate.id === input.slotId);
     if (!slot) throw new Error('GENERATION_SLOT_NOT_FOUND');
-    const assetIds = [...new Set([...(task.contextAssetIds ?? []), ...(task.designContext?.document.currentImageAssetIds ?? [])])];
+    const assetIds = [...new Set(
+      task.contextAssetIds?.length
+        ? task.contextAssetIds
+        : task.designContext?.document.currentImageAssetIds ?? [],
+    )];
     if (options.loadContextImage && assetIds.length) {
       const assets = await Promise.all(assetIds.map((assetId) => options.loadContextImage!({ projectId: task.source!.id, assetId })));
       if (assets.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');

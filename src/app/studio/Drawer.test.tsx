@@ -8,7 +8,7 @@ it('closes a labelled drawer by button, backdrop, and Escape', () => {
   const onClose = vi.fn();
   render(<Drawer open title="素材详情" onClose={onClose}><p>内容</p></Drawer>);
 
-  expect(screen.getByRole('dialog', { name: '素材详情' })).toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: '素材详情' })).toHaveClass('ui-dialog', 'ui-dialog--drawer');
   fireEvent.click(screen.getByRole('button', { name: '关闭' }));
   fireEvent.click(screen.getByTestId('drawer-backdrop'));
   fireEvent.keyDown(document, { key: 'Escape' });

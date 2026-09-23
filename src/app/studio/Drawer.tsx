@@ -37,7 +37,7 @@ export const Drawer = ({
   initialFocusSelector,
 }: DrawerProps) => {
   const titleId = useId();
-  const panelRef = useRef<HTMLElement>(null);
+  const panelRef = useRef<HTMLDialogElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(() => (
@@ -109,14 +109,15 @@ export const Drawer = ({
     <div className="ui-drawer-root">
       <button
         type="button"
-        className="ui-drawer__backdrop"
+        className="ui-drawer__backdrop ui-dialog-backdrop"
         data-testid="drawer-backdrop"
-        aria-label={t(locale, '关闭抽屉', 'Close drawer')}
+        aria-label={t(locale, '关闭弹窗', 'Close dialog')}
         onClick={onClose}
       />
-      <aside
+      <dialog
         ref={panelRef}
-        className={`ui-drawer ${className}`}
+        open
+        className={`ui-dialog ui-dialog--drawer ${className}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -127,7 +128,7 @@ export const Drawer = ({
         </header>
         <div ref={contentRef} className="ui-drawer__content">{children}</div>
         {footer ? <div className="ui-drawer__footer">{footer}</div> : null}
-      </aside>
+      </dialog>
     </div>,
     portalTarget,
   );

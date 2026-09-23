@@ -4,6 +4,7 @@ import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
 import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, DesignGenerationInput, DesignGenerationSlotRetryInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
+import { isProjectGenerationRatio } from '../../features/projects/size';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const conversationSubmitChannel = 'agent:conversation-submit';
@@ -86,7 +87,9 @@ const isDesignGenerationInput = (value: unknown): value is DesignGenerationBridg
   return isNonEmpty(input.workspaceId) && isNonEmpty(input.projectId)
     && isNonEmpty(input.conversationTaskId) && isNonEmpty(input.connectionId)
     && (input.documentId === undefined || isNonEmpty(input.documentId))
-    && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId));
+    && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
+    && (input.generationRatio === undefined || isProjectGenerationRatio(input.generationRatio))
+    && (input.count === undefined || input.count === 1 || input.count === 3);
 };
 const isPortfolioImage = (value: unknown): value is PortfolioImageSource['image'] => {
   if (!value || typeof value !== 'object') return false;
@@ -160,6 +163,15 @@ const isRegion = (value: unknown): boolean => value !== null && typeof value ===
   && ['x', 'y', 'width', 'height'].every((key) => typeof (value as Record<string, unknown>)[key] === 'number' && Number.isFinite((value as Record<string, unknown>)[key]))
   && Number((value as Record<string, unknown>).x) >= 0 && Number((value as Record<string, unknown>).y) >= 0
   && Number((value as Record<string, unknown>).width) > 0 && Number((value as Record<string, unknown>).height) > 0;
+const isProjectDesignOutput = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  const design = value as Record<string, unknown>;
+  return isNonEmpty(design.sourceTaskId)
+    && (design.sourceConversationTaskId === undefined || isNonEmpty(design.sourceConversationTaskId))
+    && isNonEmpty(design.title)
+    && typeof design.width === 'number' && Number.isFinite(design.width) && design.width > 0
+    && typeof design.height === 'number' && Number.isFinite(design.height) && design.height > 0;
+};
 const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
@@ -174,7 +186,8 @@ const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
     && (input.tool === undefined
       ? input.toolParams === undefined
       : validateToolParams(input.tool as typeof imageTools[number], input.toolParams).ok)
-    && (input.region === undefined || isRegion(input.region));
+    && (input.region === undefined || isRegion(input.region))
+    && (input.projectDesign === undefined || isProjectDesignOutput(input.projectDesign));
 };
 
 export const createConversationHandler = (

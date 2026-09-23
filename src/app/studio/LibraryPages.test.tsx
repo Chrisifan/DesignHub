@@ -17,12 +17,14 @@ const Harness = ({
   workspaceId,
   projectId,
   onAssetAction,
+  onDesignerProfilesChange,
 }: {
   initialView?: Exclude<View, 'projects'>;
   deliveryProject?: Project | null;
   workspaceId?: string;
   projectId?: string;
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
+  onDesignerProfilesChange?: (profiles: typeof personaProfiles) => void;
 }) => {
   const [view, setView] = useState<View>(initialView);
   const [theme, setTheme] = useState<Theme>('system');
@@ -53,6 +55,7 @@ const Harness = ({
           initialAssets={previewAssets as never}
           initialBrands={previewBrands}
           initialProfiles={personaProfiles}
+          onDesignerProfilesChange={onDesignerProfilesChange}
         />
       )}
     </>
@@ -77,6 +80,7 @@ const TaskHarness = ({ workspaceId = 'workspace-1' }: { workspaceId?: string }) 
 
 it('exposes portfolio analysis as the only new-designer flow', () => {
   render(<Harness />);
+  expect(document.querySelector('.designer-library-page')).toHaveClass('designer-library-page--plain');
   fireEvent.click(screen.getByRole('button', { name: '从作品集创建' }));
   const dialog = screen.getByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' });
   expect(within(dialog).queryByRole('textbox', { name: '作品集链接' })).not.toBeInTheDocument();
@@ -105,6 +109,18 @@ it('keeps a profile edit draft when the same profile is reopened', () => {
       { name: '名称' },
     ),
   ).toHaveValue('纸感排版编辑版');
+});
+
+it('notifies the home profile source when a designer is archived', async () => {
+  const onDesignerProfilesChange = vi.fn<(profiles: typeof personaProfiles) => void>();
+  render(<Harness onDesignerProfilesChange={onDesignerProfilesChange} />);
+
+  fireEvent.click(screen.getByRole('button', { name: /纸感排版/ }));
+  fireEvent.click(screen.getByRole('button', { name: '删除' }));
+
+  await waitFor(() => expect(onDesignerProfilesChange).toHaveBeenCalled());
+  const updatedProfiles = onDesignerProfilesChange.mock.lastCall?.[0];
+  expect(updatedProfiles?.find((profile) => profile.id === 'paper-type')?.status).toBe('archived');
 });
 
 it('filters assets and opens the selected asset details in a drawer', () => {
@@ -280,9 +296,11 @@ it('shows a connected state and lets the model groups switch profile configurati
   expect(screen.getByRole('button', { name: '对话与视觉' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '图片生成与编辑' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '对话与视觉' }));
-  expect(screen.getByRole('dialog', { name: '连接配置' })).toBeInTheDocument();
+  const dialog = screen.getByRole('dialog', { name: '连接配置' });
+  expect(dialog).toBeInTheDocument();
+  expect(dialog).toHaveClass('provider-connection-dialog');
   expect(screen.getByRole('heading', { name: '对话与视觉' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '图片生成与编辑' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: '图片生成与编辑' }));
   expect(screen.getByRole('heading', { name: '图片生成与编辑' })).toBeInTheDocument();
   expect(screen.getByLabelText('Image base URL')).toHaveValue('https://image.example/v1');
 });

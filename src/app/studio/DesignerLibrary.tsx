@@ -185,6 +185,8 @@ type DesignerLibraryProps = {
   initialProfiles?: PersonaProfile[];
   readOnly?: boolean;
   toolbarActive?: boolean;
+  createRequestId?: number;
+  onProfilesChange?: (profiles: PersonaProfile[]) => void;
 };
 
 const mergeProfiles = (persisted: PersonaProfile[] | undefined): PersonaProfile[] =>
@@ -208,6 +210,8 @@ export const DesignerLibrary = ({
   initialProfiles = emptyProfiles,
   readOnly = false,
   toolbarActive = true,
+  createRequestId = 0,
+  onProfilesChange,
 }: DesignerLibraryProps) => {
   const [profiles, setProfiles] = useState<PersonaProfile[]>(() => workspaceId || !preview ? [] : initialProfiles);
   const [selectedId, setSelectedId] = useState(() => workspaceId || !preview ? '' : initialProfiles[0]?.id ?? '');
@@ -239,6 +243,7 @@ export const DesignerLibrary = ({
   const [loading, setLoading] = useState(Boolean(workspaceId));
   const [loadFailed, setLoadFailed] = useState(false);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const lastCreateRequestId = useRef(0);
   const skipNextPersistence = useRef(false);
   const discardPortfolioInspection = useCallback(() => {
     if (workspaceId && portfolioInspection) void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
@@ -345,7 +350,7 @@ export const DesignerLibrary = ({
       setEditDrafts((previous) => ({ ...previous, [editor.profileId]: draft }));
     else setNewDraft(draft);
   };
-  const openCreate = () => {
+  const openCreate = useCallback(() => {
     if (readOnly || loading || loadFailed) return;
     setWizardPhase("import");
     setRightsConfirmed(false);
@@ -360,7 +365,12 @@ export const DesignerLibrary = ({
     setPublishedInSession(false);
     setCreationError("");
     setEditor({ mode: "new" });
-  };
+  }, [discardPortfolioInspection, loadFailed, loading, readOnly]);
+  useEffect(() => {
+    if (!createRequestId || createRequestId === lastCreateRequestId.current || loading) return;
+    lastCreateRequestId.current = createRequestId;
+    openCreate();
+  }, [createRequestId, loading, openCreate]);
   const openEdit = () => {
     if (readOnly || loading || loadFailed) return;
     if (!selected) return;
@@ -409,13 +419,11 @@ export const DesignerLibrary = ({
       },
       negativeRules,
     };
-    setProfiles((previous) =>
-      isPublished
-        ? [nextProfile, ...previous]
-        : previous.map((profile) =>
-            profile.id === editor.profileId ? nextProfile : profile,
-          ),
-    );
+    const nextProfiles = isPublished
+      ? [nextProfile, ...profiles]
+      : profiles.map((profile) => profile.id === editor.profileId ? nextProfile : profile);
+    setProfiles(nextProfiles);
+    onProfilesChange?.(nextProfiles);
     if (isPublished) setSelectedId(nextProfile.id);
     notify(t(locale, "档案草稿已更新", "Profile draft updated"));
     setEditor(null);
@@ -698,6 +706,7 @@ export const DesignerLibrary = ({
         skipNextPersistence.current = true;
       }
       setProfiles(nextProfiles);
+      onProfilesChange?.(nextProfiles);
       setSelectedId(published.id);
       setCreationError("");
       setPublishedInSession(true);
@@ -722,19 +731,17 @@ export const DesignerLibrary = ({
     if (readOnly || loading || loadFailed) return;
     if (!selected) return;
     if (selected.referenceCount > 0) {
-      setProfiles((previous) =>
-        previous.map((profile) =>
-          profile.id === selected.id
-            ? { ...profile, status: "archived" }
-            : profile,
-        ),
-      );
+      const nextProfiles = profiles.map((profile) => profile.id === selected.id
+        ? { ...profile, status: "archived" as const }
+        : profile);
+      setProfiles(nextProfiles);
+      onProfilesChange?.(nextProfiles);
       notify(t(locale, "档案已归档", "Profile archived"));
       return;
     }
-    setProfiles((previous) =>
-      previous.filter((profile) => profile.id !== selected.id),
-    );
+    const nextProfiles = profiles.filter((profile) => profile.id !== selected.id);
+    setProfiles(nextProfiles);
+    onProfilesChange?.(nextProfiles);
     setSelectedId(
       defaultId === selected.id
         ? (profiles.find((profile) => profile.id !== selected.id)?.id ?? "")
@@ -743,7 +750,7 @@ export const DesignerLibrary = ({
     notify(t(locale, "档案已移除", "Profile removed"));
   };
   return (
-    <section className="page-content library-page designer-library-page">
+    <section className="page-content library-page designer-library-page designer-library-page--plain">
       <PageHeader
         title={t(locale, "设计师", "Designers")}
         eyebrow={t(locale, "创作档案", "Creative profiles")}
@@ -791,7 +798,9 @@ export const DesignerLibrary = ({
             }} disabled={readOnly || loading || loadFailed || selectedId === defaultId || !canBeDefault(selected)}>{selectedId === defaultId ? t(locale, "当前默认", "Current default") : t(locale, "设默认", "Set default")}</Button>
             {selected.status === "archived" ? <Button icon="rotate-ccw" onClick={() => {
               if (readOnly || loading || loadFailed) return;
-              setProfiles((previous) => previous.map((profile) => profile.id === selected.id ? { ...profile, status: "published" } : profile));
+              const nextProfiles = profiles.map((profile) => profile.id === selected.id ? { ...profile, status: "published" as const } : profile);
+              setProfiles(nextProfiles);
+              onProfilesChange?.(nextProfiles);
               notify(t(locale, "档案已恢复", "Profile restored"));
             }} disabled={readOnly || loading || loadFailed}>{t(locale, "恢复", "Restore")}</Button> : <Button icon="trash-2" onClick={deleteSelected} disabled={readOnly || loading || loadFailed}>{t(locale, "删除", "Delete")}</Button>}
           </div>

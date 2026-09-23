@@ -74,6 +74,16 @@ describe('OpenAI-compatible provider adapter', () => {
     expect(deltas).toEqual(['he', 'llo']);
   });
 
+  it('parses a non-stream JSON chat response when a provider ignores stream mode', async () => {
+    const fetcher = vi.fn(async () => response({ choices: [{ message: { role: 'assistant', content: 'fallback response' } }] }));
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key', fetch: fetcher });
+    const events: string[] = [];
+
+    for await (const event of adapter.streamChat({ messages: [{ role: 'user', content: 'hi' }] })) events.push(event.text);
+
+    expect(events).toEqual(['fallback response']);
+  });
+
   it('preserves structured rate-limit errors for streaming requests', async () => {
     const fetcher = vi.fn(async () => response({ error: { message: 'slow down', code: 'rate_limit_exceeded' } }, 429, { 'retry-after': '7' }));
     const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key', fetch: fetcher });

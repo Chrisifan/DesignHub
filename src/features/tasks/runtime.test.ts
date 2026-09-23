@@ -142,6 +142,21 @@ it('hydrates persisted tasks and exposes a cloned list', () => {
   expect(runtime.get('task-1')?.errorCode).toBe('RESULT_UNKNOWN_AFTER_RESTART');
 });
 
+it('recovers a completed conversation that has no provider result', async () => {
+  const runtime = createTaskRuntime({
+    initialTasks: [{
+      ...baseTask,
+      capability: 'conversation',
+      requestText: '恢复这轮分析',
+      state: 'completed',
+      result: {},
+    }],
+  });
+
+  expect(runtime.get('task-1')).toMatchObject({ state: 'failed', errorCode: 'EMPTY_PROVIDER_RESPONSE' });
+  await runtime.flush();
+});
+
 it('persists restart recovery so an interrupted task can be explicitly retried', async () => {
   const writes: Array<readonly TaskRecord[]> = [];
   const runtime = createTaskRuntime({ initialTasks: [baseTask], persist: async (tasks) => { writes.push(tasks); } });

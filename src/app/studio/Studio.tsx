@@ -25,7 +25,7 @@ import {
   t,
 } from './ui';
 import type { HomeConversationRequest, NewDesignDraft, PendingHomeConversation, Project, StudioSurface, Theme, View } from './types';
-import type { ProjectDocumentMetadata, ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
+import type { ProjectDesign, ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool, ToolParams } from '../../features/image-tools/target';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
@@ -45,6 +45,7 @@ const destinations: { view: View; icon: string; zh: string; en: string }[] = [
   ...navigation,
   { view: 'settings', icon: 'settings', zh: '设置', en: 'Settings' },
 ];
+const viewOrder = destinations.map(({ view }) => view);
 
 const emptyProjects: Project[] = [];
 const emptyDesignerOptions: PersonaProfile[] = [];
@@ -136,6 +137,7 @@ export const Studio = ({
 }: StudioProps) => {
   const [view, setView] = useState<View>('projects');
   const [surface, setSurface] = useState<StudioSurface>('projects');
+  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'backward'>('forward');
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [projectsLoadFailed, setProjectsLoadFailed] = useState(false);
   const [projectsReloadKey, setProjectsReloadKey] = useState(0);
@@ -146,6 +148,8 @@ export const Studio = ({
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [deliveryProject] = useState<Project | null>(null);
   const [dialog, setDialog] = useState<'workspace' | null>(null);
+  const [connectionsDialogOpen, setConnectionsDialogOpen] = useState(false);
+  const [designerCreateRequestId, setDesignerCreateRequestId] = useState(0);
   const [notice, setNotice] = useState('');
   const [newProjectDrawerOpen, setNewProjectDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<NewDesignDraft>({
@@ -207,6 +211,7 @@ export const Studio = ({
     setNewProjectDrawerOpen(false);
     setView('projects');
     setSurface('projects');
+    setTransitionDirection('forward');
     return () => { cancelled = true; };
   }, [initialDesignerOptions, initialProjects, workspace?.workspaceId, locale, projectsReloadKey]);
   useEffect(() => {
@@ -238,6 +243,17 @@ export const Studio = ({
     return () => { cancelled = true; };
   }, [initialDesignerOptions, workspace]);
   const navigate = (next: View) => {
+    if (next === 'designers') {
+      setDesignerCreateRequestId((current) => current + 1);
+      return;
+    }
+    if (next === 'connections') {
+      setConnectionsDialogOpen(true);
+      return;
+    }
+    const currentIndex = viewOrder.indexOf(view);
+    const nextIndex = viewOrder.indexOf(next);
+    setTransitionDirection(nextIndex >= currentIndex ? 'forward' : 'backward');
     setView(next);
     setSurface(next);
     setDocumentOpen(false);
@@ -254,6 +270,7 @@ export const Studio = ({
     setSelected(project);
     setActiveDocumentId(documentId);
     setDocumentOpen(true);
+    setTransitionDirection('forward');
     setSurface('projects');
     setView('projects');
     notify(t(locale, input.mode === 'replace' ? '已准备替换图像' : input.mode === 'reference' ? '已准备参考图层' : '已准备放入画布', input.mode === 'replace' ? 'Ready to replace the selected image' : input.mode === 'reference' ? 'Ready to add a reference layer' : 'Ready to place on canvas'));
@@ -351,13 +368,14 @@ export const Studio = ({
   );
   const openProject = (project: Project) => {
     setSelected(project);
+    setTransitionDirection('forward');
     setSurface('projects');
     setDocumentOpen(false);
     setActiveDocumentId(null);
     setView('projects');
   };
-  const createProjectFromHome = async (request: HomeConversationRequest): Promise<boolean> => {
-    if (!workspace || workspace.openMode !== 'writable' || !conversationConnected) return false;
+  const createProjectFromHome = async (request: HomeConversationRequest, submitConversation = true): Promise<boolean> => {
+    if (!workspace || workspace.openMode !== 'writable' || (submitConversation && !conversationConnected)) return false;
     setHomeCreationBusy(true);
     const initiatingWorkspaceId = workspace.workspaceId;
     const selectedDesigner = request.designerId
@@ -406,10 +424,12 @@ export const Studio = ({
       };
       setProjects((current) => [project, ...current]);
       setSelected(project);
+      setTransitionDirection('forward');
       setDocumentOpen(false);
       setView('projects');
       setSurface('projects');
-      void submitProjectConversation(project, request.message, request.attachments);
+      if (submitConversation) void submitProjectConversation(project, request.message, request.attachments);
+      else setHomeCreationBusy(false);
       return true;
     } catch {
       setHomeCreationBusy(false);
@@ -479,6 +499,7 @@ export const Studio = ({
       };
       setProjects((previous) => [project, ...previous]);
       setNewProjectDrawerOpen(false);
+      setTransitionDirection('forward');
       setSurface('projects');
       setSelected(project);
       setView('projects');
@@ -513,6 +534,7 @@ export const Studio = ({
     if (draft.cover?.previewUrl) previewCoverUrls.current.add(draft.cover.previewUrl);
     setProjects((previous) => [project, ...previous]);
     setNewProjectDrawerOpen(false);
+    setTransitionDirection('forward');
     setSurface('projects');
     setSelected(project);
     setView('projects');
@@ -534,8 +556,6 @@ export const Studio = ({
       ),
     );
   };
-  const projectName = (project: Project) =>
-    t(locale, project.name, project.enName);
   const submitProjectConversation = async (project: Project, message: string, attachments: import('../../features/agent/task-service').ConversationImageAttachment[] = [], context: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] } = {}): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
@@ -561,7 +581,7 @@ export const Studio = ({
       return null;
     }
   };
-  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null, generationRatio: Project['generationRatio'] = project.generationRatio ?? '3:4'): Promise<import('../../features/tasks/state').TaskRecord | null> => {
+  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null, generationRatio: Project['generationRatio'] = project.generationRatio ?? '3:4', count: 1 | 3 = 3): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return null;
@@ -574,6 +594,7 @@ export const Studio = ({
         baseRevisionId,
         connectionId: 'openai-compatible',
         generationRatio,
+        count,
       });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
@@ -584,6 +605,49 @@ export const Studio = ({
     } catch {
       notify(t(locale, '设计稿生成失败，请重试。', 'Design draft generation failed; try again.'));
       return null;
+    }
+  };
+  const submitProjectDesignBackgroundRemoval = async (project: Project, design: ProjectDesign): Promise<void> => {
+    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+      notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return;
+    }
+    try {
+      const api = getDesktopApi();
+      const bytes = await api.readAsset?.({ workspaceId: workspace.workspaceId, projectId: project.id, assetId: design.assetId });
+      if (!bytes) {
+        notify(t(locale, '无法读取目标设计稿。', 'Could not read the selected design.'));
+        return;
+      }
+      const documentId = project.documentId ?? project.documentEntries?.[0]?.id ?? design.id;
+      const task = await api.submitImageEdit?.({
+        workspaceId: workspace.workspaceId,
+        projectId: project.id,
+        documentId,
+        baseRevisionId: null,
+        designerVersionId: project.activeDesignerVersionId,
+        connectionId: 'openai-compatible',
+        prompt: t(locale, '去除图片背景，保留主体并生成干净边缘。', 'Remove the image background while preserving the subject with clean edges.'),
+        image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }),
+        sourceAssetId: design.assetId,
+        tool: 'remove-background',
+        toolParams: { edgeRefinement: 50 },
+        size: `${design.width}x${design.height}`,
+        projectDesign: {
+          sourceTaskId: design.sourceTaskId,
+          ...(design.sourceConversationTaskId ? { sourceConversationTaskId: design.sourceConversationTaskId } : {}),
+          width: design.width,
+          height: design.height,
+          title: t(locale, `${design.title}（去除背景）`, `${design.title} (background removed)`),
+        },
+      });
+      if (!task) {
+        notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
+        return;
+      }
+      notify(t(locale, '去除背景任务已排队。', 'Background removal queued.'));
+    } catch {
+      notify(t(locale, '去除背景失败，请检查连接。', 'Background removal failed. Check the connection.'));
     }
   };
   const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: { x: number; y: number; width: number; height: number } }): Promise<void> => {
@@ -651,10 +715,6 @@ export const Studio = ({
     }));
     setNewProjectDrawerOpen(true);
   };
-  const breadcrumbTitle =
-    selected
-      ? projectName(selected)
-      : t(locale, title.zh, title.en);
   const toolbarActions =
     surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
       <>
@@ -707,13 +767,13 @@ export const Studio = ({
           aria-label={t(locale, '工作区工具栏', 'Workspace toolbar')}
         >
           <div className="toolbar-location">
-            <span className="toolbar-workspace">
-              {workspace?.name ?? t(locale, '我的设计空间', 'My design studio')}
-            </span>
-            <Icon name="chevron-right" size={14} />
-            <span className="breadcrumb-current">
-              {breadcrumbTitle}
-            </span>
+            <IconButton
+              name="arrow-left"
+              label={t(locale, '返回项目', 'Back to projects')}
+              className="studio-toolbar__back"
+              onClick={() => navigate('projects')}
+            />
+            <span className="toolbar-page-title">{t(locale, title.zh, title.en)}</span>
           </div>
           <PageToolbarHost>{toolbarActions}</PageToolbarHost>
         </header> : null}
@@ -726,6 +786,7 @@ export const Studio = ({
               visibleProjects={visibleProjects}
               profiles={designerOptions}
               filter={filter}
+              transitionDirection={transitionDirection}
               query={query}
               loadFailed={projectsLoadFailed}
               readOnly={workspace?.openMode !== 'writable'}
@@ -734,37 +795,56 @@ export const Studio = ({
               onQueryChange={setQuery}
               onOpenProject={openProject}
               onRetry={() => setProjectsReloadKey((key) => key + 1)}
-              onViewAllDesigners={() => navigate('designers')}
-              onNewProject={() => openNewDesign()}
+              onNewProject={({ designerId, generationRatio }) => {
+                void createProjectFromHome({
+                  message: '',
+                  attachments: [],
+                  generationRatio,
+                  ...(designerId ? { designerId } : {}),
+                }, false);
+              }}
               onSubmit={createProjectFromHome}
               notify={notify}
             />
           )}
           {surface === 'projects' && view === 'projects' && selected && !documentOpen && (
-            <ProjectCanvas
-              locale={locale}
-              project={selected}
-              workspaceId={workspace?.workspaceId}
-              readOnly={workspace?.openMode !== 'writable'}
-              conversationConnected={conversationConnected}
-              designer={designerOptions.find((profile) => profile.id === selected.activeDesignerVersionId) ?? null}
-              notify={notify}
-              onBack={() => setSelected(null)}
-              onRename={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}
-              onDuplicate={() => { void duplicateSelected(); }}
-              onArchive={() => { void updateProject({ archived: true }); setSelected(null); }}
-              onConnections={() => navigate('connections')}
-              onSubmitConversation={(message, attachments, context) => submitProjectConversation(selected, message, attachments, context)}
-              onSubmitDesignGeneration={(conversationTaskId, generationRatio) => submitProjectDesignGeneration(selected, conversationTaskId, null, generationRatio)}
-            />
+            <div className={`studio-view-shell studio-view-enter studio-view-enter-${transitionDirection}`}>
+              <ProjectCanvas
+                locale={locale}
+                project={selected}
+                workspaceId={workspace?.workspaceId}
+                readOnly={workspace?.openMode !== 'writable'}
+                conversationConnected={conversationConnected}
+                designer={designerOptions.find((profile) => profile.id === selected.activeDesignerVersionId) ?? null}
+                designerOptions={designerOptions}
+                onDesignsChange={(designs) => {
+                  setProjects((current) => current.map((project) => project.id === selected.id ? { ...project, designs } : project));
+                  setSelected((current) => current ? { ...current, designs } : current);
+                }}
+                onDesignerChange={(designerId) => {
+                  const profile = designerOptions.find((entry) => entry.id === designerId && entry.status !== 'archived');
+                  void updateProject({ activeDesignerVersionId: designerId, designerSnapshot: profile ? structuredClone(profile) : null });
+                }}
+                onGenerationRatioChange={(generationRatio) => { void updateProject({ generationRatio }); }}
+                notify={notify}
+              onBack={() => { setTransitionDirection('backward'); setSelected(null); }}
+                onRename={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}
+                onDuplicate={() => { void duplicateSelected(); }}
+              onArchive={() => { void updateProject({ archived: true }); setTransitionDirection('backward'); setSelected(null); }}
+                onConnections={() => navigate('connections')}
+                onSubmitConversation={(message, attachments, context) => submitProjectConversation(selected, message, attachments, context)}
+                onRemoveBackground={(design) => submitProjectDesignBackgroundRemoval(selected, design)}
+                onSubmitDesignGeneration={(conversationTaskId, generationRatio, count) => submitProjectDesignGeneration(selected, conversationTaskId, null, generationRatio, count)}
+              />
+            </div>
           )}
           {projects.map((project) => (
             <div
-              className="destination"
+                className={`destination${surface === 'projects' && view === 'projects' && documentOpen && selected?.id === project.id ? ` destination--active studio-view-enter studio-view-enter-${transitionDirection}` : ''}`}
               key={project.id}
-                hidden={
-                  surface !== 'projects' ||
-                  view !== 'projects' ||
+              hidden={
+                surface !== 'projects' ||
+                view !== 'projects' ||
                 !documentOpen ||
                 selected?.id !== project.id
               }
@@ -774,11 +854,17 @@ export const Studio = ({
                 project={project}
                 workspaceId={project.workspaceId}
                 documentId={project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId}
-                onBack={() => setDocumentOpen(false)}
+                onBack={() => { setTransitionDirection('backward'); setDocumentOpen(false); }}
                 onConnections={() => navigate('connections')}
+                designerOptions={designerOptions}
+                onDesignerChange={(designerId) => {
+                  const profile = designerOptions.find((entry) => entry.id === designerId && entry.status !== 'archived');
+                  void updateProject({ activeDesignerVersionId: designerId, designerSnapshot: profile ? structuredClone(profile) : null });
+                }}
+                onGenerationRatioChange={(generationRatio) => { void updateProject({ generationRatio }); }}
                 onTasks={() => navigate('tasks')}
                 onSubmitConversation={(message, attachments, context) => submitProjectConversation(project, message, attachments, context)}
-                onSubmitDesignGeneration={(conversationTaskId, baseRevisionId, generationRatio) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId, generationRatio)}
+                onSubmitDesignGeneration={(conversationTaskId, baseRevisionId, generationRatio, count) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId, generationRatio, count)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
                 assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}
@@ -799,7 +885,7 @@ export const Studio = ({
             .filter((item) => item.view !== 'projects')
             .map((item) => (
               <div
-                className="destination"
+                className={`destination${surface === item.view && view === item.view ? ` destination--active studio-view-enter studio-view-enter-${transitionDirection}` : ''}`}
                 key={item.view}
                 hidden={surface !== item.view || view !== item.view}
               >
@@ -823,7 +909,12 @@ export const Studio = ({
                   initialAssets={initialAssets}
                   initialBrands={initialBrands}
                   initialProfiles={initialDesignerOptions}
+                  preview={!workspace}
                   active={surface === item.view && view === item.view}
+                  connectionsDialogOpen={connectionsDialogOpen}
+                  onConnectionsDialogClose={() => setConnectionsDialogOpen(false)}
+                  designerCreateRequestId={designerCreateRequestId}
+                  onDesignerProfilesChange={setDesignerOptions}
                 />
               </div>
             ))}

@@ -22,10 +22,9 @@ export type AnalysisPanelProps = {
   task?: TaskRecord;
   canGenerate: boolean;
   collapsed?: boolean;
-  onGenerate: () => void;
+  onGenerate: (count: 1 | 3) => void;
   onRetry?: () => void;
   onCopyRequest?: (request: AnalysisPanelRequest) => void;
-  onCollapse?: () => void;
   onExpand?: () => void;
 };
 
@@ -142,7 +141,7 @@ const renderAnalysisBlock = (block: AnalysisBlock, index: number): ReactNode => 
   return <p key={`${block.type}-${index}`}>{renderInlineMarkdown(block.text)}</p>;
 };
 
-export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate, collapsed = false, onGenerate, onRetry, onCopyRequest, onCollapse, onExpand }: AnalysisPanelProps) => {
+export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate, collapsed = false, onGenerate, onRetry, onCopyRequest, onExpand }: AnalysisPanelProps) => {
   const [expanded, setExpanded] = useState(false);
   const [requestExpanded, setRequestExpanded] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -152,7 +151,7 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
   const failed = task?.state === 'failed';
   const running = task?.state === 'queued' || task?.state === 'running';
   const smoothing = visibleProgress !== progress;
-  const enhancedRequest = Boolean(onCopyRequest || onCollapse);
+  const enhancedRequest = Boolean(onCopyRequest);
   const requestSummary = message.replace(/\s+/gu, ' ').trim();
 
   useEffect(() => setRequestExpanded(false), [task?.id]);
@@ -199,8 +198,9 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
   if (collapsed) {
     return (
       <aside className="workbench-analysis-panel workbench-analysis-panel--collapsed" aria-label={locale === 'zh-CN' ? '本轮分析已收起' : 'Current analysis collapsed'}>
-        <span className="workbench-analysis-panel__streaming" data-testid="collapsed-analysis-dots" aria-hidden="true"><span /><span /><span /></span>
-        <IconButton name="chevron-down" label={locale === 'zh-CN' ? '展开本轮分析' : 'Expand current analysis'} onClick={onExpand} />
+        <button type="button" className="workbench-analysis-panel__collapsed-trigger" aria-label={locale === 'zh-CN' ? '展开本轮分析' : 'Expand current analysis'} onClick={onExpand}>
+          <span className="workbench-analysis-panel__streaming workbench-analysis-panel__streaming--static" data-testid="collapsed-analysis-dots" aria-hidden="true"><span /><span /><span /></span>
+        </button>
       </aside>
     );
   }
@@ -212,15 +212,15 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
             <p>{locale === 'zh-CN' ? '本轮分析' : 'Current analysis'}</p>
             <strong className="workbench-analysis-panel__request-line" title={message}>{requestSummary || (locale === 'zh-CN' ? '等待输入' : 'Waiting for input')}</strong>
           </div>
-          {onCopyRequest && <IconButton name="copy" label={locale === 'zh-CN' ? '复制到对话框' : 'Copy to conversation'} onClick={() => onCopyRequest({ message, attachments })} />}
+          {onCopyRequest && <IconButton name="copy" iconSize={12} label={locale === 'zh-CN' ? '复制到对话框' : 'Copy to conversation'} onClick={() => onCopyRequest({ message, attachments })} />}
           <IconButton
             name="chevron-down"
+            iconSize={12}
             className={`workbench-analysis-panel__request-toggle${requestExpanded ? ' is-expanded' : ''}`}
             label={locale === 'zh-CN' ? (requestExpanded ? '收起本轮输入' : '展开本轮输入') : (requestExpanded ? 'Collapse current request' : 'Expand current request')}
             aria-expanded={requestExpanded}
             onClick={() => setRequestExpanded((value) => !value)}
           />
-          {onCollapse && <IconButton className="workbench-analysis-panel__collapse" name="chevron-down" label={locale === 'zh-CN' ? '收起本轮分析' : 'Collapse current analysis'} onClick={onCollapse} />}
         </div>
         {requestExpanded && <div className="workbench-analysis-panel__request-details" data-testid="analysis-request-details">
           <p>{message}</p>
@@ -248,7 +248,10 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
         <div ref={bottomRef} aria-hidden="true" />
       </div>
       <div className="workbench-analysis-panel__footer">
-        <Button className="workbench-analysis-panel__generate" aria-label={locale === 'zh-CN' ? '生成' : 'Generate'} variant="primary" icon="sparkles" disabled={!canGenerate} onClick={onGenerate}>{locale === 'zh-CN' ? '生成设计稿' : 'Generate draft'}</Button>
+        <div className="workbench-analysis-panel__generate-group">
+          <Button className="workbench-analysis-panel__generate" aria-label={locale === 'zh-CN' ? '生成单张' : 'Generate one'} variant="secondary" icon="image" disabled={!canGenerate} onClick={() => onGenerate(1)}>{locale === 'zh-CN' ? '生成单张' : 'Generate one'}</Button>
+          <Button className="workbench-analysis-panel__generate" aria-label={locale === 'zh-CN' ? '生成多张' : 'Generate three'} variant="primary" icon="sparkles" disabled={!canGenerate} onClick={() => onGenerate(3)}>{locale === 'zh-CN' ? '生成多张' : 'Generate three'}</Button>
+        </div>
       </div>
     </aside>
   );

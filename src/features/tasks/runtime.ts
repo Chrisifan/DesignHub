@@ -47,6 +47,17 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
   const results = new Map<string, string>();
   let recoveredInterruptedTask = false;
   options.initialTasks?.forEach((task) => {
+    if (task.capability === 'conversation' && task.state === 'completed' && !task.result?.text?.trim()) {
+      recoveredInterruptedTask = true;
+      tasks.set(task.id, structuredClone({
+        ...task,
+        state: 'failed',
+        cancelRequested: false,
+        errorCode: 'EMPTY_PROVIDER_RESPONSE',
+        updatedAt: new Date().toISOString(),
+      }));
+      return;
+    }
     if ((task.state === 'queued' || task.state === 'running') && task.generationSlots?.length) {
       recoveredInterruptedTask = true;
       const generationSlots = task.generationSlots.map((slot) => slot.state === 'queued' || slot.state === 'running'

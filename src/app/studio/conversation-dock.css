@@ -1,4 +1,12 @@
+@property --conversation-dock-border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .conversation-dock {
+  position: relative;
+  isolation: isolate;
   min-width: 0;
   display: grid;
   gap: 0;
@@ -9,6 +17,42 @@
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 11%, transparent);
+}
+
+.conversation-dock::before {
+  position: absolute;
+  z-index: 0;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--conversation-dock-border-angle),
+    color-mix(in srgb, white 92%, var(--primary)) 0%,
+    color-mix(in srgb, white 42%, var(--secondary)) 8%,
+    var(--secondary) 14%,
+    var(--tertiary) 18%,
+    color-mix(in srgb, var(--tertiary) 35%, transparent) 22%,
+    color-mix(in srgb, var(--primary) 18%, transparent) 30%,
+    var(--primary) 100%
+  );
+  --conversation-dock-border-angle: 0deg;
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+.conversation-dock > * { position: relative; z-index: 1; }
+.conversation-dock--input-focused::before {
+  opacity: 1;
+  animation: conversation-dock-border-spin 2.6s cubic-bezier(0.33, 1, 0.68, 1) infinite;
+}
+
+@keyframes conversation-dock-border-spin {
+  to { --conversation-dock-border-angle: 360deg; }
 }
 
 .conversation-dock--compact {
@@ -102,55 +146,67 @@
 .conversation-dock__toolbar-actions .icon-button { width: 30px; height: 30px; min-height: 30px; border-radius: 50%; }
 .conversation-dock__shortcut { color: var(--on-surface-variant); font-size: 15px; line-height: 1; }
 
-.conversation-dock__ratio {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
+.conversation-dock__ratio-select.ui-select,
+.conversation-dock__designer-select.ui-select {
   height: 30px;
 }
 
-.conversation-dock__ratio select {
+.conversation-dock__ratio-select.ui-select { width: 54px; }
+.conversation-dock__designer-select.ui-select { width: 30px; }
+
+.conversation-dock :is(.conversation-dock__ratio-select, .conversation-dock__designer-select) .ui-select__trigger,
+.conversation-dock :is(.conversation-dock__ratio-select, .conversation-dock__designer-select) .ui-select__trigger:hover,
+.conversation-dock :is(.conversation-dock__ratio-select, .conversation-dock__designer-select).is-open .ui-select__trigger {
   height: 30px;
-  min-width: 58px;
-  padding: 0 7px;
-  border: 1px solid var(--border-subtle);
+  min-height: 30px;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-ui);
-  outline: 0;
-  color: var(--on-surface);
+  background: transparent;
+}
+.conversation-dock :is(.conversation-dock__ratio-select, .conversation-dock__designer-select) .ui-select__trigger:hover:not(:disabled) {
+  border-color: transparent;
   background: color-mix(in srgb, var(--on-surface) 7%, transparent);
-  -webkit-backdrop-filter: blur(12px) saturate(125%);
-  backdrop-filter: blur(12px) saturate(125%);
-  font-size: 10px;
-  font-weight: 600;
 }
 
-.conversation-dock__connection {
-  min-width: 0;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-ui);
-  color: var(--on-surface-variant);
-  background: color-mix(in srgb, var(--on-surface) 7%, transparent);
-  -webkit-backdrop-filter: blur(12px) saturate(125%);
-  backdrop-filter: blur(12px) saturate(125%);
-  font-size: 10px;
-}
-.conversation-dock__connection .persona-artwork--avatar,
+.conversation-dock__ratio-select .ui-select__value { left: 4px; right: 16px; font-size: 10px; font-weight: 600; text-align: center; }
+.conversation-dock__ratio-select > .ui-icon { right: 1px; width: 12px !important; height: 12px !important; }
+.conversation-dock__ratio-select .ui-select__menu { right: 0; left: auto; width: 86px; }
+.conversation-dock__ratio-select .ui-select__menu > button { white-space: nowrap; }
+.conversation-dock__designer-select > .ui-icon { display: none; }
+.conversation-dock__designer-select .ui-select__value { right: 5px; left: 5px; display: grid; place-items: center; overflow: visible; }
+.conversation-dock__designer-select .ui-select__menu { right: 0; left: auto; width: 174px; }
+.conversation-dock__designer-select .ui-select__menu > button { justify-content: flex-start; }
+.conversation-dock__designer-select .ui-select__menu > button > .ui-icon { margin-left: auto; }
+.conversation-dock__designer-option { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.conversation-dock__designer-option > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-dock__designer-select .persona-artwork--avatar,
 .conversation-dock__designer-placeholder { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; }
-.conversation-dock__connection .persona-artwork--unavailable { padding: 0; }
-.conversation-dock__connection .persona-artwork--unavailable::before,
-.conversation-dock__connection .persona-artwork--unavailable::after,
-.conversation-dock__connection .persona-artwork--unavailable > span { display: none; }
-.conversation-dock__connection .persona-artwork--unavailable > .ui-icon { width: 14px !important; height: 14px !important; }
-.conversation-dock__designer { min-width: 0; display: grid; text-align: left; }
-.conversation-dock__designer strong { overflow: hidden; color: var(--on-surface); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-dock__designer-select .persona-artwork--unavailable { padding: 0; }
+.conversation-dock__designer-select .persona-artwork--unavailable::before,
+.conversation-dock__designer-select .persona-artwork--unavailable::after,
+.conversation-dock__designer-select .persona-artwork--unavailable > span { display: none; }
+.conversation-dock__designer-select .persona-artwork--unavailable > .ui-icon { width: 14px !important; height: 14px !important; }
+
+/* The compact dock sits against the canvas edge, so its menus open into the canvas. */
+.conversation-dock--compact .ui-select__menu {
+  top: auto;
+  bottom: calc(100% + 5px);
+  transform-origin: bottom center;
+}
+.conversation-dock--compact .ui-select__menu.is-closed {
+  transform: translateY(4px) scaleY(0.98);
+}
 
 .conversation-dock__submit { display: inline-grid; place-items: center; width: 36px; height: 36px; min-height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--primary); }
+.conversation-dock .conversation-dock__send-control,
+.conversation-dock .conversation-dock__send-control:hover:not(:disabled),
+.conversation-dock .conversation-dock__send-control:focus-visible {
+  color: var(--primary);
+}
+.conversation-dock .conversation-dock__send-control:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
 .conversation-dock__attachment-full { display: block; max-width: min(80vw, 860px); max-height: 72vh; margin: 0 auto; object-fit: contain; }
 
 @media (max-width: 1080px) {
@@ -159,8 +215,6 @@
 
 @media (max-width: 720px) {
   .conversation-dock--compact { width: calc(100% - 24px); padding-inline: 11px; border-radius: var(--radius-conversation); }
-  .conversation-dock__connection { max-width: 100px; }
-  .conversation-dock__designer { max-width: 58px; }
   .conversation-dock__attachment { flex-basis: 124px; width: 124px; }
 }
 
@@ -170,4 +224,8 @@
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-dock--input-focused::before { animation: none; }
 }

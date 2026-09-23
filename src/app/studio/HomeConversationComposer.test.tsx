@@ -65,7 +65,8 @@ it('submits the selected generation ratio for the new project', async () => {
   const onSubmit = vi.fn(async () => true);
   render(<HomeConversationComposer locale="zh-CN" readOnly={false} conversationConnected designer={null} onSubmit={onSubmit} notify={vi.fn()} />);
 
-  fireEvent.change(screen.getByRole('combobox', { name: '设计稿比例' }), { target: { value: '16:9' } });
+  fireEvent.click(screen.getByRole('combobox', { name: '设计稿比例' }));
+  fireEvent.click(screen.getByRole('option', { name: '16 : 9' }));
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '设计横版主视觉' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
 

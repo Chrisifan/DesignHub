@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { ProjectDesign, ProjectCanvasLayout } from '../../features/projects/metadata';
 import type { ProjectGenerationRatio } from '../../features/projects/size';
@@ -20,14 +20,19 @@ type ProjectCanvasProps = {
   readOnly: boolean;
   conversationConnected: boolean;
   designer: PersonaProfile | null;
+  designerOptions?: PersonaProfile[];
+  onDesignerChange?: (designerId: string) => void;
+  onDesignsChange?: (designs: ProjectDesign[]) => void;
+  onGenerationRatioChange?: (ratio: ProjectGenerationRatio) => void;
   notify: (message: string) => void;
   onBack: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
   onArchive?: () => void;
   onConnections: () => void;
+  onRemoveBackground?: (design: ProjectDesign) => void | Promise<void>;
   onSubmitConversation: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => Promise<TaskRecord | null>;
-  onSubmitDesignGeneration: (conversationTaskId: string, generationRatio: ProjectGenerationRatio) => Promise<TaskRecord | null>;
+  onSubmitDesignGeneration: (conversationTaskId: string, generationRatio: ProjectGenerationRatio, count: 1 | 3) => Promise<TaskRecord | null>;
 };
 
 const toAttachment = (attachment: ConversationDockAttachment): ConversationImageAttachment => ({ name: attachment.name, mimeType: attachment.mimeType, bytes: attachment.bytes });
@@ -77,18 +82,22 @@ const getAnalysisStatus = (task: TaskRecord, locale: Locale): { icon: string; ki
   return { icon: 'clock', kind: 'running', label: t(locale, '处理中', 'Processing') };
 };
 
-export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversationConnected, designer, notify, onBack, onRename, onDuplicate, onArchive, onConnections, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
+export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onRename, onDuplicate, onArchive, onRemoveBackground, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
+  const onDesignsChangeRef = useRef(onDesignsChange);
+  onDesignsChangeRef.current = onDesignsChange;
   const [layout, setLayout] = useState<ProjectCanvasLayout | undefined>(project.canvasLayout);
   const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [conversationSubmitting, setConversationSubmitting] = useState(false);
+  const [backgroundRemovalSubmitting, setBackgroundRemovalSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [attachments, setAttachments] = useState<ConversationDockAttachment[]>([]);
   const [threadId, setThreadId] = useState<string>();
   const [latestConversation, setLatestConversation] = useState<TaskRecord>();
   const [selectedAnalysisTaskId, setSelectedAnalysisTaskId] = useState<string>();
   const [analysisAttachments, setAnalysisAttachments] = useState<ConversationDockAttachment[]>([]);
-  const [analysisOpen, setAnalysisOpen] = useState(true);
+  const analysisOpen = true;
   const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
   const [analysisHistoryOpen, setAnalysisHistoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -101,7 +110,10 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
       getDesktopApi().loadProjectCanvasLayout?.({ workspaceId, projectId: project.id }),
       getDesktopApi().listTasks?.(workspaceId),
     ]);
-    if (nextDesigns) setDesigns(nextDesigns);
+    if (nextDesigns) {
+      setDesigns(nextDesigns);
+      onDesignsChangeRef.current?.(nextDesigns);
+    }
     if (nextLayout) setLayout(nextLayout);
     if (nextTasks) {
       const projectTasks = nextTasks.filter((task) => task.source?.kind === 'project' && task.source.id === project.id);
@@ -166,14 +178,29 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
       ...(threadId ? { analysisThreadId: threadId, conversationParentTaskId: analysisTask?.id } : {}),
       ...(referencedAssetIds.length ? { referencedAssetIds } : {}),
     };
-    const task = await onSubmitConversation(currentMessage, userAttachments, context);
-    if (task) { setThreadId(task.analysisThreadId); setLatestConversation(task); setSelectedAnalysisTaskId(task.id); setAnalysisCollapsed(false); void refresh(); }
-    else notify(t(locale, '分析任务提交失败，可重试。', 'Analysis could not be submitted; retry it.'));
+    setConversationSubmitting(true);
+    try {
+      const task = await onSubmitConversation(currentMessage, userAttachments, context);
+      if (task) { setThreadId(task.analysisThreadId); setLatestConversation(task); setSelectedAnalysisTaskId(task.id); setAnalysisCollapsed(false); void refresh(); }
+      else notify(t(locale, '分析任务提交失败，可重试。', 'Analysis could not be submitted; retry it.'));
+    } finally {
+      setConversationSubmitting(false);
+    }
   };
-  const generate = async (): Promise<void> => {
+  const generate = async (count: 1 | 3): Promise<void> => {
     if (!analysisTask || !canGenerate) return;
-    await onSubmitDesignGeneration(analysisTask.id, project.generationRatio ?? '3:4');
+    await onSubmitDesignGeneration(analysisTask.id, project.generationRatio ?? '3:4', count);
     void refresh();
+  };
+  const removeBackground = async (): Promise<void> => {
+    const design = selectedDesigns.length === 1 ? selectedDesigns[0] : undefined;
+    if (!design || readOnly || !onRemoveBackground || backgroundRemovalSubmitting) return;
+    setBackgroundRemovalSubmitting(true);
+    try {
+      await onRemoveBackground(design);
+    } finally {
+      setBackgroundRemovalSubmitting(false);
+    }
   };
   const selectAnalysis = (taskId: string): void => {
     setSelectedAnalysisTaskId(taskId);
@@ -247,7 +274,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
           <span className="project-canvas-toolbar__title">{project.name}</span>
         </div>
         <div className="project-canvas-toolbar__actions">
-          <IconButton name="message-circle" label={t(locale, '设计分析', 'Design analysis')} onClick={() => setAnalysisOpen((open) => !open)} />
+          <IconButton name="wand-sparkles" label={t(locale, '去除背景', 'Remove background')} disabled={readOnly || selectedDesigns.length !== 1 || backgroundRemovalSubmitting || !onRemoveBackground} onClick={() => { void removeBackground(); }} />
           <IconButton name="download" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
         </div>
       </div>
@@ -265,11 +292,11 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
         onCanvasBackground={() => setAnalysisCollapsed(true)}
         onLayoutChange={saveLayout}
       />
-      {analysisOpen && analysisTask && <div className={`project-canvas-analysis-panel${analysisCollapsed ? ' is-collapsed' : ''}`}>
-        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} collapsed={analysisCollapsed} onGenerate={() => { void generate(); }} onCopyRequest={copyAnalysisRequest} onCollapse={() => setAnalysisCollapsed(true)} onExpand={() => setAnalysisCollapsed(false)} />
+      {analysisOpen && analysisTask && <div className={`project-canvas-analysis-panel ${analysisCollapsed ? 'is-collapsed project-canvas-analysis-panel--collapsed' : 'project-canvas-analysis-panel--expanded'}`}>
+        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} collapsed={analysisCollapsed} onGenerate={(count) => { void generate(count); }} onCopyRequest={copyAnalysisRequest} onExpand={() => setAnalysisCollapsed(false)} />
       </div>}
       {analysisOpen && analysisHistory.length > 0 && <section className={`project-canvas-analysis-history${analysisHistoryOpen ? ' is-open' : ''}`} aria-label={t(locale, '分析历史列表', 'Analysis history')}>
-        {analysisHistoryOpen && <div className="project-canvas-analysis-history__list">{analysisHistory.map((task) => {
+        {analysisHistoryOpen && <div className="project-canvas-analysis-history__list project-canvas-analysis-history__list-enter">{analysisHistory.map((task) => {
           const status = getAnalysisStatus(task, locale);
           return <button type="button" className={`project-canvas-analysis-history__item${task.id === analysisTask?.id ? ' is-selected' : ''}`} key={task.id} onClick={() => selectAnalysis(task.id)}><span className={`project-canvas-analysis-history__status is-${status.kind}`} data-testid={`analysis-status-${status.kind}`}><Icon name={status.icon} size={13} /></span><span className="project-canvas-analysis-history__copy"><strong>{task.requestText || t(locale, '未命名分析', 'Untitled analysis')}</strong><span>{status.label}</span></span></button>;
         })}</div>}
@@ -284,11 +311,13 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
           value={message}
           attachments={attachments}
           readOnly={readOnly}
-          busy={Boolean(analysisTask?.state === 'queued' || analysisTask?.state === 'running')}
+          busy={conversationSubmitting || Boolean(analysisTask?.state === 'queued' || analysisTask?.state === 'running')}
           conversationConnected={conversationConnected}
           designer={designer}
+          designerOptions={designerOptions}
+          onDesignerChange={onDesignerChange}
           generationRatio={project.generationRatio ?? '3:4'}
-          onGenerationRatioChange={() => undefined}
+          onGenerationRatioChange={onGenerationRatioChange}
           textareaLabel={t(locale, '设计需求', 'Design request')}
           placeholder={t(locale, '描述你想生成的设计…', 'Describe the design you want…')}
           submitLabel={t(locale, '发送', 'Send')}
@@ -299,7 +328,6 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
           }}
           referencedAssetCount={referencedAssetIds.length}
           onSubmit={() => { void submit(); }}
-          onDesignerClick={onConnections}
           notify={notify}
         />
       </div>

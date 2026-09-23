@@ -64,6 +64,10 @@ type LibraryPagesProps = PageProps & {
   initialBrands?: Brand[];
   initialProfiles?: PersonaProfile[];
   active?: boolean;
+  connectionsDialogOpen?: boolean;
+  onConnectionsDialogClose?: () => void;
+  designerCreateRequestId?: number;
+  onDesignerProfilesChange?: (profiles: PersonaProfile[]) => void;
 };
 
 type Localized = { zh: string; en: string };
@@ -642,12 +646,24 @@ const BrandsPage = ({
 const ConnectionsPage = ({
   locale,
   workspaceId,
-}: Pick<PageProps, 'locale'> & { workspaceId?: string }) => {
+  dialogOpen,
+  onDialogClose,
+}: Pick<PageProps, 'locale'> & { workspaceId?: string; dialogOpen?: boolean; onDialogClose?: () => void }) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
   const [providerActions, setProviderActions] = useState<ProviderSettingsActions | null>(null);
   const [activeProfile, setActiveProfile] = useState<ProviderProfile>('conversation');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const isDialogOpen = dialogOpen ?? drawerOpen;
+  const openDialog = (profile: ProviderProfile) => {
+    setActiveProfile(profile);
+    if (onDialogClose) return;
+    setDrawerOpen(true);
+  };
+  const closeDialog = () => {
+    if (onDialogClose) onDialogClose();
+    else setDrawerOpen(false);
+  };
   const checkCredential = useCallback(
     async (connectionId: string) => getDesktopApi().hasCredential?.(connectionId) ?? false,
     [],
@@ -700,10 +716,11 @@ const ConnectionsPage = ({
         />
       </div>
       <Drawer
-        open={drawerOpen}
+        open={isDialogOpen}
         title={t(locale, '连接配置', 'Connection configuration')}
+        className="provider-connection-dialog"
         locale={locale}
-        onClose={() => setDrawerOpen(false)}
+        onClose={closeDialog}
         footer={providerActions ? (
           <div className="provider-profile-actions-row provider-profile-actions-row--compact">
             {providerActions.showTestConversation && <Button type="button" variant="ai" icon="plug" disabled={providerActions.testBusy || !providerActions.canTestConversation} onClick={providerActions.testConversation}>{providerActions.testBusy ? t(locale, '测试中…', 'Testing…') : t(locale, '测试连接', 'Test connection')}</Button>}
@@ -711,32 +728,52 @@ const ConnectionsPage = ({
             {providerActions.canSaveConfig && <Button type="button" variant="secondary" icon="save" onClick={providerActions.saveConfig}>{t(locale, '保存配置', 'Save config')}</Button>}
           </div>
         ) : undefined}
-      ><ProviderSettings
-        locale={locale}
-        connections={connections}
-        configs={providerConfigs}
-        activeProfile={activeProfile}
-        onActionsChange={setProviderActions}
-        onActiveProfileChange={(profile) => { setActiveProfile(profile); setDrawerOpen(true); }}
-        onSaveProviderConfig={async (connectionId, config) => {
-          const saved = await (getDesktopApi().saveProviderConfig?.({ connectionId: connectionId as 'openai-compatible', config }) ?? false);
-          if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
-          return saved;
-        }}
-        onTestConversation={workspaceId ? async (connectionId, input) => getDesktopApi().testConversation?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
-        onTestImageGeneration={workspaceId ? async (connectionId, input) => getDesktopApi().testImageGeneration?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
-        onCheckCredential={checkCredential}
-        onStoreCredential={async (connectionId, secret) => {
-          const stored = await (getDesktopApi().storeCredential?.(connectionId, secret) ?? false);
-          if (stored) setConnectionState((current) => ({ ...current, [connectionId]: true }));
-          return stored;
-        }}
-        onDeleteCredential={async (connectionId) => {
-          const deleted = await (getDesktopApi().deleteCredential?.(connectionId) ?? false);
-          if (deleted) setConnectionState((current) => ({ ...current, [connectionId]: false }));
-          return deleted;
-        }}
-      /></Drawer>
+      >
+        <div className="connection-dialog-content">
+          <div className="connection-profile-switcher" role="group" aria-label={t(locale, '配置类别', 'Configuration group')}>
+            {profileRows.map(({ profile, icon, label }) => {
+              return (
+                <button
+                  type="button"
+                  className={`connection-profile-switcher__button${activeProfile === profile ? ' is-selected' : ''}`}
+                  key={profile}
+                  aria-pressed={activeProfile === profile}
+                  onClick={() => setActiveProfile(profile)}
+                >
+                  <Icon name={icon} size={17} />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <ProviderSettings
+            locale={locale}
+            connections={connections}
+            configs={providerConfigs}
+            activeProfile={activeProfile}
+            onActionsChange={setProviderActions}
+            onActiveProfileChange={openDialog}
+            onSaveProviderConfig={async (connectionId, config) => {
+              const saved = await (getDesktopApi().saveProviderConfig?.({ connectionId: connectionId as 'openai-compatible', config }) ?? false);
+              if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
+              return saved;
+            }}
+            onTestConversation={workspaceId ? async (connectionId, input) => getDesktopApi().testConversation?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
+            onTestImageGeneration={workspaceId ? async (connectionId, input) => getDesktopApi().testImageGeneration?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
+            onCheckCredential={checkCredential}
+            onStoreCredential={async (connectionId, secret) => {
+              const stored = await (getDesktopApi().storeCredential?.(connectionId, secret) ?? false);
+              if (stored) setConnectionState((current) => ({ ...current, [connectionId]: true }));
+              return stored;
+            }}
+            onDeleteCredential={async (connectionId) => {
+              const deleted = await (getDesktopApi().deleteCredential?.(connectionId) ?? false);
+              if (deleted) setConnectionState((current) => ({ ...current, [connectionId]: false }));
+              return deleted;
+            }}
+          />
+        </div>
+      </Drawer>
       <div className="capability-matrix">
         <div className="matrix-heading">
           <span>{t(locale, '配置类别', 'Configuration group')}</span>
@@ -751,7 +788,7 @@ const ConnectionsPage = ({
               key={profile}
               aria-label={label}
               aria-pressed={activeProfile === profile}
-              onClick={() => { setActiveProfile(profile); setDrawerOpen(true); }}
+              onClick={() => openDialog(profile)}
             >
               <span>
                 <Icon name={icon} size={17} />
@@ -1827,6 +1864,10 @@ export const LibraryPages = ({
   initialBrands = [],
   initialProfiles = [],
   active = true,
+  connectionsDialogOpen,
+  onConnectionsDialogClose,
+  designerCreateRequestId,
+  onDesignerProfilesChange,
 }: LibraryPagesProps) => {
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
@@ -1838,7 +1879,18 @@ export const LibraryPages = ({
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
   const pages: Record<Exclude<View, 'projects'>, ReactNode> = {
     designers: (
-      <DesignerLibrary locale={locale} notify={notify} onUseForNew={onUseForNew} workspaceId={workspaceId} preview={preview} initialProfiles={initialProfiles} readOnly={readOnly} toolbarActive={active} />
+      <DesignerLibrary
+        locale={locale}
+        notify={notify}
+        onUseForNew={onUseForNew}
+        workspaceId={workspaceId}
+        preview={preview}
+        initialProfiles={initialProfiles}
+        readOnly={readOnly}
+        toolbarActive={active}
+        createRequestId={designerCreateRequestId}
+        onProfilesChange={onDesignerProfilesChange}
+      />
     ),
     assets: (
       <AssetsPage
@@ -1871,7 +1923,12 @@ export const LibraryPages = ({
         initialBrands={initialBrands}
       />
     ),
-    connections: <ConnectionsPage locale={locale} workspaceId={workspaceId} />,
+    connections: <ConnectionsPage
+      locale={locale}
+      workspaceId={workspaceId}
+      dialogOpen={connectionsDialogOpen}
+      onDialogClose={onConnectionsDialogClose}
+    />,
     tasks: <TasksPage locale={locale} navigate={navigate} workspaceId={workspaceId} active={active} />,
     delivery: (
       <DeliveryPage

@@ -11,7 +11,7 @@ export type DesignDimensions = Pick<ProjectDesign, 'id' | 'width' | 'height'> & 
 
 export const layoutProjectDesigns = (
   designs: readonly DesignDimensions[],
-  options: { maxWidth?: number; gap?: number } = {},
+  options: { maxWidth?: number; gap?: number; centerRows?: boolean } = {},
 ): Record<string, { x: number; y: number }> => {
   const maxWidth = options.maxWidth ?? 1180;
   const gap = options.gap ?? 24;
@@ -39,6 +39,22 @@ export const layoutProjectDesigns = (
     x += width + gap;
     rowHeight = Math.max(rowHeight, height);
   });
+  if (options.centerRows) {
+    const rows = new Map<number, { minX: number; maxX: number; ids: string[] }>();
+    designs.forEach((design) => {
+      const position = positions[design.id];
+      if (!position) return;
+      const row = rows.get(position.y) ?? { minX: position.x, maxX: position.x, ids: [] };
+      row.minX = Math.min(row.minX, position.x);
+      row.maxX = Math.max(row.maxX, position.x + Math.max(1, design.width));
+      row.ids.push(design.id);
+      rows.set(position.y, row);
+    });
+    rows.forEach(({ minX, maxX, ids }) => {
+      const shift = Math.max(0, Math.round((maxWidth - (maxX - minX)) / 2));
+      ids.forEach((id) => { positions[id]!.x += shift; });
+    });
+  }
   return positions;
 };
 
@@ -139,7 +155,8 @@ export const ProjectCanvasStage = ({
   const stageRef = useRef<any>(null);
   const [size, setSize] = useState<CanvasSize>({ width: 1200, height: 760 });
   const [viewport, setViewport] = useState<CanvasViewport>(initialViewport ?? { zoom: 0.65, offsetX: 40, offsetY: 40 });
-  const [nodes, setNodes] = useState<Record<string, Point>>(() => initialNodes ?? layoutProjectDesigns(designs.map((design) => ({ ...design, rowKey: design.sourceTaskId }))));
+  const initialLayoutDesigns = designs.map((design) => ({ ...design, rowKey: design.sourceTaskId }));
+  const [nodes, setNodes] = useState<Record<string, Point>>(() => initialNodes ?? layoutProjectDesigns(initialLayoutDesigns, { centerRows: true }));
   const [skeletonPhase, setSkeletonPhase] = useState(0);
   const dragRef = useRef<{ start: Point; viewport: CanvasViewport } | null>(null);
   const previousDesignCount = useRef(designs.length);
@@ -167,9 +184,21 @@ export const ProjectCanvasStage = ({
 
   useEffect(() => {
     setNodes((current) => {
-      const fallback = layoutProjectDesigns(layoutDesigns);
+      const legacyFallback = layoutProjectDesigns(layoutDesigns);
+      const fallback = layoutProjectDesigns(layoutDesigns, { centerRows: true });
+      const isLegacyAutoLayout = Boolean(initialNodes)
+        && designs.length > 0
+        && designs.every((design) => {
+          const currentPosition = current[design.id];
+          const legacyPosition = legacyFallback[design.id];
+          return currentPosition?.x === legacyPosition?.x && currentPosition?.y === legacyPosition?.y;
+        });
       const next: Record<string, Point> = {};
-      designs.forEach((design) => { next[design.id] = current[design.id] ?? fallback[design.id] ?? { x: 0, y: 0 }; });
+      designs.forEach((design) => {
+        next[design.id] = isLegacyAutoLayout
+          ? fallback[design.id] ?? { x: 0, y: 0 }
+          : current[design.id] ?? fallback[design.id] ?? { x: 0, y: 0 };
+      });
       const rows = new Map<string, string[]>();
       layoutDesigns.forEach((design) => {
         if (!design.rowKey) return;
@@ -200,7 +229,7 @@ export const ProjectCanvasStage = ({
       return;
     }
     const newest = designs.at(-1)!;
-    const position = nodes[newest.id] ?? layoutProjectDesigns([{ ...newest, rowKey: newest.sourceTaskId }])[newest.id] ?? { x: 0, y: 0 };
+    const position = nodes[newest.id] ?? layoutProjectDesigns([{ ...newest, rowKey: newest.sourceTaskId }], { centerRows: true })[newest.id] ?? { x: 0, y: 0 };
     const host = hostRef.current;
     if (host) {
       const next = centerNodeInViewport({ ...position, width: newest.width, height: newest.height }, { width: host.clientWidth || size.width, height: host.clientHeight || size.height }, viewport.zoom);
@@ -214,7 +243,7 @@ export const ProjectCanvasStage = ({
     if (initialNodes) setNodes((current) => ({ ...current, ...initialNodes }));
   }, [initialNodes]);
 
-  const pendingPositions = useMemo(() => layoutProjectDesigns([...layoutDesigns, ...pendingDesigns]), [layoutDesigns, pendingDesigns]);
+  const pendingPositions = useMemo(() => layoutProjectDesigns([...layoutDesigns, ...pendingDesigns], { centerRows: true }), [layoutDesigns, pendingDesigns]);
   const skeletonOpacity = 0.14 + ((Math.sin((skeletonPhase / 24) * Math.PI * 2) + 1) / 2) * 0.16;
 
   const handleWheel = (rawEvent: unknown): void => {

@@ -47,22 +47,25 @@ export const Button = ({
 export const IconButton = ({
   name,
   label,
+  className = '',
+  iconSize = 18,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   name: string;
   label: string;
+  iconSize?: number;
 }) => (
   <Tooltip content={label} asChild>
     <button
       type="button"
-      className="icon-button"
+      className={`icon-button ${className}`.trim()}
       title={label}
       data-tooltip={label}
       data-tooltip-portal="true"
       aria-label={label}
       {...props}
     >
-      <Icon name={name} />
+      <Icon name={name} size={iconSize} />
     </button>
   </Tooltip>
 );
@@ -104,6 +107,7 @@ export const Select = ({
   disabled = false,
   ariaLabel,
   className = '',
+  renderValue,
 }: {
   value: string;
   options: readonly SelectOption[];
@@ -111,6 +115,7 @@ export const Select = ({
   disabled?: boolean;
   ariaLabel?: string;
   className?: string;
+  renderValue?: (option: SelectOption | undefined) => ReactNode;
 }) => {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)));
@@ -184,7 +189,7 @@ export const Select = ({
           }
         }}
       />
-      <span className="ui-select__value" aria-hidden="true">{selected?.label}</span>
+      <span className="ui-select__value" aria-hidden="true">{renderValue ? renderValue(selected) : selected?.label}</span>
       <Icon name="chevron-down" size={15} />
       <div className={`ui-select__menu ${open ? '' : 'is-closed'}`} role="listbox">
         {options.map((option) => (

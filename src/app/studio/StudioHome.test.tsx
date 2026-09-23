@@ -21,18 +21,18 @@ it('adds the selected designer to the next home conversation only', async () => 
       onQueryChange={vi.fn()}
       onOpenProject={vi.fn()}
       onRetry={vi.fn()}
-      onViewAllDesigners={vi.fn()}
       onSubmit={onSubmit}
       notify={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: /选择设计师：纸感排版/ }));
+  fireEvent.click(screen.getByRole('combobox', { name: '设计师' }));
+  fireEvent.click(screen.getByRole('option', { name: /纸感排版/ }));
   expect(screen.getByRole('form', { name: 'AI 操作坞' })).toHaveTextContent('纸感排版');
   expect(screen.queryByLabelText('提示词建议')).toBeNull();
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '设计海报' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
   await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ message: '设计海报', attachments: [], generationRatio: '3:4', designerId: 'paper-type' }));
-  expect(screen.getByRole('button', { name: /选择设计师：纸感排版/ })).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByRole('combobox', { name: '设计师' })).toHaveValue('');
 });
 
 it('clears the pending designer when the workspace changes', async () => {
@@ -50,17 +50,45 @@ it('clears the pending designer when the workspace changes', async () => {
     onQueryChange: vi.fn(),
     onOpenProject: vi.fn(),
     onRetry: vi.fn(),
-    onViewAllDesigners: vi.fn(),
     onSubmit: vi.fn(async () => true),
     notify: vi.fn(),
   };
   const { rerender } = render(<StudioHome {...props} workspaceId="workspace-a" />);
-  const designer = screen.getByRole('button', { name: /选择设计师：纸感排版/ });
-  fireEvent.click(designer);
-  expect(designer).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('combobox', { name: '设计师' }));
+  fireEvent.click(screen.getByRole('option', { name: /纸感排版/ }));
+  expect(screen.getByRole('combobox', { name: '设计师' })).toHaveValue('paper-type');
 
   rerender(<StudioHome {...props} workspaceId="workspace-b" />);
-  await waitFor(() => expect(screen.getByRole('button', { name: /选择设计师：纸感排版/ })).toHaveAttribute('aria-pressed', 'false'));
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '设计师' })).toHaveValue(''));
+});
+
+it('opens a designer profile from the home rail without selecting it for the conversation', () => {
+  render(
+    <StudioHome
+      locale="zh-CN"
+      projects={[]}
+      visibleProjects={[]}
+      profiles={personaProfiles}
+      filter="active"
+      query=""
+      loadFailed={false}
+      readOnly={false}
+      conversationConnected
+      onFilterChange={vi.fn()}
+      onQueryChange={vi.fn()}
+      onOpenProject={vi.fn()}
+      onRetry={vi.fn()}
+      onSubmit={vi.fn(async () => true)}
+      notify={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: /查看设计师档案：纸感排版/ }));
+
+  const dialog = screen.getByRole('dialog', { name: '设计师信息' });
+  expect(dialog).toHaveTextContent('纸感排版');
+  expect(dialog).toHaveTextContent('Style DNA');
+  expect(screen.getByRole('combobox', { name: '设计师' })).toHaveValue('');
 });
 
 it('moves product identity into the home body and widens the empty-state conversation', () => {
@@ -79,7 +107,6 @@ it('moves product identity into the home body and widens the empty-state convers
       onQueryChange={vi.fn()}
       onOpenProject={vi.fn()}
       onRetry={vi.fn()}
-      onViewAllDesigners={vi.fn()}
       onSubmit={vi.fn(async () => true)}
       onNewProject={vi.fn()}
       notify={vi.fn()}
@@ -112,7 +139,6 @@ it('hides the designer inspiration rail when no usable designer exists', () => {
       onQueryChange={vi.fn()}
       onOpenProject={vi.fn()}
       onRetry={vi.fn()}
-      onViewAllDesigners={vi.fn()}
       onSubmit={vi.fn(async () => true)}
       onNewProject={vi.fn()}
       notify={vi.fn()}

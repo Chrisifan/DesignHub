@@ -35,7 +35,10 @@ const retainViteOutputAndNativeStorage = (file: string): boolean => Boolean(file
   && !file.startsWith('/node_modules/@img/');
 
 const config = {
-  packagerConfig: { asar: true, ignore: retainViteOutputAndNativeStorage },
+  packagerConfig: {
+    asar: { unpackDir: 'node_modules/@img/sharp-*/lib' },
+    ignore: retainViteOutputAndNativeStorage
+  },
   rebuildConfig: {},
   makers: [
     new MakerDMG({ name: 'DesignHub' }),

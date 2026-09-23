@@ -778,7 +778,7 @@
 .page-content.designer-library-page {
   display: flex;
   flex-direction: column;
-  background: var(--background);
+  background: transparent;
   min-height: 0;
   overflow: hidden;
 }
@@ -811,7 +811,11 @@
   flex: 1 1 auto;
   min-height: var(--content-panel-min-height);
   height: auto;
-  background: var(--content-card-background);
+  background: transparent;
+}
+
+.designer-library-page .profile-library {
+  background: transparent;
 }
 
 .persona-repository {
@@ -1057,7 +1061,7 @@
   scrollbar-gutter: stable;
 }
 
-.ui-drawer .persona-inspector {
+.ui-dialog--drawer .persona-inspector {
   min-height: 100%;
 }
 

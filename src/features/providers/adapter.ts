@@ -204,6 +204,19 @@ const contentText = (value: unknown): string => {
   }).join('');
 };
 
+const chatStreamEvent = (payload: unknown, redact: (value: string) => string): ChatStreamEvent | undefined => {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const record = payload as Record<string, unknown>;
+  const choices = record.choices;
+  const first = Array.isArray(choices) ? choices[0] : undefined;
+  const choice = first && typeof first === 'object' ? first as Record<string, unknown> : {};
+  const delta = choice.delta && typeof choice.delta === 'object' ? choice.delta as Record<string, unknown> : {};
+  const message = choice.message && typeof choice.message === 'object' ? choice.message as Record<string, unknown> : {};
+  const text = redact(contentText(delta.content || message.content || choice.text || record.output_text));
+  if (!text && choice.finish_reason === undefined) return undefined;
+  return { text, finishReason: typeof choice.finish_reason === 'string' ? choice.finish_reason : null };
+};
+
 const sseIterable = (response: Response, signal: AbortSignal | undefined, redact: (value: string) => string): AsyncIterable<ChatStreamEvent> => {
   const reader = response.body?.getReader();
   if (!reader) throw toError('Provider returned no stream body.', 'invalid_response', { status: response.status });
@@ -218,19 +231,24 @@ const sseIterable = (response: Response, signal: AbortSignal | undefined, redact
     const events: ChatStreamEvent[] = [];
     for (const frame of frames) {
       const data = frame.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n');
-      if (!data) continue;
+      if (!data) {
+        const fallback = frame.trim();
+        if (!/^[{[]/u.test(fallback)) continue;
+        try {
+          const event = chatStreamEvent(JSON.parse(fallback), redact);
+          if (event) events.push(event);
+        } catch {
+          throw toError('Provider returned malformed stream data.', 'invalid_response', { status: response.status });
+        }
+        continue;
+      }
       if (data === '[DONE]') {
         ended = true;
         continue;
       }
       try {
-        const payload: unknown = JSON.parse(data);
-        const choices = payload && typeof payload === 'object' ? (payload as Record<string, unknown>).choices : undefined;
-        const first = Array.isArray(choices) ? choices[0] : undefined;
-        const choice = first && typeof first === 'object' ? first as Record<string, unknown> : {};
-        const delta = choice.delta && typeof choice.delta === 'object' ? choice.delta as Record<string, unknown> : {};
-        const text = redact(contentText(delta.content));
-        if (text || choice.finish_reason !== undefined) events.push({ text, finishReason: typeof choice.finish_reason === 'string' ? choice.finish_reason : null });
+        const event = chatStreamEvent(JSON.parse(data), redact);
+        if (event) events.push(event);
       } catch {
         throw toError('Provider returned malformed SSE data.', 'invalid_response', { status: response.status });
       }

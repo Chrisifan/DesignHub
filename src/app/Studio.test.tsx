@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Studio } from './studio/Studio';
+import { HomeProjectPanel } from './studio/HomeProjectPanel';
 import type { ProjectMetadata } from '../features/projects/metadata';
 import type { UpdateProjectMetadataInput } from '../features/workspace/project-store';
 import { createScene } from '../features/canvas/scene';
@@ -43,15 +44,29 @@ const openNewProjectDrawer = (): void => {
   navigateFromUserMenu('新建项目');
 };
 
-it('lets an offline user navigate the example workspace without a connection or disk save claim', () => {
+it('opens model connection settings as a dialog without leaving the current page', () => {
   enter();
   expect(screen.queryByRole('navigation', { name: '主导航' })).not.toBeInTheDocument();
-  navigateFromUserMenu('设计师');
-  expect(screen.getByRole('heading', { name: '设计师' })).toBeInTheDocument();
   navigateFromUserMenu('模型连接');
-  expect(screen.getByRole('heading', { name: '模型连接' })).toBeInTheDocument();
-  expect(screen.getByText('尚未连接模型')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '欢迎使用 Design Hub' })).toBeInTheDocument();
+  const dialog = screen.getByRole('dialog', { name: '连接配置' });
+  expect(dialog).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '欢迎使用 Design Hub' })).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: '图片生成与编辑' }));
+  expect(within(dialog).getByLabelText('图片服务地址')).toBeInTheDocument();
+  expect(within(dialog).getByLabelText('生成模型')).toBeInTheDocument();
+  expect(within(dialog).getByLabelText('编辑模型')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '模型连接' })).not.toBeInTheDocument();
   expect(screen.queryByText('已保存到本地')).not.toBeInTheDocument();
+});
+
+it('opens designer creation from the user menu without showing a designer list page', async () => {
+  enter();
+  navigateFromUserMenu('设计师');
+
+  expect(screen.getByRole('heading', { name: '欢迎使用 Design Hub' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: '设计师', level: 1 })).not.toBeInTheDocument();
+  expect(await screen.findByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' })).toBeInTheDocument();
 });
 
 it('does not seed an unscoped studio with example projects or designers', async () => {
@@ -85,11 +100,49 @@ it('hides the project panel when the workspace has no projects', () => {
   expect(screen.queryByRole('complementary', { name: '项目列表' })).toBeNull();
 });
 
-it('shows project covers in the compact home project list', () => {
+it('shows project covers in the compact home project list', async () => {
   enter();
-  const project = screen.getByRole('button', { name: '春间市集' });
+  const project = await screen.findByRole('button', { name: '春间市集' });
   expect(project.querySelector('.project-cover__image')).toHaveAttribute('src', '/project-default-cover.png');
   expect(within(project).getByText(/3 份设计稿/)).toBeInTheDocument();
+});
+
+it('uses the first design asset as the project list cover', async () => {
+  const readAsset = vi.fn(async () => new Uint8Array([1, 2, 3]));
+  window.designhub = { chooseWorkspaceDirectory: async () => null, readAsset };
+  vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:first-design'), revokeObjectURL: vi.fn() });
+  const project = {
+    ...exampleProjects[0]!,
+    workspaceId: 'workspace-1',
+    coverAssetId: 'asset-custom-cover',
+    designs: [{
+      id: 'design-first',
+      assetId: 'asset-first-design',
+      sourceTaskId: 'task-1',
+      width: 1080,
+      height: 1440,
+      title: '第一张设计稿',
+      createdAt: '2026-09-20T00:00:00.000Z',
+    }],
+  };
+  render(
+    <HomeProjectPanel
+      locale="zh-CN"
+      allProjects={[project]}
+      projects={[project]}
+      filter="active"
+      query=""
+      loadFailed={false}
+      onFilterChange={() => undefined}
+      onQueryChange={() => undefined}
+      onOpenProject={() => undefined}
+      onRetry={() => undefined}
+    />,
+  );
+
+  const projectRow = screen.getByRole('button', { name: '春间市集' });
+  await waitFor(() => expect(projectRow.querySelector('.project-cover__image')).toHaveAttribute('src', 'blob:first-design'));
+  expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'spring', assetId: 'asset-first-design' });
 });
 
 it('keeps long project names in one compact row without rendering briefs', () => {
@@ -121,6 +174,44 @@ it('moves project creation from the home toolbar into the avatar menu', () => {
   expect(screen.getByRole('menuitem', { name: '新建项目' })).toBeInTheDocument();
 });
 
+it('creates a project directly from the home composer using its selected designer', async () => {
+  const createProjectContainer = vi.fn(async () => ({ projectId: 'project-direct' }));
+  const submitConversation = vi.fn(async () => null);
+  window.designhub = {
+    chooseWorkspaceDirectory: async () => null,
+    listActiveProjects: vi.fn(async () => []),
+    loadDesignerState: vi.fn(async () => ({ profiles: persistedProfiles, defaultId: '', drafts: {} })),
+    hasCredential: vi.fn(async () => false),
+    createProjectContainer,
+    submitConversation,
+  };
+  render(
+    <Studio
+      locale="zh-CN"
+      theme="system"
+      workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }}
+      onLocaleChange={() => undefined}
+      onThemeChange={() => undefined}
+      onExit={() => undefined}
+    />,
+  );
+
+  const designerSelect = await screen.findByRole('combobox', { name: '设计师' });
+  await waitFor(() => expect(designerSelect).not.toBeDisabled());
+  fireEvent.click(designerSelect);
+  fireEvent.click(screen.getByRole('option', { name: /纸感排版/ }));
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+
+  await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({
+    workspaceId: 'workspace-1',
+    activeDesignerVersionId: 'user-paper',
+    designerSnapshot: expect.objectContaining({ id: 'user-paper' }),
+    designs: [],
+  })));
+  expect(screen.queryByRole('dialog', { name: '新建项目' })).not.toBeInTheDocument();
+  expect(submitConversation).not.toHaveBeenCalled();
+});
+
 it('opens one new-project drawer without the duplicate creation callout', () => {
   enter();
 
@@ -145,26 +236,53 @@ it('orders project controls in the workspace toolbar', () => {
   expect(within(panel).queryByRole('group', { name: '展示方式' })).not.toBeInTheDocument();
 });
 
+it('animates the home project list in the direction of filter changes', () => {
+  enter();
+  const panel = screen.getByRole('complementary', { name: '项目列表' });
+
+  fireEvent.click(within(panel).getByRole('button', { name: '全部项目' }));
+  expect(panel.querySelector('.studio-home-projects__list')).toHaveClass('studio-project-list-enter-forward');
+
+  fireEvent.click(within(panel).getByRole('button', { name: '进行中' }));
+  expect(panel.querySelector('.studio-home-projects__list')).toHaveClass('studio-project-list-enter-backward');
+});
+
 it('orders asset controls in the workspace toolbar', () => {
   enter();
   navigateFromUserMenu('素材库');
   const toolbar = screen.getByRole('banner', { name: '工作区工具栏' });
 
+  expect(document.querySelectorAll('.destination--active')).toHaveLength(1);
+  expect(document.querySelector('.destination--active')).toHaveClass('studio-view-enter-forward');
+  expect(within(toolbar).getByRole('button', { name: '返回项目' })).toBeInTheDocument();
+  expect(within(toolbar).getByText('素材库', { selector: '.toolbar-page-title' })).toBeInTheDocument();
   expect(within(toolbar).getByRole('group', { name: '类型' })).toBeInTheDocument();
   expect(within(toolbar).getByRole('searchbox', { name: '搜索素材' })).toBeInTheDocument();
   expect(within(toolbar).getByRole('group', { name: '视图' })).toBeInTheDocument();
   expect(document.querySelector('.asset-toolbar')).not.toBeInTheDocument();
 });
 
-it('places designer status before search without adding a view switch', () => {
+it('reverses the page transition when returning to the project home', () => {
   enter();
-  navigateFromUserMenu('设计师');
+  navigateFromUserMenu('素材库');
+  navigateFromUserMenu('首页');
+
+  expect(document.querySelector('.studio-home')).toHaveClass('studio-view-enter-backward');
+});
+
+it('keeps the project home ready for the shared page entrance transition', () => {
+  enter();
+  expect(document.querySelector('.studio-home')).toHaveClass('studio-view-enter');
+});
+
+it('returns from a settings destination to the project home', () => {
+  enter();
+  navigateFromUserMenu('设置');
   const toolbar = screen.getByRole('banner', { name: '工作区工具栏' });
 
-  expect(within(toolbar).getByRole('group', { name: '档案状态' })).toBeInTheDocument();
-  expect(within(toolbar).getByRole('searchbox', { name: '搜索档案' })).toBeInTheDocument();
-  expect(within(toolbar).queryByRole('group', { name: '视图' })).not.toBeInTheDocument();
-  expect(document.querySelector('.persona-repository__toolbar')).not.toBeInTheDocument();
+  expect(within(toolbar).getByText('设置', { selector: '.toolbar-page-title' })).toBeInTheDocument();
+  fireEvent.click(within(toolbar).getByRole('button', { name: '返回项目' }));
+  expect(screen.getByRole('heading', { name: '欢迎使用 Design Hub' })).toBeInTheDocument();
 });
 
 it('shows the cover-led project detail as a full-width design list', () => {
@@ -240,7 +358,7 @@ it('creates only a labelled preview draft and keeps project input when dismissin
   expect(screen.getAllByText('未保存草稿').length).toBeGreaterThan(0);
   expect(screen.queryByText('已保存到本地')).not.toBeInTheDocument();
   navigateFromUserMenu('首页');
-  expect(screen.getByRole('button', { name: '我的测试项目' }).querySelector('.project-cover__image')).toHaveAttribute('src', 'blob:preview-cover');
+  expect(screen.getByRole('button', { name: '我的测试项目' }).querySelector('.project-cover__image')).toHaveAttribute('src', '/project-default-cover.png');
   openNewProjectDrawer();
   expect(screen.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', '/project-default-cover.png');
 });
@@ -917,7 +1035,8 @@ it('persists a selected designer snapshot on the next automatic project', async 
   };
   render(<Studio locale="zh-CN" theme="system" workspace={{ workspaceId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={vi.fn()} onThemeChange={vi.fn()} onExit={vi.fn()} />);
 
-  fireEvent.click(await screen.findByRole('button', { name: /选择设计师：纸感排版/ }));
+  fireEvent.click(await screen.findByRole('combobox', { name: '设计师' }));
+  fireEvent.click(screen.getByRole('option', { name: /纸感排版/ }));
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '带风格项目' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
 

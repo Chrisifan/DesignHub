@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type 
 
 import type { Locale } from '../i18n';
 import type { PendingHomeConversation, Project } from './types';
+import type { PersonaProfile } from './personas';
 import { Drawer } from './Drawer';
 import { ConversationDock, type ConversationDockAttachment } from './ConversationDock';
 import type { ProjectGenerationRatio } from '../../features/projects/size';
@@ -81,9 +82,12 @@ export type WorkbenchProps = {
   scene?: DesignScene;
   onBack: () => void;
   onConnections: () => void;
+  designerOptions?: PersonaProfile[];
+  onDesignerChange?: (designerId: string) => void;
+  onGenerationRatioChange?: (ratio: ProjectGenerationRatio) => void;
   onTasks?: () => void;
   onSubmitConversation?: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
-  onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null, generationRatio: ProjectGenerationRatio) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
+  onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null, generationRatio: ProjectGenerationRatio, count: 1 | 3) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
   onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
@@ -139,12 +143,14 @@ export const Workbench = ({
   scene: providedScene,
   onBack,
   onConnections,
+  designerOptions,
+  onDesignerChange,
+  onGenerationRatioChange,
   onTasks,
   onSubmitConversation,
   onSubmitDesignGeneration,
   onSubmitImageTask,
   onSubmitImageGeneration,
-  operatorName = '',
   modelConnected = false,
   readOnly = false,
   notify,
@@ -197,6 +203,7 @@ export const Workbench = ({
   const [compareRevisionId, setCompareRevisionId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [pendingConversationTaskId, setPendingConversationTaskId] = useState<string | null>(null);
+  const [conversationSubmitting, setConversationSubmitting] = useState(false);
   const [analysisThreadId, setAnalysisThreadId] = useState<string | undefined>();
   const [analysisMessage, setAnalysisMessage] = useState('');
   const [analysisAttachments, setAnalysisAttachments] = useState<Array<ConversationImageAttachment & { previewUrl: string }>>([]);
@@ -521,10 +528,18 @@ export const Workbench = ({
     setPendingConversationTaskId(null);
     if (!onSubmitConversation) return Promise.resolve(undefined);
 
-    const submitted = Object.keys(context).length > 0
-      ? onSubmitConversation(message, attachments, context)
-      : onSubmitConversation(message, attachments);
+    setConversationSubmitting(true);
+    let submitted: ReturnType<NonNullable<WorkbenchProps['onSubmitConversation']>>;
+    try {
+      submitted = Object.keys(context).length > 0
+        ? onSubmitConversation(message, attachments, context)
+        : onSubmitConversation(message, attachments);
+    } catch (error) {
+      setConversationSubmitting(false);
+      return Promise.reject(error);
+    }
     if (submitted === undefined) {
+      setConversationSubmitting(false);
       setReferencedAssetIds([]);
       return Promise.resolve(undefined);
     }
@@ -536,7 +551,7 @@ export const Workbench = ({
       setTasks((current) => [...current.filter((entry) => entry.id !== task.id), task]);
       setReferencedAssetIds([]);
       return task;
-    });
+    }).finally(() => setConversationSubmitting(false));
   }, [onSubmitConversation]);
 
   useEffect(() => {
@@ -586,14 +601,14 @@ export const Workbench = ({
     }
     onConnections();
   };
-  const submitGeneration = (): void => {
+  const submitGeneration = (count: 1 | 3 = 3): void => {
     if (readOnly) return;
     if (onSubmitDesignGeneration && pendingConversationTaskId) {
       if (!conversationReadyForGeneration) {
         notify(t(locale, '请等待对话理解完成。', 'Wait for conversation analysis to finish.'));
         return;
       }
-      void Promise.resolve(onSubmitDesignGeneration(pendingConversationTaskId, currentRevisionId, project.generationRatio ?? '3:4')).then((task) => {
+      void Promise.resolve(onSubmitDesignGeneration(pendingConversationTaskId, currentRevisionId, project.generationRatio ?? '3:4', count)).then((task) => {
         if (!task) return;
         const threadTask = task.analysisThreadId || !analysisThreadId
           ? task
@@ -1064,10 +1079,13 @@ export const Workbench = ({
             value={prompt}
             attachments={conversationAttachments}
             readOnly={readOnly}
+            busy={conversationSubmitting || hasPendingAnalysis}
             conversationConnected={modelConnected}
             designer={designerSnapshot ? conversationDesignerProfile : null}
+            designerOptions={designerOptions}
+            onDesignerChange={onDesignerChange}
             generationRatio={project.generationRatio ?? '3:4'}
-            onGenerationRatioChange={() => undefined}
+            onGenerationRatioChange={onGenerationRatioChange}
             textareaLabel={t(locale, '修改说明', 'Edit request')}
             placeholder={t(locale, '描述希望调整的内容…', 'Describe the change…')}
             submitLabel={t(locale, '发送', 'Send')}
@@ -1078,7 +1096,6 @@ export const Workbench = ({
             onValueChange={setPrompt}
             onAttachmentsChange={setConversationAttachments}
             onSubmit={submitPromptRequest}
-            onDesignerClick={onConnections}
             onOpenTasks={() => onTasks?.()}
             onOpenHistory={() => showPanel('history')}
             onGenerate={submitGeneration}

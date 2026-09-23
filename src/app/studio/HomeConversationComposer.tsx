@@ -12,7 +12,9 @@ type HomeConversationComposerProps = {
   readOnly: boolean;
   conversationConnected: boolean;
   designer: PersonaProfile | null;
-  onNewProject?: () => void;
+  designerOptions?: PersonaProfile[];
+  onDesignerChange?: (designerId: string) => void;
+  onNewProject?: (input: { designerId?: string; generationRatio: ProjectGenerationRatio }) => void;
   onSubmit: (input: { message: string; attachments: ConversationImageAttachment[]; generationRatio: ProjectGenerationRatio }) => Promise<boolean>;
   notify: (message: string) => void;
 };
@@ -22,6 +24,8 @@ export const HomeConversationComposer = ({
   readOnly,
   conversationConnected,
   designer,
+  designerOptions = [],
+  onDesignerChange = () => undefined,
   onNewProject,
   onSubmit,
   notify,
@@ -66,7 +70,7 @@ export const HomeConversationComposer = ({
         <button
           type="button"
           className="home-conversation-composer__new-project"
-          onClick={onNewProject}
+          onClick={() => onNewProject?.({ generationRatio, ...(designer ? { designerId: designer.id } : {}) })}
           disabled={readOnly}
         >
           <Icon name="plus" size={14} />
@@ -82,6 +86,8 @@ export const HomeConversationComposer = ({
         busy={busy}
         conversationConnected={conversationConnected}
         designer={designer}
+        designerOptions={designerOptions}
+        onDesignerChange={onDesignerChange}
         generationRatio={generationRatio}
         onGenerationRatioChange={setGenerationRatio}
         textareaLabel={t(locale, '设计需求', 'Design request')}

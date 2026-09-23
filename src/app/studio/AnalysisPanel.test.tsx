@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { AnalysisPanel } from './AnalysisPanel';
@@ -105,9 +105,25 @@ it('keeps the body as the independently scrolling analysis region', () => {
   expect(body).toHaveAttribute('aria-live', 'polite');
 });
 
-it('uses the compact action treatment for generation', () => {
-  renderPanel('分析完成');
-  expect(screen.getByRole('button', { name: '生成' })).toHaveClass('workbench-analysis-panel__generate');
+it('offers explicit single and multi-image generation actions', () => {
+  const onGenerate = vi.fn();
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message="生成一个春季市集主视觉"
+      attachments={[]}
+      task={task('分析完成')}
+      canGenerate
+      onGenerate={onGenerate}
+    />,
+  );
+
+  expect(screen.getByRole('button', { name: '生成单张' })).toHaveClass('workbench-analysis-panel__generate');
+  expect(screen.getByRole('button', { name: '生成多张' })).toHaveClass('workbench-analysis-panel__generate');
+  fireEvent.click(screen.getByRole('button', { name: '生成单张' }));
+  fireEvent.click(screen.getByRole('button', { name: '生成多张' }));
+  expect(onGenerate).toHaveBeenNthCalledWith(1, 1);
+  expect(onGenerate).toHaveBeenNthCalledWith(2, 3);
 });
 
 it('shows one request line until the user expands its text and images', () => {
@@ -125,6 +141,9 @@ it('shows one request line until the user expands its text and images', () => {
 
   expect(screen.getByText('第一行需求 第二行补充')).toHaveClass('workbench-analysis-panel__request-line');
   expect(screen.queryByRole('img', { name: 'reference.png' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '展开本轮输入' }).querySelector('.ui-icon')).toHaveStyle({
+    maskImage: 'url(./icons/chevron-down.svg)',
+  });
 
   fireEvent.click(screen.getByRole('button', { name: '展开本轮输入' }));
 
@@ -132,9 +151,8 @@ it('shows one request line until the user expands its text and images', () => {
   expect(screen.getByRole('img', { name: 'reference.png' })).toBeVisible();
 });
 
-it('copies the current request payload and collapses the full panel', () => {
+it('copies the current request payload without rendering a panel collapse button', () => {
   const onCopyRequest = vi.fn();
-  const onCollapse = vi.fn();
   render(
     <AnalysisPanel
       locale="zh-CN"
@@ -144,18 +162,39 @@ it('copies the current request payload and collapses the full panel', () => {
       canGenerate={false}
       onGenerate={vi.fn()}
       onCopyRequest={onCopyRequest}
-      onCollapse={onCollapse}
     />,
   );
 
   fireEvent.click(screen.getByRole('button', { name: '复制到对话框' }));
-  fireEvent.click(screen.getByRole('button', { name: '收起本轮分析' }));
 
   expect(onCopyRequest).toHaveBeenCalledWith({ message: '生成春季主视觉', attachments: [attachment] });
-  expect(onCollapse).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('button', { name: '收起本轮分析' })).not.toBeInTheDocument();
 });
 
-it('renders only the animated dots and expand action while collapsed', () => {
+it('uses small icons for the two analysis header actions', () => {
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message="生成春季主视觉"
+      attachments={[]}
+      task={task('分析内容')}
+      canGenerate={false}
+      onGenerate={vi.fn()}
+      onCopyRequest={vi.fn()}
+    />,
+  );
+
+  const header = document.querySelector('.workbench-analysis-panel__header');
+  expect(header).not.toBeNull();
+
+  const actions = within(header as HTMLElement).getAllByRole('button');
+  expect(actions).toHaveLength(2);
+  actions.forEach((action) => {
+    expect(action.querySelector('.ui-icon')).toHaveStyle({ width: '12px', height: '12px' });
+  });
+});
+
+it('uses the static dots themselves to expand the collapsed panel', () => {
   const onExpand = vi.fn();
   render(
     <AnalysisPanel
@@ -170,9 +209,14 @@ it('renders only the animated dots and expand action while collapsed', () => {
     />,
   );
 
-  expect(screen.getByTestId('collapsed-analysis-dots').children).toHaveLength(3);
-  expect(screen.getByTestId('collapsed-analysis-dots').closest('.workbench-analysis-panel')).toHaveClass('workbench-analysis-panel--collapsed');
+  const dots = screen.getByTestId('collapsed-analysis-dots');
+  expect(dots.children).toHaveLength(3);
+  expect(dots).toHaveClass('workbench-analysis-panel__streaming--static');
+  expect(dots.closest('.workbench-analysis-panel')).toHaveClass('workbench-analysis-panel--collapsed');
   expect(screen.queryByText('分析内容')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '展开本轮分析' }));
+  const expandButton = screen.getByRole('button', { name: '展开本轮分析' });
+  expect(expandButton).toContainElement(dots);
+  expect(expandButton.querySelector('.ui-icon')).not.toBeInTheDocument();
+  fireEvent.click(expandButton);
   expect(onExpand).toHaveBeenCalledOnce();
 });
