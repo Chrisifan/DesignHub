@@ -44,7 +44,7 @@
 - Create: `src/desktop/storage/project-library-store.ts`
 - Create: `src/desktop/storage/project-library-store.test.ts`
 - Reference: `src/desktop/storage/workspace-store.ts`
-- Reference: `src/desktop/storage/workspace-store.test.ts`
+- Reference: `tests/integration/workspace-open.test.ts` and `tests/integration/workspace-open-identity.test.ts`
 
 **Interfaces:**
 - Produce `ProjectLibraryDescriptor { libraryId: string; directory: string; formatVersion: number; openMode: WorkspaceOpenMode }`.
@@ -53,12 +53,12 @@
 - Produce `getWritableProjectLibraryLease(handle: ProjectLibraryHandle): ProjectLibraryDescriptor | null`.
 - The manifest filename is `designhub.library.json`; its kind is `designhub-project-library`; its identity is a generated stable UUID.
 
-- [ ] **Step 1: Write storage contract tests first** for empty-directory initialization, stable ID after reopen, cancellation-independent direct calls, valid-library reopen, unknown non-empty rejection, legacy `designhub.workspace.json` rejection without writes, writer-lock contention, directory replacement invalidating a lease, and cleanup/retry after injected initialization failure.
-- [ ] **Step 2: Run the focused test file and confirm it fails** because the library store and manifest contract do not exist.
-- [ ] **Step 3: Implement library initialization/opening** by adapting the identity and lock protections in `workspace-store.ts`; create only `.designhub`, `projects`, `shared-assets`, and `trash` in the selected empty root, and publish the library manifest only after required structure is ready.
-- [ ] **Step 4: Reject every non-empty unrecognized root without mutation**; recognize only a valid `designhub.library.json`, and do not inspect a legacy workspace manifest as a migration candidate.
-- [ ] **Step 5: Run `pnpm exec vitest run src/desktop/storage/project-library-store.test.ts`** and confirm all new storage contract cases pass.
-- [ ] **Step 6: Run existing `src/desktop/storage/workspace-store.test.ts`** to ensure the still-needed old implementation remains unchanged until consumers move in Task 3.
+- [x] **Step 1: Write storage contract tests first** for empty-directory initialization, stable ID after reopen, valid-library reopen, unknown non-empty rejection, legacy `designhub.workspace.json` rejection without writes, writer-lock contention, directory replacement invalidating a lease, and cleanup/retry after injected initialization failure.
+- [x] **Step 2: Run the focused test file and confirm it fails** because the library initialization/open behavior was unavailable.
+- [x] **Step 3: Implement library initialization/opening** by adapting the identity and lock protections in `workspace-store.ts`; create only `.designhub`, `projects`, `shared-assets`, and `trash` in the selected empty root, and publish the library manifest only after required structure is ready.
+- [x] **Step 4: Reject every non-empty unrecognized root without mutation**; recognize only a valid `designhub.library.json`, and do not inspect a legacy workspace manifest as a migration candidate.
+- [x] **Step 5: Run `pnpm exec vitest run --config vitest.config.ts src/desktop/storage/project-library-store.test.ts`**; 6/6 passed.
+- [x] **Step 6: Run `pnpm exec vitest run --config vitest.config.ts tests/integration/workspace-open.test.ts tests/integration/workspace-open-identity.test.ts`**; 12/12 passed, confirming the legacy storage implementation remains unaffected until its consumers move in Task 3.
 - [ ] **Step 7: Commit** the contract and store as `feat: add project library storage`.
 
 ### Task 2: Persist one library path and expose trusted lifecycle IPC
