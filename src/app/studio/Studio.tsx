@@ -110,7 +110,7 @@ type StudioProps = {
   workspace?: WorkspaceDescriptor | null;
   onLocaleChange: (locale: Locale) => void;
   onThemeChange: (theme: Theme) => void;
-  onExit: () => void;
+  onExit?: () => void;
   onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
   recentWorkspaces?: WorkspaceDescriptor[];
   onOpenWorkspace?: (directory: string) => Promise<WorkspaceDescriptor | null>;
@@ -126,10 +126,6 @@ export const Studio = ({
   workspace = null,
   onLocaleChange,
   onThemeChange,
-  onExit,
-  onWorkspaceChange,
-  recentWorkspaces = [],
-  onOpenWorkspace,
   initialProjects = emptyProjects,
   initialDesignerOptions = emptyDesignerOptions,
   initialAssets = emptyAssets,
@@ -141,13 +137,13 @@ export const Studio = ({
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [projectsLoadFailed, setProjectsLoadFailed] = useState(false);
   const [projectsReloadKey, setProjectsReloadKey] = useState(0);
+  const [, setHomeCreationBusy] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'active' | 'archived' | 'all'>('active');
   const [selected, setSelected] = useState<Project | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [deliveryProject] = useState<Project | null>(null);
-  const [dialog, setDialog] = useState<'workspace' | null>(null);
   const [connectionsDialogOpen, setConnectionsDialogOpen] = useState(false);
   const [designerCreateRequestId, setDesignerCreateRequestId] = useState(0);
   const [notice, setNotice] = useState('');
@@ -167,7 +163,6 @@ export const Studio = ({
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(initialDesignerOptions);
   const [conversationConnected, setConversationConnected] = useState(false);
-  const [homeCreationBusy, setHomeCreationBusy] = useState(false);
   const [pendingHomeConversation, setPendingHomeConversation] = useState<PendingHomeConversation | null>(null);
   const [operatorName, setOperatorName] = useState(readOperatorName);
   const [pendingAssetAction, setPendingAssetAction] = useState<(CanvasAssetAction & { projectId?: string }) | null>(null);
@@ -735,17 +730,6 @@ export const Studio = ({
         onLocaleChange={onLocaleChange}
         onThemeChange={onThemeChange}
         themeLabel={t(locale, '切换主题', 'Switch theme')}
-        workspace={{
-          name: workspace?.name ?? t(locale, '我的设计空间', 'My design studio'),
-          detail: workspace
-            ? workspace.openMode === 'read-only'
-              ? t(locale, '只读工作区', 'Read-only workspace')
-              : t(locale, '本地工作区', 'Local workspace')
-            : t(locale, '未打开工作区', 'No workspace open'),
-          label: t(locale, '切换工作区', 'Switch workspace'),
-          disabled: homeCreationBusy,
-          onClick: () => setDialog('workspace'),
-        }}
         userMenu={(
           <StudioUserMenu
             locale={locale}
@@ -903,7 +887,6 @@ export const Studio = ({
                   theme={theme}
                   onThemeChange={onThemeChange}
                   onLocaleChange={onLocaleChange}
-                  onWorkspaceChange={onWorkspaceChange}
                   operatorName={operatorName}
                   onOperatorNameChange={updateOperatorName}
                   initialAssets={initialAssets}
@@ -964,67 +947,6 @@ export const Studio = ({
           persisted={workspace?.openMode === 'writable'}
         />
       </Drawer>
-      {dialog === 'workspace' && (
-        <Modal
-          title={t(locale, '切换工作区', 'Switch workspace')}
-          onClose={() => setDialog(null)}
-          locale={locale}
-        >
-          {workspace?.openMode === 'read-only' && <p className="muted">
-            {t(locale, '当前工作区为只读模式。', 'This workspace is read-only.')}
-          </p>}
-          <button className="workspace-choice" onClick={() => setDialog(null)}>
-            <span className="workspace-monogram">{workspace?.name.slice(0, 1).toUpperCase() ?? 'D'}</span>
-            <span>
-              <strong>{workspace?.name ?? t(locale, '我的设计空间', 'My design studio')}</strong>
-              <small>
-                {workspace
-                  ? workspace.openMode === 'read-only'
-                    ? t(locale, '只读工作区 · 当前', 'Read-only workspace · Current')
-                    : t(locale, '本地工作区 · 当前', 'Local workspace · Current')
-                  : t(locale, '未打开工作区', 'No workspace open')}
-              </small>
-            </span>
-            <Icon name="check" />
-          </button>
-          {recentWorkspaces.length > 0 && (
-            <div className="workspace-recent-list" aria-label={t(locale, '最近访问', 'Recently opened')}>
-              <p className="panel-label">{t(locale, '最近访问', 'Recently opened')}</p>
-              {recentWorkspaces
-                .filter((entry) => entry.workspaceId !== workspace?.workspaceId)
-                .map((entry) => (
-                  <button
-                    type="button"
-                    className="workspace-choice workspace-choice--recent"
-                    key={`${entry.workspaceId}:${entry.directory}`}
-                    onClick={() => {
-                      if (!onOpenWorkspace) return;
-                      setDialog(null);
-                      void onOpenWorkspace(entry.directory).then((opened) => {
-                        if (!opened) setDialog('workspace');
-                      });
-                    }}
-                  >
-                    <span className="workspace-monogram">{entry.name.slice(0, 1).toUpperCase()}</span>
-                    <span>
-                      <strong>{entry.name}</strong>
-                      <small>{entry.directory}</small>
-                    </span>
-                    <Icon name="arrow-up-right" size={15} />
-                  </button>
-                ))}
-            </div>
-          )}
-          <div className="dialog-actions">
-            <Button onClick={onExit} icon="folder-open">
-              {t(locale, '工作区', 'Workspace welcome')}
-            </Button>
-            <Button onClick={() => setDialog(null)} variant="primary">
-              {t(locale, '继续浏览', 'Continue browsing')}
-            </Button>
-          </div>
-        </Modal>
-      )}
       {projectDialog === 'rename' && selected && (
         <Modal title={t(locale, '重命名项目', 'Rename project')} locale={locale} onClose={() => setProjectDialog(null)}>
           <Field label={t(locale, '项目名称', 'Project name')}>

@@ -83,7 +83,7 @@ export const App = () => {
     <main ref={appShellRef} className="app-shell" aria-label={copy.appName} data-theme={theme}>
       {!entered && <WindowBar copy={copy} locale={locale} theme={theme} nativeControlSide={nativeControlSide} onLocaleChange={changeLocale} onThemeChange={changeTheme} themeLabel={t(locale, '切换主题', 'Switch theme')} />}
       {entered ? (
-        <Studio locale={locale} theme={theme} workspace={workspace} onLocaleChange={changeLocale} onThemeChange={changeTheme} onExit={() => setLibraryStatus({ state: 'unselected' })} />
+        <Studio locale={locale} theme={theme} workspace={workspace} onLocaleChange={changeLocale} onThemeChange={changeTheme} />
       ) : (
         <section className="welcome" aria-labelledby="welcome-title">
           <p className="eyebrow">{copy.appName}</p>

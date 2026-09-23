@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import type { Locale, Messages } from '../i18n';
 import type { Theme } from '../studio/types';
-import { Icon, IconButton } from '../studio/ui';
+import { IconButton } from '../studio/ui';
 
 type WindowBarProps = {
   copy: Messages;
@@ -32,31 +32,11 @@ export const WindowBar = ({
   onThemeChange,
   previewLabel,
   themeLabel,
-  workspace,
   userMenu,
 }: WindowBarProps) => (
   <header className="window-bar">
     {nativeControlSide === 'left' ? <div className="window-control-safe-area window-control-safe-area--left" aria-hidden="true" /> : null}
     <div className="window-bar-drag-region">
-      {workspace ? (
-        <>
-          <span className="window-bar-separator" aria-hidden="true" />
-          <button
-            type="button"
-            className="window-workspace-switch"
-            disabled={workspace.disabled}
-            onClick={workspace.onClick}
-            title={workspace.label}
-            aria-label={workspace.label}
-          >
-            <span className="window-workspace-name">
-              <strong>{workspace.name}</strong>
-              <small>· {workspace.detail}</small>
-            </span>
-            <Icon name="chevron-down" size={14} />
-          </button>
-        </>
-      ) : null}
       <div className="window-bar-actions">
         {previewLabel ? (
           <span className="window-preview-label">
