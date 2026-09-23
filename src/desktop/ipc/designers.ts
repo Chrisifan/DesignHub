@@ -1,5 +1,5 @@
 import { isDesignerLibraryState, type DesignerLibraryState } from '../../features/designers/persistence';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const designerLoadChannel = 'designer:load-state';
@@ -37,35 +37,35 @@ const isArtworkReadInput = (value: unknown): value is { workspaceId: string; art
 export const loadDesignerStateHandler = (
   window: DesignerWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  loadState: (workspace: WorkspaceHandle, workspaceId: string) => Promise<DesignerLibraryState | null>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  loadState: (workspace: ProjectLibraryHandle, workspaceId: string) => Promise<DesignerLibraryState | null>,
 ) => async (event: DesignerRequest, workspaceId: unknown): Promise<DesignerLibraryState | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isWorkspaceId(workspaceId)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== workspaceId) return null;
   return loadState(workspace, workspaceId);
 };
 
 export const saveDesignerStateHandler = (
   window: DesignerWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  saveState: (workspace: WorkspaceHandle, state: DesignerLibraryState) => Promise<boolean>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  saveState: (workspace: ProjectLibraryHandle, state: DesignerLibraryState) => Promise<boolean>,
 ) => async (event: DesignerRequest, input: unknown): Promise<boolean> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isSaveInput(input)) return false;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return false;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return false;
   return saveState(workspace, input.state);
 };
 
 export const readDesignerArtworkHandler = (
   window: DesignerWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  readArtwork: (workspace: WorkspaceHandle, workspaceId: string, artworkId: string) => Promise<{ artworkId: string; dataUrl: string } | null>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  readArtwork: (workspace: ProjectLibraryHandle, workspaceId: string, artworkId: string) => Promise<{ artworkId: string; dataUrl: string } | null>,
 ) => async (event: DesignerRequest, input: unknown): Promise<{ artworkId: string; dataUrl: string } | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isArtworkReadInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return readArtwork(workspace, input.workspaceId, input.artworkId);
 };

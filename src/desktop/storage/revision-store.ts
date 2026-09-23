@@ -5,8 +5,8 @@ import { basename, dirname, join } from 'node:path';
 
 import type { CommitRevisionInput, RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
 import type { DesignScene } from '../../features/canvas/scene';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import { getWritableWorkspaceLease } from './workspace-store';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
+import { getWritableProjectLibraryLease } from './project-library-store';
 import { resolveProjectDirectory } from './project-store';
 
 export type PersistedRevisionState = {
@@ -73,9 +73,9 @@ const getDocumentsDirectory = (projectDirectory: string, writable: boolean): str
   return directory;
 };
 
-const validateTarget = (handle: WorkspaceHandle, workspaceId: string, projectId: string, documentId: string, writable: boolean): { directory: string; file: string } => {
-  if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
-  if (writable && !getWritableWorkspaceLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
+const validateTarget = (handle: ProjectLibraryHandle, workspaceId: string, projectId: string, documentId: string, writable: boolean): { directory: string; file: string } => {
+  if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  if (writable && !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
   const projectDirectory = resolveProjectDirectory(handle, projectId);
   if (!projectDirectory) throw new Error('PROJECT_NOT_FOUND');
   const metadataPath = join(projectDirectory, 'designhub.project.json');
@@ -113,12 +113,12 @@ const writeState = async (file: string, state: PersistedRevisionState): Promise<
 
 const fingerprint = (input: CommitRevisionInput): string => JSON.stringify({ projectId: input.projectId, documentId: input.documentId, baseRevisionId: input.baseRevisionId, operationId: input.operationId, sceneAssetId: input.sceneAssetId, assetIds: input.assetIds, contributions: input.contributions, operatorName: input.operatorName, scene: input.scene });
 
-export const loadDocumentRevisions = async (handle: WorkspaceHandle, workspaceId: string, projectId: string, documentId: string): Promise<PersistedRevisionState> => {
+export const loadDocumentRevisions = async (handle: ProjectLibraryHandle, workspaceId: string, projectId: string, documentId: string): Promise<PersistedRevisionState> => {
   const target = validateTarget(handle, workspaceId, projectId, documentId, false);
   return readState(target.file);
 };
 
-export const commitDocumentRevision = async (handle: WorkspaceHandle, input: CommitRevisionInput & { workspaceId: string }): Promise<{ revisionId: string }> => {
+export const commitDocumentRevision = async (handle: ProjectLibraryHandle, input: CommitRevisionInput & { workspaceId: string }): Promise<{ revisionId: string }> => {
   const target = validateTarget(handle, input.workspaceId, input.projectId, input.documentId, true);
   const state = await readState(target.file);
   const existing = state.revisions.find((revision) => revision.operationId === input.operationId);
@@ -134,7 +134,7 @@ export const commitDocumentRevision = async (handle: WorkspaceHandle, input: Com
   return { revisionId: revision.revisionId };
 };
 
-export const setFinalDocumentRevision = async (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string; documentId: string; revisionId: string }): Promise<boolean> => {
+export const setFinalDocumentRevision = async (handle: ProjectLibraryHandle, input: { workspaceId: string; projectId: string; documentId: string; revisionId: string }): Promise<boolean> => {
   const target = validateTarget(handle, input.workspaceId, input.projectId, input.documentId, true);
   const state = await readState(target.file);
   const revision = state.revisions.find((entry) => entry.revisionId === input.revisionId);

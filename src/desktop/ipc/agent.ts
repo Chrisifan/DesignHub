@@ -1,6 +1,6 @@
 import { designGenerationSlotIds, type DesignGenerationSlotId, type TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, DesignGenerationInput, DesignGenerationSlotRetryInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
@@ -119,11 +119,11 @@ const isPortfolioAnalysisInput = (value: unknown): value is PortfolioAnalysisBri
 };
 const isCancelInput = (value: unknown): value is { workspaceId: string; taskId: string } => value !== null
   && typeof value === 'object'
-  && isNonEmpty((value as Record<string, unknown>).workspaceId)
+  && isNonEmpty((value as Record<string, unknown>).libraryId)
   && isNonEmpty((value as Record<string, unknown>).taskId);
 const isDesignGenerationSlotRetryInput = (value: unknown): value is DesignGenerationSlotRetryInput => value !== null
   && typeof value === 'object'
-  && isNonEmpty((value as Record<string, unknown>).workspaceId)
+  && isNonEmpty((value as Record<string, unknown>).libraryId)
   && isNonEmpty((value as Record<string, unknown>).taskId)
   && designGenerationSlotIds.includes((value as Record<string, unknown>).slotId as DesignGenerationSlotId);
 const isImageGenerationInput = (value: unknown): value is ImageGenerationBridgeInput => {
@@ -193,132 +193,132 @@ const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
 export const createConversationHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  submit: (workspace: WorkspaceHandle, input: ConversationBridgeInput) => Promise<TaskRecord>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  submit: (workspace: ProjectLibraryHandle, input: ConversationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isConversationInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return submit(workspace, input);
 };
 
 export const createConversationTestHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  submit: (workspace: WorkspaceHandle, input: ConversationTestBridgeInput) => Promise<ConversationTestResult>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  submit: (workspace: ProjectLibraryHandle, input: ConversationTestBridgeInput) => Promise<ConversationTestResult>,
 ) => async (event: AgentRequest, input: unknown): Promise<ConversationTestResult | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isConversationTestInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return submit(workspace, input);
 };
 
 export const createDesignGenerationHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  submit: (workspace: WorkspaceHandle, input: DesignGenerationBridgeInput) => Promise<TaskRecord>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  submit: (workspace: ProjectLibraryHandle, input: DesignGenerationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignGenerationInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
   return submit(workspace, input);
 };
 
 export const createPortfolioAnalysisHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  submit: (workspace: WorkspaceHandle, input: PortfolioAnalysisBridgeInput) => Promise<TaskRecord>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  submit: (workspace: ProjectLibraryHandle, input: PortfolioAnalysisBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isPortfolioAnalysisInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return submit(workspace, input);
 };
 
 export const createImageGenerationHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  submit: (workspace: WorkspaceHandle, input: ImageGenerationBridgeInput) => Promise<TaskRecord>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  submit: (workspace: ProjectLibraryHandle, input: ImageGenerationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageGenerationInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return submit(workspace, input);
 };
 
 export const createImageGenerationTestHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  submit: (workspace: WorkspaceHandle, input: ImageGenerationTestBridgeInput) => Promise<ImageGenerationTestResult>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  submit: (workspace: ProjectLibraryHandle, input: ImageGenerationTestBridgeInput) => Promise<ImageGenerationTestResult>,
 ) => async (event: AgentRequest, input: unknown): Promise<ImageGenerationTestResult | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageGenerationTestInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return submit(workspace, input);
 };
 
 export const createDesignerArtworkGenerationHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  submit: (workspace: WorkspaceHandle, input: DesignerArtworkGenerationInput) => Promise<TaskRecord>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  submit: (workspace: ProjectLibraryHandle, input: DesignerArtworkGenerationInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignerArtworkGenerationInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
   return submit(workspace, input);
 };
 
 export const createImageEditHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  submit: (workspace: WorkspaceHandle, input: ImageEditBridgeInput) => Promise<TaskRecord>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  submit: (workspace: ProjectLibraryHandle, input: ImageEditBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageEditInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return submit(workspace, input);
 };
 
 export const cancelTaskHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  cancel: (workspace: WorkspaceHandle, taskId: string) => Promise<boolean>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  cancel: (workspace: ProjectLibraryHandle, taskId: string) => Promise<boolean>,
 ) => async (event: AgentRequest, input: unknown): Promise<boolean> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCancelInput(input)) return false;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return false;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return false;
   return cancel(workspace, input.taskId);
 };
 
 export const retryTaskHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  retry: (workspace: WorkspaceHandle, taskId: string) => Promise<TaskRecord | undefined>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  retry: (workspace: ProjectLibraryHandle, taskId: string) => Promise<TaskRecord | undefined>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCancelInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return (await retry(workspace, input.taskId)) ?? null;
 };
 
 export const createDesignGenerationSlotRetryHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  retry: (workspace: WorkspaceHandle, input: DesignGenerationSlotRetryInput) => Promise<TaskRecord>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  retry: (workspace: ProjectLibraryHandle, input: DesignGenerationSlotRetryInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignGenerationSlotRetryInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
   return retry(workspace, input);
 };
 

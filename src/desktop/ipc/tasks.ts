@@ -1,5 +1,5 @@
 import { isPortfolioAnalysisDiagnostic, isSafeProviderCode, taskRecordKeys, type TaskRecord } from '../../features/tasks/state';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const taskListChannel = 'task:list';
@@ -37,25 +37,25 @@ const isTaskList = (value: unknown): value is TaskRecord[] => Array.isArray(valu
 export const listTasksHandler = (
   window: TaskWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  load: (workspace: WorkspaceHandle, workspaceId: string) => Promise<TaskRecord[]>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  load: (workspace: ProjectLibraryHandle, workspaceId: string) => Promise<TaskRecord[]>,
 ) => async (event: TaskRequest, workspaceId: unknown): Promise<TaskRecord[] | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isWorkspaceId(workspaceId)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== workspaceId) return null;
   return load(workspace, workspaceId);
 };
 
 export const saveTasksHandler = (
   window: TaskWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  save: (workspace: WorkspaceHandle, workspaceId: string, tasks: TaskRecord[]) => Promise<boolean>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  save: (workspace: ProjectLibraryHandle, workspaceId: string, tasks: TaskRecord[]) => Promise<boolean>,
 ) => async (event: TaskRequest, input: unknown): Promise<boolean> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return false;
   const value = input as Record<string, unknown>;
   if (!isWorkspaceId(value.workspaceId) || !isTaskList(value.tasks)) return false;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== value.workspaceId) return false;
+  if (!workspace || workspace.library.libraryId !== value.workspaceId) return false;
   return save(workspace, value.workspaceId, value.tasks);
 };

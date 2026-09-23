@@ -9,6 +9,7 @@ import type { ProjectLibraryDescriptor, ProjectLibraryHandle } from '../../featu
 import { getOpenMode } from '../../features/workspace/open-mode';
 
 export const projectLibraryManifestName = 'designhub.library.json';
+export const projectLibraryMigrationStateName = 'project-library-migration.json';
 
 const projectLibraryKind = 'designhub-project-library';
 const projectLibraryFormatVersion = 1;
@@ -101,7 +102,7 @@ const readProjectLibraryManifest = async (directory: string): Promise<ProjectLib
   return value;
 };
 
-const initializeWriterLock = (directory: string): void => {
+export const initializeProjectLibraryWriterLock = (directory: string): void => {
   const database = new Database(join(directory, internalDirectoryName, writerLockName));
   try {
     database.pragma('journal_mode = DELETE');
@@ -257,7 +258,7 @@ export const initializeProjectLibrary = async (directory: string): Promise<Proje
       await mkdir(managedDirectory);
       createdDirectories.push(managedDirectory);
     }
-    initializeWriterLock(canonicalDirectory);
+    initializeProjectLibraryWriterLock(canonicalDirectory);
     const manifest: ProjectLibraryManifest = {
       kind: projectLibraryKind,
       libraryId: randomUUID(),

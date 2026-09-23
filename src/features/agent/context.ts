@@ -6,6 +6,7 @@ export type ContextAsset = {
 export type DesignGenerationContext = {
   version: 1;
   workspaceId: string;
+  libraryId?: string;
   projectId: string;
   documentId: string;
   brief: string;

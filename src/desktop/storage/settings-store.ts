@@ -4,8 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import { isWorkspaceSettings, type WorkspaceSettings } from '../../features/workspace/settings';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import { getWritableWorkspaceLease } from './workspace-store';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
+import { getWritableProjectLibraryLease } from './project-library-store';
 
 export const workspaceSettingsFileName = 'settings.json';
 const internalDirectoryName = '.designhub';
@@ -13,9 +13,9 @@ const internalDirectoryName = '.designhub';
 export type { WorkspaceBackupSettings, WorkspaceSettings } from '../../features/workspace/settings';
 export { isWorkspaceSettings } from '../../features/workspace/settings';
 
-const getInternalDirectory = (handle: WorkspaceHandle, workspaceId: string, writable: boolean): string => {
-  if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
-  const directory = writable ? getWritableWorkspaceLease(handle)?.directory : handle.workspace.directory;
+const getInternalDirectory = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
+  if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const directory = writable ? getWritableProjectLibraryLease(handle)?.directory : handle.library.directory;
   if (!directory) throw new Error('WORKSPACE_NOT_WRITABLE');
   const internal = join(directory, internalDirectoryName);
   let status: ReturnType<typeof lstat>;
@@ -39,7 +39,7 @@ const assertRegularSettingsFile = (path: string, allowMissing: boolean): void =>
   }
 };
 
-export const loadWorkspaceSettings = async (handle: WorkspaceHandle, workspaceId: string): Promise<WorkspaceSettings | null> => {
+export const loadWorkspaceSettings = async (handle: ProjectLibraryHandle, workspaceId: string): Promise<WorkspaceSettings | null> => {
   const path = join(getInternalDirectory(handle, workspaceId, false), workspaceSettingsFileName);
   assertRegularSettingsFile(path, true);
   try {
@@ -54,7 +54,7 @@ export const loadWorkspaceSettings = async (handle: WorkspaceHandle, workspaceId
   }
 };
 
-export const saveWorkspaceSettings = async (handle: WorkspaceHandle, workspaceId: string, settings: WorkspaceSettings): Promise<boolean> => {
+export const saveWorkspaceSettings = async (handle: ProjectLibraryHandle, workspaceId: string, settings: WorkspaceSettings): Promise<boolean> => {
   const directory = getInternalDirectory(handle, workspaceId, true);
   if (!isWorkspaceSettings(settings)) throw new Error('INVALID_WORKSPACE_SETTINGS');
   const destination = join(directory, workspaceSettingsFileName);

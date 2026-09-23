@@ -1,6 +1,6 @@
 import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, DuplicateProjectInput, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../../features/workspace/project-store';
 import type { ProjectCanvasLayout, ProjectDesign, ProjectMetadata } from '../../features/projects/metadata';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isTrustedWorkspaceRequest } from './workspace';
 import { isProjectGenerationRatio } from '../../features/projects/size';
 
@@ -96,158 +96,158 @@ const isCanvasLayoutInput = (value: unknown): value is { workspaceId: string; pr
 export const listActiveProjectsHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  listProjects: (workspace: WorkspaceHandle) => Promise<ActiveProject[]>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  listProjects: (workspace: ProjectLibraryHandle) => Promise<ActiveProject[]>,
 ) => async (event: ProjectRequest, workspaceId: unknown): Promise<ActiveProject[] | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isWorkspaceId(workspaceId)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== workspaceId) return null;
   return listProjects(workspace);
 };
 
 export const createProjectContainerHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  createProject: (workspace: WorkspaceHandle, input: CreateProjectContainerInput) => Promise<CreateProjectContainerResult>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  createProject: (workspace: ProjectLibraryHandle, input: CreateProjectContainerInput) => Promise<CreateProjectContainerResult>,
 ) => async (event: ProjectRequest, input: unknown): Promise<CreateProjectContainerResult | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCreateInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return createProject(workspace, input);
 };
 
 export const duplicateProjectHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  duplicateProject: (workspace: WorkspaceHandle, input: DuplicateProjectInput) => Promise<CreateProjectContainerResult>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  duplicateProject: (workspace: ProjectLibraryHandle, input: DuplicateProjectInput) => Promise<CreateProjectContainerResult>,
 ) => async (event: ProjectRequest, input: unknown): Promise<CreateProjectContainerResult | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDuplicateInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return duplicateProject(workspace, input);
 };
 
 export const getProjectMetadataHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  getMetadata: (workspace: WorkspaceHandle, projectId: string) => Promise<ProjectMetadata | null>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  getMetadata: (workspace: ProjectLibraryHandle, projectId: string) => Promise<ProjectMetadata | null>,
 ) => async (event: ProjectRequest, input: unknown): Promise<ProjectMetadata | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
   const value = input as Record<string, unknown>;
   if (!isWorkspaceId(value.workspaceId) || !isWorkspaceId(value.projectId)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== value.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== value.workspaceId) return null;
   return getMetadata(workspace, value.projectId);
 };
 
 export const updateProjectMetadataHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  updateMetadata: (workspace: WorkspaceHandle, input: UpdateProjectMetadataInput) => Promise<ProjectMetadata>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  updateMetadata: (workspace: ProjectLibraryHandle, input: UpdateProjectMetadataInput) => Promise<ProjectMetadata>,
 ) => async (event: ProjectRequest, input: unknown): Promise<ProjectMetadata | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isMetadataInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return updateMetadata(workspace, input);
 };
 
 export const addProjectDesignsHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  addDesigns: (workspace: WorkspaceHandle, input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[]>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  addDesigns: (workspace: ProjectLibraryHandle, input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[]>,
 ) => async (event: ProjectRequest, input: unknown): Promise<ProjectDesign[] | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isProjectDesignsInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
   return addDesigns(workspace, input);
 };
 
 export const listProjectDesignsHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  listDesigns: (workspace: WorkspaceHandle, input: { workspaceId: string; projectId: string }) => Promise<ProjectDesign[]>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  listDesigns: (workspace: ProjectLibraryHandle, input: { workspaceId: string; projectId: string }) => Promise<ProjectDesign[]>,
 ) => async (event: ProjectRequest, input: unknown): Promise<ProjectDesign[] | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isProjectRef(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return listDesigns(workspace, input);
 };
 
 export const loadProjectCanvasLayoutHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  loadLayout: (workspace: WorkspaceHandle, input: { workspaceId: string; projectId: string }) => Promise<ProjectCanvasLayout | null>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  loadLayout: (workspace: ProjectLibraryHandle, input: { workspaceId: string; projectId: string }) => Promise<ProjectCanvasLayout | null>,
 ) => async (event: ProjectRequest, input: unknown): Promise<ProjectCanvasLayout | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isProjectRef(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return loadLayout(workspace, input);
 };
 
 export const saveProjectCanvasLayoutHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  saveLayout: (workspace: WorkspaceHandle, input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  saveLayout: (workspace: ProjectLibraryHandle, input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout>,
 ) => async (event: ProjectRequest, input: unknown): Promise<ProjectCanvasLayout | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCanvasLayoutInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
   return saveLayout(workspace, input);
 };
 
 export const listTrashedProjectsHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  listProjects: (workspace: WorkspaceHandle) => Promise<TrashedProject[]>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  listProjects: (workspace: ProjectLibraryHandle) => Promise<TrashedProject[]>,
 ) => async (event: ProjectRequest, workspaceId: unknown): Promise<TrashedProject[] | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isWorkspaceId(workspaceId)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== workspaceId) return null;
   return listProjects(workspace);
 };
 
 export const moveProjectToTrashHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  moveProject: (workspace: WorkspaceHandle, input: TrashProjectInput) => Promise<TrashedProject>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  moveProject: (workspace: ProjectLibraryHandle, input: TrashProjectInput) => Promise<TrashedProject>,
 ) => async (event: ProjectRequest, input: unknown): Promise<TrashedProject | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTrashInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return moveProject(workspace, input);
 };
 
 export const restoreProjectFromTrashHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  restoreProject: (workspace: WorkspaceHandle, input: TrashProjectInput) => Promise<RestoreProjectResult>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  restoreProject: (workspace: ProjectLibraryHandle, input: TrashProjectInput) => Promise<RestoreProjectResult>,
 ) => async (event: ProjectRequest, input: unknown): Promise<RestoreProjectResult | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTrashInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return restoreProject(workspace, input);
 };
 
 export const purgeProjectFromTrashHandler = (
   window: ProjectWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  purgeProject: (workspace: WorkspaceHandle, input: TrashProjectInput) => Promise<void>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  purgeProject: (workspace: ProjectLibraryHandle, input: TrashProjectInput) => Promise<void>,
 ) => async (event: ProjectRequest, input: unknown): Promise<boolean | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTrashInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   await purgeProject(workspace, input);
   return true;
 };

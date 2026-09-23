@@ -1,6 +1,6 @@
 import type { PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { TaskRecord } from '../../features/tasks/state';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type { PortfolioInspection, PortfolioInspectionRequest, PortfolioSelectionInput, PortfolioUploadFile } from '../../platform/contracts';
 import type { PortfolioSourceInspector } from '../portfolio-source-inspector';
 import { isTrustedWorkspaceRequest } from './workspace';
@@ -72,18 +72,18 @@ const isSelectionInput = (value: unknown): value is PortfolioSelectionBridgeInpu
     && sourceCount <= 8;
 };
 const isDiscardInput = (value: unknown): value is { workspaceId: string; inspectionId: string } => value !== null && typeof value === 'object'
-  && isNonEmpty((value as Record<string, unknown>).workspaceId) && isIdentifier((value as Record<string, unknown>).inspectionId);
+  && isNonEmpty((value as Record<string, unknown>).libraryId) && isIdentifier((value as Record<string, unknown>).inspectionId);
 
 export const createPortfolioInspectionHandler = (
   window: PortfolioWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
+  getWorkspace: () => ProjectLibraryHandle | null,
   chooseFiles: FileChooser,
   inspector: PortfolioSourceInspector,
 ) => async (event: PortfolioRequestEvent, input: unknown): Promise<PortfolioInspection | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isInspectionInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   if (input.request.kind === 'uploaded-files') return inspector.inspectUploadedFiles(input.request.files);
   const paths = await chooseFiles();
   if (!paths?.length) return null;
@@ -93,13 +93,13 @@ export const createPortfolioInspectionHandler = (
 export const createPortfolioSelectionHandler = (
   window: PortfolioWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
+  getWorkspace: () => ProjectLibraryHandle | null,
   inspector: PortfolioSourceInspector,
-  submit: (workspace: WorkspaceHandle, input: PortfolioAnalysisInput) => Promise<TaskRecord>,
+  submit: (workspace: ProjectLibraryHandle, input: PortfolioAnalysisInput) => Promise<TaskRecord>,
 ) => async (event: PortfolioRequestEvent, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isSelectionInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode === 'read-only') return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode === 'read-only') return null;
   const sourceBatches = await Promise.all(input.selections.map((selection) => inspector.selectedSources(selection.inspectionId, selection.sourceIds)));
   const sources = sourceBatches.flat();
   if (sources.length === 0 || sources.length > 8 || new Set(sources.map((source) => source.id)).size !== sources.length) throw new Error('PORTFOLIO_SOURCE_LIMIT');
@@ -114,12 +114,12 @@ export const createPortfolioSelectionHandler = (
 export const createPortfolioDiscardHandler = (
   window: PortfolioWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
+  getWorkspace: () => ProjectLibraryHandle | null,
   inspector: PortfolioSourceInspector,
 ) => (event: PortfolioRequestEvent, input: unknown): boolean => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDiscardInput(input)) return false;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return false;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return false;
   inspector.discard(input.inspectionId);
   return true;
 };

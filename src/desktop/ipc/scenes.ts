@@ -1,5 +1,5 @@
 import { isTrustedWorkspaceRequest } from './workspace';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isScene } from '../../features/canvas/scene';
 import type { DesignScene } from '../../features/canvas/scene';
 
@@ -34,23 +34,23 @@ const isSaveInput = (value: unknown): value is SceneSaveInput => isTarget(value)
 export const loadDocumentSceneHandler = (
   window: SceneWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  loadScene: (workspace: WorkspaceHandle, projectId: string, documentId: string) => Promise<DesignScene | null>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  loadScene: (workspace: ProjectLibraryHandle, projectId: string, documentId: string) => Promise<DesignScene | null>,
 ) => async (event: SceneRequest, input: unknown): Promise<DesignScene | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTarget(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return loadScene(workspace, input.projectId, input.documentId);
 };
 
 export const saveDocumentSceneHandler = (
   window: SceneWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  saveScene: (workspace: WorkspaceHandle, projectId: string, documentId: string, scene: DesignScene) => Promise<boolean>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  saveScene: (workspace: ProjectLibraryHandle, projectId: string, documentId: string, scene: DesignScene) => Promise<boolean>,
 ) => async (event: SceneRequest, input: unknown): Promise<boolean> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isSaveInput(input)) return false;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return false;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return false;
   return saveScene(workspace, input.projectId, input.documentId, input.scene);
 };

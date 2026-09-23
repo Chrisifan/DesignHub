@@ -4,8 +4,8 @@ import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isDesignerLibraryState, normalizeDesignerState, type DesignerLibraryState } from '../../features/designers/persistence';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import { getWritableWorkspaceLease } from './workspace-store';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
+import { getWritableProjectLibraryLease } from './project-library-store';
 
 export const designersFileName = 'designers.json';
 
@@ -31,14 +31,14 @@ const getInternalDirectory = (workspaceDirectory: string): string => {
   return directory;
 };
 
-const getWorkspaceDirectory = (handle: WorkspaceHandle, workspaceId: string, writable: boolean): string => {
-  if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+const getWorkspaceDirectory = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
+  if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   if (writable) {
-    const lease = getWritableWorkspaceLease(handle);
+    const lease = getWritableProjectLibraryLease(handle);
     if (!lease) throw new Error('WORKSPACE_NOT_WRITABLE');
     return getInternalDirectory(lease.directory);
   }
-  return getInternalDirectory(handle.workspace.directory);
+  return getInternalDirectory(handle.library.directory);
 };
 
 const assertRegularDesignerFile = (path: string, allowMissing: boolean): void => {
@@ -95,7 +95,7 @@ const parseArtworkMimeType = (value: unknown): string => {
 };
 
 export const loadDesignerState = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   workspaceId: string,
 ): Promise<DesignerLibraryState | null> => {
   const directory = getWorkspaceDirectory(handle, workspaceId, false);
@@ -106,7 +106,7 @@ export const loadDesignerState = async (
     const value: unknown = JSON.parse(await readFile(filePath, 'utf8'));
     if (!isDesignerLibraryState(value)) throw new Error('INVALID_DESIGNER_STATE');
     const normalized = normalizeDesignerState(value);
-    if (handle.workspace.openMode === 'writable' && JSON.stringify(normalized) !== JSON.stringify(value)) {
+    if (handle.library.openMode === 'writable' && JSON.stringify(normalized) !== JSON.stringify(value)) {
       try {
         await saveDesignerState(handle, workspaceId, normalized);
       } catch {
@@ -122,7 +122,7 @@ export const loadDesignerState = async (
 };
 
 export const saveDesignerState = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   workspaceId: string,
   state: DesignerLibraryState,
 ): Promise<boolean> => {
@@ -142,7 +142,7 @@ export const saveDesignerState = async (
 };
 
 export const saveDesignerArtwork = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   workspaceId: string,
   artworkId: string,
   bytes: Uint8Array,
@@ -171,7 +171,7 @@ export const saveDesignerArtwork = async (
 };
 
 export const readDesignerArtwork = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   workspaceId: string,
   artworkId: string,
 ): Promise<{ artworkId: string; dataUrl: string } | null> => {

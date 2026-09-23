@@ -3,6 +3,7 @@ import type { ProjectGenerationRatio } from '../projects/size';
 
 export type CreateProjectContainerInput = {
   workspaceId: string;
+  libraryId?: string;
   operationId: string;
   name: string;
   generationRatio?: ProjectGenerationRatio;
@@ -23,6 +24,7 @@ export type CreateProjectContainerResult = {
 
 export type DuplicateProjectInput = {
   workspaceId: string;
+  libraryId?: string;
   sourceProjectId: string;
   operationId: string;
   name?: string;
@@ -30,6 +32,7 @@ export type DuplicateProjectInput = {
 
 export type ImportProjectPackageInput = {
   workspaceId: string;
+  libraryId?: string;
   operationId: string;
   archive: Uint8Array;
 };
@@ -58,12 +61,14 @@ export type ActiveProject = {
 
 export type UpdateProjectMetadataInput = {
   workspaceId: string;
+  libraryId?: string;
   projectId: string;
   patch: ProjectMetadataPatch;
 };
 
 export type TrashProjectInput = {
   workspaceId: string;
+  libraryId?: string;
   projectId: string;
 };
 
@@ -85,10 +90,14 @@ export type ProjectStore = {
   listActiveProjects: () => Promise<ActiveProject[]>;
   getProjectMetadata: (projectId: string) => Promise<ProjectMetadata | null>;
   updateProjectMetadata: (input: UpdateProjectMetadataInput) => Promise<ProjectMetadata>;
-  addProjectDesigns: (input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[]>;
-  listProjectDesigns: (input: { workspaceId: string; projectId: string }) => Promise<ProjectDesign[]>;
-  loadProjectCanvasLayout: (input: { workspaceId: string; projectId: string }) => Promise<ProjectCanvasLayout | null>;
-  saveProjectCanvasLayout: (input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout>;
+  addProjectDesigns: (input: { workspaceId: string;
+  libraryId?: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[]>;
+  listProjectDesigns: (input: { workspaceId: string;
+  libraryId?: string; projectId: string }) => Promise<ProjectDesign[]>;
+  loadProjectCanvasLayout: (input: { workspaceId: string;
+  libraryId?: string; projectId: string }) => Promise<ProjectCanvasLayout | null>;
+  saveProjectCanvasLayout: (input: { workspaceId: string;
+  libraryId?: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout>;
   moveProjectToTrash: (input: TrashProjectInput) => Promise<TrashedProject>;
   listTrashedProjects: () => Promise<TrashedProject[]>;
   restoreProjectFromTrash: (input: TrashProjectInput) => Promise<RestoreProjectResult>;

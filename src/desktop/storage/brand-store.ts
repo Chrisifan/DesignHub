@@ -4,8 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import { isBrandLibraryState, normalizeBrandLibraryState, type Brand, type BrandLibraryState } from '../../features/brands/constraints';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import { getWritableWorkspaceLease } from './workspace-store';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
+import { getWritableProjectLibraryLease } from './project-library-store';
 
 export const brandsFileName = 'brands.json';
 const internalDirectoryName = '.designhub';
@@ -18,14 +18,14 @@ const getInternalDirectory = (workspaceDirectory: string): string => {
   return directory;
 };
 
-const getWorkspaceDirectory = (handle: WorkspaceHandle, workspaceId: string, writable: boolean): string => {
-  if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+const getWorkspaceDirectory = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
+  if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   if (writable) {
-    const lease = getWritableWorkspaceLease(handle);
+    const lease = getWritableProjectLibraryLease(handle);
     if (!lease) throw new Error('WORKSPACE_NOT_WRITABLE');
     return getInternalDirectory(lease.directory);
   }
-  return getInternalDirectory(handle.workspace.directory);
+  return getInternalDirectory(handle.library.directory);
 };
 
 const assertRegularBrandFile = (path: string, allowMissing: boolean): void => {
@@ -39,7 +39,7 @@ const assertRegularBrandFile = (path: string, allowMissing: boolean): void => {
   }
 };
 
-export const loadBrandState = async (handle: WorkspaceHandle, workspaceId: string): Promise<BrandLibraryState | null> => {
+export const loadBrandState = async (handle: ProjectLibraryHandle, workspaceId: string): Promise<BrandLibraryState | null> => {
   const path = join(getWorkspaceDirectory(handle, workspaceId, false), brandsFileName);
   assertRegularBrandFile(path, true);
   try {
@@ -47,7 +47,7 @@ export const loadBrandState = async (handle: WorkspaceHandle, workspaceId: strin
     const value: unknown = JSON.parse(await readFile(path, 'utf8'));
     if (!isBrandLibraryState(value)) throw new Error('INVALID_BRAND_STATE');
     const normalized = normalizeBrandLibraryState(value);
-    if (handle.workspace.openMode === 'writable' && JSON.stringify(normalized) !== JSON.stringify(value)) {
+    if (handle.library.openMode === 'writable' && JSON.stringify(normalized) !== JSON.stringify(value)) {
       try {
         await saveBrandState(handle, workspaceId, normalized);
       } catch {
@@ -62,7 +62,7 @@ export const loadBrandState = async (handle: WorkspaceHandle, workspaceId: strin
   }
 };
 
-export const saveBrandState = async (handle: WorkspaceHandle, workspaceId: string, state: BrandLibraryState): Promise<boolean> => {
+export const saveBrandState = async (handle: ProjectLibraryHandle, workspaceId: string, state: BrandLibraryState): Promise<boolean> => {
   const directory = getWorkspaceDirectory(handle, workspaceId, true);
   if (!isBrandLibraryState(state)) throw new Error('INVALID_BRAND_STATE');
   const normalized = normalizeBrandLibraryState(state);

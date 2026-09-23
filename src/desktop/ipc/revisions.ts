@@ -1,5 +1,5 @@
 import type { CommitRevisionInput, RevisionTimelineEvent, RevisionRecord } from '../../features/revisions/model';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const revisionLoadChannel = 'revision:load';
@@ -13,7 +13,7 @@ type Target = { workspaceId: string; projectId: string; documentId: string };
 export type RevisionState = { revisions: RevisionRecord[]; timeline: RevisionTimelineEvent[]; finalRevisionId: string | null };
 
 const isId = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !/[\\/\u0000]/u.test(value);
-const isTarget = (value: unknown): value is Target => typeof value === 'object' && value !== null && isId((value as Record<string, unknown>).workspaceId) && isId((value as Record<string, unknown>).projectId) && isId((value as Record<string, unknown>).documentId);
+const isTarget = (value: unknown): value is Target => typeof value === 'object' && value !== null && isId((value as Record<string, unknown>).libraryId) && isId((value as Record<string, unknown>).projectId) && isId((value as Record<string, unknown>).documentId);
 const isCommitInput = (value: unknown): value is Target & CommitRevisionInput => {
   if (!isTarget(value)) return false;
   const input = value as Record<string, unknown>;
@@ -28,35 +28,35 @@ const isCommitInput = (value: unknown): value is Target & CommitRevisionInput =>
 export const loadRevisionsHandler = (
   window: RevisionWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  load: (workspace: WorkspaceHandle, target: Target) => Promise<RevisionState>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  load: (workspace: ProjectLibraryHandle, target: Target) => Promise<RevisionState>,
 ) => async (event: RevisionRequest, input: unknown): Promise<RevisionState | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTarget(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return load(workspace, input);
 };
 
 export const commitRevisionHandler = (
   window: RevisionWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  commit: (workspace: WorkspaceHandle, input: Target & CommitRevisionInput) => Promise<{ revisionId: string }>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  commit: (workspace: ProjectLibraryHandle, input: Target & CommitRevisionInput) => Promise<{ revisionId: string }>,
 ) => async (event: RevisionRequest, input: unknown): Promise<{ revisionId: string } | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCommitInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
   return commit(workspace, input);
 };
 
 export const finalizeRevisionHandler = (
   window: RevisionWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  finalize: (workspace: WorkspaceHandle, input: Target & { revisionId: string }) => Promise<boolean>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  finalize: (workspace: ProjectLibraryHandle, input: Target & { revisionId: string }) => Promise<boolean>,
 ) => async (event: RevisionRequest, input: unknown): Promise<boolean | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTarget(input) || !isId((input as Record<string, unknown>).revisionId)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
   return finalize(workspace, input as Target & { revisionId: string });
 };

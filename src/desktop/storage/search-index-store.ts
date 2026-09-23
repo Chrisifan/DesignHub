@@ -5,8 +5,8 @@ import Database from 'better-sqlite3';
 
 import { buildSearchIndex, type SearchIndexItem, type SearchQuery, type SearchRecord } from '../../features/library/indexer';
 import { matchesDesigner, matchesSearch } from '../../features/library/filter';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import { getWritableWorkspaceLease } from './workspace-store';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
+import { getWritableProjectLibraryLease } from './project-library-store';
 
 export const searchIndexDatabaseName = 'search-index.sqlite';
 const internalDirectoryName = '.designhub';
@@ -19,8 +19,8 @@ export type SearchIndexStore = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
-const getInternalDirectory = (handle: WorkspaceHandle): string => {
-  const directory = getWritableWorkspaceLease(handle)?.directory ?? handle.workspace.directory;
+const getInternalDirectory = (handle: ProjectLibraryHandle): string => {
+  const directory = getWritableProjectLibraryLease(handle)?.directory ?? handle.library.directory;
   const internal = join(directory, internalDirectoryName);
   let status: ReturnType<typeof lstatSync>;
   try {
@@ -116,10 +116,10 @@ const parsePayload = (value: unknown): SearchIndexItem | null => {
   return value as unknown as SearchIndexItem;
 };
 
-export const createSearchIndexStore = (handle: WorkspaceHandle): SearchIndexStore => {
+export const createSearchIndexStore = (handle: ProjectLibraryHandle): SearchIndexStore => {
   const directory = getInternalDirectory(handle);
   const databasePath = join(directory, searchIndexDatabaseName);
-  const writable = handle.workspace.openMode === 'writable' && Boolean(getWritableWorkspaceLease(handle));
+  const writable = handle.library.openMode === 'writable' && Boolean(getWritableProjectLibraryLease(handle));
   if (!writable && !existsSync(databasePath)) {
     return {
       replace: async () => { throw new Error('WORKSPACE_NOT_WRITABLE'); },
@@ -137,7 +137,7 @@ export const createSearchIndexStore = (handle: WorkspaceHandle): SearchIndexStor
     };
   }
   const replace = async (records: readonly SearchRecord[]): Promise<void> => {
-    if (handle.workspace.openMode !== 'writable' || !getWritableWorkspaceLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
+    if (handle.library.openMode !== 'writable' || !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
     const items = buildSearchIndex(records);
     const transaction = database.transaction((next: readonly SearchIndexItem[]): void => {
       database.prepare('DELETE FROM search_documents').run();

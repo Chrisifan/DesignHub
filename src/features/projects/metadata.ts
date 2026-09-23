@@ -31,6 +31,7 @@ export type ProjectCanvasLayout = {
 export type ProjectMetadata = {
   projectId: string;
   workspaceId: string;
+  libraryId?: string;
   name: string;
   generationRatio?: ProjectGenerationRatio;
   brief?: string;
@@ -50,6 +51,7 @@ export type ProjectMetadata = {
 export type ProjectMetadataInput = {
   projectId: string;
   workspaceId: string;
+  libraryId?: string;
   name: string;
   generationRatio?: ProjectGenerationRatio;
   brief?: string;

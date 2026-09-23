@@ -1,4 +1,4 @@
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type { BackupArtifact, RestoreBackupResult } from '../../features/workspace/backup';
 import { isTrustedWorkspaceRequest } from './workspace';
 
@@ -15,14 +15,14 @@ const isDirectory = (value: unknown): value is string => typeof value === 'strin
 export const createBackupHandler = (
   window: BackupWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  createBackup: (workspace: WorkspaceHandle, destinationParentDirectory: string) => Promise<BackupArtifact>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  createBackup: (workspace: ProjectLibraryHandle, destinationParentDirectory: string) => Promise<BackupArtifact>,
 ) => async (event: BackupRequest, input: unknown): Promise<BackupArtifact | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
   const value = input as Record<string, unknown>;
   if (!isWorkspaceId(value.workspaceId) || !isDirectory(value.destinationParentDirectory)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== value.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== value.workspaceId) return null;
   return createBackup(workspace, value.destinationParentDirectory);
 };
 

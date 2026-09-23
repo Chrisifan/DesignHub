@@ -25,6 +25,7 @@ import {
 } from './ipc/credentials';
 import { openWorkspaceForActivation, recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore, resolveProjectDirectory } from './storage/project-store';
+import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 import { addProjectDesignsHandler, createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listProjectDesignsHandler, listTrashedProjectsHandler, loadProjectCanvasLayoutHandler, moveProjectToTrashHandler, projectCanvasLayoutLoadChannel, projectCanvasLayoutSaveChannel, projectCreateChannel, projectDesignsAddChannel, projectDesignsListChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, saveProjectCanvasLayoutHandler, updateProjectMetadataHandler } from './ipc/projects';
 import { designerArtworkReadChannel, designerLoadChannel, designerSaveChannel, loadDesignerStateHandler, readDesignerArtworkHandler, saveDesignerStateHandler } from './ipc/designers';
 import { brandLoadChannel, brandSaveChannel, loadBrandStateHandler, saveBrandStateHandler } from './ipc/brands';
@@ -72,7 +73,6 @@ import { normalizeProviderImage } from './provider-image-input';
 import { projectLibraryChooseChannel, projectLibraryStatusChannel, createProjectLibraryLifecycleHandlers } from './ipc/project-library';
 import { createProjectLibrarySettingsStore } from './storage/project-library-settings-store';
 import { initializeProjectLibrary, openProjectLibrary } from './storage/project-library-store';
-import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -100,6 +100,7 @@ const closeActiveProjectLibrary = (): void => {
 const activateProjectLibrary = (handle: ProjectLibraryHandle): void => {
   closeActiveProjectLibrary();
   activeProjectLibraryHandle = handle;
+  taskServicePromise = null;
 };
 
 const generatedImageBytes = async (image: GeneratedImage): Promise<{ bytes: Uint8Array; mimeType: string }> => {
@@ -153,7 +154,7 @@ const migrateLegacyCredentialFile = async (directory: string, store: SystemCrede
   });
 };
 
-export const createMainProjectStore = (workspace: WorkspaceHandle) => createProjectStore(workspace);
+export const createMainProjectStore = (library: ProjectLibraryHandle) => createProjectStore(library);
 
 const collectProjectPackageEntries = (projectDirectory: string) => {
   const entries: Array<{ path: string; bytes: Uint8Array; kind: PackageEntryKind }> = [];
@@ -214,23 +215,23 @@ const activateWorkspace = (workspace: WorkspaceHandle): WorkspaceHandle => {
 };
 
 const getAgentTaskService = (): Promise<AgentTaskService> => {
-  if (!activeWorkspaceHandle) return Promise.reject(new Error('WORKSPACE_NOT_OPEN'));
+  if (!activeProjectLibraryHandle) return Promise.reject(new Error('PROJECT_LIBRARY_NOT_OPEN'));
   if (taskServicePromise) return taskServicePromise;
-  const workspace = activeWorkspaceHandle;
+  const workspace = activeProjectLibraryHandle;
   taskServicePromise = (async () => {
-    const initialTasks = await loadTaskState(workspace, workspace.workspace.workspaceId);
+    const initialTasks = await loadTaskState(workspace, workspace.library.libraryId);
     const runtime: TaskRuntime = createTaskRuntime({
       initialTasks,
       persist: async (tasks) => {
-        await saveTaskState(workspace, workspace.workspace.workspaceId, tasks);
+        await saveTaskState(workspace, workspace.library.libraryId, tasks);
       },
     });
     const projectStore = createProjectStore(workspace);
     const assetStore = createAssetStore(workspace);
     const loadManagedProviderImage = async (projectId: string, assetId: string) => {
-      const assets = await assetStore.listAssets({ workspaceId: workspace.workspace.workspaceId, projectId, includeContextAssets: true });
+      const assets = await assetStore.listAssets({ workspaceId: workspace.library.libraryId, projectId, includeContextAssets: true });
       const asset = assets.find((candidate) => candidate.id === assetId);
-      const bytes = await assetStore.readAsset({ workspaceId: workspace.workspace.workspaceId, projectId, assetId });
+      const bytes = await assetStore.readAsset({ workspaceId: workspace.library.libraryId, projectId, assetId });
       if (!asset || !bytes) return null;
       return { name: asset.name, ...await normalizeProviderImage({ bytes, mimeType: asset.mimeType }) };
     };
@@ -242,14 +243,14 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
           const extension = generated.mimeType === 'image/jpeg' ? 'jpg' : generated.mimeType === 'image/webp' ? 'webp' : 'png';
           return { name: `generated-${index + 1}.${extension}`, mimeType: generated.mimeType, data: generated.bytes };
         }));
-        const imported = await assetStore.importAssets({ workspaceId: workspace.workspace.workspaceId, projectId, items });
+        const imported = await assetStore.importAssets({ workspaceId: workspace.library.libraryId, projectId, items });
         const failures = imported.filter((result) => result.status === 'error');
         if (failures.length > 0) throw new Error(failures[0].error);
         return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
       },
       persistProjectDesigns: async ({ projectId, designs }) => {
         await projectStore.addProjectDesigns({
-          workspaceId: workspace.workspace.workspaceId,
+          workspaceId: workspace.library.libraryId,
           projectId,
           designs,
         });
@@ -258,7 +259,7 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         const generated = await Promise.all(images.map(generatedImageBytes));
         const saved = await Promise.all(generated.map((image) => saveDesignerArtwork(
           workspace,
-          workspace.workspace.workspaceId,
+          workspace.library.libraryId,
           `artwork-${randomUUID()}`,
           image.bytes,
           image.mimeType,
@@ -271,7 +272,7 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
       },
       persistConversationAttachments: async ({ projectId, attachments }) => {
         const imported = await assetStore.importAssets({
-          workspaceId: workspace.workspace.workspaceId,
+          workspaceId: workspace.library.libraryId,
           projectId,
           items: attachments.map((attachment) => ({
             name: attachment.name,
@@ -336,7 +337,7 @@ app.whenReady().then(async () => {
   protocol.handle(
     designerArtworkScheme,
     createDesignerArtworkProtocolHandler(
-      () => activeWorkspaceHandle,
+      () => activeProjectLibraryHandle,
       readDesignerArtwork,
     ),
   );
@@ -393,19 +394,19 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(projectListChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listActiveProjectsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace) => createProjectStore(workspace).listActiveProjects())(event, workspaceId);
+    return listActiveProjectsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace) => createProjectStore(workspace).listActiveProjects())(event, workspaceId);
   });
   ipcMain.handle(projectCreateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createProjectContainerHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).createProjectContainer(projectInput))(event, input);
+    return createProjectContainerHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectInput) => createProjectStore(workspace).createProjectContainer(projectInput))(event, input);
   });
   ipcMain.handle(projectDuplicateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return duplicateProjectHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).duplicateProject(projectInput))(event, input);
+    return duplicateProjectHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectInput) => createProjectStore(workspace).duplicateProject(projectInput))(event, input);
   });
   ipcMain.handle(projectPackageExportChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return exportProjectPackageHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, projectId) => {
+    return exportProjectPackageHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace, projectId) => {
       const projectDirectory = resolveProjectDirectory(workspace, projectId);
       if (!projectDirectory) throw new Error('PROJECT_NOT_FOUND');
       const result = await dialog.showSaveDialog(activeWindow!, { defaultPath: `designhub-${projectId}.designhub.zip`, filters: [{ name: 'DesignHub package', extensions: ['zip'] }] });
@@ -419,104 +420,104 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(projectPackageImportChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return importProjectPackageHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace) => {
+    return importProjectPackageHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace) => {
       const result = await dialog.showOpenDialog(activeWindow!, { properties: ['openFile'], filters: [{ name: 'DesignHub package', extensions: ['zip'] }] });
       if (result.canceled || !result.filePaths[0]) return null;
       const archive = await readFile(result.filePaths[0]);
-      return createProjectStore(workspace).importProjectPackage({ workspaceId: workspace.workspace.workspaceId, operationId: randomUUID(), archive: new Uint8Array(archive) });
+      return createProjectStore(workspace).importProjectPackage({ workspaceId: workspace.library.libraryId, operationId: randomUUID(), archive: new Uint8Array(archive) });
     })(event, input);
   });
   ipcMain.handle(projectMetadataGetChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return getProjectMetadataHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectId) => createProjectStore(workspace).getProjectMetadata(projectId))(event, input);
+    return getProjectMetadataHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectId) => createProjectStore(workspace).getProjectMetadata(projectId))(event, input);
   });
   ipcMain.handle(projectMetadataUpdateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return updateProjectMetadataHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, metadataInput) => createProjectStore(workspace).updateProjectMetadata(metadataInput))(event, input);
+    return updateProjectMetadataHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, metadataInput) => createProjectStore(workspace).updateProjectMetadata(metadataInput))(event, input);
   });
   ipcMain.handle(projectDesignsAddChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return addProjectDesignsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, designsInput) => createProjectStore(workspace).addProjectDesigns(designsInput))(event, input);
+    return addProjectDesignsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, designsInput) => createProjectStore(workspace).addProjectDesigns(designsInput))(event, input);
   });
   ipcMain.handle(projectDesignsListChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listProjectDesignsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, designsInput) => createProjectStore(workspace).listProjectDesigns(designsInput))(event, input);
+    return listProjectDesignsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, designsInput) => createProjectStore(workspace).listProjectDesigns(designsInput))(event, input);
   });
   ipcMain.handle(projectCanvasLayoutLoadChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadProjectCanvasLayoutHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, layoutInput) => createProjectStore(workspace).loadProjectCanvasLayout(layoutInput))(event, input);
+    return loadProjectCanvasLayoutHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, layoutInput) => createProjectStore(workspace).loadProjectCanvasLayout(layoutInput))(event, input);
   });
   ipcMain.handle(projectCanvasLayoutSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return saveProjectCanvasLayoutHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, layoutInput) => createProjectStore(workspace).saveProjectCanvasLayout(layoutInput))(event, input);
+    return saveProjectCanvasLayoutHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, layoutInput) => createProjectStore(workspace).saveProjectCanvasLayout(layoutInput))(event, input);
   });
   ipcMain.handle(projectListTrashChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listTrashedProjectsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace) => createProjectStore(workspace).listTrashedProjects())(event, workspaceId);
+    return listTrashedProjectsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace) => createProjectStore(workspace).listTrashedProjects())(event, workspaceId);
   });
   ipcMain.handle(projectTrashChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return moveProjectToTrashHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).moveProjectToTrash(projectInput))(event, input);
+    return moveProjectToTrashHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectInput) => createProjectStore(workspace).moveProjectToTrash(projectInput))(event, input);
   });
   ipcMain.handle(projectRestoreTrashChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return restoreProjectFromTrashHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).restoreProjectFromTrash(projectInput))(event, input);
+    return restoreProjectFromTrashHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectInput) => createProjectStore(workspace).restoreProjectFromTrash(projectInput))(event, input);
   });
   ipcMain.handle(projectPurgeTrashChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return purgeProjectFromTrashHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectInput) => createProjectStore(workspace).purgeProjectFromTrash(projectInput))(event, input);
+    return purgeProjectFromTrashHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectInput) => createProjectStore(workspace).purgeProjectFromTrash(projectInput))(event, input);
   });
   ipcMain.handle(designerLoadChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadDesignerState)(event, workspaceId);
+    return loadDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadDesignerState)(event, workspaceId);
   });
   ipcMain.handle(designerSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
-    return saveDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, state) => saveDesignerState(workspace, workspace.workspace.workspaceId, state))(event, input);
+    return saveDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, state) => saveDesignerState(workspace, workspace.library.libraryId, state))(event, input);
   });
   ipcMain.handle(designerArtworkReadChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return readDesignerArtworkHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, readDesignerArtwork)(event, input);
+    return readDesignerArtworkHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, readDesignerArtwork)(event, input);
   });
   ipcMain.handle(brandLoadChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadBrandStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadBrandState)(event, workspaceId);
+    return loadBrandStateHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadBrandState)(event, workspaceId);
   });
   ipcMain.handle(brandSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
-    return saveBrandStateHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, state) => saveBrandState(workspace, workspace.workspace.workspaceId, state))(event, input);
+    return saveBrandStateHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, state) => saveBrandState(workspace, workspace.library.libraryId, state))(event, input);
   });
   ipcMain.handle(assetListChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listAssetsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, assetInput) => createAssetStore(workspace).listAssets(assetInput))(event, input);
+    return listAssetsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, assetInput) => createAssetStore(workspace).listAssets(assetInput))(event, input);
   });
   ipcMain.handle(assetImportChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return importAssetsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, assetInput) => createAssetStore(workspace).importAssets(assetInput))(event, input);
+    return importAssetsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, assetInput) => createAssetStore(workspace).importAssets(assetInput))(event, input);
   });
   ipcMain.handle(assetReadChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return readAssetHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, assetInput) => createAssetStore(workspace).readAsset(assetInput))(event, input);
+    return readAssetHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, assetInput) => createAssetStore(workspace).readAsset(assetInput))(event, input);
   });
   ipcMain.handle(sceneLoadChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadDocumentSceneHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectId, documentId) => loadDocumentScene(workspace, workspace.workspace.workspaceId, projectId, documentId))(event, input);
+    return loadDocumentSceneHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectId, documentId) => loadDocumentScene(workspace, workspace.library.libraryId, projectId, documentId))(event, input);
   });
   ipcMain.handle(sceneSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
-    return saveDocumentSceneHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, projectId, documentId, scene) => saveDocumentScene(workspace, workspace.workspace.workspaceId, projectId, documentId, scene))(event, input);
+    return saveDocumentSceneHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectId, documentId, scene) => saveDocumentScene(workspace, workspace.library.libraryId, projectId, documentId, scene))(event, input);
   });
   ipcMain.handle(revisionLoadChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadRevisionsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, target) => loadDocumentRevisions(workspace, target.workspaceId, target.projectId, target.documentId))(event, input);
+    return loadRevisionsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, target) => loadDocumentRevisions(workspace, target.workspaceId, target.projectId, target.documentId))(event, input);
   });
   ipcMain.handle(revisionCommitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return commitRevisionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, revisionInput) => commitDocumentRevision(workspace, revisionInput))(event, input);
+    return commitRevisionHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, revisionInput) => commitDocumentRevision(workspace, revisionInput))(event, input);
   });
   ipcMain.handle(revisionFinalizeChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return finalizeRevisionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, revisionInput) => setFinalDocumentRevision(workspace, revisionInput))(event, input);
+    return finalizeRevisionHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, revisionInput) => setFinalDocumentRevision(workspace, revisionInput))(event, input);
   });
   ipcMain.handle(credentialStoreChannel, async (event, connectionId, secret) => {
     if (!activeWindow || !activeTrustedUrl) return false;
@@ -543,11 +544,11 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(taskListChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listTasksHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadTaskState)(event, workspaceId);
+    return listTasksHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadTaskState)(event, workspaceId);
   });
   ipcMain.handle(conversationSubmitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createConversationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, conversation) => {
+    return createConversationHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace, conversation) => {
       if (conversation.projectId) {
         const projectStore = createProjectStore(workspace);
         const metadata = await projectStore.getProjectMetadata(conversation.projectId);
@@ -566,7 +567,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(designGenerationSubmitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createDesignGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, generationInput) => {
+    return createDesignGenerationHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, generationInput) => {
       const projectStore = createProjectStore(_workspace);
       const metadata = await projectStore.getProjectMetadata(generationInput.projectId);
       if (!metadata || metadata.workspaceId !== generationInput.workspaceId || (generationInput.documentId && !metadata.documents.some((document) => document.id === generationInput.documentId))) {
@@ -582,7 +583,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(designGenerationSlotRetryChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createDesignGenerationSlotRetryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, retryInput) => {
+    return createDesignGenerationSlotRetryHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace, retryInput) => {
       const service = await getAgentTaskService();
       const existing = service.getTask(retryInput.taskId);
       if (!existing || existing.source?.kind !== 'project') throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
@@ -593,14 +594,14 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(conversationTestChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createConversationTestHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, testInput) => {
+    return createConversationTestHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, testInput) => {
       const service = await getAgentTaskService();
       return service.testConversation(testInput);
     })(event, input);
   });
   ipcMain.handle(portfolioInspectChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createPortfolioInspectionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async () => {
+    return createPortfolioInspectionHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async () => {
       const result = await dialog.showOpenDialog(activeWindow!, {
         properties: ['openFile', 'multiSelections'],
         filters: [{ name: 'Portfolio images or ZIP', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'zip'] }],
@@ -610,25 +611,25 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(portfolioSelectChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createPortfolioSelectionHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, portfolioSourceInspector, async (_workspace, portfolioInput) => {
+    return createPortfolioSelectionHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, portfolioSourceInspector, async (_workspace, portfolioInput) => {
       const service = await getAgentTaskService();
       return service.submitPortfolioAnalysis(portfolioInput);
     })(event, input);
   });
   ipcMain.handle(portfolioDiscardChannel, (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
-    return createPortfolioDiscardHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, portfolioSourceInspector)(event, input);
+    return createPortfolioDiscardHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, portfolioSourceInspector)(event, input);
   });
   ipcMain.handle(imageGenerationSubmitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createImageGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, imageInput) => {
+    return createImageGenerationHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, imageInput) => {
       const service = await getAgentTaskService();
       return service.submitImageGeneration(imageInput);
     })(event, input);
   });
   ipcMain.handle(imageGenerationTestChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createImageGenerationTestHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, testInput) => {
+    return createImageGenerationTestHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, testInput) => {
       const service = await getAgentTaskService();
       const result = await service.testImageGeneration(testInput);
       if (!result.image.url) return result;
@@ -641,35 +642,35 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(designerArtworkGenerationSubmitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createDesignerArtworkGenerationHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, artworkInput) => {
+    return createDesignerArtworkGenerationHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, artworkInput) => {
       const service = await getAgentTaskService();
       return service.submitDesignerArtworkGeneration(artworkInput);
     })(event, input);
   });
   ipcMain.handle(imageEditSubmitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createImageEditHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, imageInput) => {
+    return createImageEditHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, imageInput) => {
       const service = await getAgentTaskService();
       return service.submitImageEdit(imageInput);
     })(event, input);
   });
   ipcMain.handle(taskCancelChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
-    return cancelTaskHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, taskId) => {
+    return cancelTaskHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, taskId) => {
       const service = await getAgentTaskService();
       return Boolean(service.cancel(taskId));
     })(event, input);
   });
   ipcMain.handle(taskRetryChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return retryTaskHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, taskId) => {
+    return retryTaskHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, taskId) => {
       const service = await getAgentTaskService();
       return service.retry(taskId);
     })(event, input);
   });
   ipcMain.handle(exportDocumentChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return exportDocumentHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (_workspace, exportInput) => {
+    return exportDocumentHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, exportInput) => {
       const extension = exportInput.format === 'jpeg' ? 'jpg' : exportInput.format;
       const result = await dialog.showSaveDialog(activeWindow!, {
         defaultPath: `designhub-${exportInput.documentId}.${extension}`,
@@ -700,7 +701,7 @@ app.whenReady().then(async () => {
           },
           ...(exportInput.archiveCopy ? {
             archiveCopy: async ({ path }) => {
-              if (_workspace.workspace.openMode !== 'writable') throw new Error('ARCHIVE_REQUIRES_WRITABLE');
+              if (_workspace.library.openMode !== 'writable') throw new Error('ARCHIVE_REQUIRES_WRITABLE');
               const projectDirectory = resolveProjectDirectory(_workspace, exportInput.projectId);
               if (!projectDirectory) throw new Error('PROJECT_NOT_FOUND');
               const archiveDirectory = join(projectDirectory, 'exports');
@@ -743,7 +744,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(exportHistoryListChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listExportHistoryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, workspaceId, projectId) => {
+    return listExportHistoryHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace, workspaceId, projectId) => {
       const records = await loadWorkspaceExportHistory(workspace, workspaceId, projectId);
       return Promise.all(records.map(async (record) => ({ ...record, targetAvailable: await access(record.targetPath).then(() => true).catch(() => false) })));
     })(event, input);
@@ -762,31 +763,31 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(backupCreateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createBackupHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, (workspace, destinationParentDirectory) => createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory }))(event, input);
+    return createBackupHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, destinationParentDirectory) => createWorkspaceBackupStore(workspace).createBackup({ destinationParentDirectory }))(event, input);
   });
   ipcMain.handle(backupRestoreChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    if (!activeWorkspaceHandle) return null;
-    return restoreBackupHandler(activeWindow, activeTrustedUrl, (restoreInput) => createWorkspaceBackupStore(activeWorkspaceHandle!).restoreBackup(restoreInput))(event, input);
+    if (!activeProjectLibraryHandle) return null;
+    return restoreBackupHandler(activeWindow, activeTrustedUrl, (restoreInput) => createWorkspaceBackupStore(activeProjectLibraryHandle!).restoreBackup(restoreInput))(event, input);
   });
   ipcMain.handle(settingsLoadChannel, async (event, workspaceId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadSettingsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, loadWorkspaceSettings)(event, workspaceId);
+    return loadSettingsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadWorkspaceSettings)(event, workspaceId);
   });
   ipcMain.handle(settingsSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
-    return saveSettingsHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, saveWorkspaceSettings)(event, input);
+    return saveSettingsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, saveWorkspaceSettings)(event, input);
   });
   ipcMain.handle(searchRebuildChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
-    return rebuildSearchHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, records) => {
+    return rebuildSearchHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace, records) => {
       const store = createSearchIndexStore(workspace);
       try { await store.replace(records); } finally { store.close(); }
     })(event, input);
   });
   ipcMain.handle(searchQueryChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return searchQueryHandler(activeWindow, activeTrustedUrl, () => activeWorkspaceHandle, async (workspace, options) => {
+    return searchQueryHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace, options) => {
       const store = createSearchIndexStore(workspace);
       try { return await store.search(options); } finally { store.close(); }
     })(event, input);

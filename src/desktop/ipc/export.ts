@@ -1,6 +1,6 @@
 import type { DesignScene } from '../../features/canvas/scene';
 import type { ExportFormat } from '../../features/delivery/export-policy';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const exportDocumentChannel = 'document:export';
@@ -22,11 +22,11 @@ const isInput = (value: unknown): value is ExportBridgeInput => {
 export const exportDocumentHandler = (
   window: ExportWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  exportScene: (workspace: WorkspaceHandle, input: ExportBridgeInput) => Promise<ExportBridgeResult | null>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  exportScene: (workspace: ProjectLibraryHandle, input: ExportBridgeInput) => Promise<ExportBridgeResult | null>,
 ) => async (event: ExportRequest, input: unknown): Promise<ExportBridgeResult | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isInput(input)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== input.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
   return exportScene(workspace, input);
 };

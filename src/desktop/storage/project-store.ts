@@ -4,7 +4,7 @@ import { dirname, join, relative, sep } from 'node:path';
 
 import Database from 'better-sqlite3';
 
-import type { WorkspaceDescriptor, WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryDescriptor, ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type {
   CreateProjectContainerInput,
   CreateProjectContainerResult,
@@ -22,15 +22,14 @@ import { createProjectMetadata, updateProjectMetadata, type ProjectCanvasLayout,
 import { canPurge } from '../../features/workspace/trash-policy';
 import { decodeProjectPackage } from '../../features/delivery/project-package';
 import { isSafePackagePath } from '../../features/delivery/package-policy';
-import { getWritableWorkspaceLease } from './workspace-store';
+import { getWritableProjectLibraryLease, projectLibraryManifestName } from './project-library-store';
 
 export const projectManifestName = 'designhub.project.json';
 export const projectContentManifestName = 'content-manifest.json';
 export const projectDatabaseName = 'project.sqlite';
 export const workspaceProjectIndexName = 'project-index.sqlite';
 
-const workspaceManifestName = 'designhub.workspace.json';
-const workspaceKind = 'designhub-workspace';
+const projectLibraryKind = 'designhub-project-library';
 const projectKind = 'designhub-project';
 const projectFormatVersion = 1;
 const internalDirectoryName = '.designhub';
@@ -38,9 +37,9 @@ const trashMetadataName = '.designhub-trash.json';
 const trashMetadataKind = 'designhub-trash-entry';
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-type WorkspaceManifest = {
-  kind: typeof workspaceKind;
-  workspaceId: string;
+type ProjectLibraryManifest = {
+  kind: typeof projectLibraryKind;
+  libraryId: string;
   formatVersion: number;
 };
 
@@ -140,9 +139,9 @@ const readJson = (path: string, errorMessage: string): unknown => {
   }
 };
 
-const isWorkspaceManifest = (value: unknown): value is WorkspaceManifest => isRecord(value)
-  && value.kind === workspaceKind
-  && typeof value.workspaceId === 'string'
+const isProjectLibraryManifest = (value: unknown): value is ProjectLibraryManifest => isRecord(value)
+  && value.kind === projectLibraryKind
+  && typeof value.libraryId === 'string'
   && typeof value.formatVersion === 'number'
   && Number.isInteger(value.formatVersion)
   && value.formatVersion > 0;
@@ -224,15 +223,15 @@ const getManagedRootDirectory = (workspaceDirectory: string, name: string): stri
   return directory;
 };
 
-const validateWorkspace = (workspace: WorkspaceDescriptor, workspaceId: string, requireWritable = true): { directory: string; projectsDirectory: string; trashDirectory: string; indexDirectory: string } => {
+const validateWorkspace = (workspace: ProjectLibraryDescriptor, workspaceId: string, requireWritable = true): { directory: string; projectsDirectory: string; trashDirectory: string; indexDirectory: string } => {
   if (requireWritable && workspace.openMode !== 'writable') throw new Error('WORKSPACE_NOT_WRITABLE');
-  if (workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  if (workspace.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
 
   const directory = realpathSync(workspace.directory);
   if (directory !== workspace.directory) throw new Error('INVALID_WORKSPACE_PATH');
-  const manifest = readJson(join(directory, workspaceManifestName), 'INVALID_WORKSPACE_MANIFEST');
-  if (!isWorkspaceManifest(manifest)) throw new Error('INVALID_WORKSPACE_MANIFEST');
-  if (manifest.workspaceId !== workspace.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const manifest = readJson(join(directory, projectLibraryManifestName), 'INVALID_PROJECT_LIBRARY_MANIFEST');
+  if (!isProjectLibraryManifest(manifest)) throw new Error('INVALID_PROJECT_LIBRARY_MANIFEST');
+  if (manifest.libraryId !== workspace.libraryId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   if (manifest.formatVersion !== workspace.formatVersion) throw new Error('WORKSPACE_FORMAT_CHANGED');
 
   const projectsDirectory = getManagedRootDirectory(directory, 'projects');
@@ -518,7 +517,7 @@ const initializeProject = (
   const createdAt = new Date().toISOString();
   const metadata = createProjectMetadata({
     projectId: operation.projectId,
-    workspaceId: input.workspaceId,
+    workspaceId: (input.libraryId ?? input.workspaceId),
     name,
     generationRatio: input.generationRatio,
     brief: input.brief,
@@ -560,12 +559,12 @@ const initializeProject = (
   writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ formatVersion: projectFormatVersion, projectId: operation.projectId, assets: [] }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
 };
 
-const createProject = (handle: WorkspaceHandle, options: ProjectStoreOptions, input: CreateProjectContainerInput): CreateProjectContainerResult => {
-  const workspace = getWritableWorkspaceLease(handle);
+const createProject = (handle: ProjectLibraryHandle, options: ProjectStoreOptions, input: CreateProjectContainerInput): CreateProjectContainerResult => {
+  const workspace = getWritableProjectLibraryLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
   const name = validateProjectName(input.name);
   validateOperationId(input.operationId);
-  const paths = validateWorkspace(workspace, input.workspaceId);
+  const paths = validateWorkspace(workspace, (input.libraryId ?? input.workspaceId));
   const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
 
   try {
@@ -643,9 +642,9 @@ const removeTrashMetadata = (projectDirectory: string): void => {
   rmSync(join(projectDirectory, trashMetadataName), { force: true });
 };
 
-const listActiveProjects = (handle: WorkspaceHandle): ActiveProject[] => {
-  const workspace = handle.workspace;
-  const paths = validateWorkspace(workspace, workspace.workspaceId, false);
+const listActiveProjects = (handle: ProjectLibraryHandle): ActiveProject[] => {
+  const workspace = handle.library;
+  const paths = validateWorkspace(workspace, workspace.libraryId, false);
   if (workspace.openMode !== 'writable') {
     return scanPublishedProjects(paths.projectsDirectory)
       .map(({ manifest }) => toActiveProject(manifest))
@@ -689,10 +688,10 @@ const readProjectMetadata = (manifest: ProjectManifest, workspaceId: string): Pr
   ? structuredClone(manifest.metadata)
   : createProjectMetadata({ projectId: manifest.projectId, workspaceId, name: manifest.name, createdAt: manifest.createdAt, updatedAt: manifest.createdAt });
 
-const getProjectManifestForId = (handle: WorkspaceHandle, projectId: string): { manifest: ProjectManifest; directory: string } | null => {
+const getProjectManifestForId = (handle: ProjectLibraryHandle, projectId: string): { manifest: ProjectManifest; directory: string } | null => {
   validateProjectId(projectId);
-  const workspace = handle.workspace;
-  const paths = validateWorkspace(workspace, workspace.workspaceId, false);
+  const workspace = handle.library;
+  const paths = validateWorkspace(workspace, workspace.libraryId, false);
   if (workspace.openMode !== 'writable') {
     const found = scanPublishedProjects(paths.projectsDirectory).find(({ manifest }) => manifest.projectId === projectId);
     return found ? { manifest: found.manifest, directory: getManagedProjectDirectory(paths.projectsDirectory, found.directoryName) } : null;
@@ -708,28 +707,28 @@ const getProjectManifestForId = (handle: WorkspaceHandle, projectId: string): { 
   }
 };
 
-export const resolveProjectDirectory = (handle: WorkspaceHandle, projectId: string): string | null => {
+export const resolveProjectDirectory = (handle: ProjectLibraryHandle, projectId: string): string | null => {
   const found = getProjectManifestForId(handle, projectId);
   return found?.directory ?? null;
 };
 
-const getProjectMetadata = (handle: WorkspaceHandle, projectId: string): ProjectMetadata | null => {
+const getProjectMetadata = (handle: ProjectLibraryHandle, projectId: string): ProjectMetadata | null => {
   const found = getProjectManifestForId(handle, projectId);
-  return found ? readProjectMetadata(found.manifest, handle.workspace.workspaceId) : null;
+  return found ? readProjectMetadata(found.manifest, handle.library.libraryId) : null;
 };
 
-const updateProjectMetadataForHandle = (handle: WorkspaceHandle, input: UpdateProjectMetadataInput): ProjectMetadata => {
-  const workspace = getWritableWorkspaceLease(handle);
+const updateProjectMetadataForHandle = (handle: ProjectLibraryHandle, input: UpdateProjectMetadataInput): ProjectMetadata => {
+  const workspace = getWritableProjectLibraryLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
-  if (workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
-  const paths = validateWorkspace(workspace, input.workspaceId);
+  if (workspace.libraryId !== (input.libraryId ?? input.workspaceId)) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const paths = validateWorkspace(workspace, (input.libraryId ?? input.workspaceId));
   const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
   try {
     const project = getActiveProject(index, paths.projectsDirectory, input.projectId);
     const directory = getManagedProjectDirectory(paths.projectsDirectory, project.directoryName);
     const manifest = readValidPublishedProject(directory);
     if (!manifest) throw new Error('PROJECT_NOT_FOUND');
-    const current = readProjectMetadata(manifest, workspace.workspaceId);
+    const current = readProjectMetadata(manifest, workspace.libraryId);
     const next = updateProjectMetadata(current, input.patch);
     const nextManifest: ProjectManifest = { ...manifest, name: next.name, metadata: next };
     const temporary = join(directory, `.${projectManifestName}.tmp-${randomUUID()}`);
@@ -753,8 +752,8 @@ const updateProjectMetadataForHandle = (handle: WorkspaceHandle, input: UpdatePr
   }
 };
 
-const addProjectDesignsForHandle = (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }): ProjectDesign[] => {
-  if (handle.workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+const addProjectDesignsForHandle = (handle: ProjectLibraryHandle, input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }): ProjectDesign[] => {
+  if (handle.library.libraryId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   const current = getProjectMetadata(handle, input.projectId);
   if (!current) throw new Error('PROJECT_NOT_FOUND');
   const existing = current.designs ?? [];
@@ -763,21 +762,21 @@ const addProjectDesignsForHandle = (handle: WorkspaceHandle, input: { workspaceI
   return structuredClone(next.designs ?? []);
 };
 
-const listProjectDesignsForHandle = (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string }): ProjectDesign[] => {
-  if (handle.workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+const listProjectDesignsForHandle = (handle: ProjectLibraryHandle, input: { workspaceId: string; projectId: string }): ProjectDesign[] => {
+  if (handle.library.libraryId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   const metadata = getProjectMetadata(handle, input.projectId);
   if (!metadata) throw new Error('PROJECT_NOT_FOUND');
   return structuredClone(metadata.designs ?? []);
 };
 
-const loadProjectCanvasLayoutForHandle = (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string }): ProjectCanvasLayout | null => {
-  if (handle.workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+const loadProjectCanvasLayoutForHandle = (handle: ProjectLibraryHandle, input: { workspaceId: string; projectId: string }): ProjectCanvasLayout | null => {
+  if (handle.library.libraryId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   const metadata = getProjectMetadata(handle, input.projectId);
   if (!metadata) throw new Error('PROJECT_NOT_FOUND');
   return metadata.canvasLayout ? structuredClone(metadata.canvasLayout) : null;
 };
 
-const saveProjectCanvasLayoutForHandle = (handle: WorkspaceHandle, input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }): ProjectCanvasLayout => {
+const saveProjectCanvasLayoutForHandle = (handle: ProjectLibraryHandle, input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }): ProjectCanvasLayout => {
   const next = updateProjectMetadataForHandle(handle, {
     workspaceId: input.workspaceId,
     projectId: input.projectId,
@@ -787,15 +786,15 @@ const saveProjectCanvasLayoutForHandle = (handle: WorkspaceHandle, input: { work
   return structuredClone(next.canvasLayout);
 };
 
-const duplicateProject = async (handle: WorkspaceHandle, input: DuplicateProjectInput): Promise<CreateProjectContainerResult> => {
-  const workspace = getWritableWorkspaceLease(handle);
+const duplicateProject = async (handle: ProjectLibraryHandle, input: DuplicateProjectInput): Promise<CreateProjectContainerResult> => {
+  const workspace = getWritableProjectLibraryLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
-  if (workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  if (workspace.libraryId !== (input.libraryId ?? input.workspaceId)) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   const sourceMetadata = getProjectMetadata(handle, input.sourceProjectId);
   const sourceDirectory = resolveProjectDirectory(handle, input.sourceProjectId);
   if (!sourceMetadata || !sourceDirectory) throw new Error('PROJECT_NOT_FOUND');
   const created = await createProject(handle, {}, {
-    workspaceId: input.workspaceId,
+    workspaceId: (input.libraryId ?? input.workspaceId),
     operationId: input.operationId,
     name: input.name?.trim() || `${sourceMetadata.name} copy`,
     brief: sourceMetadata.brief,
@@ -879,15 +878,15 @@ const rewriteImportedRevisionState = (bytes: Uint8Array, projectId: string): Uin
 };
 
 export const importProjectPackageToWorkspace = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   input: ImportProjectPackageInput,
   options: ProjectStoreOptions = {},
 ): Promise<ImportProjectPackageResult> => {
-  const workspace = getWritableWorkspaceLease(handle);
+  const workspace = getWritableProjectLibraryLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
-  if (workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  if (workspace.libraryId !== (input.libraryId ?? input.workspaceId)) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   validateOperationId(input.operationId);
-  const paths = validateWorkspace(workspace, input.workspaceId);
+  const paths = validateWorkspace(workspace, (input.libraryId ?? input.workspaceId));
   const pack = await decodeProjectPackage(input.archive);
   if (pack.manifest.readOnly) throw new Error('READ_ONLY_PACKAGE');
   const sourceManifest = decodePackageJson<ProjectManifest>(pack.files[projectManifestName]);
@@ -938,7 +937,7 @@ export const importProjectPackageToWorkspace = async (
       writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ ...sourceContent, projectId }, null, 2)}\n`, { encoding: 'utf8' });
     },
   }, {
-    workspaceId: input.workspaceId,
+    workspaceId: (input.libraryId ?? input.workspaceId),
     operationId: input.operationId,
     name: sourceManifest.name,
     brief: sourceMetadata?.brief,
@@ -952,10 +951,10 @@ export const importProjectPackageToWorkspace = async (
   return created;
 };
 
-const listTrashedProjects = (handle: WorkspaceHandle): TrashedProject[] => {
-  const workspace = getWritableWorkspaceLease(handle);
+const listTrashedProjects = (handle: ProjectLibraryHandle): TrashedProject[] => {
+  const workspace = getWritableProjectLibraryLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
-  const paths = validateWorkspace(workspace, workspace.workspaceId);
+  const paths = validateWorkspace(workspace, workspace.libraryId);
   const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
   try {
     return (index.prepare("SELECT project_id as projectId, original_relative_path as originalRelativePath, deleted_at as deletedAt FROM trash_entries WHERE state = 'trashed' ORDER BY deleted_at, project_id").all() as TrashedProject[]);
@@ -964,11 +963,11 @@ const listTrashedProjects = (handle: WorkspaceHandle): TrashedProject[] => {
   }
 };
 
-const moveProjectToTrash = (handle: WorkspaceHandle, options: ProjectStoreOptions, input: TrashProjectInput): TrashedProject => {
-  const workspace = getWritableWorkspaceLease(handle);
+const moveProjectToTrash = (handle: ProjectLibraryHandle, options: ProjectStoreOptions, input: TrashProjectInput): TrashedProject => {
+  const workspace = getWritableProjectLibraryLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
   validateProjectId(input.projectId);
-  const paths = validateWorkspace(workspace, input.workspaceId);
+  const paths = validateWorkspace(workspace, (input.libraryId ?? input.workspaceId));
   const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
   try {
     const activeProject = getActiveProject(index, paths.projectsDirectory, input.projectId);
@@ -1005,11 +1004,11 @@ const moveProjectToTrash = (handle: WorkspaceHandle, options: ProjectStoreOption
   }
 };
 
-const restoreProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOptions, input: TrashProjectInput): RestoreProjectResult => {
-  const workspace = getWritableWorkspaceLease(handle);
+const restoreProjectFromTrash = (handle: ProjectLibraryHandle, options: ProjectStoreOptions, input: TrashProjectInput): RestoreProjectResult => {
+  const workspace = getWritableProjectLibraryLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
   validateProjectId(input.projectId);
-  const paths = validateWorkspace(workspace, input.workspaceId);
+  const paths = validateWorkspace(workspace, (input.libraryId ?? input.workspaceId));
   const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
   try {
     const entry = getTrashedProject(index, input.projectId);
@@ -1060,12 +1059,12 @@ const restoreProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreO
   }
 };
 
-const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOptions, input: TrashProjectInput): void => {
-  const workspace = getWritableWorkspaceLease(handle);
+const purgeProjectFromTrash = (handle: ProjectLibraryHandle, options: ProjectStoreOptions, input: TrashProjectInput): void => {
+  const workspace = getWritableProjectLibraryLease(handle);
   if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
   validateProjectId(input.projectId);
   if (!options.getLiveReferenceCount) throw new Error('LIVE_REFERENCE_PROVIDER_UNAVAILABLE');
-  const paths = validateWorkspace(workspace, input.workspaceId);
+  const paths = validateWorkspace(workspace, (input.libraryId ?? input.workspaceId));
   const index = openIndex(paths.indexDirectory, paths.projectsDirectory, paths.trashDirectory);
   try {
     const entry = getTrashedProject(index, input.projectId);
@@ -1085,7 +1084,7 @@ const purgeProjectFromTrash = (handle: WorkspaceHandle, options: ProjectStoreOpt
   }
 };
 
-export const createProjectStore = (handle: WorkspaceHandle, options: ProjectStoreOptions = {}): ProjectStore => ({
+export const createProjectStore = (handle: ProjectLibraryHandle, options: ProjectStoreOptions = {}): ProjectStore => ({
   createProjectContainer: async (input): Promise<CreateProjectContainerResult> => createProject(handle, options, input),
   duplicateProject: async (input): Promise<CreateProjectContainerResult> => duplicateProject(handle, input),
   importProjectPackage: async (input): Promise<ImportProjectPackageResult> => importProjectPackageToWorkspace(handle, input, options),

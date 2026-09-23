@@ -3,15 +3,15 @@ import { constants, lstatSync, realpathSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { appendExportHistory, isExportHistoryRecord, type ExportHistoryRecord } from '../../features/delivery/export-history';
-import { getWritableWorkspaceLease } from './workspace-store';
+import { getWritableProjectLibraryLease } from './project-library-store';
 
 export const exportHistoryFileName = 'export-history.json';
 
-const getInternalDirectory = (handle: WorkspaceHandle, workspaceId: string, writable: boolean): string => {
-  if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
-  const directory = writable ? getWritableWorkspaceLease(handle)?.directory : handle.workspace.directory;
+const getInternalDirectory = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
+  if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const directory = writable ? getWritableProjectLibraryLease(handle)?.directory : handle.library.directory;
   if (!directory) throw new Error('WORKSPACE_NOT_WRITABLE');
   const internal = join(realpathSync(directory), '.designhub');
   const status = lstatSync(internal);
@@ -30,7 +30,7 @@ const assertRegularFile = (path: string, allowMissing: boolean): void => {
   }
 };
 
-export const loadWorkspaceExportHistory = async (handle: WorkspaceHandle, workspaceId: string, projectId?: string): Promise<ExportHistoryRecord[]> => {
+export const loadWorkspaceExportHistory = async (handle: ProjectLibraryHandle, workspaceId: string, projectId?: string): Promise<ExportHistoryRecord[]> => {
   const path = join(getInternalDirectory(handle, workspaceId, false), exportHistoryFileName);
   assertRegularFile(path, true);
   try {
@@ -46,7 +46,7 @@ export const loadWorkspaceExportHistory = async (handle: WorkspaceHandle, worksp
   return structuredClone(projectId ? records.filter((record) => record.projectId === projectId) : records);
 };
 
-export const appendWorkspaceExportHistory = async (handle: WorkspaceHandle, workspaceId: string, record: ExportHistoryRecord): Promise<boolean> => {
+export const appendWorkspaceExportHistory = async (handle: ProjectLibraryHandle, workspaceId: string, record: ExportHistoryRecord): Promise<boolean> => {
   const directory = getInternalDirectory(handle, workspaceId, true);
   const path = join(directory, exportHistoryFileName);
   assertRegularFile(path, true);

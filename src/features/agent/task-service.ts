@@ -36,6 +36,7 @@ export type ConversationInput = {
 
 export type DesignGenerationInput = {
   workspaceId: string;
+  libraryId?: string;
   projectId: string;
   documentId?: string;
   conversationTaskId: string;
@@ -47,6 +48,7 @@ export type DesignGenerationInput = {
 
 export type DesignGenerationSlotRetryInput = {
   workspaceId: string;
+  libraryId?: string;
   taskId: string;
   slotId: DesignGenerationSlotId;
 };

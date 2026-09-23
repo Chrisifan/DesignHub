@@ -1,4 +1,4 @@
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isTrustedWorkspaceRequest } from './workspace';
 
 export const projectPackageExportChannel = 'project:package-export';
@@ -15,27 +15,27 @@ const isWorkspaceId = (value: unknown): value is string => typeof value === 'str
 export const exportProjectPackageHandler = (
   window: PackageWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  exportPackage: (workspace: WorkspaceHandle, projectId: string) => Promise<PackageResult | null>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  exportPackage: (workspace: ProjectLibraryHandle, projectId: string) => Promise<PackageResult | null>,
 ) => async (event: PackageRequest, input: unknown): Promise<PackageResult | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
   const value = input as Record<string, unknown>;
   if (!isWorkspaceId(value.workspaceId) || !isWorkspaceId(value.projectId)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== value.workspaceId) return null;
+  if (!workspace || workspace.library.libraryId !== value.workspaceId) return null;
   return exportPackage(workspace, value.projectId);
 };
 
 export const importProjectPackageHandler = (
   window: PackageWindow,
   trustedUrl: string,
-  getWorkspace: () => WorkspaceHandle | null,
-  importPackage: (workspace: WorkspaceHandle) => Promise<ImportResult | null>,
+  getWorkspace: () => ProjectLibraryHandle | null,
+  importPackage: (workspace: ProjectLibraryHandle) => Promise<ImportResult | null>,
 ) => async (event: PackageRequest, input: unknown): Promise<ImportResult | null> => {
   if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
   const value = input as Record<string, unknown>;
   if (!isWorkspaceId(value.workspaceId)) return null;
   const workspace = getWorkspace();
-  if (!workspace || workspace.workspace.workspaceId !== value.workspaceId || workspace.workspace.openMode !== 'writable') return null;
+  if (!workspace || workspace.library.libraryId !== value.workspaceId || workspace.library.openMode !== 'writable') return null;
   return importPackage(workspace);
 };

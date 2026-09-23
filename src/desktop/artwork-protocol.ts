@@ -1,9 +1,9 @@
-import type { WorkspaceHandle } from '../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 
 export const designerArtworkScheme = 'designhub-artwork';
 
 type ArtworkReader = (
-  workspace: WorkspaceHandle,
+  workspace: ProjectLibraryHandle,
   workspaceId: string,
   artworkId: string,
 ) => Promise<{ artworkId: string; dataUrl: string } | null>;
@@ -32,7 +32,7 @@ const parseArtworkId = (value: string): string | null => {
 };
 
 export const createDesignerArtworkProtocolHandler = (
-  getWorkspace: () => WorkspaceHandle | null,
+  getWorkspace: () => ProjectLibraryHandle | null,
   readArtwork: ArtworkReader,
 ) => async (request: { url: string }): Promise<Response> => {
   const artworkId = parseArtworkId(request.url);
@@ -41,7 +41,7 @@ export const createDesignerArtworkProtocolHandler = (
   try {
     const artwork = await readArtwork(
       workspace,
-      workspace.workspace.workspaceId,
+      workspace.library.libraryId,
       artworkId,
     );
     if (!artwork || artwork.artworkId !== artworkId) return notFound();

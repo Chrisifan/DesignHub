@@ -17,7 +17,7 @@ import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 
 import Database from 'better-sqlite3';
 
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type {
   BackupFileEntry,
   BackupManifest,
@@ -27,11 +27,11 @@ import type {
 } from '../../features/workspace/backup';
 import { canMigrate } from '../../features/workspace/migration-policy';
 import {
-  getWritableWorkspaceLease,
-  initializeWorkspaceWriterLock,
-  workspaceManifestName,
-  workspaceMigrationStateName,
-} from './workspace-store';
+  getWritableProjectLibraryLease,
+  initializeProjectLibraryWriterLock,
+  projectLibraryManifestName,
+  projectLibraryMigrationStateName,
+} from './project-library-store';
 
 export const backupManifestName = 'backup.manifest.json';
 export const backupCompletionName = 'backup.complete.json';
@@ -50,10 +50,9 @@ type WorkspaceBackupStoreOptions = {
   onRestoreDestinationReserved?: (directory: string) => void;
 };
 
-type WorkspaceManifest = {
-  kind: 'designhub-workspace';
-  workspaceId: string;
-  name: string;
+type ProjectLibraryManifest = {
+  kind: 'designhub-project-library';
+  libraryId: string;
   formatVersion: number;
   createdAt: string;
 };
@@ -92,31 +91,29 @@ const manifestPathSegments = (path: string): string[] => {
   if (!path || path.startsWith('/') || path.includes('\\') || /^[a-z]:/iu.test(path)) throw new Error('INVALID_BACKUP_MANIFEST');
   const segments = path.split('/');
   if (segments.some((segment) => !segment || segment === '.' || segment === '..')) throw new Error('INVALID_BACKUP_MANIFEST');
-  if (path !== workspaceManifestName && !managedDirectoryNames.includes(segments[0] as typeof managedDirectoryNames[number])) {
+  if (path !== projectLibraryManifestName && !managedDirectoryNames.includes(segments[0] as typeof managedDirectoryNames[number])) {
     throw new Error('INVALID_BACKUP_MANIFEST');
   }
   return segments;
 };
 
-const isWorkspaceManifest = (value: unknown): value is WorkspaceManifest => isRecord(value)
-  && value.kind === 'designhub-workspace'
-  && typeof value.workspaceId === 'string'
-  && uuidPattern.test(value.workspaceId)
-  && typeof value.name === 'string'
-  && value.name.length > 0
+const isProjectLibraryManifest = (value: unknown): value is ProjectLibraryManifest => isRecord(value)
+  && value.kind === 'designhub-project-library'
+  && typeof value.libraryId === 'string'
+  && uuidPattern.test(value.libraryId)
   && Number.isInteger(value.formatVersion)
   && Number(value.formatVersion) > 0
   && typeof value.createdAt === 'string'
   && !Number.isNaN(Date.parse(value.createdAt));
 
-const readWorkspaceManifest = (directory: string): WorkspaceManifest => {
+const readProjectLibraryManifest = (directory: string): ProjectLibraryManifest => {
   let value: unknown;
   try {
-    value = JSON.parse(readFileSync(join(directory, workspaceManifestName), 'utf8')) as unknown;
+    value = JSON.parse(readFileSync(join(directory, projectLibraryManifestName), 'utf8')) as unknown;
   } catch {
     throw new Error('INVALID_WORKSPACE_MANIFEST');
   }
-  if (!isWorkspaceManifest(value)) throw new Error('INVALID_WORKSPACE_MANIFEST');
+  if (!isProjectLibraryManifest(value)) throw new Error('INVALID_PROJECT_LIBRARY_MANIFEST');
   return value;
 };
 
@@ -219,13 +216,13 @@ const removeOwnedPath = (path: string): void => {
   }
 };
 
-const validateWritableSource = (handle: WorkspaceHandle): { directory: string; manifest: WorkspaceManifest } => {
-  const lease = getWritableWorkspaceLease(handle);
+const validateWritableSource = (handle: ProjectLibraryHandle): { directory: string; manifest: ProjectLibraryManifest } => {
+  const lease = getWritableProjectLibraryLease(handle);
   if (!lease) throw new Error('WORKSPACE_NOT_WRITABLE');
   const directory = getCanonicalDirectory(lease.directory, 'INVALID_WORKSPACE_PATH');
   if (directory !== lease.directory) throw new Error('INVALID_WORKSPACE_PATH');
-  const manifest = readWorkspaceManifest(directory);
-  if (manifest.workspaceId !== lease.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  const manifest = readProjectLibraryManifest(directory);
+  if (manifest.libraryId !== lease.libraryId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   if (manifest.formatVersion !== lease.formatVersion) throw new Error('WORKSPACE_FORMAT_CHANGED');
   return { directory, manifest };
 };
@@ -255,7 +252,7 @@ const shouldSkipSourceFile = (relativePath: string): boolean => getManagedIntern
 
 const collectManagedContent = (workspaceDirectory: string): { directories: string[]; files: string[] } => {
   const directories: string[] = [];
-  const files = [workspaceManifestName];
+  const files = [projectLibraryManifestName];
 
   const visitDirectory = (absoluteDirectory: string, segments: string[]): void => {
     const relativeDirectory = toManifestPath(segments);
@@ -379,7 +376,7 @@ const verifyWorkspaceContent = (workspaceDirectory: string, manifest: BackupMani
   assertUniquePaths(expectedDirectories);
   assertUniquePaths(expectedFiles);
   if (!managedDirectoryNames.every((name) => expectedDirectories.includes(name))) throw new Error('INVALID_BACKUP_MANIFEST');
-  if (!expectedFiles.includes(workspaceManifestName)) throw new Error('INVALID_BACKUP_MANIFEST');
+  if (!expectedFiles.includes(projectLibraryManifestName)) throw new Error('INVALID_BACKUP_MANIFEST');
 
   const actual = listStoredContent(workspaceDirectory);
   if (JSON.stringify(actual.directories) !== JSON.stringify(expectedDirectories)
@@ -391,10 +388,9 @@ const verifyWorkspaceContent = (workspaceDirectory: string, manifest: BackupMani
     if (content.byteLength !== entry.size || sha256(content) !== entry.sha256) throw new Error('INVALID_BACKUP_CONTENT');
     if (entry.storage === 'sqlite') verifySqliteDatabase(filePath);
   });
-  const workspaceManifest = readWorkspaceManifest(workspaceDirectory);
-  if (workspaceManifest.workspaceId !== manifest.workspaceId
-    || workspaceManifest.name !== manifest.workspaceName
-    || workspaceManifest.formatVersion !== manifest.workspaceFormatVersion) throw new Error('INVALID_BACKUP_CONTENT');
+  const projectLibraryManifest = readProjectLibraryManifest(workspaceDirectory);
+  if (projectLibraryManifest.libraryId !== manifest.workspaceId
+    || projectLibraryManifest.formatVersion !== manifest.workspaceFormatVersion) throw new Error('INVALID_BACKUP_CONTENT');
 };
 
 const verifyBackup = (backupDirectory: string): { directory: string; manifest: BackupManifest } => {
@@ -453,7 +449,7 @@ const copyStoredWorkspaceFiles = (
   destinationError: string,
 ): void => {
   manifest.files
-    .filter(({ path }) => includeManifest || path !== workspaceManifestName)
+    .filter(({ path }) => includeManifest || path !== projectLibraryManifestName)
     .forEach(({ path }) => {
       const sourcePath = getManagedSourceFile(sourceDirectory, path, 'INVALID_BACKUP_CONTENT');
       const destinationPath = getManagedDestinationFile(destinationDirectory, path, destinationError);
@@ -464,7 +460,7 @@ const copyStoredWorkspaceFiles = (
 };
 
 const createBackup = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   options: WorkspaceBackupStoreOptions,
   input: { destinationParentDirectory: string },
 ) => {
@@ -475,7 +471,7 @@ const createBackup = async (
   const operationId = randomUUID();
   const stagingDirectory = join(destinationParent, `.designhub-backup-${operationId}.staging`);
   const createdAt = new Date().toISOString();
-  const finalDirectory = join(destinationParent, `${source.manifest.workspaceId}-${createdAt.replace(/[:.]/gu, '-')}-${operationId}.designhub-backup`);
+  const finalDirectory = join(destinationParent, `${source.manifest.libraryId}-${createdAt.replace(/[:.]/gu, '-')}-${operationId}.designhub-backup`);
   const stagingWorkspace = join(stagingDirectory, backupWorkspaceDirectoryName);
   const assertOwnedStagingDirectory = (): void => {
     assertCanonicalChildDirectory(stagingDirectory, destinationParent, 'INVALID_BACKUP_DESTINATION');
@@ -530,8 +526,8 @@ const createBackup = async (
     const manifest: BackupManifest = {
       kind: backupKind,
       formatVersion: backupFormatVersion,
-      workspaceId: source.manifest.workspaceId,
-      workspaceName: source.manifest.name,
+      workspaceId: source.manifest.libraryId,
+      workspaceName: basename(source.directory),
       workspaceFormatVersion: source.manifest.formatVersion,
       createdAt,
       directories: content.directories,
@@ -593,12 +589,12 @@ const restoreBackup = async (
     assertStoredWorkspaceDirectories(finalDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
     copyStoredWorkspaceFiles(stagingDirectory, finalDirectory, backup.manifest, false, 'UNMANAGED_RESTORE_DESTINATION');
     getManagedDestinationFile(finalDirectory, `${internalDirectoryName}/writer-lock.sqlite`, 'UNMANAGED_RESTORE_DESTINATION');
-    initializeWorkspaceWriterLock(finalDirectory);
+    initializeProjectLibraryWriterLock(finalDirectory);
     assertManagedCopiedFile(finalDirectory, `${internalDirectoryName}/writer-lock.sqlite`, 'UNMANAGED_RESTORE_DESTINATION');
-    const sourceManifest = getManagedSourceFile(stagingDirectory, workspaceManifestName, 'INVALID_BACKUP_CONTENT');
-    const destinationManifest = getManagedDestinationFile(finalDirectory, workspaceManifestName, 'UNMANAGED_RESTORE_DESTINATION');
+    const sourceManifest = getManagedSourceFile(stagingDirectory, projectLibraryManifestName, 'INVALID_BACKUP_CONTENT');
+    const destinationManifest = getManagedDestinationFile(finalDirectory, projectLibraryManifestName, 'UNMANAGED_RESTORE_DESTINATION');
     copyFileSync(sourceManifest, destinationManifest, constants.COPYFILE_EXCL);
-    assertManagedCopiedFile(finalDirectory, workspaceManifestName, 'UNMANAGED_RESTORE_DESTINATION');
+    assertManagedCopiedFile(finalDirectory, projectLibraryManifestName, 'UNMANAGED_RESTORE_DESTINATION');
     assertCanonicalChildDirectory(stagingDirectory, destinationParent, 'UNMANAGED_RESTORE_DESTINATION');
     assertCanonicalChildDirectory(finalDirectory, destinationParent, 'UNMANAGED_RESTORE_DESTINATION');
     assertStoredWorkspaceDirectories(stagingDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
@@ -613,32 +609,32 @@ const restoreBackup = async (
 };
 
 const migrateMetadata = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   options: WorkspaceBackupStoreOptions,
   input: { backupDirectory: string; toFormatVersion: number },
 ): Promise<MigrationResult> => {
   const source = validateWritableSource(handle);
   const backup = verifyBackup(input.backupDirectory);
-  const backupVerified = backup.manifest.workspaceId === source.manifest.workspaceId
+  const backupVerified = backup.manifest.workspaceId === source.manifest.libraryId
     && backup.manifest.workspaceFormatVersion === source.manifest.formatVersion;
   if (!Number.isInteger(input.toFormatVersion) || !canMigrate({
     backupVerified,
-    writable: getWritableWorkspaceLease(handle) !== null,
+    writable: getWritableProjectLibraryLease(handle) !== null,
     from: source.manifest.formatVersion,
     to: input.toFormatVersion,
   })) throw new Error('MIGRATION_NOT_ALLOWED');
 
   const migrationId = randomUUID();
-  const manifestPath = join(source.directory, workspaceManifestName);
-  const temporaryPath = join(source.directory, `.${workspaceManifestName}.migration-${migrationId}`);
-  const rollbackPath = join(source.directory, `.${workspaceManifestName}.rollback-${migrationId}`);
+  const manifestPath = join(source.directory, projectLibraryManifestName);
+  const temporaryPath = join(source.directory, `.${projectLibraryManifestName}.migration-${migrationId}`);
+  const rollbackPath = join(source.directory, `.${projectLibraryManifestName}.rollback-${migrationId}`);
   const nextManifest = { ...source.manifest, formatVersion: input.toFormatVersion };
-  const statePath = join(source.directory, internalDirectoryName, workspaceMigrationStateName);
+  const statePath = join(source.directory, internalDirectoryName, projectLibraryMigrationStateName);
   const originalManifestContent = readFileSync(manifestPath, 'utf8');
   const migrationState = {
     kind: 'designhub-workspace-migration',
     migrationId,
-    workspaceId: source.manifest.workspaceId,
+    workspaceId: source.manifest.libraryId,
     fromFormatVersion: source.manifest.formatVersion,
     toFormatVersion: input.toFormatVersion,
     originalManifestSha256: sha256(originalManifestContent),
@@ -673,7 +669,7 @@ const migrateMetadata = async (
 };
 
 export const createWorkspaceBackupStore = (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   options: WorkspaceBackupStoreOptions = {},
 ): WorkspaceBackupStore => ({
   createBackup: (input) => createBackup(handle, options, input),

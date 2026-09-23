@@ -3,10 +3,10 @@ import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises
 import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type { AssetImportInput, AssetReadInput, AssetStore, AssetStoreInput } from '../../features/assets/asset-store';
 import { importAssets as importAssetItems, supportedAssetFormats, type AssetImportResult, type ManagedAsset } from '../../features/assets/import-assets';
-import { getWritableWorkspaceLease } from './workspace-store';
+import { getWritableProjectLibraryLease } from './project-library-store';
 import { projectContentManifestName, resolveProjectDirectory as resolveProjectPath } from './project-store';
 
 const assetsDirectoryName = 'assets';
@@ -53,7 +53,7 @@ const isContentManifest = (value: unknown, projectId: string): value is ContentM
   && value.assets.every(isPersistedAsset);
 
 const validateStoreInput = (input: AssetStoreInput): void => {
-  if (typeof input.workspaceId !== 'string' || input.workspaceId.trim().length === 0) throw new Error('INVALID_WORKSPACE_ID');
+  if (typeof (input.libraryId ?? input.workspaceId) !== 'string' || (input.libraryId ?? input.workspaceId).trim().length === 0) throw new Error('INVALID_WORKSPACE_ID');
   if (typeof input.projectId !== 'string' || !projectIdPattern.test(input.projectId)) throw new Error('INVALID_PROJECT_ID');
 };
 
@@ -68,10 +68,10 @@ const canonicalDirectory = (directory: string, errorMessage: string): string => 
   return directory;
 };
 
-const resolveProjectDirectory = (handle: WorkspaceHandle, input: AssetStoreInput, writable: boolean): string => {
+const resolveProjectDirectory = (handle: ProjectLibraryHandle, input: AssetStoreInput, writable: boolean): string => {
   validateStoreInput(input);
-  if (handle.workspace.workspaceId !== input.workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
-  if (writable && !getWritableWorkspaceLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
+  if (handle.library.libraryId !== (input.libraryId ?? input.workspaceId)) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  if (writable && !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
   const directory = resolveProjectPath(handle, input.projectId);
   if (!directory) throw new Error('PROJECT_NOT_FOUND');
   return directory;
@@ -144,7 +144,7 @@ const writeManagedBytes = async (projectDirectory: string, bytes: Uint8Array, me
   return `assets/${metadata.contentHash}`;
 };
 
-const listAssetsForProject = async (handle: WorkspaceHandle, input: AssetStoreInput): Promise<ManagedAsset[]> => {
+const listAssetsForProject = async (handle: ProjectLibraryHandle, input: AssetStoreInput): Promise<ManagedAsset[]> => {
   const directory = resolveProjectDirectory(handle, input, false);
   const manifest = await readContentManifest(directory, input.projectId);
   return manifest.assets
@@ -152,7 +152,7 @@ const listAssetsForProject = async (handle: WorkspaceHandle, input: AssetStoreIn
     .map((asset) => toManagedAsset(asset));
 };
 
-const importAssetsForProject = async (handle: WorkspaceHandle, input: AssetImportInput): Promise<AssetImportResult[]> => {
+const importAssetsForProject = async (handle: ProjectLibraryHandle, input: AssetImportInput): Promise<AssetImportResult[]> => {
   const directory = resolveProjectDirectory(handle, input, true);
   const manifest = await readContentManifest(directory, input.projectId);
   const existing = manifest.assets.map(toManagedAsset);
@@ -173,7 +173,7 @@ const importAssetsForProject = async (handle: WorkspaceHandle, input: AssetImpor
   return results;
 };
 
-const readAssetForProject = async (handle: WorkspaceHandle, input: AssetReadInput): Promise<Uint8Array | null> => {
+const readAssetForProject = async (handle: ProjectLibraryHandle, input: AssetReadInput): Promise<Uint8Array | null> => {
   const directory = resolveProjectDirectory(handle, input, false);
   const manifest = await readContentManifest(directory, input.projectId);
   const asset = manifest.assets.find((entry) => entry.id === input.assetId);
@@ -189,7 +189,7 @@ const readAssetForProject = async (handle: WorkspaceHandle, input: AssetReadInpu
   }
 };
 
-export const createAssetStore = (handle: WorkspaceHandle): AssetStore => ({
+export const createAssetStore = (handle: ProjectLibraryHandle): AssetStore => ({
   listAssets: async (input) => listAssetsForProject(handle, input),
   importAssets: async (input) => importAssetsForProject(handle, input),
   readAsset: async (input) => readAssetForProject(handle, input),

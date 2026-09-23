@@ -4,8 +4,8 @@ import { constants, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parseScene, serializeScene, type DesignScene } from '../../features/canvas/scene';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import { getWritableWorkspaceLease } from './workspace-store';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
+import { getWritableProjectLibraryLease } from './project-library-store';
 import { resolveProjectDirectory } from './project-store';
 
 const documentIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u;
@@ -18,9 +18,9 @@ const validateDocumentId = (documentId: string): string => {
 
 export const sceneFileName = (documentId: string): string => `${validateDocumentId(documentId)}.scene.json`;
 
-const getProjectDirectory = (handle: WorkspaceHandle, workspaceId: string, projectId: string, writable: boolean): string => {
-  if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
-  if (writable && !getWritableWorkspaceLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
+const getProjectDirectory = (handle: ProjectLibraryHandle, workspaceId: string, projectId: string, writable: boolean): string => {
+  if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  if (writable && !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
   const directory = resolveProjectDirectory(handle, projectId);
   if (!directory) throw new Error('PROJECT_NOT_FOUND');
   return directory;
@@ -53,7 +53,7 @@ const getDocumentsDirectory = async (projectDirectory: string, writable: boolean
 };
 
 export const loadDocumentScene = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   workspaceId: string,
   projectId: string,
   documentId: string,
@@ -85,7 +85,7 @@ export const loadDocumentScene = async (
 };
 
 export const saveDocumentScene = async (
-  handle: WorkspaceHandle,
+  handle: ProjectLibraryHandle,
   workspaceId: string,
   projectId: string,
   documentId: string,

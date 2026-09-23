@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createProjectStore } from './project-store';
-import { createWorkspace } from './workspace-store';
+import { initializeProjectLibrary } from './project-library-store';
 
 export const runStorageSmoke = async (resultPath: string): Promise<void> => {
   const parentDirectory = await mkdtemp(join(tmpdir(), 'designhub-storage-smoke-'));
-  const workspace = await createWorkspace({ parentDirectory, name: 'workspace' });
+  const workspace = await initializeProjectLibrary(parentDirectory);
   try {
     const result = await createProjectStore(workspace).createProjectContainer({
-      workspaceId: workspace.workspace.workspaceId,
+      workspaceId: workspace.library.libraryId,
       operationId: 'electron-storage-smoke',
       name: 'Electron storage smoke',
     });

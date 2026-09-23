@@ -17,8 +17,8 @@ import {
   type TaskState,
 } from '../../features/tasks/state';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
-import type { WorkspaceHandle } from '../../features/workspace/open-workspace';
-import { getWritableWorkspaceLease } from './workspace-store';
+import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
+import { getWritableProjectLibraryLease } from './project-library-store';
 
 export const tasksFileName = 'tasks.json';
 
@@ -145,10 +145,10 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.analysisDiagnostic === undefined || isPortfolioAnalysisDiagnostic(value.analysisDiagnostic))
   && (value.result === undefined || isResult(value.result));
 
-const validateWorkspace = (handle: WorkspaceHandle, workspaceId: string, writable: boolean): string => {
-  if (handle.workspace.workspaceId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
-  if (writable && !getWritableWorkspaceLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
-  const directory = realpathSync(handle.workspace.directory);
+const validateWorkspace = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
+  if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  if (writable && !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
+  const directory = realpathSync(handle.library.directory);
   const internal = join(directory, '.designhub');
   const status = lstatSync(internal);
   if (!status.isDirectory() || status.isSymbolicLink() || realpathSync(internal) !== internal) throw new Error('INVALID_WORKSPACE_PATH');
@@ -166,7 +166,7 @@ const assertRegularTaskFile = (path: string, allowMissing: boolean): void => {
   }
 };
 
-export const loadTaskState = async (handle: WorkspaceHandle, workspaceId: string): Promise<TaskRecord[]> => {
+export const loadTaskState = async (handle: ProjectLibraryHandle, workspaceId: string): Promise<TaskRecord[]> => {
   const path = validateWorkspace(handle, workspaceId, false);
   assertRegularTaskFile(path, true);
   try {
@@ -186,7 +186,7 @@ export const loadTaskState = async (handle: WorkspaceHandle, workspaceId: string
   return structuredClone(parsed);
 };
 
-export const saveTaskState = async (handle: WorkspaceHandle, workspaceId: string, tasks: readonly TaskRecord[]): Promise<boolean> => {
+export const saveTaskState = async (handle: ProjectLibraryHandle, workspaceId: string, tasks: readonly TaskRecord[]): Promise<boolean> => {
   const path = validateWorkspace(handle, workspaceId, true);
   if (!tasks.every(isTaskRecord)) throw new Error('INVALID_TASK_STATE');
   assertRegularTaskFile(path, true);
