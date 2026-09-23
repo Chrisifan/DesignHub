@@ -15,6 +15,7 @@ import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
 import type { ProviderConfigMap, ProviderConfigSaveInput } from '../features/providers/config';
+import type { ProjectLibraryDescriptor, ProjectLibraryStatus } from '../features/project-library/open-project-library';
 
 export type PortfolioUploadFile = {
   name: string;
@@ -78,6 +79,8 @@ export type WorkspaceCreateInput = {
 };
 
 export type DesktopApi = {
+  getProjectLibraryStatus?: () => Promise<ProjectLibraryStatus | null>;
+  chooseProjectLibrary?: () => Promise<ProjectLibraryDescriptor | null>;
   chooseWorkspaceDirectory: () => Promise<string | null>;
   createWorkspace?: (input: WorkspaceCreateInput) => Promise<WorkspaceDescriptor | null>;
   openWorkspace?: (directory: string) => Promise<WorkspaceDescriptor | null>;

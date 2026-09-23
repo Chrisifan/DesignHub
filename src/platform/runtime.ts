@@ -1,6 +1,8 @@
 import type { DesktopApi } from './contracts';
 
 const unavailableDesktopApi: DesktopApi = {
+  getProjectLibraryStatus: async () => ({ state: 'unselected' }),
+  chooseProjectLibrary: async () => null,
   chooseWorkspaceDirectory: async () => null,
   createWorkspace: async () => null,
   openWorkspace: async () => null,

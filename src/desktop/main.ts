@@ -69,6 +69,10 @@ import { loadProviderConfigs, saveProviderConfigs } from './security/provider-co
 import { createProviderConfigLoadHandler, createProviderConfigSaveHandler, providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
 import { createProviderAdapterResolver } from './provider-adapter-resolver';
 import { normalizeProviderImage } from './provider-image-input';
+import { projectLibraryChooseChannel, projectLibraryStatusChannel, createProjectLibraryLifecycleHandlers } from './ipc/project-library';
+import { createProjectLibrarySettingsStore } from './storage/project-library-settings-store';
+import { initializeProjectLibrary, openProjectLibrary } from './storage/project-library-store';
+import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -80,12 +84,23 @@ protocol.registerSchemesAsPrivileged([
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
 let activeWorkspaceHandle: WorkspaceHandle | null = null;
+let activeProjectLibraryHandle: ProjectLibraryHandle | null = null;
 let taskServicePromise: Promise<AgentTaskService> | null = null;
 let credentialStore: SystemCredentialStore = createUnavailableCredentialStore();
 let credentialBoundary: CredentialBoundary = createCredentialBoundary(credentialStore);
 const portfolioSourceInspector = createPortfolioSourceInspector();
 
 const providerConfigPath = (): string => join(app.getPath('userData'), 'provider-connections.json');
+
+const closeActiveProjectLibrary = (): void => {
+  activeProjectLibraryHandle?.close();
+  activeProjectLibraryHandle = null;
+};
+
+const activateProjectLibrary = (handle: ProjectLibraryHandle): void => {
+  closeActiveProjectLibrary();
+  activeProjectLibraryHandle = handle;
+};
 
 const generatedImageBytes = async (image: GeneratedImage): Promise<{ bytes: Uint8Array; mimeType: string }> => {
   if (image.base64) {
@@ -184,6 +199,7 @@ const createWindow = (): { window: BrowserWindow; trustedUrl: string } => {
     activeTrustedUrl = null;
     activeWorkspaceHandle?.close();
     activeWorkspaceHandle = null;
+    closeActiveProjectLibrary();
     portfolioSourceInspector.discardAll();
   });
   return { window, trustedUrl };
@@ -329,6 +345,26 @@ app.whenReady().then(async () => {
     return;
   }
   createWindow();
+  const projectLibrarySettings = createProjectLibrarySettingsStore(app.getPath('userData'));
+  const createProjectLibraryHandlers = () => createProjectLibraryLifecycleHandlers({
+    window: activeWindow!,
+    trustedUrl: activeTrustedUrl!,
+    loadDirectory: projectLibrarySettings.loadProjectLibraryDirectory,
+    saveDirectory: projectLibrarySettings.saveProjectLibraryDirectory,
+    showDirectoryDialog: (browserWindow) => dialog.showOpenDialog(browserWindow, { properties: ['openDirectory', 'createDirectory'] }),
+    open: openProjectLibrary,
+    initialize: initializeProjectLibrary,
+    getActiveHandle: () => activeProjectLibraryHandle,
+    activate: activateProjectLibrary,
+  });
+  ipcMain.handle(projectLibraryStatusChannel, (event) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createProjectLibraryHandlers().getStatus(event as never);
+  });
+  ipcMain.handle(projectLibraryChooseChannel, (event) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createProjectLibraryHandlers().choose(event as never);
+  });
   ipcMain.handle(workspaceChannel, async (event) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createWorkspaceHandler(activeWindow, activeTrustedUrl, (browserWindow) => dialog.showOpenDialog(browserWindow, { properties: ['openDirectory', 'createDirectory'] }))(event);
@@ -760,8 +796,11 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   activeWorkspaceHandle?.close();
   activeWorkspaceHandle = null;
+  closeActiveProjectLibrary();
   if (process.platform !== 'darwin') app.quit();
 });
+
+app.on('before-quit', closeActiveProjectLibrary);
 
 app.on('activate', () => {
   recreateWindowOnActivate(() => BrowserWindow.getAllWindows().length > 0, () => {

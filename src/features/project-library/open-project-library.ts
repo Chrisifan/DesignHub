@@ -11,3 +11,8 @@ export type ProjectLibraryHandle = {
   library: ProjectLibraryDescriptor;
   close: () => void;
 };
+
+export type ProjectLibraryStatus =
+  | { state: 'unselected' }
+  | { state: 'ready'; library: ProjectLibraryDescriptor }
+  | { state: 'needs-location'; directory: string; reason: 'missing' | 'unavailable' | 'invalid' };

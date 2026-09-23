@@ -59,7 +59,7 @@
 - [x] **Step 4: Reject every non-empty unrecognized root without mutation**; recognize only a valid `designhub.library.json`, and do not inspect a legacy workspace manifest as a migration candidate.
 - [x] **Step 5: Run `pnpm exec vitest run --config vitest.config.ts src/desktop/storage/project-library-store.test.ts`**; 6/6 passed.
 - [x] **Step 6: Run `pnpm exec vitest run --config vitest.config.ts tests/integration/workspace-open.test.ts tests/integration/workspace-open-identity.test.ts`**; 12/12 passed, confirming the legacy storage implementation remains unaffected until its consumers move in Task 3.
-- [ ] **Step 7: Commit** the contract and store as `feat: add project library storage`.
+- [x] **Step 7: Commit** the contract and store as `feat: add project library storage` (`2a04f84`).
 
 ### Task 2: Persist one library path and expose trusted lifecycle IPC
 
@@ -79,13 +79,13 @@
 - The chooser result is `ProjectLibraryDescriptor | null`; cancel returns `null`, and the renderer never supplies an arbitrary root path to a write handler.
 - The preference store exposes `loadProjectLibraryDirectory(): string | null` and `saveProjectLibraryDirectory(directory: string): void` and writes atomically under `userData`.
 
-- [ ] **Step 1: Write preference-store tests** for absent path, valid round trip, malformed preference rejection, and atomic-write failure preserving the previous value.
-- [ ] **Step 2: Write IPC tests** proving startup opens only the configured path, a missing configured path returns `needs-location`, the chooser initializes an empty root, an existing library reopens, cancel changes no setting, unknown non-empty paths do not become active, and calls require a trusted main frame.
-- [ ] **Step 3: Run both focused test files and confirm expected failures** before adding the implementation.
-- [ ] **Step 4: Implement the atomic `userData` preference store** using the existing atomic-file conventions from provider configuration/settings storage.
-- [ ] **Step 5: Implement main-process status and chooser handlers** and ensure active handles close before replacing them or quitting.
-- [ ] **Step 6: Add only the two project-library methods to preload/contracts/runtime** and keep the chooser native; do not expose filesystem initialization primitives to renderer code.
-- [ ] **Step 7: Run `pnpm exec vitest run src/desktop/storage/project-library-settings-store.test.ts src/desktop/ipc/project-library.test.ts`** and verify all startup, chooser, persistence, cancel, and trust cases pass.
+- [x] **Step 1: Write preference-store tests** for absent path, valid round trip, malformed preference rejection, and atomic-write failure preserving the previous value.
+- [x] **Step 2: Write IPC tests** proving startup opens only the configured path, a missing configured path returns `needs-location`, the chooser initializes an empty root, an existing library reopens, cancel changes no setting, unknown non-empty paths do not become active, and calls require a trusted main frame.
+- [x] **Step 3: Run both focused test files and confirm expected failures** before adding the implementation; both suites initially failed because the new modules did not exist.
+- [x] **Step 4: Implement the atomic `userData` preference store** using the existing atomic-file conventions from provider configuration/settings storage.
+- [x] **Step 5: Implement main-process status and chooser handlers** and ensure active handles close before replacing them or quitting.
+- [x] **Step 6: Add only the two project-library methods to preload/contracts/runtime** and keep the chooser native; do not expose filesystem initialization primitives to renderer code.
+- [x] **Step 7: Run `pnpm exec vitest run src/desktop/storage/project-library-settings-store.test.ts src/desktop/ipc/project-library.test.ts`**; 10/10 tests pass. Typecheck, focused lint, and `git diff --check` pass.
 - [ ] **Step 8: Commit** the lifecycle bridge as `feat: persist and open selected project library`.
 
 ### Task 3: Rebind storage consumers to the active project library
