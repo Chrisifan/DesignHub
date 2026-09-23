@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Locale } from '../i18n';
 import { Button, t } from '../studio/ui';
 import { ProviderSettings } from '../../features/providers/ProviderSettings';
-import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, type ProviderProfile } from '../../features/providers/config';
+import { providerCredentialAccount, providerProfiles, type ProviderConfigMap } from '../../features/providers/config';
 import type { ProviderConnection } from '../../features/providers/connection';
 import { getDesktopApi } from '../../platform/runtime';
 import './onboarding.css';

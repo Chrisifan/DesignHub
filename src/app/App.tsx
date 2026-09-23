@@ -140,7 +140,8 @@ export const App = () => {
     setError('');
     try {
       const saved = await (getDesktopApi().saveProfile?.({ onboarding: { modelStepCompleted: true } }) ?? null);
-      if (saved) setProfile(saved);
+      if (!saved) throw new Error('PROFILE_SAVE_FAILED');
+      setProfile(saved);
       setPhase(libraryStatus.state === 'ready' ? 'studio' : 'library');
     } catch {
       setError(t(locale, '无法保存引导状态，请重试。', 'Could not save onboarding state. Try again.'));
