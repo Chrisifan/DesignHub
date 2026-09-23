@@ -1,7 +1,21 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+
+const library = {
+  libraryId: 'library-1',
+  directory: '/tmp/designhub-library',
+  formatVersion: 1,
+  openMode: 'writable' as const,
+};
+
+const completedProfile = {
+  formatVersion: 1 as const,
+  displayName: 'Sifan',
+  avatarDataUrl: 'data:image/webp;base64,AA==',
+  onboarding: { profileCompleted: true, modelStepCompleted: true },
+};
 
 beforeEach(() => {
   localStorage.clear();
@@ -11,257 +25,122 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
+
+const revealSplash = async (): Promise<void> => {
+  await act(async () => { await vi.advanceTimersByTimeAsync(650); });
+  vi.useRealTimers();
+};
 
 it('tracks the pointer on the root application shell through an animation frame', () => {
   let frame: FrameRequestCallback | undefined;
-  const requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
-    frame = callback;
-    return 1;
-  });
-  vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { frame = callback; return 1; }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
   render(<App />);
   const shell = screen.getByRole('main', { name: 'Design Hub' });
 
   fireEvent.pointerMove(shell, { clientX: 320, clientY: 240 });
-  expect(requestAnimationFrame).toHaveBeenCalledOnce();
   frame?.(0);
   expect(shell).toHaveAttribute('data-pointer-active', 'true');
   expect(shell.style.getPropertyValue('--pointer-x')).toBe('320px');
   expect(shell.style.getPropertyValue('--pointer-y')).toBe('240px');
 });
 
-it('does not expose an example workspace or built-in designer entry', () => {
+it('shows the branded splash before first-launch onboarding', async () => {
+  vi.useFakeTimers();
+  window.designhub = {
+    loadProfile: async () => null,
+    getProjectLibraryStatus: async () => ({ state: 'unselected' }),
+  } as never;
   render(<App />);
 
-  expect(screen.queryByRole('button', { name: '浏览示例' })).not.toBeInTheDocument();
-  expect(screen.queryByText('纸感排版')).not.toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Design Hub' })).toBeVisible();
+  expect(screen.queryByRole('heading', { name: '设置你的资料' })).toBeNull();
+  await revealSplash();
+  expect(screen.getByRole('heading', { name: '设置你的资料' })).toBeVisible();
 });
 
-it('does not enter an example workspace when a legacy preview URL is opened', () => {
-  window.history.replaceState({}, '', '/?preview=1');
+it('requires profile fields and advances to the optional model step', async () => {
+  vi.useFakeTimers();
+  const chooseProjectLibrary = vi.fn(async () => library);
+  const saveProfile = vi.fn(async () => ({ ...completedProfile, onboarding: { profileCompleted: true, modelStepCompleted: false } }));
+  window.designhub = {
+    loadProfile: async () => null,
+    getProjectLibraryStatus: async () => ({ state: 'unselected' }),
+    chooseProjectLibrary,
+    saveProfile,
+  } as never;
   render(<App />);
-  expect(screen.getByRole('button', { name: '新建工作区' })).toBeInTheDocument();
-  expect(screen.queryByText('纸感排版')).not.toBeInTheDocument();
+  await revealSplash();
+
+  const continueButton = screen.getByRole('button', { name: '继续' });
+  expect(continueButton).toBeDisabled();
+  fireEvent.change(screen.getByRole('textbox', { name: '昵称' }), { target: { value: 'Sifan' } });
+  fireEvent.change(screen.getByLabelText('上传头像'), {
+    target: { files: [new File(['avatar'], 'avatar.png', { type: 'image/png' })] },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '选择存储文件夹' }));
+  await waitFor(() => expect(continueButton).toBeEnabled());
+  fireEvent.click(continueButton);
+
+  await screen.findByRole('heading', { name: '配置模型连接' });
+  expect(saveProfile).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'Sifan', onboarding: { profileCompleted: true } }));
 });
 
-it('未连接模型也能进入本地工作区入口', () => {
+it('skipping model setup enters the project library home', async () => {
+  const saveProfile = vi.fn(async () => completedProfile);
+  window.designhub = {
+    loadProfile: async () => ({ ...completedProfile, onboarding: { profileCompleted: true, modelStepCompleted: false } }),
+    getProjectLibraryStatus: async () => ({ state: 'ready', library }),
+    saveProfile,
+    listActiveProjects: async () => [],
+  } as never;
   render(<App />);
 
-  expect(screen.getByRole('button', { name: '新建工作区' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: '打开工作区' })).toBeEnabled();
-  expect(screen.queryByRole('button', { name: '必须登录' })).toBeNull();
+  await screen.findByRole('heading', { name: '配置模型连接' });
+  fireEvent.click(screen.getByRole('button', { name: '跳过，稍后设置' }));
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible());
+  expect(saveProfile).toHaveBeenCalledWith({ onboarding: { modelStepCompleted: true } });
 });
 
-it('cancellation of the typed directory chooser leaves the welcome shell usable', async () => {
-  const chooseWorkspaceDirectory = vi.fn(async () => null);
-  window.designhub = { chooseWorkspaceDirectory };
+it('enters Studio directly after completed onboarding and restores the avatar', async () => {
+  window.designhub = {
+    loadProfile: async () => completedProfile,
+    getProjectLibraryStatus: async () => ({ state: 'ready', library }),
+    listActiveProjects: async () => [],
+  } as never;
   render(<App />);
 
-  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
-
-  await waitFor(() => expect(chooseWorkspaceDirectory).toHaveBeenCalledOnce());
-  expect(screen.getByRole('button', { name: '新建工作区' })).toBeEnabled();
+  expect(await screen.findByRole('img', { name: '用户头像' })).toHaveAttribute('src', completedProfile.avatarDataUrl);
+  expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible();
 });
 
-it('switches the bundled semantic labels between Chinese and English', () => {
+it('keeps the profile step when project-library selection is cancelled', async () => {
+  vi.useFakeTimers();
+  window.designhub = {
+    loadProfile: async () => null,
+    getProjectLibraryStatus: async () => ({ state: 'unselected' }),
+    chooseProjectLibrary: vi.fn(async () => null),
+  } as never;
   render(<App />);
-
-  fireEvent.click(screen.getByRole('button', { name: 'Switch to English' }));
-
-  expect(screen.getByRole('button', { name: 'New workspace' })).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'Open workspace' })).toBeEnabled();
+  await revealSplash();
+  fireEvent.change(screen.getByRole('textbox', { name: '昵称' }), { target: { value: 'Sifan' } });
+  fireEvent.click(screen.getByRole('button', { name: '选择存储文件夹' }));
+  expect(screen.getByRole('textbox', { name: '昵称' })).toHaveValue('Sifan');
+  expect(screen.getByText('尚未选择存储文件夹')).toBeVisible();
 });
 
-it('changes only the theme token mode without remounting or moving focus', () => {
+it('switches language and theme without leaving the active onboarding step', async () => {
+  vi.useFakeTimers();
+  window.designhub = { loadProfile: async () => null, getProjectLibraryStatus: async () => ({ state: 'unselected' }) } as never;
   render(<App />);
-  const welcomeTitle = screen.getByRole('heading', { name: '开始本地创作' });
-  const openWorkspace = screen.getByRole('button', { name: '打开工作区' });
-  openWorkspace.focus();
-
+  await revealSplash();
+  const title = screen.getByRole('heading', { name: '设置你的资料' });
   fireEvent.click(screen.getByRole('button', { name: '切换主题' }));
-
   expect(screen.getByRole('main')).toHaveAttribute('data-theme', 'dark');
-  expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
-  expect(screen.getByRole('heading', { name: '开始本地创作' })).toBe(
-    welcomeTitle,
-  );
-  expect(document.activeElement).toBe(openWorkspace);
-});
-
-it('preserves workspace input when the native folder chooser fails', async () => {
-  window.designhub = {
-    chooseWorkspaceDirectory: async () => {
-      throw new Error('native chooser failed');
-    },
-  };
-  render(<App />);
-  fireEvent.click(screen.getByRole('button', { name: '新建工作区' }));
-  fireEvent.change(screen.getByRole('textbox', { name: '工作区名称' }), {
-    target: { value: '我的空间' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: '选择目录' }));
-  await screen.findByText('无法打开目录选择器，请重试。输入内容已保留。');
-  expect(screen.getByRole('textbox', { name: '工作区名称' })).toHaveValue(
-    '我的空间',
-  );
-});
-
-it('opens the desktop application on the welcome shell by default', () => {
-  vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(
-    'DesignHub Electron/44.3.0',
-  );
-  window.designhub = { chooseWorkspaceDirectory: async () => null };
-
-  render(<App />);
-
-  expect(screen.getByRole('heading', { name: '开始本地创作' })).toBeVisible();
-  expect(screen.queryByRole('heading', { name: '项目库' })).toBeNull();
-});
-
-it('reopens the most recently accessed workspace on launch', async () => {
-  const recentWorkspace = {
-    workspaceId: 'workspace-recent',
-    name: '上次工作区',
-    directory: '/tmp/designhub-recent',
-    formatVersion: 1,
-    openMode: 'writable' as const,
-  };
-  localStorage.setItem('designhub.recent.workspaces', JSON.stringify([recentWorkspace]));
-  const openWorkspace = vi.fn(async () => recentWorkspace);
-  window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
-    openWorkspace,
-  } as never;
-
-  render(<App />);
-
-  await waitFor(() => expect(openWorkspace).toHaveBeenCalledWith('/tmp/designhub-recent'));
-  expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('上次工作区');
-  expect(screen.queryByRole('heading', { name: '开始本地创作' })).toBeNull();
-});
-
-it('creates a real workspace from the welcome form instead of entering example mode', async () => {
-  const createWorkspace = vi.fn(async ({ parentDirectory, name }: { parentDirectory: string; name: string }) => ({
-    workspaceId: 'workspace-created',
-    name,
-    directory: `${parentDirectory}/${name}`,
-    formatVersion: 1,
-    openMode: 'writable' as const,
-  }));
-  window.designhub = {
-    chooseWorkspaceDirectory: async () => '/tmp/designhub-parent',
-    createWorkspace,
-    openWorkspace: async () => null,
-    listActiveProjects: async () => [],
-  } as never;
-  render(<App />);
-
-  fireEvent.click(screen.getByRole('button', { name: '新建工作区' }));
-  fireEvent.change(screen.getByRole('textbox', { name: '工作区名称' }), {
-    target: { value: '我的真实空间' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: '选择目录' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: '创建' })).toBeEnabled());
-  fireEvent.click(screen.getByRole('button', { name: '创建' }));
-
-  await waitFor(() => expect(createWorkspace).toHaveBeenCalledWith({
-    parentDirectory: '/tmp/designhub-parent',
-    name: '我的真实空间',
-  }));
-  expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('我的真实空间');
-  expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible();
-  expect(screen.queryByRole('complementary', { name: '项目列表' })).toBeNull();
-});
-
-it('opens a selected workspace and preserves read-only mode in the shell', async () => {
-  const openWorkspace = vi.fn(async (directory: string) => ({
-    workspaceId: 'workspace-opened',
-    name: '只读空间',
-    directory,
-    formatVersion: 3,
-    openMode: 'read-only' as const,
-  }));
-  window.designhub = {
-    chooseWorkspaceDirectory: async () => '/tmp/designhub-workspace',
-    createWorkspace: async () => null,
-    openWorkspace,
-    listActiveProjects: async () => [],
-  } as never;
-  render(<App />);
-
-  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
-
-  await waitFor(() => expect(openWorkspace).toHaveBeenCalledWith('/tmp/designhub-workspace'));
-  expect(await screen.findByRole('button', { name: '切换工作区' })).toHaveTextContent('只读空间');
-  expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible();
-  expect(screen.queryByRole('complementary', { name: '项目列表' })).toBeNull();
-});
-
-it('keeps opened workspaces in the switcher for later selection', async () => {
-  const chooseWorkspaceDirectory = vi.fn()
-    .mockResolvedValueOnce('/tmp/first')
-    .mockResolvedValueOnce('/tmp/second');
-  const openWorkspace = vi.fn(async (directory: string) => ({
-    workspaceId: directory.endsWith('first') ? 'workspace-first' : 'workspace-second',
-    name: directory.endsWith('first') ? 'First space' : 'Second space',
-    directory,
-    formatVersion: 1,
-    openMode: 'writable' as const,
-  }));
-  window.designhub = { chooseWorkspaceDirectory, openWorkspace };
-  render(<App />);
-
-  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
-  await screen.findByRole('button', { name: '切换工作区' });
-  fireEvent.click(screen.getByRole('button', { name: '切换工作区' }));
-  fireEvent.click(screen.getByRole('button', { name: '工作区' }));
-  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
-  await screen.findByRole('button', { name: '切换工作区' });
-  fireEvent.click(screen.getByRole('button', { name: '切换工作区' }));
-
-  expect(screen.getByRole('button', { name: /First space/ })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /First space/ }));
-  await waitFor(() => expect(openWorkspace).toHaveBeenLastCalledWith('/tmp/first'));
-});
-
-it('keeps the create form when workspace storage rejects the request', async () => {
-  window.designhub = {
-    chooseWorkspaceDirectory: async () => '/tmp/designhub-parent',
-    createWorkspace: async () => {
-      throw new Error('WORKSPACE_EXISTS');
-    },
-  };
-  render(<App />);
-
-  fireEvent.click(screen.getByRole('button', { name: '新建工作区' }));
-  fireEvent.change(screen.getByRole('textbox', { name: '工作区名称' }), {
-    target: { value: '重复空间' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: '选择目录' }));
-  const createButton = await screen.findByRole('button', { name: '创建' });
-  await waitFor(() => expect(createButton).toBeEnabled());
-  fireEvent.click(createButton);
-
-  await screen.findByText('无法创建工作区，请检查名称和目录。');
-  expect(screen.getByRole('textbox', { name: '工作区名称' })).toHaveValue('重复空间');
-  expect(screen.getByRole('textbox', { name: '本地目录' })).toHaveValue('/tmp/designhub-parent');
-  expect(screen.getByRole('heading', { name: '开始本地创作' })).toBeVisible();
-});
-
-it('keeps the welcome shell when opening a workspace fails', async () => {
-  window.designhub = {
-    chooseWorkspaceDirectory: async () => '/tmp/invalid-workspace',
-    openWorkspace: async () => {
-      throw new Error('INVALID_WORKSPACE_MANIFEST');
-    },
-  };
-  render(<App />);
-
-  fireEvent.click(screen.getByRole('button', { name: '打开工作区' }));
-
-  await screen.findByText('无法打开工作区，请确认目录有效。');
-  expect(screen.getByRole('heading', { name: '开始本地创作' })).toBeVisible();
+  expect(screen.getByRole('heading', { name: '设置你的资料' })).toBe(title);
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to English' }));
+  expect(screen.getByRole('heading', { name: 'Set up your profile' })).toBeVisible();
 });

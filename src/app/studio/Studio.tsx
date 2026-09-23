@@ -14,6 +14,7 @@ import { legacySeededDesignerIds } from '../../features/designers/persistence';
 import { Workbench } from './Workbench';
 import type { CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
+import type { AppProfile } from '../../features/profile/model';
 import type { ActiveProject } from '../../features/workspace/project-store';
 import { getDesktopApi } from '../../platform/runtime';
 import {
@@ -107,6 +108,7 @@ const mergeProjectMetadata = (current: Project, metadata: ProjectMetadata): Proj
 type StudioProps = {
   locale: Locale;
   theme: Theme;
+  profile?: Pick<AppProfile, 'displayName' | 'avatarDataUrl'> | null;
   workspace?: WorkspaceDescriptor | null;
   onLocaleChange: (locale: Locale) => void;
   onThemeChange: (theme: Theme) => void;
@@ -124,6 +126,7 @@ export const Studio = ({
   locale,
   theme,
   workspace = null,
+  profile = null,
   onLocaleChange,
   onThemeChange,
   initialProjects = emptyProjects,
@@ -733,7 +736,8 @@ export const Studio = ({
         userMenu={(
           <StudioUserMenu
             locale={locale}
-            operatorName={operatorName}
+            operatorName={profile?.displayName ?? operatorName}
+            avatarDataUrl={profile?.avatarDataUrl}
             currentView={view}
             onNavigate={navigate}
             onNewProject={() => openNewDesign()}

@@ -7,6 +7,7 @@ import { Icon, t } from './ui';
 type StudioUserMenuProps = {
   locale: Locale;
   operatorName: string;
+  avatarDataUrl?: string | null;
   currentView: View;
   onNavigate: (view: View) => void;
   onNewProject: () => void;
@@ -55,6 +56,7 @@ const groups: Array<{ zh: string; en: string; items: MenuItem[] }> = [
 export const StudioUserMenu = ({
   locale,
   operatorName,
+  avatarDataUrl = null,
   currentView,
   onNavigate,
   onNewProject,
@@ -144,7 +146,7 @@ export const StudioUserMenu = ({
           });
         }}
       >
-        <span className="operator-avatar">{avatarText}</span>
+        {avatarDataUrl ? <img className="operator-avatar operator-avatar--image" src={avatarDataUrl} alt={t(locale, '用户头像', 'User avatar')} /> : <span className="operator-avatar">{avatarText}</span>}
       </button>
       {open ? (
         <div className="studio-user-menu__popover" role="menu" onKeyDown={onMenuKeyDown}>

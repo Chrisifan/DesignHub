@@ -112,6 +112,7 @@
 .studio-user-menu { position: relative; }
 .studio-user-menu__trigger { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; }
 .studio-user-menu__trigger .operator-avatar { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--surface-container-highest); color: var(--on-surface); font-size: 11px; font-weight: 650; }
+.studio-user-menu__trigger .operator-avatar--image { display: block; object-fit: cover; }
 .studio-user-menu__popover { position: absolute; z-index: 100; top: calc(100% + 8px); right: 0; width: 224px; padding: 7px; border-radius: var(--radius-ui); }
 .studio-user-menu__group { padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, var(--outline-variant) 60%, transparent); }
 .studio-user-menu__group:last-child { border-bottom: 0; }

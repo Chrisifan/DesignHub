@@ -32,7 +32,7 @@ button { font: inherit; }
   mask-image: radial-gradient(circle 150px at var(--pointer-x) var(--pointer-y), #000 0%, transparent 100%);
 }
 .app-shell[data-pointer-active='true']::after { opacity: 1; }
-.window-bar, .studio, .welcome { position: relative; z-index: 1; }
+.window-bar, .studio, .welcome, .startup-splash, .onboarding-shell { position: relative; z-index: 1; }
 .window-bar {
   z-index: 20;
   height: 40px;
@@ -61,6 +61,16 @@ button { font: inherit; }
 h1 { margin: 0; font: 600 24px/32px Geist, "PingFang SC", sans-serif; }
 .welcome-description { margin: 12px 0 24px; max-width: 42ch; color: var(--on-surface-variant); font-size: 13px; line-height: 18px; }
 .welcome-actions { display: flex; gap: 12px; }
+.startup-splash { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; animation: startup-splash-enter 240ms ease-out both; }
+.startup-splash picture { display: block; width: min(280px, 48vw); }
+.startup-splash__logo { display: block; width: 100%; height: auto; }
+.startup-splash__logo--dark { display: none; }
+:root[data-theme='dark'] .startup-splash__logo--light { display: none; }
+:root[data-theme='dark'] .startup-splash__logo--dark { display: block; }
+.startup-splash strong { font: 600 22px/28px Geist, "PingFang SC", sans-serif; }
+.startup-splash p { margin: 0; color: var(--on-surface-variant); font-size: 13px; }
+.onboarding-shell { min-height: calc(100% - 40px); display: grid; place-items: center; padding: 24px; overflow: auto; }
+@keyframes startup-splash-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .button { min-height: 32px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--radius-ui); cursor: pointer; white-space: nowrap; }
 .button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .button-primary { background: var(--primary-container); color: #061016; }
@@ -75,5 +85,6 @@ h1 { margin: 0; font: 600 24px/32px Geist, "PingFang SC", sans-serif; }
 .window-locale-switch:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); color: var(--on-surface); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  .startup-splash { animation: none; }
   .app-shell::after { display: none; }
 }
