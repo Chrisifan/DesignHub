@@ -73,6 +73,9 @@ import { normalizeProviderImage } from './provider-image-input';
 import { projectLibraryChooseChannel, projectLibraryStatusChannel, createProjectLibraryLifecycleHandlers } from './ipc/project-library';
 import { createProjectLibrarySettingsStore } from './storage/project-library-settings-store';
 import { initializeProjectLibrary, openProjectLibrary } from './storage/project-library-store';
+import { createProfileStore } from './storage/profile-store';
+import { normalizeProfileAvatar } from './profile-avatar';
+import { createProfileLoadHandler, createProfileSaveHandler, profileLoadChannel, profileSaveChannel } from './ipc/profile';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -347,6 +350,7 @@ app.whenReady().then(async () => {
   }
   createWindow();
   const projectLibrarySettings = createProjectLibrarySettingsStore(app.getPath('userData'));
+  const profileStore = createProfileStore(app.getPath('userData'));
   const createProjectLibraryHandlers = () => createProjectLibraryLifecycleHandlers({
     window: activeWindow!,
     trustedUrl: activeTrustedUrl!,
@@ -365,6 +369,14 @@ app.whenReady().then(async () => {
   ipcMain.handle(projectLibraryChooseChannel, (event) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createProjectLibraryHandlers().choose(event as never);
+  });
+  ipcMain.handle(profileLoadChannel, async (event) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createProfileLoadHandler(activeWindow, activeTrustedUrl, profileStore)(event as never);
+  });
+  ipcMain.handle(profileSaveChannel, async (event, input) => {
+    if (!activeWindow || !activeTrustedUrl) return null;
+    return createProfileSaveHandler(activeWindow, activeTrustedUrl, profileStore, normalizeProfileAvatar)(event as never, input);
   });
   ipcMain.handle(workspaceChannel, async (event) => {
     if (!activeWindow || !activeTrustedUrl) return null;

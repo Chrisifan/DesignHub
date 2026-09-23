@@ -20,8 +20,11 @@ import { searchQueryChannel, searchRebuildChannel } from './ipc/search';
 import { exportHistoryListChannel } from './ipc/export-history';
 import { providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
 import { projectLibraryChooseChannel, projectLibraryStatusChannel } from './ipc/project-library';
+import { profileLoadChannel, profileSaveChannel } from './ipc/profile';
 
 const api: DesktopApi = {
+  loadProfile: () => ipcRenderer.invoke(profileLoadChannel),
+  saveProfile: (input) => ipcRenderer.invoke(profileSaveChannel, input),
   getProjectLibraryStatus: () => ipcRenderer.invoke(projectLibraryStatusChannel),
   chooseProjectLibrary: () => ipcRenderer.invoke(projectLibraryChooseChannel),
   chooseWorkspaceDirectory: () => ipcRenderer.invoke('workspace:choose-directory') as Promise<string | null>,

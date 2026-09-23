@@ -1,6 +1,8 @@
 import type { DesktopApi } from './contracts';
 
 const unavailableDesktopApi: DesktopApi = {
+  loadProfile: async () => null,
+  saveProfile: async () => null,
   getProjectLibraryStatus: async () => ({ state: 'unselected' }),
   chooseProjectLibrary: async () => null,
   chooseWorkspaceDirectory: async () => null,

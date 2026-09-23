@@ -16,6 +16,12 @@ import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/lib
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
 import type { ProviderConfigMap, ProviderConfigSaveInput } from '../features/providers/config';
 import type { ProjectLibraryDescriptor, ProjectLibraryStatus } from '../features/project-library/open-project-library';
+import type { AppProfile } from '../features/profile/model';
+
+export type ProfileAvatarInput = {
+  mimeType: string;
+  bytes: Uint8Array;
+};
 
 export type PortfolioUploadFile = {
   name: string;
@@ -79,6 +85,8 @@ export type WorkspaceCreateInput = {
 };
 
 export type DesktopApi = {
+  loadProfile?: () => Promise<AppProfile | null>;
+  saveProfile?: (input: { displayName?: string; avatar?: ProfileAvatarInput | null; onboarding?: Partial<AppProfile['onboarding']> }) => Promise<AppProfile | null>;
   getProjectLibraryStatus?: () => Promise<ProjectLibraryStatus | null>;
   chooseProjectLibrary?: () => Promise<ProjectLibraryDescriptor | null>;
   chooseWorkspaceDirectory: () => Promise<string | null>;
