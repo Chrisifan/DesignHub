@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import sharp from 'sharp';
 
 import { normalizeProfileAvatar } from '../profile-avatar';
 import { createProfileSaveHandler, profileSaveChannel } from './profile';
@@ -28,6 +29,14 @@ it('rejects an unsupported MIME type before image processing', async () => {
 it('rejects an avatar larger than 10MB', async () => {
   await expect(normalizeProfileAvatar({ mimeType: 'image/png', bytes: new Uint8Array(10 * 1024 * 1024 + 1) }))
     .rejects.toThrow('INVALID_PROFILE_AVATAR');
+});
+
+it('normalizes a valid PNG into a WebP data URL', async () => {
+  const bytes = new Uint8Array(await sharp({
+    create: { width: 2, height: 2, channels: 4, background: { r: 60, g: 180, b: 220, alpha: 1 } },
+  }).png().toBuffer());
+
+  await expect(normalizeProfileAvatar({ mimeType: 'image/png', bytes })).resolves.toMatch(/^data:image\/webp;base64,/u);
 });
 
 it('rejects an untrusted sender for profile save', async () => {
