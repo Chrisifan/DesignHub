@@ -1,0 +1,16 @@
+.onboarding-step { width: min(680px, calc(100vw - 48px)); min-height: 500px; margin: 0 auto; padding: 42px 48px 36px; border: 1px solid var(--outline-variant); border-radius: var(--radius-card); background: var(--surface-container-low); box-shadow: 0 24px 60px rgb(0 0 0 / 0.12); }
+.onboarding-step__heading { margin-bottom: 32px; }
+.onboarding-step__heading h1 { margin: 0; }
+.onboarding-step__heading p:not(.eyebrow) { margin: 10px 0 0; color: var(--on-surface-variant); font-size: 13px; }
+.onboarding-profile-grid { display: grid; gap: 22px; }
+.onboarding-field, .onboarding-avatar-field { display: grid; gap: 8px; color: var(--on-surface-variant); font-size: 12px; }
+.onboarding-field input { width: 100%; min-height: 38px; padding: 0 12px; border: 1px solid var(--outline-variant); border-radius: var(--radius-ui); background: var(--surface-container); color: var(--on-surface); }
+.onboarding-avatar-row, .onboarding-folder-row { display: flex; align-items: center; gap: 14px; min-height: 72px; }
+.onboarding-avatar-row img, .onboarding-avatar-placeholder { width: 72px; height: 72px; flex: 0 0 72px; border-radius: 50%; object-fit: cover; background: var(--surface-container-highest); color: var(--on-surface-variant); display: grid; place-items: center; font-size: 24px; }
+.onboarding-upload-button { position: relative; display: inline-flex; align-items: center; justify-content: center; width: fit-content; }
+.onboarding-upload-button input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.onboarding-folder-row { min-height: 38px; }
+.onboarding-folder-path { min-width: 0; flex: 1; overflow: hidden; color: var(--on-surface); text-overflow: ellipsis; white-space: nowrap; }
+.onboarding-error { margin: 20px 0 0; color: var(--error); font-size: 12px; }
+.onboarding-actions { display: flex; justify-content: flex-end; margin-top: 30px; }
+@media (prefers-reduced-motion: reduce) { .onboarding-step { transition: none; } }
