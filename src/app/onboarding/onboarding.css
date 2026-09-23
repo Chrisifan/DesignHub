@@ -13,4 +13,6 @@
 .onboarding-folder-path { min-width: 0; flex: 1; overflow: hidden; color: var(--on-surface); text-overflow: ellipsis; white-space: nowrap; }
 .onboarding-error { margin: 20px 0 0; color: var(--error); font-size: 12px; }
 .onboarding-actions { display: flex; justify-content: flex-end; margin-top: 30px; }
+.onboarding-actions--split { justify-content: space-between; }
+.onboarding-model-content { min-height: 250px; max-height: 290px; overflow: auto; padding: 16px; border: 1px solid var(--outline-variant); border-radius: var(--radius-ui); background: var(--surface-container); }
 @media (prefers-reduced-motion: reduce) { .onboarding-step { transition: none; } }

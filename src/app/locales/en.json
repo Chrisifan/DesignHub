@@ -74,4 +74,9 @@
   ,"onboardingAvatarInvalid": "Choose a PNG, JPEG, WebP, or GIF image up to 10MB."
   ,"onboardingAvatarReadFailed": "Could not read the avatar. Try again."
   ,"onboardingStorageFolderFailed": "Could not choose the storage folder. Try again."
+  ,"onboardingModelStep": "Step 2 of 2"
+  ,"onboardingModelTitle": "Configure model connections"
+  ,"onboardingModelDescription": "Configure models now or skip and finish later from Settings."
+  ,"onboardingModelSkip": "Skip and set up later"
+  ,"onboardingModelFinish": "Finish and open home"
 }

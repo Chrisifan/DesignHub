@@ -74,4 +74,9 @@
   ,"onboardingAvatarInvalid": "请选择不超过 10MB 的 PNG、JPEG、WebP 或 GIF 图片。"
   ,"onboardingAvatarReadFailed": "头像读取失败，请重试。"
   ,"onboardingStorageFolderFailed": "无法选择存储文件夹，请重试。"
+  ,"onboardingModelStep": "第二步，共两步"
+  ,"onboardingModelTitle": "配置模型连接"
+  ,"onboardingModelDescription": "可现在配置模型，也可以跳过，稍后从设置中完成。"
+  ,"onboardingModelSkip": "跳过，稍后设置"
+  ,"onboardingModelFinish": "完成并进入首页"
 }
