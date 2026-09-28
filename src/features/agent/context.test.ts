@@ -22,7 +22,7 @@ it('does not upload unrequested project assets', () => {
 it('serializes the project and designer context without credentials', () => {
   const context: DesignGenerationContext = {
     version: 1,
-    workspaceId: 'w1',
+    libraryId: 'w1',
     projectId: 'p1',
     documentId: 'd1',
     brief: 'Spring market poster',
@@ -50,7 +50,7 @@ it('serializes the project and designer context without credentials', () => {
 it('omits designer style instructions when a project has no designer', () => {
   const prompt = buildDesignContextPrompt({
     version: 1,
-    workspaceId: 'w1',
+    libraryId: 'w1',
     projectId: 'p1',
     documentId: 'd1',
     brief: 'A blank project',

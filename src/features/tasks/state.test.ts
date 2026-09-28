@@ -47,6 +47,8 @@ describe('task state transitions', () => {
     expect(mayTransition('cancelled', 'completed')).toBe(false);
     expect(mayTransition('completed', 'running')).toBe(false);
     expect(mayTransition('running', 'completed')).toBe(true);
+    expect(mayTransition('unknown', 'completed')).toBe(false);
+    expect(mayTransition('unknown', 'queued')).toBe(true);
   });
 
   it('cancellation is represented before a running task reaches its terminal state', () => {

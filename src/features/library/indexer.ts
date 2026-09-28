@@ -1,7 +1,7 @@
 import { matchesDesigner, matchesSearch, type SearchableItem } from './filter';
 
 export type SearchRecord = SearchableItem & {
-  workspaceId: string;
+  libraryId: string;
   projectId: string;
   documentId: string;
   finalized?: boolean;
@@ -10,19 +10,19 @@ export type SearchRecord = SearchableItem & {
 
 export type SearchIndexItem = SearchRecord;
 export type SearchQuery = {
-  workspaceId: string;
+  libraryId: string;
   query?: string;
   designerId?: string;
   finalized?: boolean;
   tag?: string;
 };
 
-const allowedKeys = ['workspaceId', 'projectId', 'documentId', 'title', 'brief', 'brand', 'size', 'finalized', 'tags', 'updatedAt', 'contributorIds'] as const;
+const allowedKeys = ['libraryId', 'projectId', 'documentId', 'title', 'brief', 'brand', 'size', 'finalized', 'tags', 'updatedAt', 'contributorIds'] as const;
 
 export const buildSearchIndex = (records: readonly SearchRecord[]): SearchIndexItem[] => {
   const seen = new Set<string>();
   return records.flatMap((record) => {
-    const key = `${record.workspaceId}:${record.projectId}:${record.documentId}`;
+    const key = `${record.libraryId}:${record.projectId}:${record.documentId}`;
     if (seen.has(key)) return [];
     seen.add(key);
     const clean = Object.fromEntries(allowedKeys.flatMap((field) => {
@@ -36,7 +36,7 @@ export const buildSearchIndex = (records: readonly SearchRecord[]): SearchIndexI
 
 export const searchIndex = (index: readonly SearchIndexItem[], options: SearchQuery): SearchIndexItem[] => {
   const tagNeedle = options.tag?.trim().toLocaleLowerCase();
-  return index.filter((item) => item.workspaceId === options.workspaceId
+  return index.filter((item) => item.libraryId === options.libraryId
     && matchesSearch(item, options.query ?? '')
     && (!options.designerId || matchesDesigner(item, options.designerId))
     && (options.finalized === undefined || item.finalized === options.finalized)

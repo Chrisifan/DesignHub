@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 const revealSplash = async (): Promise<void> => {
-  await act(async () => { await vi.advanceTimersByTimeAsync(650); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2700); });
   vi.useRealTimers();
 };
 
@@ -57,8 +57,19 @@ it('shows the branded splash before first-launch onboarding', async () => {
   render(<App />);
 
   expect(screen.getByRole('img', { name: 'Design Hub' })).toBeVisible();
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.getByText('检查项目库').parentElement).toHaveClass('startup-splash__check--complete');
+  expect(screen.getByText('读取本地配置')).toBeVisible();
   expect(screen.queryByRole('heading', { name: '设置你的资料' })).toBeNull();
-  await revealSplash();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+  const halfwayProgress = Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'));
+  expect(halfwayProgress).toBeGreaterThan(0);
+  expect(halfwayProgress).toBeLessThan(100);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+  expect(screen.queryByRole('heading', { name: '设置你的资料' })).toBeNull();
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
   expect(screen.getByRole('heading', { name: '设置你的资料' })).toBeVisible();
 });
 
@@ -90,6 +101,7 @@ it('requires profile fields and advances to the optional model step', async () =
 });
 
 it('skipping model setup enters the project library home', async () => {
+  vi.useFakeTimers();
   const saveProfile = vi.fn(async () => completedProfile);
   window.designhub = {
     loadProfile: async () => ({ ...completedProfile, onboarding: { profileCompleted: true, modelStepCompleted: false } }),
@@ -99,6 +111,7 @@ it('skipping model setup enters the project library home', async () => {
   } as never;
   render(<App />);
 
+  await revealSplash();
   await screen.findByRole('heading', { name: '配置模型连接' });
   fireEvent.click(screen.getByRole('button', { name: '跳过，稍后设置' }));
   await waitFor(() => expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible());
@@ -106,6 +119,7 @@ it('skipping model setup enters the project library home', async () => {
 });
 
 it('enters Studio directly after completed onboarding and restores the avatar', async () => {
+  vi.useFakeTimers();
   window.designhub = {
     loadProfile: async () => completedProfile,
     getProjectLibraryStatus: async () => ({ state: 'ready', library }),
@@ -113,6 +127,7 @@ it('enters Studio directly after completed onboarding and restores the avatar', 
   } as never;
   render(<App />);
 
+  await revealSplash();
   expect(await screen.findByRole('img', { name: '用户头像' })).toHaveAttribute('src', completedProfile.avatarDataUrl);
   expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible();
 });

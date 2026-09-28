@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 
-import { openWorkspaceForActivation, recreateWindowOnActivate } from './lifecycle';
+import { openProjectLibraryForActivation, recreateWindowOnActivate } from './lifecycle';
+import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 
 it('recreates a window on macOS activation only after all windows are closed', () => {
   const createWindow = vi.fn();
@@ -11,11 +12,11 @@ it('recreates a window on macOS activation only after all windows are closed', (
   expect(createWindow).toHaveBeenCalledOnce();
 });
 
-it('reuses the active workspace when a renderer reload restores the same directory', async () => {
+it('reuses the active project library when a renderer reload restores the same directory', async () => {
   const close = vi.fn();
-  const activeWorkspace = {
-    workspace: {
-      workspaceId: 'workspace-1',
+  const activeLibrary: ProjectLibraryHandle = {
+    library: {
+      libraryId: 'workspace-1',
       name: 'Local',
       directory: '/workspaces/local',
       formatVersion: 1,
@@ -23,22 +24,22 @@ it('reuses the active workspace when a renderer reload restores the same directo
     },
     close,
   };
-  const openWorkspace = vi.fn(async () => ({
-    workspace: { ...activeWorkspace.workspace, openMode: 'read-only' as const },
+  const openLibrary = vi.fn(async () => ({
+    library: { ...activeLibrary.library, openMode: 'read-only' as const },
     close: vi.fn(),
   }));
-  const activateWorkspace = vi.fn((workspace) => workspace);
+  const activateLibrary = vi.fn((library: ProjectLibraryHandle) => library);
 
-  const result = await openWorkspaceForActivation(
+  const result = await openProjectLibraryForActivation(
     '/workspaces/local',
-    activeWorkspace,
+    activeLibrary,
     async (directory) => directory,
-    openWorkspace,
-    activateWorkspace,
+    openLibrary,
+    activateLibrary,
   );
 
-  expect(result).toBe(activeWorkspace);
-  expect(openWorkspace).not.toHaveBeenCalled();
-  expect(activateWorkspace).not.toHaveBeenCalled();
+  expect(result).toBe(activeLibrary);
+  expect(openLibrary).not.toHaveBeenCalled();
+  expect(activateLibrary).not.toHaveBeenCalled();
   expect(close).not.toHaveBeenCalled();
 });

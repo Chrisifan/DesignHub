@@ -1,7 +1,7 @@
 import type { BrowserWindow } from 'electron';
 
 import type { ProjectLibraryDescriptor, ProjectLibraryHandle, ProjectLibraryStatus } from '../../features/project-library/open-project-library';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const projectLibraryStatusChannel = 'project-library:get-status';
 export const projectLibraryChooseChannel = 'project-library:choose';
@@ -43,7 +43,7 @@ const asDescriptor = (handle: ProjectLibraryHandle): ProjectLibraryDescriptor =>
 export const createProjectLibraryLifecycleHandlers = (dependencies: LifecycleDependencies) => {
   const { window, trustedUrl } = dependencies;
   const getStatus = async (event: ProjectLibraryRequest): Promise<ProjectLibraryStatus | null> => {
-    if (!isTrustedWorkspaceRequest(event as never, window as never, trustedUrl)) return null;
+    if (!isTrustedProjectLibraryRequest(event as never, window as never, trustedUrl)) return null;
     const directory = await dependencies.loadDirectory();
     if (!directory) return { state: 'unselected' };
 
@@ -60,7 +60,7 @@ export const createProjectLibraryLifecycleHandlers = (dependencies: LifecycleDep
   };
 
   const choose = async (event: ProjectLibraryRequest): Promise<ProjectLibraryDescriptor | null> => {
-    if (!isTrustedWorkspaceRequest(event as never, window as never, trustedUrl)) return null;
+    if (!isTrustedProjectLibraryRequest(event as never, window as never, trustedUrl)) return null;
     const result = await dependencies.showDirectoryDialog(window as never);
     if (result.canceled) return null;
     const directory = result.filePaths[0];

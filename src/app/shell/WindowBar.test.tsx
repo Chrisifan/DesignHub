@@ -24,7 +24,7 @@ it('reserves a non-draggable safe area for native window controls', () => {
   expect(screen.queryByLabelText('最小化 最大化 关闭')).toBeNull();
 });
 
-it('keeps workspace and appearance controls in the top bar without product identity', () => {
+it('keeps appearance controls in the top bar without workspace lifecycle controls', () => {
   render(
     <WindowBar
       copy={getMessages('zh-CN')}
@@ -46,17 +46,14 @@ it('keeps workspace and appearance controls in the top bar without product ident
   const bar = document.querySelector('.window-bar');
   expect(bar?.querySelector('.window-brand-mark')).toBeNull();
   expect(bar).not.toContainElement(screen.queryByText('DesignHub'));
-  expect(bar).toContainElement(
-    screen.getByRole('button', { name: '切换工作区' }),
-  );
+  expect(screen.queryByRole('button', { name: '切换工作区' })).not.toBeInTheDocument();
   expect(bar).toContainElement(
     screen.getByRole('button', { name: '切换主题' }),
   );
   expect(bar).toContainElement(
     screen.getByRole('button', { name: 'Switch to English' }),
   );
-  expect(screen.getByText('我的设计空间')).toBeInTheDocument();
-  expect(screen.getByText('· 示例工作区')).toBeInTheDocument();
+  expect(screen.queryByText('我的设计空间')).not.toBeInTheDocument();
 });
 
 it('keeps direct appearance controls and hosts the user menu beside them', () => {
@@ -79,7 +76,7 @@ it('keeps direct appearance controls and hosts the user menu beside them', () =>
   expect(screen.getByRole('button', { name: '用户菜单' })).toBeInTheDocument();
 });
 
-it('can temporarily disable workspace switching', () => {
+it('does not expose workspace switching controls', () => {
   render(
     <WindowBar
       copy={getMessages('zh-CN')}
@@ -99,5 +96,5 @@ it('can temporarily disable workspace switching', () => {
     />,
   );
 
-  expect(screen.getByRole('button', { name: '切换工作区' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: '切换工作区' })).not.toBeInTheDocument();
 });

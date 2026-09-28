@@ -21,9 +21,9 @@ it('exposes trusted load/save channels and blocks untrusted requests', async () 
 it('rejects malformed saves and read-only writes before storage', async () => {
   const save = vi.fn(async () => true);
   const handler = saveBrandStateHandler(window, 'http://localhost:5173/', () => workspace, save);
-  await expect(handler(event, { workspaceId: 'workspace-1', state: { brands: [brand] } })).resolves.toBe(true);
-  await expect(handler(event, { workspaceId: 'workspace-1', state: { brands: [{ id: '' }] } })).resolves.toBe(false);
+  await expect(handler(event, { libraryId: 'workspace-1', state: { brands: [brand] } })).resolves.toBe(true);
+  await expect(handler(event, { libraryId: 'workspace-1', state: { brands: [{ id: '' }] } })).resolves.toBe(false);
   const readOnly = { ...workspace, library: { ...workspace.library, openMode: 'read-only' as const } };
-  await expect(saveBrandStateHandler(window, 'http://localhost:5173/', () => readOnly, save)(event, { workspaceId: 'workspace-1', state: { brands: [brand] } })).resolves.toBe(false);
+  await expect(saveBrandStateHandler(window, 'http://localhost:5173/', () => readOnly, save)(event, { libraryId: 'workspace-1', state: { brands: [brand] } })).resolves.toBe(false);
   expect(save).toHaveBeenCalledTimes(1);
 });

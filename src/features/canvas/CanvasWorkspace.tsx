@@ -34,7 +34,7 @@ export type CanvasWorkspaceProps = {
   locale: Locale;
   scene: DesignScene;
   onSceneChange?: (scene: DesignScene) => void;
-  workspaceId?: string;
+  libraryId?: string;
   projectId?: string;
   documentId?: string;
   readOnly?: boolean;
@@ -45,6 +45,9 @@ export type CanvasWorkspaceProps = {
   onLayersClose?: () => void;
   inspectorRequestId?: number;
   selectionRequest?: { id: number; type: SceneLayer['type'] };
+  onSelectionChange?: (selection: { layerId: string; type: SceneLayer['type'] } | null) => void;
+  /** Render an isolated scene without hydrating or writing the document scene. */
+  persistDocumentScene?: boolean;
   zoomPercent?: number;
   overlayHost?: HTMLElement | null;
 };
@@ -87,7 +90,7 @@ const renderLayer = (layer: SceneLayer, selected: boolean, onSelect: () => void,
   return <Rect {...common} fill={layer.type === 'shape' ? layer.fill : '#d7dce5'} dash={layer.type === 'image' ? [8, 6] : undefined} />;
 };
 
-export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, projectId, documentId, readOnly = false, assetAction, onAssetActionHandled, embedded = false, layersOpen = false, onLayersClose, inspectorRequestId, selectionRequest, zoomPercent = 68, overlayHost }: CanvasWorkspaceProps) => {
+export const CanvasWorkspace = ({ locale, scene, onSceneChange, libraryId, projectId, documentId, readOnly = false, assetAction, onAssetActionHandled, embedded = false, layersOpen = false, onLayersClose, inspectorRequestId, selectionRequest, onSelectionChange, persistDocumentScene = true, zoomPercent = 68, overlayHost }: CanvasWorkspaceProps) => {
   const messages = getMessages(locale);
   const canvasReady = useMemo(canRenderCanvas, []);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -96,7 +99,7 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   const [assetImages, setAssetImages] = useState<Record<string, HTMLImageElement>>({});
   const stageRef = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState(stageDimensions);
-  const [sceneHydrated, setSceneHydrated] = useState(!workspaceId || !projectId || !documentId);
+  const [sceneHydrated, setSceneHydrated] = useState(!persistDocumentScene || !libraryId || !projectId || !documentId);
   const handledAssetAction = useRef<string | undefined>(undefined);
   const handledSelectionRequest = useRef(0);
   const panRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
@@ -104,11 +107,11 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   const selectedLayers = useMemo(() => scene.layers.filter((layer) => selectedIds.includes(layer.id)), [scene.layers, selectedIds]);
   const hasVisibleImage = useMemo(() => scene.layers.some((layer) => layer.type === 'image' && layer.assetId !== 'placeholder' && layer.visible), [scene.layers]);
   useEffect(() => {
-    if (!workspaceId || !projectId) return undefined;
+    if (!libraryId || !projectId) return undefined;
     let cancelled = false;
     const imageLayers = scene.layers.filter((layer): layer is Extract<SceneLayer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder');
     imageLayers.forEach((layer) => {
-      const request = getDesktopApi().readAsset?.({ workspaceId, projectId, assetId: layer.assetId });
+      const request = getDesktopApi().readAsset?.({ libraryId, projectId, assetId: layer.assetId });
       void request?.then((bytes) => {
         if (!bytes || cancelled || typeof URL === 'undefined' || typeof Image === 'undefined') return;
         const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'image/*' }));
@@ -118,11 +121,12 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
       }).catch(() => undefined);
     });
     return () => { cancelled = true; };
-  }, [projectId, scene.layers, workspaceId]);
+  }, [projectId, scene.layers, libraryId]);
   useEffect(() => {
-    if (!workspaceId || !projectId || !documentId) { setSceneHydrated(true); return undefined; }
+    if (!persistDocumentScene) return undefined;
+    if (!libraryId || !projectId || !documentId) { setSceneHydrated(true); return undefined; }
     let cancelled = false;
-    const request = getDesktopApi().loadDocumentScene?.(workspaceId, projectId, documentId);
+    const request = getDesktopApi().loadDocumentScene?.(libraryId, projectId, documentId);
     if (!request) return undefined;
     void request.then((stored) => {
       if (cancelled) return;
@@ -131,22 +135,25 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
         setSceneHydrated(true);
         return;
       }
-      const save = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId, documentId, scene });
+      const save = getDesktopApi().saveDocumentScene?.({ libraryId, projectId, documentId, scene });
       if (save) void save.catch(() => undefined);
       setSceneHydrated(true);
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [documentId, onSceneChange, projectId, workspaceId]);
+  }, [documentId, onSceneChange, projectId, libraryId, persistDocumentScene]);
   const select = (ids: string[]) => {
-    setSelectedIds(selectLayerIds(scene, ids));
+    const nextIds = selectLayerIds(scene, ids);
+    setSelectedIds(nextIds);
     setInspectorDismissed(false);
+    const selected = scene.layers.find((layer) => layer.id === nextIds[0]);
+    onSelectionChange?.(selected ? { layerId: selected.id, type: selected.type } : null);
   };
   const inspectorOpen = selectedIds.length > 0 && !inspectorDismissed;
   const persist = (nextScene: DesignScene): void => {
     if (readOnly) return;
     onSceneChange?.(nextScene);
-    if (workspaceId && projectId && documentId) {
-      const request = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId, documentId, scene: nextScene });
+    if (persistDocumentScene && libraryId && projectId && documentId) {
+      const request = getDesktopApi().saveDocumentScene?.({ libraryId, projectId, documentId, scene: nextScene });
       if (request) void request.catch(() => undefined);
     }
   };
@@ -160,20 +167,29 @@ export const CanvasWorkspace = ({ locale, scene, onSceneChange, workspaceId, pro
   }, [assetAction, onAssetActionHandled, scene, sceneHydrated, selectedIds]);
   useEffect(() => {
     if (!embedded || !inspectorRequestId || inspectorRequestId < 1) return;
-    setSelectedIds((current) => {
-      if (current.some((id) => scene.layers.some((layer) => layer.id === id && isLayerInteractive(layer)))) return current;
-      const firstInteractive = scene.layers.find(isLayerInteractive);
-      return firstInteractive ? [firstInteractive.id] : [];
-    });
+    const current = selectedIds;
+    const nextIds = current.some((id) => scene.layers.some((layer) => layer.id === id && isLayerInteractive(layer)))
+      ? current
+      : (() => {
+        const firstInteractive = scene.layers.find(isLayerInteractive);
+        return firstInteractive ? [firstInteractive.id] : [];
+      })();
+    if (nextIds !== current) {
+      setSelectedIds(nextIds);
+      const selected = scene.layers.find((layer) => layer.id === nextIds[0]);
+      onSelectionChange?.(selected ? { layerId: selected.id, type: selected.type } : null);
+    }
     setInspectorDismissed(false);
-  }, [embedded, inspectorRequestId, scene.layers]);
+  }, [embedded, inspectorRequestId, onSelectionChange, scene.layers]);
   useEffect(() => {
     if (!embedded || !selectionRequest || handledSelectionRequest.current >= selectionRequest.id) return;
     handledSelectionRequest.current = selectionRequest.id;
     const requestedLayer = scene.layers.find((layer) => layer.type === selectionRequest.type);
-    setSelectedIds(requestedLayer ? [requestedLayer.id] : []);
+    const nextIds = requestedLayer ? [requestedLayer.id] : [];
+    setSelectedIds(nextIds);
+    onSelectionChange?.(requestedLayer ? { layerId: requestedLayer.id, type: requestedLayer.type } : null);
     setInspectorDismissed(false);
-  }, [embedded, scene.layers, selectionRequest]);
+  }, [embedded, onSelectionChange, scene.layers, selectionRequest]);
   useEffect(() => {
     if (!embedded || !stageRef.current || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(([entry]) => {

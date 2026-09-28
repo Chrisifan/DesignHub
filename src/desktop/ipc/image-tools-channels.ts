@@ -1,0 +1,14 @@
+export const imageToolChooseInputChannel = 'image-tool:choose-input';
+export const imageToolChooseOutputChannel = 'image-tool:choose-output';
+export const imageToolScanChannel = 'image-tool:scan';
+export const imageToolCreateChannel = 'image-tool:create';
+export const imageToolListChannel = 'image-tool:list';
+export const imageToolGetChannel = 'image-tool:get';
+export const imageToolPauseChannel = 'image-tool:pause';
+export const imageToolResumeChannel = 'image-tool:resume';
+export const imageToolCancelChannel = 'image-tool:cancel';
+export const imageToolRetryChannel = 'image-tool:retry-item';
+export const imageToolOpenResultChannel = 'image-tool:open-result';
+export const imageToolRevealResultChannel = 'image-tool:reveal-result';
+export const imageToolOpenOutputChannel = 'image-tool:open-output';
+export const imageToolImportResultChannel = 'image-tool:import-result';

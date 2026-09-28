@@ -20,3 +20,10 @@ it('does not create a revision when a tool is cancelled or failed', async () => 
   await expect(applyToolResult({ status: 'failed', projectId: 'project-1', documentId: 'doc-1', baseRevisionId: null, operationId: 'tool-failed', sceneAssetId: 'late-scene', revisionStore: store })).resolves.toBeNull();
   expect(commit).not.toHaveBeenCalled();
 });
+
+it('does not create a revision for a result whose provider status is unknown', async () => {
+  const store = createRevisionStore();
+  const commit = vi.spyOn(store, 'commitRevision');
+  await expect(applyToolResult({ status: 'unknown', projectId: 'project-1', documentId: 'doc-1', baseRevisionId: null, operationId: 'tool-unknown', sceneAssetId: 'late-scene', revisionStore: store })).resolves.toBeNull();
+  expect(commit).not.toHaveBeenCalled();
+});

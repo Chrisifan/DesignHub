@@ -1,6 +1,6 @@
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type { BackupArtifact, RestoreBackupResult } from '../../features/workspace/backup';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const backupCreateChannel = 'workspace:backup-create';
 export const backupRestoreChannel = 'workspace:backup-restore';
@@ -15,14 +15,14 @@ const isDirectory = (value: unknown): value is string => typeof value === 'strin
 export const createBackupHandler = (
   window: BackupWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   createBackup: (workspace: ProjectLibraryHandle, destinationParentDirectory: string) => Promise<BackupArtifact>,
 ) => async (event: BackupRequest, input: unknown): Promise<BackupArtifact | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
   const value = input as Record<string, unknown>;
-  if (!isWorkspaceId(value.workspaceId) || !isDirectory(value.destinationParentDirectory)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== value.workspaceId) return null;
+  if (!isWorkspaceId(value.libraryId) || !isDirectory(value.destinationParentDirectory)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== value.libraryId) return null;
   return createBackup(workspace, value.destinationParentDirectory);
 };
 
@@ -31,7 +31,7 @@ export const restoreBackupHandler = (
   trustedUrl: string,
   restoreBackup: (input: { backupDirectory: string; destinationParentDirectory: string }) => Promise<RestoreBackupResult>,
 ) => async (event: BackupRequest, input: unknown): Promise<RestoreBackupResult | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
   const value = input as Record<string, unknown>;
   if (!isDirectory(value.backupDirectory) || !isDirectory(value.destinationParentDirectory)) return null;
   return restoreBackup({ backupDirectory: value.backupDirectory, destinationParentDirectory: value.destinationParentDirectory });

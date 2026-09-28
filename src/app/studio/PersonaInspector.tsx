@@ -9,7 +9,7 @@ type PersonaInspectorProps = {
   isDefault?: boolean;
   isSessionDefault?: boolean;
   readOnly?: boolean;
-  workspaceId?: string;
+  libraryId?: string;
   onEdit?: () => void;
   onDelete?: () => void;
   onSetDefault?: (personaId: string) => void;
@@ -27,7 +27,7 @@ export const PersonaInspector = ({
   isDefault = false,
   isSessionDefault,
   readOnly = false,
-  workspaceId,
+  libraryId,
   onEdit,
   onDelete,
   onSetDefault,
@@ -72,7 +72,7 @@ export const PersonaInspector = ({
           </div>
         ) : <p className="persona-inspector__empty">{t(locale, '暂无精选作品', 'No curated work yet')}</p>}
       </section>
-      {(readOnly || !workspaceId) && <p className="panel-note"><Icon name="hard-drive" size={15} />{readOnly ? t(locale, '当前工作区只读。', 'Current workspace is read-only.') : t(locale, '档案保存到当前工作区。', 'Profiles are saved to the current workspace.')}</p>}
+      {(readOnly || !libraryId) && <p className="panel-note"><Icon name="hard-drive" size={15} />{readOnly ? t(locale, '当前工作区只读。', 'Current workspace is read-only.') : t(locale, '档案保存到当前工作区。', 'Profiles are saved to the current workspace.')}</p>}
     </div>
   );
 };

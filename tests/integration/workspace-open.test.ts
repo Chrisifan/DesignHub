@@ -247,7 +247,7 @@ it('rejects project storage when the workspace manifest changes after opening', 
 
   const { createProjectStore } = await import('../../src/desktop/storage/project-store');
   await expect(createProjectStore(library).createProjectContainer({
-    workspaceId: library.library.libraryId,
+    libraryId: library.library.libraryId,
     operationId: 'format-drift',
     name: 'Format drift',
   })).rejects.toThrow('WORKSPACE_FORMAT_CHANGED');

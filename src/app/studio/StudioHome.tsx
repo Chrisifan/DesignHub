@@ -13,7 +13,7 @@ import { t } from './ui';
 import './studio-home.css';
 
 type StudioHomeProps = {
-  workspaceId?: string;
+  libraryId?: string;
   locale: Locale;
   projects: Project[];
   visibleProjects: Project[];
@@ -36,7 +36,7 @@ type StudioHomeProps = {
 const projectFilterOrder: StudioHomeProps['filter'][] = ['active', 'archived', 'all'];
 
 export const StudioHome = ({
-  workspaceId,
+  libraryId,
   locale,
   projects,
   visibleProjects,
@@ -58,7 +58,7 @@ export const StudioHome = ({
   const [selectedDesignerId, setSelectedDesignerId] = useState('');
   const [inspectedDesignerId, setInspectedDesignerId] = useState<string | null>(null);
   const [projectFilterDirection, setProjectFilterDirection] = useState<'forward' | 'backward' | null>(null);
-  useEffect(() => setSelectedDesignerId(''), [workspaceId]);
+  useEffect(() => setSelectedDesignerId(''), [libraryId]);
   useEffect(() => {
     if (selectedDesignerId && !profiles.some((profile) => profile.id === selectedDesignerId && profile.status !== 'archived')) {
       setSelectedDesignerId('');
@@ -143,7 +143,7 @@ export const StudioHome = ({
         <PersonaInspector
           locale={locale}
           profile={inspectedDesigner ?? undefined}
-          workspaceId={workspaceId}
+          libraryId={libraryId}
           readOnly={readOnly}
           showActions={false}
         />

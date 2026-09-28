@@ -10,6 +10,7 @@ export type View =
   | 'brands'
   | 'connections'
   | 'tasks'
+  | 'image-tools'
   | 'delivery'
   | 'storage'
   | 'settings';
@@ -29,7 +30,7 @@ export type NewDesignDraft = {
 };
 export type Project = {
   id: string;
-  workspaceId?: string;
+  libraryId?: string;
   documentId?: string;
   name: string;
   enName: string;

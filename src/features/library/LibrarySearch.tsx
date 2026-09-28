@@ -4,14 +4,14 @@ import { searchIndex, type SearchIndexItem, type SearchQuery } from './indexer';
 
 type LibrarySearchProps = {
   index: readonly SearchIndexItem[];
-  workspaceId: string;
+  libraryId: string;
   indexing?: boolean;
   onOpen?: (item: SearchIndexItem) => void;
 };
 
-export const LibrarySearch = ({ index, workspaceId, indexing = false, onOpen }: LibrarySearchProps) => {
+export const LibrarySearch = ({ index, libraryId, indexing = false, onOpen }: LibrarySearchProps) => {
   const [query, setQuery] = useState('');
-  const results = useMemo(() => searchIndex(index, { workspaceId, query } satisfies SearchQuery), [index, query, workspaceId]);
+  const results = useMemo(() => searchIndex(index, { libraryId, query } satisfies SearchQuery), [index, query, libraryId]);
   return <section aria-label="Library search" className="library-search">
     <label>
       <span>Search library</span>

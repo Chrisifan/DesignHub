@@ -30,7 +30,7 @@ export type ProjectCanvasLayout = {
 
 export type ProjectMetadata = {
   projectId: string;
-  workspaceId: string;
+  workspaceId?: string;
   libraryId?: string;
   name: string;
   generationRatio?: ProjectGenerationRatio;
@@ -50,7 +50,7 @@ export type ProjectMetadata = {
 
 export type ProjectMetadataInput = {
   projectId: string;
-  workspaceId: string;
+  workspaceId?: string;
   libraryId?: string;
   name: string;
   generationRatio?: ProjectGenerationRatio;
@@ -133,14 +133,15 @@ const normalizeCanvasLayout = (layout: ProjectCanvasLayout | undefined, designs:
 };
 
 export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetadata => {
-  if (!input.projectId || !input.workspaceId || !input.name.trim()) throw new Error('INVALID_PROJECT_METADATA');
+  const workspaceId = input.workspaceId ?? input.libraryId;
+  if (!input.projectId || !workspaceId || !input.name.trim()) throw new Error('INVALID_PROJECT_METADATA');
   if (input.generationRatio !== undefined && !isProjectGenerationRatio(input.generationRatio)) throw new Error('INVALID_PROJECT_METADATA');
   const createdAt = input.createdAt ?? new Date().toISOString();
   const updatedAt = input.updatedAt ?? createdAt;
   if (Number.isNaN(Date.parse(createdAt)) || Number.isNaN(Date.parse(updatedAt))) throw new Error('INVALID_PROJECT_METADATA');
   return {
     projectId: input.projectId,
-    workspaceId: input.workspaceId,
+    workspaceId,
     name: input.name.trim(),
     generationRatio: input.generationRatio ?? '3:4',
     ...(input.brief === undefined ? {} : { brief: input.brief }),

@@ -1,7 +1,13 @@
-import { providerCapabilities, type ImageTransport, type ProviderCapability, type ProviderModelConfig } from './config';
-import type { ToolParams } from '../image-tools/target';
+import { defaultProviderToolCapabilities, normalizeProviderToolCapabilities, providerCapabilities, validateProviderToolCapability, type ImageTransport, type ProviderCapability, type ProviderModelConfig, type ProviderToolCapability } from './config';
+import type { ImageTool, ToolParams } from '../image-tools/target';
 
-export { providerCapabilities } from './config';
+export {
+  defaultProviderToolCapabilities,
+  providerCapabilities,
+  normalizeProviderToolCapability,
+  normalizeProviderToolCapabilities,
+  validateProviderToolCapability,
+} from './config';
 
 export const providerCapabilityMatrix = {
   conversation: true,
@@ -10,6 +16,7 @@ export const providerCapabilityMatrix = {
   'image-editing': true,
 } as const;
 export type ProviderCapabilityMatrix = typeof providerCapabilityMatrix;
+export type { ProviderToolCapability } from './config';
 export type ChatRole = 'system' | 'user' | 'assistant';
 export type ChatContentPart =
   | { type: 'text'; text: string }
@@ -21,12 +28,12 @@ export type ChatResponse = { text: string; usage?: ChatUsage; cost: number | nul
 export type ChatStreamEvent = { text: string; finishReason?: string | null };
 export type VisionImage = { url: string } | { base64: string; mimeType?: string };
 export type VisionRequest = { prompt: string; images: VisionImage[] };
-export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number; referenceImages?: Blob[] };
-export type ImageEditRequest = { prompt: string; image: Blob; referenceImages?: Blob[]; mask?: Blob; model?: string; size?: string; tool?: string; toolParams?: ToolParams; region?: { x: number; y: number; width: number; height: number } };
+export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number; referenceImages?: Blob[]; tool?: ImageTool; toolParams?: ToolParams; requiresTransparency?: boolean; width?: number; height?: number; bytes?: number };
+export type ImageEditRequest = { prompt: string; image: Blob; referenceImages?: Blob[]; mask?: Blob; model?: string; size?: string; tool?: ImageTool; toolParams?: ToolParams; region?: { x: number; y: number; width: number; height: number }; requiresTransparency?: boolean; width?: number; height?: number; bytes?: number };
 export type GeneratedImage = { url?: string; base64?: string; mimeType?: string };
 export type ImageResponse = { images: GeneratedImage[]; cost: number | null };
 
-export type ProviderAdapterErrorKind = 'http' | 'rate_limited' | 'invalid_response' | 'cancelled';
+export type ProviderAdapterErrorKind = 'http' | 'rate_limited' | 'invalid_response' | 'cancelled' | 'capability';
 export type ProviderAdapterError = Error & {
   kind: ProviderAdapterErrorKind;
   status?: number;
@@ -41,10 +48,12 @@ export type MainOnlyAdapterOptions = {
   models?: ProviderModelConfig;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
   fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
+  toolCapabilities?: readonly ProviderToolCapability[];
 };
 
 export type OpenAICompatibleAdapter = {
   capabilities: typeof providerCapabilities;
+  toolCapabilities?: readonly ProviderToolCapability[];
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
   streamChat: (request: ChatRequest, signal?: AbortSignal) => AsyncIterable<ChatStreamEvent>;
   analyzeVision: (request: VisionRequest, signal?: AbortSignal) => Promise<ChatResponse>;
@@ -71,6 +80,15 @@ const toUsage = (usage: unknown): ChatUsage | undefined => {
 const toError = (message: string, kind: ProviderAdapterErrorKind, details: Partial<ProviderAdapterError> = {}): ProviderAdapterError => {
   const error = Object.assign(new Error(message), { kind, ...details }) as ProviderAdapterError;
   return error;
+};
+
+const capabilityError = (reason: string): ProviderAdapterError => toError(`Provider does not support this request (${reason}).`, 'capability', { providerCode: `PROVIDER_${reason}` });
+
+const parseImageSize = (size: string | undefined): { width?: number; height?: number } => {
+  if (!size) return {};
+  const match = /^(\d+)x(\d+)$/u.exec(size.trim());
+  if (!match) return {};
+  return { width: Number(match[1]), height: Number(match[2]) };
 };
 
 const readJson = async (response: Response): Promise<Record<string, unknown>> => {
@@ -299,6 +317,9 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
   const baseUrl = options.baseUrl.replace(/\/+$/, '');
   const apiKey = options.apiKey;
   const imageTransport = options.imageTransport ?? 'images';
+  const normalizedToolCapabilities = normalizeProviderToolCapabilities(options.toolCapabilities);
+  if (normalizedToolCapabilities === null) throw new Error('PROVIDER_CAPABILITY_INVALID');
+  const toolCapabilities = normalizedToolCapabilities ?? defaultProviderToolCapabilities;
   const configuredModel = (capability: ProviderCapability, requested?: string): string | undefined => requested ?? options.models?.[capability];
   const fetcher = options.fetch ?? options.fetchImpl ?? ((input: string, init?: RequestInit): Promise<Response> => globalThis.fetch(input, init));
   const redact = (value: string): string => apiKey ? value.replaceAll(apiKey, '[redacted]') : value;
@@ -380,6 +401,18 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     return chatFor('vision-analysis', { messages: [{ role: 'user', content: [{ type: 'text', text: request.prompt }, ...images] }] }, signal);
   };
   const generateImage = async (request: ImageRequest, signal?: AbortSignal): Promise<ImageResponse> => {
+    if (request.tool) {
+      const size = parseImageSize(request.size);
+      const validation = validateProviderToolCapability({
+        tool: request.tool,
+        requiresTransparency: request.requiresTransparency,
+        width: request.width ?? size.width,
+        height: request.height ?? size.height,
+        bytes: request.bytes,
+        params: request.toolParams,
+      }, toolCapabilities);
+      if (!validation.ok) throw capabilityError(validation.reason);
+    }
     if (imageTransport === 'responses') {
       if (request.count !== undefined && request.count !== 1) throw new Error('RESPONSES_IMAGE_COUNT_UNSUPPORTED');
       const model = configuredModel('image-generation', request.model);
@@ -429,6 +462,19 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
     });
   };
   const editImage = async (request: ImageEditRequest, signal?: AbortSignal): Promise<ImageResponse> => {
+    if (request.tool) {
+      const size = parseImageSize(request.size);
+      const validation = validateProviderToolCapability({
+        tool: request.tool,
+        hasMask: Boolean(request.mask),
+        requiresTransparency: request.requiresTransparency,
+        width: request.width ?? size.width,
+        height: request.height ?? size.height,
+        bytes: request.bytes,
+        params: request.toolParams,
+      }, toolCapabilities);
+      if (!validation.ok) throw capabilityError(validation.reason);
+    }
     if (imageTransport === 'responses') {
       const model = configuredModel('image-editing', request.model);
       const payload = await postJson('/responses', {
@@ -476,5 +522,5 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
       }) : [],
     });
   };
-  return { capabilities: providerCapabilities, chat, streamChat, analyzeVision, generateImage, editImage };
+  return { capabilities: providerCapabilities, toolCapabilities, chat, streamChat, analyzeVision, generateImage, editImage };
 };

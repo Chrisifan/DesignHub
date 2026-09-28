@@ -82,7 +82,7 @@ export const centerNodeInViewport = (
 });
 
 type ProjectCanvasStageProps = {
-  workspaceId?: string;
+  libraryId?: string;
   projectId: string;
   designs: readonly ProjectDesign[];
   viewport?: CanvasViewport;
@@ -101,7 +101,7 @@ type ProjectCanvasStageProps = {
 type Point = { x: number; y: number };
 type StageEvent = { evt: { preventDefault?: () => void; deltaY?: number }; target: { getStage?: () => { getPointerPosition?: () => Point } | undefined; getParent?: () => { className?: string }; getClassName?: () => string } };
 
-const useAssetImages = (workspaceId: string | undefined, projectId: string, designs: readonly ProjectDesign[]) => {
+const useAssetImages = (libraryId: string | undefined, projectId: string, designs: readonly ProjectDesign[]) => {
   const [images, setImages] = useState<Record<string, HTMLImageElement>>({});
   useEffect(() => {
     let cancelled = false;
@@ -109,8 +109,8 @@ const useAssetImages = (workspaceId: string | undefined, projectId: string, desi
     const load = async (): Promise<void> => {
       const next: Record<string, HTMLImageElement> = {};
       await Promise.all(designs.map(async (design) => {
-        if (!workspaceId) return;
-        const bytes = await getDesktopApi().readAsset?.({ workspaceId, projectId, assetId: design.assetId });
+        if (!libraryId) return;
+        const bytes = await getDesktopApi().readAsset?.({ libraryId, projectId, assetId: design.assetId });
         if (!bytes || cancelled) return;
         const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
         created.push(url);
@@ -129,12 +129,12 @@ const useAssetImages = (workspaceId: string | undefined, projectId: string, desi
       cancelled = true;
       created.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [workspaceId, projectId, designs]);
+  }, [libraryId, projectId, designs]);
   return images;
 };
 
 export const ProjectCanvasStage = ({
-  workspaceId,
+  libraryId,
   projectId,
   designs,
   viewport: initialViewport,
@@ -160,7 +160,7 @@ export const ProjectCanvasStage = ({
   const [skeletonPhase, setSkeletonPhase] = useState(0);
   const dragRef = useRef<{ start: Point; viewport: CanvasViewport } | null>(null);
   const previousDesignCount = useRef(designs.length);
-  const images = useAssetImages(workspaceId, projectId, designs);
+  const images = useAssetImages(libraryId, projectId, designs);
   const layoutDesigns = useMemo(() => designs.map((design) => ({ ...design, rowKey: design.sourceTaskId })), [designs]);
   const notifyLayout = useCallback((nextViewport: CanvasViewport, nextNodes: Record<string, Point>): void => {
     onViewportChange?.(nextViewport);
@@ -176,10 +176,14 @@ export const ProjectCanvasStage = ({
       onReady?.(next);
     };
     update();
-    if (typeof ResizeObserver === 'undefined') return undefined;
+    window.addEventListener('resize', update);
+    if (typeof ResizeObserver === 'undefined') return () => window.removeEventListener('resize', update);
     const observer = new ResizeObserver(update);
     observer.observe(host);
-    return () => observer.disconnect();
+    return () => {
+      window.removeEventListener('resize', update);
+      observer.disconnect();
+    };
   }, [onReady]);
 
   useEffect(() => {

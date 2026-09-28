@@ -18,13 +18,13 @@ export type BackupManifest = {
 
 export type BackupArtifact = {
   directory: string;
-  workspaceId: string;
+  libraryId: string;
   createdAt: string;
 };
 
 export type RestoreBackupResult = {
   directory: string;
-  workspaceId: string;
+  libraryId: string;
 };
 
 export type MigrationResult = {

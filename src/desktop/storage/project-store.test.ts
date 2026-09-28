@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createProjectPackage, encodeProjectPackage } from '../../features/delivery/project-package';
@@ -30,7 +30,7 @@ it('lists active project metadata after creating a project', async () => {
       const store = createProjectStore(workspace);
       expect(await store.listActiveProjects()).toEqual([]);
       const created = await store.createProjectContainer({
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         operationId: 'manual-create-1',
         name: 'Persisted project',
       });
@@ -47,7 +47,7 @@ it('lists projects again after reopening the workspace', async () => {
   await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
     const first = await openProjectLibrary(workspaceDirectory);
     const projectId = (await createProjectStore(first).createProjectContainer({
-      workspaceId: first.library.libraryId,
+      libraryId: first.library.libraryId,
       operationId: 'manual-create-reload',
       name: 'Reload me',
     })).projectId;
@@ -68,7 +68,7 @@ it('persists project brief, designer and document metadata across reopen', async
   await withWorkspace(async (_parentDirectory, workspaceDirectory) => {
     const first = await openProjectLibrary(workspaceDirectory);
     const created = await createProjectStore(first).createProjectContainer({
-      workspaceId: first.library.libraryId,
+      libraryId: first.library.libraryId,
       operationId: 'metadata-create',
       name: 'Metadata project',
       brief: 'A local campaign',
@@ -93,7 +93,7 @@ it('persists project brief, designer and document metadata across reopen', async
         brandSnapshot: { version: 'brand-v2' },
       });
       await expect(createProjectStore(reopened).updateProjectMetadata({
-        workspaceId: reopened.library.libraryId,
+        libraryId: reopened.library.libraryId,
         projectId: created.projectId,
         patch: { name: 'Renamed project', archived: true },
       })).resolves.toMatchObject({ name: 'Renamed project', archived: true });
@@ -111,18 +111,18 @@ it('persists project designs and canvas layout across reopen', async () => {
     const first = await openProjectLibrary(workspaceDirectory);
     const store = createProjectStore(first);
     const created = await store.createProjectContainer({
-      workspaceId: first.library.libraryId,
+      libraryId: first.library.libraryId,
       operationId: 'canvas-designs-create',
       name: 'Canvas designs',
       designs: [],
     });
     await store.addProjectDesigns({
-      workspaceId: first.library.libraryId,
+      libraryId: first.library.libraryId,
       projectId: created.projectId,
       designs: [{ id: 'design-1', projectId: created.projectId, assetId: 'asset-1', sourceTaskId: 'task-1', width: 800, height: 600, title: 'First', createdAt: '2026-09-21T00:00:00.000Z' }],
     });
     await store.saveProjectCanvasLayout({
-      workspaceId: first.library.libraryId,
+      libraryId: first.library.libraryId,
       projectId: created.projectId,
       layout: { viewport: { zoom: 0.8, offsetX: 12, offsetY: 24 }, nodes: { 'design-1': { x: 100, y: 120 } } },
     });
@@ -130,8 +130,8 @@ it('persists project designs and canvas layout across reopen', async () => {
 
     const reopened = await openProjectLibrary(workspaceDirectory);
     try {
-      await expect(createProjectStore(reopened).listProjectDesigns({ workspaceId: reopened.library.libraryId, projectId: created.projectId })).resolves.toMatchObject([{ id: 'design-1', assetId: 'asset-1' }]);
-      await expect(createProjectStore(reopened).loadProjectCanvasLayout({ workspaceId: reopened.library.libraryId, projectId: created.projectId })).resolves.toEqual({ viewport: { zoom: 0.8, offsetX: 12, offsetY: 24 }, nodes: { 'design-1': { x: 100, y: 120 } } });
+      await expect(createProjectStore(reopened).listProjectDesigns({ libraryId: reopened.library.libraryId, projectId: created.projectId })).resolves.toMatchObject([{ id: 'design-1', assetId: 'asset-1' }]);
+      await expect(createProjectStore(reopened).loadProjectCanvasLayout({ libraryId: reopened.library.libraryId, projectId: created.projectId })).resolves.toEqual({ viewport: { zoom: 0.8, offsetX: 12, offsetY: 24 }, nodes: { 'design-1': { x: 100, y: 120 } } });
     } finally { reopened.close(); }
   });
 });
@@ -147,18 +147,71 @@ it('imports a validated project package into the workspace and rewrites project 
         entries: [
           { path: 'designhub.project.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({
             kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Imported project', formatVersion: 1, createdAt: new Date().toISOString(),
-            metadata: { projectId: sourceProjectId, workspaceId: 'source-workspace', name: 'Imported project', brief: 'Imported brief', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200, updatedAt: new Date().toISOString() }], archived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+            metadata: { projectId: sourceProjectId, libraryId: 'source-workspace', name: 'Imported project', brief: 'Imported brief', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200, updatedAt: new Date().toISOString() }], archived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
           })) },
           { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
           { path: 'documents/doc-1.scene.json', kind: 'manifest', bytes: new TextEncoder().encode('{"id":"doc-1","width":100,"height":200,"layers":[]}' ) },
         ],
       });
       const archive = await encodeProjectPackage(pack);
-      const result = await importProjectPackageToWorkspace(workspace, { workspaceId: workspace.library.libraryId, operationId: 'import-op-1', archive });
+      const result = await importProjectPackageToWorkspace(workspace, { libraryId: workspace.library.libraryId, operationId: 'import-op-1', archive });
       expect(result.projectId).not.toBe(sourceProjectId);
       await expect(createProjectStore(workspace).getProjectMetadata(result.projectId)).resolves.toMatchObject({ name: 'Imported project', brief: 'Imported brief', documents: [{ id: 'doc-1', width: 100, height: 200 }] });
     } finally { workspace.close(); }
   });
+});
+
+it('reopens an imported project from a fresh project library after the source library is unavailable', async () => {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'designhub-project-handoff-'));
+  const sourceDirectory = join(parentDirectory, 'source-library');
+  const targetDirectory = join(parentDirectory, 'target-library');
+  await mkdir(sourceDirectory);
+  await mkdir(targetDirectory);
+  try {
+    const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43632';
+    const now = new Date().toISOString();
+    const source = await initializeProjectLibrary(sourceDirectory);
+    source.close();
+    const target = await initializeProjectLibrary(targetDirectory);
+    target.close();
+
+    const pack = await createProjectPackage({
+      packageId: 'pkg-cross-library-1',
+      projectId: sourceProjectId,
+      entries: [
+        { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({
+          kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Cross library project', formatVersion: 1, createdAt: now,
+          metadata: { projectId: sourceProjectId, libraryId: 'source-library', name: 'Cross library project', brief: 'Portable brief', documents: [{ id: 'doc-1', name: 'Poster', width: 1080, height: 1440, updatedAt: now }], archived: false, createdAt: now, updatedAt: now },
+        })) },
+        { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
+        { path: 'documents/doc-1.scene.json', kind: 'manifest', bytes: new TextEncoder().encode('{"id":"doc-1","width":1080,"height":1440,"layers":[]}') },
+      ],
+    });
+
+    const writableTarget = await openProjectLibrary(targetDirectory);
+    const imported = await importProjectPackageToWorkspace(writableTarget, {
+      libraryId: writableTarget.library.libraryId,
+      operationId: 'cross-library-import',
+      archive: await encodeProjectPackage(pack),
+    });
+    writableTarget.close();
+
+    const reopenedTarget = await openProjectLibrary(targetDirectory);
+    try {
+      await expect(createProjectStore(reopenedTarget).getProjectMetadata(imported.projectId)).resolves.toMatchObject({
+        projectId: imported.projectId,
+        name: 'Cross library project',
+        brief: 'Portable brief',
+        documents: [{ id: 'doc-1', width: 1080, height: 1440 }],
+      });
+    } finally {
+      reopenedTarget.close();
+      await rm(parentDirectory, { recursive: true, force: true });
+    }
+  } catch (error) {
+    await rm(parentDirectory, { recursive: true, force: true });
+    throw error;
+  }
 });
 
 it('rejects importing the same package identity twice', async () => {
@@ -168,12 +221,12 @@ it('rejects importing the same package identity twice', async () => {
       const sourceProjectId = '8f6f1f22-8f68-4db5-8ca6-0c15f9f43631';
       const now = new Date().toISOString();
       const pack = await createProjectPackage({ packageId: 'pkg-import-duplicate', projectId: sourceProjectId, entries: [
-        { path: 'designhub.project.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Imported', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Imported', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+        { path: 'designhub.project.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Imported', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, libraryId: 'source', name: 'Imported', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
         { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
       ] });
       const archive = await encodeProjectPackage(pack);
-      await importProjectPackageToWorkspace(workspace, { workspaceId: workspace.library.libraryId, operationId: 'import-op-a', archive });
-      await expect(importProjectPackageToWorkspace(workspace, { workspaceId: workspace.library.libraryId, operationId: 'import-op-b', archive })).rejects.toThrow('PACKAGE_ALREADY_IMPORTED');
+      await importProjectPackageToWorkspace(workspace, { libraryId: workspace.library.libraryId, operationId: 'import-op-a', archive });
+      await expect(importProjectPackageToWorkspace(workspace, { libraryId: workspace.library.libraryId, operationId: 'import-op-b', archive })).rejects.toThrow('PACKAGE_ALREADY_IMPORTED');
     } finally { workspace.close(); }
   });
 });
@@ -189,12 +242,12 @@ it('rejects an imported package whose content manifest omits managed asset bytes
         packageId: 'pkg-missing-asset',
         projectId: sourceProjectId,
         entries: [
-          { path: 'designhub.project.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Missing asset', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Missing asset', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: 'designhub.project.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Missing asset', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, libraryId: 'source', name: 'Missing asset', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
           { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [{ id: `asset-${contentHash.slice(0, 16)}`, name: 'poster.png', format: 'PNG', mimeType: 'image/png', contentHash, managed: true, storagePath: `assets/${contentHash}` }] })) },
         ],
       });
       const archive = await encodeProjectPackage(pack);
-      await expect(importProjectPackageToWorkspace(workspace, { workspaceId: workspace.library.libraryId, operationId: 'import-missing-asset', archive })).rejects.toThrow('INVALID_PACKAGE');
+      await expect(importProjectPackageToWorkspace(workspace, { libraryId: workspace.library.libraryId, operationId: 'import-missing-asset', archive })).rejects.toThrow('INVALID_PACKAGE');
       await expect(createProjectStore(workspace).listActiveProjects()).resolves.toEqual([]);
     } finally {
       workspace.close();
@@ -213,13 +266,13 @@ it('rejects an imported package when managed asset bytes drift from their declar
         packageId: 'pkg-drifted-asset',
         projectId: sourceProjectId,
         entries: [
-          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Drifted asset', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Drifted asset', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Drifted asset', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, libraryId: 'source', name: 'Drifted asset', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
           { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [{ id: 'asset-drifted', name: 'poster.png', format: 'PNG', mimeType: 'image/png', contentHash: declaredHash, managed: true, storagePath: `assets/${declaredHash}` }] })) },
           { path: `assets/${declaredHash}`, kind: 'manifest', bytes: new Uint8Array([1, 2, 3]) },
         ],
       });
       await expect(importProjectPackageToWorkspace(workspace, {
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         operationId: 'import-drifted-asset',
         archive: await encodeProjectPackage(pack),
       })).rejects.toThrow('INVALID_PACKAGE');
@@ -236,7 +289,7 @@ it('preserves related document lineage when duplicating a project', async () => 
     try {
       const store = createProjectStore(workspace);
       const source = await store.createProjectContainer({
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         operationId: 'duplicate-lineage-source',
         name: 'Lineage source',
         documents: [
@@ -245,7 +298,7 @@ it('preserves related document lineage when duplicating a project', async () => 
         ],
       });
       const duplicate = await store.duplicateProject({
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         sourceProjectId: source.projectId,
         operationId: 'duplicate-lineage-copy',
       });
@@ -272,13 +325,13 @@ it('rewrites imported revision project identities while preserving revision cont
         packageId: 'pkg-revision-identity',
         projectId: sourceProjectId,
         entries: [
-          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Revision import', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Revision import', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 100, finalizedRevisionId: revisionId }], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Revision import', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, libraryId: 'source', name: 'Revision import', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 100, finalizedRevisionId: revisionId }], archived: false, createdAt: now, updatedAt: now } })) },
           { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
           { path: 'documents/doc-1.revisions.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, revisions: [{ revisionId, projectId: sourceProjectId, documentId: 'doc-1', parentRevisionId: null, operationId: 'revision-op', sceneAssetId: 'scene-1', assetIds: [], contributions: [], createdAt: now }], timeline: [{ id: `event-${revisionId}`, kind: 'revision', label: 'Revision', documentId: 'doc-1', revisionId, timestamp: now }], finalRevisionId: revisionId })) },
         ],
       });
       const archive = await encodeProjectPackage(pack);
-      const result = await importProjectPackageToWorkspace(workspace, { workspaceId: workspace.library.libraryId, operationId: 'import-revision-identity', archive });
+      const result = await importProjectPackageToWorkspace(workspace, { libraryId: workspace.library.libraryId, operationId: 'import-revision-identity', archive });
       const state = await loadDocumentRevisions(workspace, workspace.library.libraryId, result.projectId, 'doc-1');
       expect(state.revisions[0]?.projectId).toBe(result.projectId);
       expect(state.revisions[0]?.revisionId).toBe(revisionId);
@@ -298,13 +351,13 @@ it('rejects malformed imported revision files before publishing a project contai
         packageId: 'pkg-malformed-revision',
         projectId: sourceProjectId,
         entries: [
-          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Malformed revision', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Malformed revision', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Malformed revision', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, libraryId: 'source', name: 'Malformed revision', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
           { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
           { path: 'documents/doc-1.revisions.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, timeline: [] })) },
         ],
       });
       const archive = await encodeProjectPackage(pack);
-      await expect(importProjectPackageToWorkspace(workspace, { workspaceId: workspace.library.libraryId, operationId: 'import-malformed-revision', archive })).rejects.toThrow('INVALID_PACKAGE');
+      await expect(importProjectPackageToWorkspace(workspace, { libraryId: workspace.library.libraryId, operationId: 'import-malformed-revision', archive })).rejects.toThrow('INVALID_PACKAGE');
       await expect(createProjectStore(workspace).listActiveProjects()).resolves.toEqual([]);
     } finally {
       workspace.close();
@@ -322,7 +375,7 @@ it('does not publish an imported project when payload copy fails, then allows re
         packageId: 'pkg-import-copy-failure',
         projectId: sourceProjectId,
         entries: [
-          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Copy failure', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Copy failure', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Copy failure', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, libraryId: 'source', name: 'Copy failure', documents: [], archived: false, createdAt: now, updatedAt: now } })) },
           { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
           { path: 'documents/doc-1.scene.json', kind: 'manifest', bytes: new TextEncoder().encode('{"id":"doc-1","width":100,"height":100,"layers":[]}') },
         ],
@@ -330,14 +383,14 @@ it('does not publish an imported project when payload copy fails, then allows re
       const archive = await encodeProjectPackage(pack);
 
       await expect(importProjectPackageToWorkspace(workspace, {
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         operationId: 'import-copy-failure',
         archive,
       }, { failAt: 'import-file-copy' })).rejects.toThrow('INJECTED_IMPORT_FILE_COPY_FAILURE');
       await expect(createProjectStore(workspace).listActiveProjects()).resolves.toEqual([]);
 
       const retried = await importProjectPackageToWorkspace(workspace, {
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         operationId: 'import-copy-failure',
         archive,
       });
@@ -358,13 +411,13 @@ it('rejects malformed imported project metadata before creating a project', asyn
         packageId: 'pkg-malformed-metadata',
         projectId: sourceProjectId,
         entries: [
-          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Malformed metadata', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, workspaceId: 'source', name: 'Malformed metadata', documents: 'not-an-array', archived: false, createdAt: now, updatedAt: now } })) },
+          { path: projectManifestName, kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ kind: 'designhub-project', projectId: sourceProjectId, operationId: 'source-op', name: 'Malformed metadata', formatVersion: 1, createdAt: now, metadata: { projectId: sourceProjectId, libraryId: 'source', name: 'Malformed metadata', documents: 'not-an-array', archived: false, createdAt: now, updatedAt: now } })) },
           { path: 'content-manifest.json', kind: 'manifest', bytes: new TextEncoder().encode(JSON.stringify({ formatVersion: 1, projectId: sourceProjectId, assets: [] })) },
         ],
       });
 
       await expect(importProjectPackageToWorkspace(workspace, {
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         operationId: 'import-malformed-metadata',
         archive: await encodeProjectPackage(pack),
       })).rejects.toThrow('INVALID_PACKAGE');

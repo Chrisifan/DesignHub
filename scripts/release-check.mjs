@@ -38,7 +38,7 @@ const walk = (directory) => {
 };
 
 const credentialPathPattern = /(?:credentials?|secret|token|api[-_]?key|password)/iu;
-const credentialValuePattern = /(?:sk|rk)-[A-Za-z0-9_-]{16,}|(?:api[-_]?key|token|secret|password)\s*[:=]\s*["'][^"']{8,}["']|Bearer\s+[A-Za-z0-9._-]{16,}/iu;
+const credentialValuePattern = /\b(?:sk|rk)(?:-[A-Za-z0-9]+)?-[A-Za-z0-9]{16,}\b|(?:api[-_]?key|token|secret|password)\s*[:=]\s*["'][^"']{8,}["']|Bearer\s+[A-Za-z0-9._-]{16,}/iu;
 const textExtensions = new Set(['.js', '.cjs', '.mjs', '.ts', '.json', '.css', '.html', '.txt', '.map']);
 
 export const scanPackageArtifacts = (roots = ['out', '.vite']) => {

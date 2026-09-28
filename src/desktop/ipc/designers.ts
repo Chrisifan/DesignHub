@@ -1,6 +1,6 @@
 import { isDesignerLibraryState, type DesignerLibraryState } from '../../features/designers/persistence';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const designerLoadChannel = 'designer:load-state';
 export const designerSaveChannel = 'designer:save-state';
@@ -20,16 +20,16 @@ type DesignerWindow = { webContents: DesignerSender };
 
 const isWorkspaceId = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
-const isSaveInput = (value: unknown): value is { workspaceId: string; state: DesignerLibraryState } => {
+const isSaveInput = (value: unknown): value is { libraryId: string; state: DesignerLibraryState } => {
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
-  return isWorkspaceId(input.workspaceId) && isDesignerLibraryState(input.state);
+  return isWorkspaceId(input.libraryId) && isDesignerLibraryState(input.state);
 };
 
-const isArtworkReadInput = (value: unknown): value is { workspaceId: string; artworkId: string } => {
+const isArtworkReadInput = (value: unknown): value is { libraryId: string; artworkId: string } => {
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
-  return isWorkspaceId(input.workspaceId)
+  return isWorkspaceId(input.libraryId)
     && typeof input.artworkId === 'string'
     && input.artworkId.trim().length > 0;
 };
@@ -37,35 +37,35 @@ const isArtworkReadInput = (value: unknown): value is { workspaceId: string; art
 export const loadDesignerStateHandler = (
   window: DesignerWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
-  loadState: (workspace: ProjectLibraryHandle, workspaceId: string) => Promise<DesignerLibraryState | null>,
-) => async (event: DesignerRequest, workspaceId: unknown): Promise<DesignerLibraryState | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isWorkspaceId(workspaceId)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== workspaceId) return null;
-  return loadState(workspace, workspaceId);
+  getLibrary: () => ProjectLibraryHandle | null,
+  loadState: (workspace: ProjectLibraryHandle, libraryId: string) => Promise<DesignerLibraryState | null>,
+) => async (event: DesignerRequest, libraryId: unknown): Promise<DesignerLibraryState | null> => {
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isWorkspaceId(libraryId)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== libraryId) return null;
+  return loadState(workspace, libraryId);
 };
 
 export const saveDesignerStateHandler = (
   window: DesignerWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   saveState: (workspace: ProjectLibraryHandle, state: DesignerLibraryState) => Promise<boolean>,
 ) => async (event: DesignerRequest, input: unknown): Promise<boolean> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isSaveInput(input)) return false;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return false;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isSaveInput(input)) return false;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return false;
   return saveState(workspace, input.state);
 };
 
 export const readDesignerArtworkHandler = (
   window: DesignerWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
-  readArtwork: (workspace: ProjectLibraryHandle, workspaceId: string, artworkId: string) => Promise<{ artworkId: string; dataUrl: string } | null>,
+  getLibrary: () => ProjectLibraryHandle | null,
+  readArtwork: (workspace: ProjectLibraryHandle, libraryId: string, artworkId: string) => Promise<{ artworkId: string; dataUrl: string } | null>,
 ) => async (event: DesignerRequest, input: unknown): Promise<{ artworkId: string; dataUrl: string } | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isArtworkReadInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
-  return readArtwork(workspace, input.workspaceId, input.artworkId);
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isArtworkReadInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
+  return readArtwork(workspace, input.libraryId, input.artworkId);
 };

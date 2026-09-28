@@ -1,4 +1,3 @@
-import type { WorkspaceDescriptor } from '../features/workspace/open-workspace';
 import type { ActiveProject, CreateProjectContainerInput, CreateProjectContainerResult, DuplicateProjectInput, ImportProjectPackageResult, RestoreProjectResult, TrashedProject, TrashProjectInput, UpdateProjectMetadataInput } from '../features/workspace/project-store';
 import type { BackupArtifact, RestoreBackupResult } from '../features/workspace/backup';
 import type { ProjectCanvasLayout, ProjectDesign, ProjectMetadata } from '../features/projects/metadata';
@@ -17,6 +16,8 @@ import type { ExportHistoryRecord } from '../features/delivery/export-history';
 import type { ProviderConfigMap, ProviderConfigSaveInput } from '../features/providers/config';
 import type { ProjectLibraryDescriptor, ProjectLibraryStatus } from '../features/project-library/open-project-library';
 import type { AppProfile } from '../features/profile/model';
+import type { BatchImageTool, ImageToolItem, ImageToolJob } from '../features/image-tools/jobs';
+import type { ToolParams } from '../features/image-tools/target';
 
 export type ProfileAvatarInput = {
   mimeType: string;
@@ -28,6 +29,9 @@ export type PortfolioUploadFile = {
   mimeType: string;
   bytes: Uint8Array;
 };
+
+export type ImageToolSelection = { path: string; kind: 'file' | 'directory'; displayName: string };
+export type ImageToolJobSnapshot = { job: ImageToolJob; items: ImageToolItem[] };
 
 export type PortfolioInspectionRequest =
   | { kind: 'local-files' }
@@ -47,7 +51,7 @@ export type PortfolioInspection = {
 };
 
 export type PortfolioSelectionInput = {
-  workspaceId: string;
+  libraryId: string;
   source: { kind: 'designer-draft'; id: string };
   connectionId: string;
   selections: Array<{ inspectionId: string; sourceIds: string[] }>;
@@ -55,7 +59,7 @@ export type PortfolioSelectionInput = {
 };
 
 export type ConversationTaskInput = {
-  workspaceId: string;
+  libraryId: string;
   projectId?: string;
   source?: TaskSource;
   documentId?: string;
@@ -65,12 +69,13 @@ export type ConversationTaskInput = {
   designerVersionId?: string;
   baseRevisionId?: string | null;
   connectionId: string;
+  model?: string;
   message: string;
   attachments?: ConversationImageAttachment[];
 };
 
 export type ExportDocumentInput = {
-  workspaceId: string;
+  libraryId: string;
   projectId: string;
   documentId: string;
   format: 'png' | 'jpeg' | 'webp' | 'pdf';
@@ -79,75 +84,81 @@ export type ExportDocumentInput = {
   archiveCopy?: boolean;
 };
 
-export type WorkspaceCreateInput = {
-  parentDirectory: string;
-  name: string;
-};
-
 export type DesktopApi = {
   loadProfile?: () => Promise<AppProfile | null>;
   saveProfile?: (input: { displayName?: string; avatar?: ProfileAvatarInput | null; onboarding?: Partial<AppProfile['onboarding']> }) => Promise<AppProfile | null>;
   getProjectLibraryStatus?: () => Promise<ProjectLibraryStatus | null>;
   chooseProjectLibrary?: () => Promise<ProjectLibraryDescriptor | null>;
-  chooseWorkspaceDirectory: () => Promise<string | null>;
-  createWorkspace?: (input: WorkspaceCreateInput) => Promise<WorkspaceDescriptor | null>;
-  openWorkspace?: (directory: string) => Promise<WorkspaceDescriptor | null>;
-  listActiveProjects?: (workspaceId: string) => Promise<ActiveProject[] | null>;
+  listActiveProjects?: (libraryId: string) => Promise<ActiveProject[] | null>;
   createProjectContainer?: (input: CreateProjectContainerInput) => Promise<CreateProjectContainerResult | null>;
   duplicateProject?: (input: DuplicateProjectInput) => Promise<CreateProjectContainerResult | null>;
-  importProjectPackage?: (input: { workspaceId: string }) => Promise<ImportProjectPackageResult | null>;
-  getProjectMetadata?: (workspaceId: string, projectId: string) => Promise<ProjectMetadata | null>;
+  importProjectPackage?: (input: { libraryId: string }) => Promise<ImportProjectPackageResult | null>;
+  getProjectMetadata?: (libraryId: string, projectId: string) => Promise<ProjectMetadata | null>;
   updateProjectMetadata?: (input: UpdateProjectMetadataInput) => Promise<ProjectMetadata | null>;
-  addProjectDesigns?: (input: { workspaceId: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[] | null>;
-  listProjectDesigns?: (input: { workspaceId: string; projectId: string }) => Promise<ProjectDesign[] | null>;
-  loadProjectCanvasLayout?: (input: { workspaceId: string; projectId: string }) => Promise<ProjectCanvasLayout | null>;
-  saveProjectCanvasLayout?: (input: { workspaceId: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout | null>;
-  listTrashedProjects?: (workspaceId: string) => Promise<TrashedProject[] | null>;
+  addProjectDesigns?: (input: { libraryId: string; projectId: string; designs: ProjectDesign[] }) => Promise<ProjectDesign[] | null>;
+  listProjectDesigns?: (input: { libraryId: string; projectId: string }) => Promise<ProjectDesign[] | null>;
+  loadProjectCanvasLayout?: (input: { libraryId: string; projectId: string }) => Promise<ProjectCanvasLayout | null>;
+  saveProjectCanvasLayout?: (input: { libraryId: string; projectId: string; layout: ProjectCanvasLayout }) => Promise<ProjectCanvasLayout | null>;
+  listTrashedProjects?: (libraryId: string) => Promise<TrashedProject[] | null>;
   moveProjectToTrash?: (input: TrashProjectInput) => Promise<TrashedProject | null>;
   restoreProjectFromTrash?: (input: TrashProjectInput) => Promise<RestoreProjectResult | null>;
   purgeProjectFromTrash?: (input: TrashProjectInput) => Promise<boolean | null>;
-  createWorkspaceBackup?: (workspaceId: string, destinationParentDirectory: string) => Promise<BackupArtifact | null>;
+  createWorkspaceBackup?: (libraryId: string, destinationParentDirectory: string) => Promise<BackupArtifact | null>;
   restoreWorkspaceBackup?: (input: { backupDirectory: string; destinationParentDirectory: string }) => Promise<RestoreBackupResult | null>;
-  loadWorkspaceSettings?: (workspaceId: string) => Promise<WorkspaceSettings | null>;
-  saveWorkspaceSettings?: (workspaceId: string, settings: WorkspaceSettings) => Promise<boolean>;
-  rebuildSearchIndex?: (workspaceId: string, records: readonly SearchRecord[]) => Promise<boolean>;
+  loadWorkspaceSettings?: (libraryId: string) => Promise<WorkspaceSettings | null>;
+  saveWorkspaceSettings?: (libraryId: string, settings: WorkspaceSettings) => Promise<boolean>;
+  rebuildSearchIndex?: (libraryId: string, records: readonly SearchRecord[]) => Promise<boolean>;
   searchProjects?: (options: SearchQuery) => Promise<SearchIndexItem[] | null>;
-  exportProjectPackage?: (input: { workspaceId: string; projectId: string }) => Promise<{ path: string; sha256: string } | null>;
-  loadDesignerState?: (workspaceId: string) => Promise<DesignerLibraryState | null>;
-  saveDesignerState?: (workspaceId: string, state: DesignerLibraryState) => Promise<boolean>;
-  readDesignerArtwork?: (input: { workspaceId: string; artworkId: string }) => Promise<{ artworkId: string; dataUrl: string } | null>;
-  loadBrandState?: (workspaceId: string) => Promise<BrandLibraryState | null>;
-  saveBrandState?: (workspaceId: string, state: BrandLibraryState) => Promise<boolean>;
+  exportProjectPackage?: (input: { libraryId: string; projectId: string }) => Promise<{ path: string; sha256: string } | null>;
+  loadDesignerState?: (libraryId: string) => Promise<DesignerLibraryState | null>;
+  saveDesignerState?: (libraryId: string, state: DesignerLibraryState) => Promise<boolean>;
+  readDesignerArtwork?: (input: { libraryId: string; artworkId: string }) => Promise<{ artworkId: string; dataUrl: string } | null>;
+  loadBrandState?: (libraryId: string) => Promise<BrandLibraryState | null>;
+  saveBrandState?: (libraryId: string, state: BrandLibraryState) => Promise<boolean>;
   listAssets?: (input: AssetStoreInput) => Promise<ManagedAsset[] | null>;
   importAssets?: (input: AssetImportInput) => Promise<AssetImportResult[] | null>;
   readAsset?: (input: AssetReadInput) => Promise<Uint8Array | null>;
-  loadDocumentScene?: (workspaceId: string, projectId: string, documentId: string) => Promise<DesignScene | null>;
-  saveDocumentScene?: (input: { workspaceId: string; projectId: string; documentId: string; scene: DesignScene }) => Promise<boolean>;
-  loadDocumentRevisions?: (workspaceId: string, projectId: string, documentId: string) => Promise<{ revisions: RevisionRecord[]; timeline: RevisionTimelineEvent[]; finalRevisionId: string | null } | null>;
-  commitDocumentRevision?: (input: CommitRevisionInput & { workspaceId: string }) => Promise<{ revisionId: string } | null>;
-  setFinalDocumentRevision?: (input: { workspaceId: string; projectId: string; documentId: string; revisionId: string }) => Promise<boolean | null>;
+  loadDocumentScene?: (libraryId: string, projectId: string, documentId: string) => Promise<DesignScene | null>;
+  saveDocumentScene?: (input: { libraryId: string; projectId: string; documentId: string; scene: DesignScene }) => Promise<boolean>;
+  loadDocumentRevisions?: (libraryId: string, projectId: string, documentId: string) => Promise<{ revisions: RevisionRecord[]; timeline: RevisionTimelineEvent[]; finalRevisionId: string | null } | null>;
+  commitDocumentRevision?: (input: CommitRevisionInput & { libraryId: string }) => Promise<{ revisionId: string } | null>;
+  setFinalDocumentRevision?: (input: { libraryId: string; projectId: string; documentId: string; revisionId: string }) => Promise<boolean | null>;
   storeCredential?: (connectionId: string, secret: string) => Promise<boolean>;
   deleteCredential?: (connectionId: string) => Promise<boolean>;
   hasCredential?: (connectionId: string) => Promise<boolean>;
   loadProviderConfigs?: () => Promise<ProviderConfigMap | null>;
   saveProviderConfig?: (input: ProviderConfigSaveInput) => Promise<boolean>;
-  listTasks?: (workspaceId: string) => Promise<TaskRecord[] | null>;
+  listTasks?: (libraryId: string) => Promise<TaskRecord[] | null>;
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
-  submitDesignGeneration?: (input: DesignGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
+  submitDesignGeneration?: (input: DesignGenerationInput & { libraryId: string }) => Promise<TaskRecord | null>;
   retryDesignGenerationSlot?: (input: DesignGenerationSlotRetryInput) => Promise<TaskRecord | null>;
-  testConversation?: (input: { workspaceId: string; connectionId: string; model?: string }) => Promise<ConversationTestResult | null>;
-  inspectPortfolioSources?: (input: { workspaceId: string; request: PortfolioInspectionRequest }) => Promise<PortfolioInspection | null>;
+  testConversation?: (input: { libraryId: string; connectionId: string; model?: string }) => Promise<ConversationTestResult | null>;
+  inspectPortfolioSources?: (input: { libraryId: string; request: PortfolioInspectionRequest }) => Promise<PortfolioInspection | null>;
   submitPortfolioSelection?: (input: PortfolioSelectionInput) => Promise<TaskRecord | null>;
-  discardPortfolioInspection?: (input: { workspaceId: string; inspectionId: string }) => Promise<boolean>;
-  submitImageGeneration?: (input: ImageGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
-  testImageGeneration?: (input: { workspaceId: string; connectionId: string; prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
-  submitDesignerArtworkGeneration?: (input: DesignerArtworkGenerationInput & { workspaceId: string }) => Promise<TaskRecord | null>;
-  submitImageEdit?: (input: ImageEditInput & { workspaceId: string }) => Promise<TaskRecord | null>;
-  cancelTask?: (workspaceId: string, taskId: string) => Promise<boolean>;
-  retryTask?: (workspaceId: string, taskId: string) => Promise<TaskRecord | null>;
+  discardPortfolioInspection?: (input: { libraryId: string; inspectionId: string }) => Promise<boolean>;
+  submitImageGeneration?: (input: ImageGenerationInput & { libraryId: string }) => Promise<TaskRecord | null>;
+  testImageGeneration?: (input: { libraryId: string; connectionId: string; prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
+  submitDesignerArtworkGeneration?: (input: DesignerArtworkGenerationInput & { libraryId: string }) => Promise<TaskRecord | null>;
+  submitImageEdit?: (input: ImageEditInput & { libraryId: string }) => Promise<TaskRecord | null>;
+  cancelTask?: (libraryId: string, taskId: string) => Promise<boolean>;
+  retryTask?: (libraryId: string, taskId: string) => Promise<TaskRecord | null>;
   exportDocument?: (input: ExportDocumentInput) => Promise<{ path: string; sha256: string; archived?: boolean; archiveError?: string } | null>;
-  listExportHistory?: (workspaceId: string, projectId: string) => Promise<ExportHistoryRecord[] | null>;
+  listExportHistory?: (libraryId: string, projectId: string) => Promise<ExportHistoryRecord[] | null>;
   exportDiagnostics?: (input: { runtime: string; errorCode?: string | null }) => Promise<string | null>;
+  chooseImageToolInput?: () => Promise<ImageToolSelection | null>;
+  chooseImageToolOutput?: () => Promise<ImageToolSelection | null>;
+  scanImageToolSources?: (input: { libraryId: string; sourcePath: string; outputRoot: string; tool: BatchImageTool; params: ToolParams }) => Promise<{ sourceRoot: string; source: 'file' | 'directory'; accepted: Array<{ absolutePath: string; relativePath: string; bytes?: number }>; rejected: Array<{ path: string; code: string; detail?: string }>; outputPaths: string[] } | null>;
+  createImageToolJob?: (input: { libraryId: string; tool: BatchImageTool; params: ToolParams; sourcePath: string; outputRoot: string; connectionId?: string; modelId?: string }) => Promise<ImageToolJobSnapshot | null>;
+  listImageToolJobs?: (libraryId: string) => Promise<ImageToolJobSnapshot[] | null>;
+  getImageToolJob?: (input: { libraryId: string; jobId: string }) => Promise<ImageToolJobSnapshot | null>;
+  pauseImageToolJob?: (input: { libraryId: string; jobId: string }) => Promise<ImageToolJobSnapshot | null>;
+  resumeImageToolJob?: (input: { libraryId: string; jobId: string }) => Promise<ImageToolJobSnapshot | null>;
+  cancelImageToolJob?: (input: { libraryId: string; jobId: string }) => Promise<ImageToolJobSnapshot | null>;
+  retryImageToolItem?: (input: { libraryId: string; jobId: string; itemId: string }) => Promise<ImageToolJobSnapshot | null>;
+  openImageToolResult?: (input: { libraryId: string; jobId: string; path: string }) => Promise<boolean>;
+  revealImageToolResult?: (input: { libraryId: string; jobId: string; path: string }) => Promise<boolean>;
+  openImageToolOutput?: (input: { libraryId: string; jobId: string; path: string }) => Promise<boolean>;
+  importImageToolResult?: (input: { libraryId: string; projectId: string; jobId: string; path: string }) => Promise<ManagedAsset | null>;
 };
 
 declare global {

@@ -4,7 +4,7 @@ export const designerArtworkScheme = 'designhub-artwork';
 
 type ArtworkReader = (
   workspace: ProjectLibraryHandle,
-  workspaceId: string,
+  libraryId: string,
   artworkId: string,
 ) => Promise<{ artworkId: string; dataUrl: string } | null>;
 

@@ -8,7 +8,7 @@ import type { Project } from './types';
 
 const project: Project = {
   id: 'project-1',
-  workspaceId: 'workspace-1',
+  libraryId: 'workspace-1',
   documentId: 'poster',
   name: '秋季发布会',
   enName: 'Autumn launch',
@@ -108,7 +108,7 @@ describe('ProjectDetailPage', () => {
   });
 
   it('uses a warning status indicator for unsaved projects', () => {
-    renderPage({ project: { ...project, workspaceId: undefined } });
+    renderPage({ project: { ...project, libraryId: undefined } });
 
     expect(screen.getByLabelText('项目状态与设计稿数量').querySelector('.project-detail-status-dot')).toHaveClass('project-detail-status-dot--warning');
   });

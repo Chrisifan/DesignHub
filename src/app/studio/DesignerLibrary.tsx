@@ -180,7 +180,7 @@ type DesignerLibraryProps = {
   locale: Locale;
   notify: (message: string) => void;
   onUseForNew?: (personaId: string) => void;
-  workspaceId?: string;
+  libraryId?: string;
   preview?: boolean;
   initialProfiles?: PersonaProfile[];
   readOnly?: boolean;
@@ -205,7 +205,7 @@ export const DesignerLibrary = ({
   locale,
   notify,
   onUseForNew,
-  workspaceId,
+  libraryId,
   preview = false,
   initialProfiles = emptyProfiles,
   readOnly = false,
@@ -213,11 +213,11 @@ export const DesignerLibrary = ({
   createRequestId = 0,
   onProfilesChange,
 }: DesignerLibraryProps) => {
-  const [profiles, setProfiles] = useState<PersonaProfile[]>(() => workspaceId || !preview ? [] : initialProfiles);
-  const [selectedId, setSelectedId] = useState(() => workspaceId || !preview ? '' : initialProfiles[0]?.id ?? '');
-  const [defaultId, setDefaultId] = useState(() => workspaceId || !preview ? '' : initialProfiles[0]?.id ?? '');
+  const [profiles, setProfiles] = useState<PersonaProfile[]>(() => libraryId || !preview ? [] : initialProfiles);
+  const [selectedId, setSelectedId] = useState(() => libraryId || !preview ? '' : initialProfiles[0]?.id ?? '');
+  const [defaultId, setDefaultId] = useState(() => libraryId || !preview ? '' : initialProfiles[0]?.id ?? '');
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const isHydrating = useRef(Boolean(workspaceId));
+  const isHydrating = useRef(Boolean(libraryId));
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<PersonaStatusFilter>("all");
   const [editor, setEditor] = useState<
@@ -240,22 +240,22 @@ export const DesignerLibrary = ({
   const [editDrafts, setEditDrafts] = useState<Record<string, DesignerDraft>>(
     {},
   );
-  const [loading, setLoading] = useState(Boolean(workspaceId));
+  const [loading, setLoading] = useState(Boolean(libraryId));
   const [loadFailed, setLoadFailed] = useState(false);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const lastCreateRequestId = useRef(0);
   const skipNextPersistence = useRef(false);
   const discardPortfolioInspection = useCallback(() => {
-    if (workspaceId && portfolioInspection) void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
+    if (libraryId && portfolioInspection) void getDesktopApi().discardPortfolioInspection?.({ libraryId, inspectionId: portfolioInspection.id });
     setPortfolioInspection(null);
     setSelectedPortfolioSourceIds([]);
-  }, [portfolioInspection, workspaceId]);
+  }, [portfolioInspection, libraryId]);
   useEffect(() => {
     let cancelled = false;
-    isHydrating.current = Boolean(workspaceId);
-    setLoading(Boolean(workspaceId));
+    isHydrating.current = Boolean(libraryId);
+    setLoading(Boolean(libraryId));
     setLoadFailed(false);
-    if (workspaceId) {
+    if (libraryId) {
       setProfiles([]);
       setSelectedId('');
       setDefaultId('');
@@ -263,7 +263,7 @@ export const DesignerLibrary = ({
       setEditDrafts({});
     }
     const hydrate = async () => {
-      if (!workspaceId) {
+      if (!libraryId) {
         if (!cancelled) {
           setProfiles(preview ? initialProfiles : []);
           setSelectedId(preview ? initialProfiles[0]?.id ?? '' : '');
@@ -276,7 +276,7 @@ export const DesignerLibrary = ({
       }
       let next = null;
       try {
-        next = (await getDesktopApi().loadDesignerState?.(workspaceId)) ?? null;
+        next = (await getDesktopApi().loadDesignerState?.(libraryId)) ?? null;
       } catch {
         if (!cancelled) {
           setLoadFailed(true);
@@ -313,9 +313,9 @@ export const DesignerLibrary = ({
     return () => {
       cancelled = true;
     };
-  }, [preview, workspaceId, initialProfiles]);
+  }, [preview, libraryId, initialProfiles]);
   useEffect(() => {
-    if (!workspaceId || isHydrating.current || readOnly) return;
+    if (!libraryId || isHydrating.current || readOnly) return;
     if (skipNextPersistence.current) {
       skipNextPersistence.current = false;
       return;
@@ -331,10 +331,10 @@ export const DesignerLibrary = ({
     saveQueue.current = saveQueue.current
       .catch(() => undefined)
       .then(async () => {
-        await getDesktopApi().saveDesignerState?.(workspaceId, state);
+        await getDesktopApi().saveDesignerState?.(libraryId, state);
       })
       .catch(() => undefined);
-  }, [defaultId, editDrafts, newDraft, profiles, readOnly, workspaceId]);
+  }, [defaultId, editDrafts, newDraft, profiles, readOnly, libraryId]);
   const selected = profiles.find((profile) => profile.id === selectedId);
   const selectProfile = (id: string): void => {
     setSelectedId(id);
@@ -455,7 +455,7 @@ export const DesignerLibrary = ({
       setCreationError(t(locale, "请先检查并勾选至少一个作品集来源。", "Inspect and select at least one portfolio source first."));
       return;
     }
-    if (!workspaceId) {
+    if (!libraryId) {
       setCreationError(t(locale, "当前工作区未连接模型，无法分析作品集。", "No connected model is available for portfolio analysis."));
       return;
     }
@@ -464,7 +464,7 @@ export const DesignerLibrary = ({
     setWizardPhase("analyse");
     try {
       const task = await getDesktopApi().submitPortfolioSelection?.({
-        workspaceId,
+        libraryId,
         source: { kind: "designer-draft", id: `designer-${crypto.randomUUID()}` },
         connectionId: "openai-compatible",
         selections: [{ inspectionId: portfolioInspection.id, sourceIds: selectedPortfolioSourceIds }],
@@ -473,7 +473,7 @@ export const DesignerLibrary = ({
       if (!task) throw new Error("ANALYSIS_UNAVAILABLE");
       if (acceptAnalysis(task)) return;
       if (task.state === "failed" || task.state === "cancelled") throw new Error("ANALYSIS_FAILED");
-      const completed = ((await getDesktopApi().listTasks?.(workspaceId)) ?? []).find((item) => item.id === task.id);
+      const completed = ((await getDesktopApi().listTasks?.(libraryId)) ?? []).find((item) => item.id === task.id);
       if (completed && acceptAnalysis(completed)) return;
       if (completed?.state === "failed" || completed?.state === "cancelled") throw new Error("ANALYSIS_FAILED");
       setAnalysisTaskId(task.id);
@@ -482,16 +482,16 @@ export const DesignerLibrary = ({
     }
   };
   const inspectPortfolioSources = async (request: PortfolioInspectionRequest) => {
-    if (!workspaceId) {
+    if (!libraryId) {
       setCreationError(t(locale, "当前工作区未连接模型，无法检查作品集。", "No connected workspace is available to inspect portfolio sources."));
       return;
     }
     setPortfolioInspecting(true);
     setCreationError("");
     try {
-      const next = await getDesktopApi().inspectPortfolioSources?.({ workspaceId, request });
+      const next = await getDesktopApi().inspectPortfolioSources?.({ libraryId, request });
       if (!next) return;
-      if (portfolioInspection) void getDesktopApi().discardPortfolioInspection?.({ workspaceId, inspectionId: portfolioInspection.id });
+      if (portfolioInspection) void getDesktopApi().discardPortfolioInspection?.({ libraryId, inspectionId: portfolioInspection.id });
       setPortfolioInspection(next);
       setSelectedPortfolioSourceIds(next.candidates.map((candidate) => candidate.id));
     } catch {
@@ -506,7 +506,7 @@ export const DesignerLibrary = ({
       : previous.filter((id) => id !== sourceId));
   };
   useEffect(() => {
-    if (!analysisTaskId || !workspaceId || !editor) return;
+    if (!analysisTaskId || !libraryId || !editor) return;
     let cancelled = false;
     let timer: number | undefined;
     const poll = async (): Promise<void> => {
@@ -514,7 +514,7 @@ export const DesignerLibrary = ({
       try {
         const listTasks = getDesktopApi().listTasks;
         if (!listTasks) throw new Error("TASK_LIST_UNAVAILABLE");
-        const tasks = (await listTasks(workspaceId)) ?? [];
+        const tasks = (await listTasks(libraryId)) ?? [];
         if (cancelled) return;
         const task = tasks.find((item) => item.id === analysisTaskId);
         if (task?.state === "completed" && acceptAnalysis(task)) return;
@@ -537,12 +537,12 @@ export const DesignerLibrary = ({
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [analysisProfile, analysisTaskId, editor, locale, workspaceId]);
+  }, [analysisProfile, analysisTaskId, editor, locale, libraryId]);
   const readArtwork = async (task: TaskRecord): Promise<boolean> => {
-    if (!workspaceId || task.state !== "completed") return false;
+    if (!libraryId || task.state !== "completed") return false;
     const artworkId = task.result?.assetIds?.[0];
     if (!artworkId) return false;
-    const asset = await getDesktopApi().readDesignerArtwork?.({ workspaceId, artworkId });
+    const asset = await getDesktopApi().readDesignerArtwork?.({ libraryId, artworkId });
     if (!asset) return false;
     setArtwork({ assetId: asset.artworkId, artworkUrl: `designhub-artwork://${asset.artworkId}` });
     setArtworkTaskId(undefined);
@@ -551,7 +551,7 @@ export const DesignerLibrary = ({
     return true;
   };
   const requestCandidateArtwork = async () => {
-    if (!workspaceId || readOnly || !analysisProfile || !analysisDraft) return;
+    if (!libraryId || readOnly || !analysisProfile || !analysisDraft) return;
     const profile = profileFromDraft(analysisDraft, analysisProfile, locale);
     if (!profile.name.en) {
       setCreationError(t(locale, "请先填写设计师名称。", "Enter a designer name first."));
@@ -573,7 +573,7 @@ export const DesignerLibrary = ({
     setCreationError("");
     try {
       const task = await submit({
-        workspaceId,
+        libraryId,
         source: { kind: "designer-draft", id: profile.id },
         connectionId: "openai-compatible",
         prompt: designerArtworkPrompt(profile),
@@ -612,7 +612,7 @@ export const DesignerLibrary = ({
     void requestCandidateArtwork();
   };
   useEffect(() => {
-    if (!artworkTaskId || !workspaceId || !editor) return;
+    if (!artworkTaskId || !libraryId || !editor) return;
     let cancelled = false;
     let timer: number | undefined;
     const poll = async (): Promise<void> => {
@@ -620,7 +620,7 @@ export const DesignerLibrary = ({
       try {
         const listTasks = getDesktopApi().listTasks;
         if (!listTasks) throw new Error("TASK_LIST_UNAVAILABLE");
-        const tasks = (await listTasks(workspaceId)) ?? [];
+        const tasks = (await listTasks(libraryId)) ?? [];
         if (cancelled) return;
         const task = tasks.find((item) => item.id === artworkTaskId);
         if (task?.state === "completed") {
@@ -674,7 +674,7 @@ export const DesignerLibrary = ({
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [artworkTaskId, editor, locale, notify, workspaceId]);
+  }, [artworkTaskId, editor, locale, notify, libraryId]);
   const publishPreview = async () => {
     if (!analysisProfile || !analysisDraft || !artwork) return;
     const published: PersonaProfile = {
@@ -687,7 +687,7 @@ export const DesignerLibrary = ({
     };
     const nextProfiles = [published, ...profiles];
     try {
-      if (workspaceId) {
+      if (libraryId) {
         const saveDesignerState = getDesktopApi().saveDesignerState;
         if (!saveDesignerState) throw new Error("DESIGNER_SAVE_UNAVAILABLE");
         const state = {
@@ -700,7 +700,7 @@ export const DesignerLibrary = ({
         };
         const persistence = saveQueue.current
           .catch(() => undefined)
-          .then(() => saveDesignerState(workspaceId, state));
+          .then(() => saveDesignerState(libraryId, state));
         saveQueue.current = persistence;
         if (!await persistence) throw new Error("DESIGNER_SAVE_FAILED");
         skipNextPersistence.current = true;
@@ -711,7 +711,7 @@ export const DesignerLibrary = ({
       setCreationError("");
       setPublishedInSession(true);
       notify(
-        workspaceId
+        libraryId
           ? t(
               locale,
               "设计师已发布并保存到当前工作区。",
@@ -809,7 +809,7 @@ export const DesignerLibrary = ({
         <PersonaInspector
           locale={locale}
           profile={selected}
-          workspaceId={workspaceId}
+          libraryId={libraryId}
           isDefault={selectedId === defaultId}
           readOnly={readOnly || loading || loadFailed}
           canSetDefault={canBeDefault(selected)}
@@ -817,7 +817,7 @@ export const DesignerLibrary = ({
           showActions={false}
         />
       </Drawer>
-      {(loadFailed || readOnly || (!workspaceId && preview)) && <p className="page-footnote">
+      {(loadFailed || readOnly || (!libraryId && preview)) && <p className="page-footnote">
         <Icon name="circle-help" size={14} />
         {loadFailed ? (
           <>
@@ -838,7 +838,7 @@ export const DesignerLibrary = ({
             "当前工作区只读，设计师档案不可修改。",
             "This workspace is read-only; designer profiles cannot be changed.",
           )
-        ) : !workspaceId && preview ? (
+        ) : !libraryId && preview ? (
           t(
             locale,
             "人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。",
@@ -871,7 +871,7 @@ export const DesignerLibrary = ({
           onGenerateArtwork={requestCandidateArtwork}
           onContinueToAvatar={continueToAvatar}
           artworkBusy={artworkSubmitting || Boolean(artworkTaskId)}
-          canGenerateArtwork={Boolean(workspaceId) && !readOnly}
+          canGenerateArtwork={Boolean(libraryId) && !readOnly}
           onPublish={publishPreview}
           onDraftChange={setActiveDraft}
           onBackToImport={() => setWizardPhase("import")}

@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 import { createDesignerArtworkProtocolHandler } from './artwork-protocol';
 
 const workspace = {
-  workspace: { workspaceId: 'workspace-1' },
+  library: { libraryId: 'workspace-1' },
 } as never;
 
 it('serves active-workspace artwork bytes without exposing its storage path', async () => {

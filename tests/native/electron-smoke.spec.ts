@@ -1,21 +1,27 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { _electron, expect, test } from 'playwright/test';
 
 test('launches the welcome shell with only the DesignHub bridge', async () => {
-  const electronApp = await _electron.launch({ args: ['.'] });
+  const userData = await mkdtemp(join(tmpdir(), 'designhub-electron-onboarding-'));
+  const electronApp = await _electron.launch({ args: ['.'], env: { ...process.env, DESIGNHUB_TEST_USER_DATA: userData } });
 
   try {
     const window = await electronApp.firstWindow();
-    await expect(window.getByRole('heading', { name: '开始本地创作', exact: true })).toBeAttached();
-    await expect(window.getByRole('button', { name: '新建工作区', exact: true })).toBeEnabled();
-    await expect(window.getByRole('button', { name: '打开工作区', exact: true })).toBeEnabled();
+    await expect(window.getByRole('heading', { name: '设置你的资料', exact: true })).toBeVisible({ timeout: 10000 });
     const bridgeNames = await window.evaluate(
       () => Object.keys((globalThis as unknown as { designhub: object }).designhub),
     );
-    expect(bridgeNames).toEqual([
-      'chooseWorkspaceDirectory',
-      'createWorkspace',
-      'openWorkspace',
-      'listActiveProjects',
+    expect(bridgeNames).toContain('loadProfile');
+    expect(bridgeNames).toContain('saveProfile');
+    expect(bridgeNames).toContain('getProjectLibraryStatus');
+    expect(bridgeNames).toContain('chooseProjectLibrary');
+    expect(bridgeNames).toContain('listActiveProjects');
+    expect(bridgeNames).not.toContain('chooseWorkspaceDirectory');
+    expect(bridgeNames).not.toContain('createWorkspace');
+    expect(bridgeNames).not.toContain('openWorkspace');
+    expect(bridgeNames).toEqual(expect.arrayContaining([
       'createProjectContainer',
       'duplicateProject',
       'importProjectPackage',
@@ -67,8 +73,9 @@ test('launches the welcome shell with only the DesignHub bridge', async () => {
       'exportDocument',
       'listExportHistory',
       'exportDiagnostics',
-    ]);
+    ]));
   } finally {
     await electronApp.close();
+    await rm(userData, { recursive: true, force: true });
   }
 });

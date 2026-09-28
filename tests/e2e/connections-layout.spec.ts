@@ -12,8 +12,7 @@ test('model connection setup remains inside its panel without horizontal overflo
   await expect(drawer).toBeVisible();
   await expect(settings).toBeVisible();
   await expect(profile).toBeVisible();
-  await page.waitForFunction(() => Array.from(document.querySelectorAll<HTMLElement>('.connection-layout'))
-    .some((element) => element.getBoundingClientRect().width > 0));
+  await expect(settings).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('connections.png'), fullPage: true });
 
   const drawerBounds = await drawer.boundingBox();

@@ -6,25 +6,25 @@ import type { Artwork } from './types';
 import { ArtworkPreview } from './ui';
 
 type ProjectDocumentPreviewProps = {
-  workspaceId?: string;
+  libraryId?: string;
   projectId: string;
   documentId?: string;
   artwork: Artwork;
   alt: string;
 };
 
-export const ProjectDocumentPreview = ({ workspaceId, projectId, documentId, artwork, alt }: ProjectDocumentPreviewProps) => {
+export const ProjectDocumentPreview = ({ libraryId, projectId, documentId, artwork, alt }: ProjectDocumentPreviewProps) => {
   const [source, setSource] = useState<string | null>(null);
   const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     setSource(null);
-    if (!workspaceId || !documentId) return undefined;
+    if (!libraryId || !documentId) return undefined;
     let cancelled = false;
     let objectUrl: string | undefined;
 
     const load = async (): Promise<void> => {
-      const scene = await getDesktopApi().loadDocumentScene?.(workspaceId, projectId, documentId);
+      const scene = await getDesktopApi().loadDocumentScene?.(libraryId, projectId, documentId);
       const image = scene?.layers.find((layer): layer is Extract<SceneLayer, { type: 'image' }> => (
         layer.type === 'image'
         && layer.role === 'content'
@@ -35,7 +35,7 @@ export const ProjectDocumentPreview = ({ workspaceId, projectId, documentId, art
         && layer.assetId !== 'placeholder'
       ));
       if (!image) return;
-      const bytes = await getDesktopApi().readAsset?.({ workspaceId, projectId, assetId: image.assetId });
+      const bytes = await getDesktopApi().readAsset?.({ libraryId, projectId, assetId: image.assetId });
       if (!bytes || cancelled) return;
       objectUrl = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'image/*' }));
       objectUrlRef.current = objectUrl;
@@ -50,7 +50,7 @@ export const ProjectDocumentPreview = ({ workspaceId, projectId, documentId, art
         objectUrlRef.current = null;
       }
     };
-  }, [documentId, projectId, workspaceId]);
+  }, [documentId, projectId, libraryId]);
 
   return source
     ? <img className="project-detail-document-card__image" src={source} alt={alt} onError={() => {

@@ -1,4 +1,4 @@
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isScene } from '../../features/canvas/scene';
 import type { DesignScene } from '../../features/canvas/scene';
@@ -18,7 +18,7 @@ type SceneRequest = {
 
 type SceneWindow = { webContents: SceneSender };
 
-type SceneTarget = { workspaceId: string; projectId: string; documentId: string };
+type SceneTarget = { libraryId: string; projectId: string; documentId: string };
 type SceneSaveInput = SceneTarget & { scene: DesignScene };
 
 const isId = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
@@ -26,7 +26,7 @@ const isId = (value: unknown): value is string => typeof value === 'string' && v
 const isTarget = (value: unknown): value is SceneTarget => {
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
-  return isId(input.workspaceId) && isId(input.projectId) && isId(input.documentId) && !input.documentId.includes('/') && !input.documentId.includes('\\');
+  return isId(input.libraryId) && isId(input.projectId) && isId(input.documentId) && !input.documentId.includes('/') && !input.documentId.includes('\\');
 };
 
 const isSaveInput = (value: unknown): value is SceneSaveInput => isTarget(value) && isScene((value as Record<string, unknown>).scene);
@@ -34,23 +34,23 @@ const isSaveInput = (value: unknown): value is SceneSaveInput => isTarget(value)
 export const loadDocumentSceneHandler = (
   window: SceneWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   loadScene: (workspace: ProjectLibraryHandle, projectId: string, documentId: string) => Promise<DesignScene | null>,
 ) => async (event: SceneRequest, input: unknown): Promise<DesignScene | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isTarget(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isTarget(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return loadScene(workspace, input.projectId, input.documentId);
 };
 
 export const saveDocumentSceneHandler = (
   window: SceneWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   saveScene: (workspace: ProjectLibraryHandle, projectId: string, documentId: string, scene: DesignScene) => Promise<boolean>,
 ) => async (event: SceneRequest, input: unknown): Promise<boolean> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isSaveInput(input)) return false;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return false;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isSaveInput(input)) return false;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return false;
   return saveScene(workspace, input.projectId, input.documentId, input.scene);
 };

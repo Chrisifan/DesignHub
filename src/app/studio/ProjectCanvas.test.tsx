@@ -56,7 +56,6 @@ const conversation = (input: Partial<TaskRecord> & Pick<TaskRecord, 'id' | 'crea
 
 const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[]) => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     listProjectDesigns: vi.fn(async () => []),
     loadProjectCanvasLayout: vi.fn(async () => null),
     listTasks: vi.fn(async () => taskRecords),
@@ -64,8 +63,8 @@ const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[]) => {
   return render(
     <ProjectCanvas
       locale="zh-CN"
-      project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
-      workspaceId="workspace-1"
+      project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
+      libraryId="workspace-1"
       readOnly={false}
       conversationConnected
       designer={null}
@@ -116,7 +115,6 @@ describe('ProjectCanvas design references', () => {
     };
     const onRemoveBackground = vi.fn(async () => undefined);
     window.designhub = {
-      chooseWorkspaceDirectory: async () => null,
       listProjectDesigns: vi.fn(async () => [design]),
       loadProjectCanvasLayout: vi.fn(async () => null),
       listTasks: vi.fn(async () => []),
@@ -125,8 +123,8 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
-        workspaceId="workspace-1"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
+        libraryId="workspace-1"
         readOnly={false}
         conversationConnected
         designer={null}
@@ -161,7 +159,6 @@ describe('ProjectCanvas design references', () => {
     };
     const onDesignsChange = vi.fn();
     window.designhub = {
-      chooseWorkspaceDirectory: async () => null,
       listProjectDesigns: vi.fn(async () => [design]),
       loadProjectCanvasLayout: vi.fn(async () => null),
       listTasks: vi.fn(async () => []),
@@ -169,8 +166,8 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
-        workspaceId="workspace-1"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
+        libraryId="workspace-1"
         readOnly={false}
         conversationConnected
         designer={null}
@@ -200,7 +197,6 @@ describe('ProjectCanvas design references', () => {
     };
     const readAsset = vi.fn(async () => new Uint8Array([1, 2, 3]));
     window.designhub = {
-      chooseWorkspaceDirectory: async () => null,
       listProjectDesigns: vi.fn(async () => [design]),
       loadProjectCanvasLayout: vi.fn(async () => null),
       listTasks: vi.fn(async () => []),
@@ -209,8 +205,8 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
-        workspaceId="workspace-1"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
+        libraryId="workspace-1"
         readOnly={false}
         conversationConnected
         designer={null}
@@ -229,7 +225,7 @@ describe('ProjectCanvas design references', () => {
     expect(screen.queryByRole('button', { name: '预览 春日海报' })).not.toBeInTheDocument();
 
     fireEvent.doubleClick(draft);
-    await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-1' }));
+    await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'project-1', assetId: 'asset-1' }));
     expect(await screen.findByRole('button', { name: '预览 春日海报' })).toBeVisible();
   });
 
@@ -245,7 +241,6 @@ describe('ProjectCanvas design references', () => {
     ];
     const readAsset = vi.fn(async () => new Uint8Array([1]));
     window.designhub = {
-      chooseWorkspaceDirectory: async () => null,
       listProjectDesigns: vi.fn(async () => designs),
       loadProjectCanvasLayout: vi.fn(async () => null),
       listTasks: vi.fn(async () => tasks),
@@ -254,8 +249,8 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, documents: 0 }}
-        workspaceId="workspace-1"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, documents: 0 }}
+        libraryId="workspace-1"
         readOnly={false}
         conversationConnected
         designer={null}
@@ -284,7 +279,6 @@ describe('ProjectCanvas design references', () => {
     const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } };
     const exportDocument = vi.fn(async (input: ExportDocumentInput) => ({ path: `/tmp/${input.documentId}.png`, sha256: 'a'.repeat(64) }));
     window.designhub = {
-      chooseWorkspaceDirectory: async () => null,
       listProjectDesigns: vi.fn(async () => designs),
       loadProjectCanvasLayout: vi.fn(async () => null),
       listTasks: vi.fn(async () => [analysis]),
@@ -293,8 +287,8 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, documents: 0 }}
-        workspaceId="workspace-1"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, documents: 0 }}
+        libraryId="workspace-1"
         readOnly={false}
         conversationConnected
         designer={null}
@@ -322,7 +316,6 @@ describe('ProjectCanvas design references', () => {
       result: { text: '使用暖色植物插画。' },
     };
     window.designhub = {
-      chooseWorkspaceDirectory: async () => null,
       listProjectDesigns: vi.fn(async () => []),
       loadProjectCanvasLayout: vi.fn(async () => null),
       listTasks: vi.fn(async () => [analysis]),
@@ -332,8 +325,8 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', workspaceId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
-        workspaceId="workspace-1"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
+        libraryId="workspace-1"
         readOnly={false}
         conversationConnected
         designer={null}

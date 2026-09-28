@@ -25,6 +25,37 @@ describe('OpenAI-compatible provider adapter', () => {
     ]);
   });
 
+  it('exposes concrete tool capabilities and rejects unsupported requests before network access', async () => {
+    const fetcher = vi.fn(async () => response({ data: [{ b64_json: 'edited' }] }));
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://example.test/v1',
+      apiKey: 'secret-key',
+      fetch: fetcher,
+      toolCapabilities: [{
+        tool: 'remove-object',
+        supportsMask: false,
+        supportsTransparency: true,
+        maxWidth: 1024,
+        supportsRemoteCancellation: false,
+        supportsStatusQuery: false,
+        parameterRanges: { feather: { min: 0, max: 20 } },
+      }],
+    });
+    expect(adapter.toolCapabilities).toEqual([expect.objectContaining({ tool: 'remove-object', maxWidth: 1024 })]);
+    await expect(adapter.editImage({ tool: 'remove-object', prompt: 'remove', image: new Blob(['image']), mask: new Blob(['mask']) })).rejects.toMatchObject({ kind: 'capability', providerCode: 'PROVIDER_MASK_UNSUPPORTED' });
+    await expect(adapter.editImage({ tool: 'remove-object', prompt: 'remove', image: new Blob(['image']), width: 2048 })).rejects.toMatchObject({ providerCode: 'PROVIDER_SIZE_UNSUPPORTED' });
+    await expect(adapter.editImage({ tool: 'remove-object', prompt: 'remove', image: new Blob(['image']), toolParams: { feather: 21 } })).rejects.toMatchObject({ providerCode: 'PROVIDER_PARAMETER_OUT_OF_RANGE' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed concrete capability options instead of silently broadening support', () => {
+    expect(() => createOpenAICompatibleAdapter({
+      baseUrl: 'https://example.test/v1',
+      apiKey: 'secret-key',
+      toolCapabilities: [{ tool: 'remove-object' } as never],
+    })).toThrow('PROVIDER_CAPABILITY_INVALID');
+  });
+
   it('sends non-streaming chat requests without exposing the API key', async () => {
     const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe('https://example.test/v1/chat/completions');

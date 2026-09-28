@@ -40,6 +40,7 @@ const groups: Array<{ zh: string; en: string; items: MenuItem[] }> = [
     items: [
       { view: 'connections', icon: 'plug', zh: '模型连接', en: 'Connections' },
       { view: 'tasks', icon: 'clock', zh: '模型任务', en: 'Model tasks' },
+      { view: 'image-tools', icon: 'wand-sparkles', zh: '图像工具', en: 'Image tools' },
     ],
   },
   {

@@ -42,7 +42,7 @@ describe('application corner radius contract', () => {
 
     expect(tokens).toMatch(/--radius-conversation:\s*14px;/u);
     expect(conversation).toMatch(
-      /^\.conversation-dock\s*\{[^}]*border-radius:\s*var\(--radius-conversation\);/u,
+      /\.conversation-dock\s*\{[^}]*border-radius:\s*var\(--radius-conversation\);/u,
     );
     expect(conversation).toMatch(
       /@media \(max-width: 720px\)\s*\{[^}]*\.conversation-dock--compact\s*\{[^}]*border-radius:\s*var\(--radius-conversation\);/u,

@@ -63,7 +63,7 @@ export const ProjectDetailPage = ({
   const documents = project.documentEntries ?? Array.from<DocumentEntry | undefined>({ length: project.documents });
   const designerVersion = (project.designerSnapshot as { version?: string } | undefined)?.version;
   const brief = t(locale, project.description, project.enDescription).trim();
-  const saved = Boolean(project.workspaceId);
+  const saved = Boolean(project.libraryId);
   const hasDesigner = Boolean(activeDesignerId && designerLabel.trim());
   const displayDesignerLabel = hasDesigner
     ? designerLabel.trim()
@@ -80,7 +80,7 @@ export const ProjectDetailPage = ({
       <section className="project-detail-header" data-testid="project-detail-header">
         <div className="project-detail-hero" data-testid="project-detail-hero">
           <ProjectCoverImage
-            workspaceId={project.workspaceId}
+            libraryId={project.libraryId}
             projectId={project.id}
             coverAssetId={project.coverAssetId}
             previewUrl={project.coverPreviewUrl}
@@ -165,7 +165,7 @@ export const ProjectDetailPage = ({
                     <span className="project-detail-document-card__preview document-cover">
                       <span className="project-detail-document-card__sheet" style={documentCoverStyle(entry)}>
                         <ProjectDocumentPreview
-                          workspaceId={project.workspaceId}
+                          libraryId={project.libraryId}
                           projectId={project.id}
                           documentId={entry?.id}
                           artwork={project.artwork}

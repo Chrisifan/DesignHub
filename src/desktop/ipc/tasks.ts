@@ -1,6 +1,6 @@
 import { isPortfolioAnalysisDiagnostic, isSafeProviderCode, taskRecordKeys, type TaskRecord } from '../../features/tasks/state';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const taskListChannel = 'task:list';
 export const taskSaveChannel = 'task:save';
@@ -10,7 +10,7 @@ type TaskRequest = { sender: TaskSender; senderFrame: { url: string } | null };
 type TaskWindow = { webContents: TaskSender };
 
 const isWorkspaceId = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
-const isTaskState = (value: unknown): value is TaskRecord['state'] => value === 'queued' || value === 'running' || value === 'completed' || value === 'failed' || value === 'cancelled';
+const isTaskState = (value: unknown): value is TaskRecord['state'] => value === 'queued' || value === 'running' || value === 'completed' || value === 'failed' || value === 'cancelled' || value === 'unknown';
 const isTaskProviderFailure = (value: unknown): boolean => {
   if (typeof value !== 'object' || value === null) return false;
   const failure = value as Record<string, unknown>;
@@ -29,6 +29,9 @@ const isTaskRecord = (value: unknown): value is TaskRecord => {
     && isTaskState(task.state)
     && typeof task.cancelRequested === 'boolean'
     && Number.isInteger(task.attempt) && Number(task.attempt) > 0
+    && (task.remoteRequestId === undefined || (typeof task.remoteRequestId === 'string' && task.remoteRequestId.trim().length > 0))
+    && (task.remoteSupportsCancellation === undefined || typeof task.remoteSupportsCancellation === 'boolean')
+    && (task.remoteSupportsStatusQuery === undefined || typeof task.remoteSupportsStatusQuery === 'boolean')
     && (task.providerFailure === undefined || isTaskProviderFailure(task.providerFailure))
     && (task.analysisDiagnostic === undefined || isPortfolioAnalysisDiagnostic(task.analysisDiagnostic));
 };
@@ -37,25 +40,25 @@ const isTaskList = (value: unknown): value is TaskRecord[] => Array.isArray(valu
 export const listTasksHandler = (
   window: TaskWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
-  load: (workspace: ProjectLibraryHandle, workspaceId: string) => Promise<TaskRecord[]>,
-) => async (event: TaskRequest, workspaceId: unknown): Promise<TaskRecord[] | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isWorkspaceId(workspaceId)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== workspaceId) return null;
-  return load(workspace, workspaceId);
+  getLibrary: () => ProjectLibraryHandle | null,
+  load: (workspace: ProjectLibraryHandle, libraryId: string) => Promise<TaskRecord[]>,
+) => async (event: TaskRequest, libraryId: unknown): Promise<TaskRecord[] | null> => {
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isWorkspaceId(libraryId)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== libraryId) return null;
+  return load(workspace, libraryId);
 };
 
 export const saveTasksHandler = (
   window: TaskWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
-  save: (workspace: ProjectLibraryHandle, workspaceId: string, tasks: TaskRecord[]) => Promise<boolean>,
+  getLibrary: () => ProjectLibraryHandle | null,
+  save: (workspace: ProjectLibraryHandle, libraryId: string, tasks: TaskRecord[]) => Promise<boolean>,
 ) => async (event: TaskRequest, input: unknown): Promise<boolean> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return false;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return false;
   const value = input as Record<string, unknown>;
-  if (!isWorkspaceId(value.workspaceId) || !isTaskList(value.tasks)) return false;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== value.workspaceId) return false;
-  return save(workspace, value.workspaceId, value.tasks);
+  if (!isWorkspaceId(value.libraryId) || !isTaskList(value.tasks)) return false;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== value.libraryId) return false;
+  return save(workspace, value.libraryId, value.tasks);
 };

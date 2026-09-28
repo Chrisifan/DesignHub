@@ -22,7 +22,7 @@ const createTemporaryWorkspace = async () => {
 
 const createProject = async (workspace: Awaited<ReturnType<typeof createTemporaryWorkspace>>) => {
   const result = await createProjectStore(workspace).createProjectContainer({
-    workspaceId: workspace.library.libraryId,
+    libraryId: workspace.library.libraryId,
     operationId: 'scene-project',
     name: 'Scene project',
   });

@@ -8,7 +8,7 @@ import { Icon } from './ui';
 export type CandidateBoardProps = {
   locale: Locale;
   tasks: TaskRecord[];
-  workspaceId?: string;
+  libraryId?: string;
   projectId: string;
   analysisThreadId?: string;
   width: number;
@@ -66,7 +66,7 @@ const slotLabel = (locale: Locale, slotId: DesignGenerationSlotId): string => ({
   expressive: locale === 'zh-CN' ? '视觉突破' : 'Expressive',
 })[slotId];
 
-export const CandidateBoard = ({ locale, tasks, workspaceId, projectId, analysisThreadId, width, height, displayWidth = 280, selectedCandidateId, onSelect, onRetrySlot, onRequestFocus }: CandidateBoardProps) => {
+export const CandidateBoard = ({ locale, tasks, libraryId, projectId, analysisThreadId, width, height, displayWidth = 280, selectedCandidateId, onSelect, onRetrySlot, onRequestFocus }: CandidateBoardProps) => {
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [offsets, setOffsets] = useState<Record<string, CandidateOffset>>({});
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -95,11 +95,11 @@ export const CandidateBoard = ({ locale, tasks, workspaceId, projectId, analysis
   useEffect(() => {
     let cancelled = false;
     const load = async (): Promise<void> => {
-      if (!workspaceId) return;
+      if (!libraryId) return;
       const entries = await Promise.all(candidates.flatMap((candidate) => {
         const assetId = candidate.sceneAssetId ?? candidate.assetIds[0];
         if (!assetId || previews[assetId]) return [];
-        return [getDesktopApi().readAsset?.({ workspaceId, projectId, assetId }).then((bytes) => bytes ? [assetId, imageUrl(bytes)] as const : null).catch(() => null)];
+        return [getDesktopApi().readAsset?.({ libraryId, projectId, assetId }).then((bytes) => bytes ? [assetId, imageUrl(bytes)] as const : null).catch(() => null)];
       }));
       if (cancelled) return;
       const next = Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry)));
@@ -107,7 +107,7 @@ export const CandidateBoard = ({ locale, tasks, workspaceId, projectId, analysis
     };
     void load();
     return () => { cancelled = true; };
-  }, [candidates, previews, projectId, workspaceId]);
+  }, [candidates, previews, projectId, libraryId]);
   if (!analysisThreadId || designTasks.length === 0) return null;
   const renderDraft = (draft: DraftItem, isLatestLegacy: boolean) => {
     const batch = designTasks.find((task) => task.id === draft.taskId);

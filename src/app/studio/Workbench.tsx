@@ -18,6 +18,9 @@ import { ToolInspector } from '../../features/image-tools/ToolInspector';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { RevisionRecord, RevisionTimelineEvent } from '../../features/revisions/model';
 import type { DesignGenerationSlotId, TaskCandidate, TaskRecord } from '../../features/tasks/state';
+import type { ToolCandidate } from '../../features/tasks/state';
+import { applyToolResult } from '../../features/image-tools/result-application';
+import type { RevisionStore } from '../../features/revisions/model';
 import { CompareRevisions } from '../../features/revisions/CompareRevisions';
 import {
   ArtworkPreview,
@@ -57,6 +60,7 @@ const toolPrompt: Record<ImageTool, string> = {
   'smart-crop': 'Smart crop while preserving the primary subject',
   upscale: 'Upscale the image while preserving important details',
   resize: 'Resize the image',
+  'remove-watermark': 'Remove a watermark only from an explicitly selected region',
 };
 
 const toolName = (locale: Locale, tool: ImageTool): string => {
@@ -69,6 +73,7 @@ const toolName = (locale: Locale, tool: ImageTool): string => {
     'smart-crop': ['智能裁切', 'Smart crop'],
     upscale: ['放大图像', 'Upscale image'],
     resize: ['调整尺寸', 'Resize'],
+    'remove-watermark': ['移除水印', 'Remove watermark'],
   };
   const [zh, en] = labels[tool];
   return t(locale, zh, en);
@@ -77,7 +82,7 @@ const toolName = (locale: Locale, tool: ImageTool): string => {
 export type WorkbenchProps = {
   locale: Locale;
   project: Project;
-  workspaceId?: string;
+  libraryId?: string;
   documentId?: string;
   scene?: DesignScene;
   onBack: () => void;
@@ -88,7 +93,7 @@ export type WorkbenchProps = {
   onTasks?: () => void;
   onSubmitConversation?: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
   onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null, generationRatio: ProjectGenerationRatio, count: 1 | 3) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
-  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: Region }) => void | Promise<void>;
+  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: Region }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
   modelConnected?: boolean;
@@ -102,12 +107,12 @@ export type WorkbenchProps = {
 
 const createInitialScene = (project: Project, documentId?: string): DesignScene => {
   const document = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
-  if (project.workspaceId && !document) {
+  if (project.libraryId && !document) {
     return createScene({ id: `${project.id}-scene`, width: 1, height: 1, layers: [] });
   }
   const width = document?.width ?? 1080;
   const height = document?.height ?? 1440;
-  if (project.workspaceId) {
+  if (project.libraryId) {
     return createScene({ id: `${project.id}-scene`, width, height, layers: [] });
   }
   const titleLayer = {
@@ -129,6 +134,35 @@ const clamp = (value: number, minimum: number, maximum: number): number =>
 const taskCandidates = (task: TaskRecord): TaskCandidate[] => task.result?.candidates
   ?? (task.result?.candidate ? [task.result.candidate] : []);
 
+const candidateSlotRank = (task: TaskRecord, candidate: TaskCandidate): number => {
+  const slot = task.generationSlots?.find((entry) => entry.candidateId === candidate.id)?.id;
+  return slot === 'primary' ? 0 : slot === 'composition' ? 1 : slot === 'expressive' ? 2 : 3;
+};
+
+const createCandidateScene = (baseScene: DesignScene, candidate: TaskCandidate): DesignScene | null => {
+  const assetId = candidate.sceneAssetId ?? candidate.assetIds[0];
+  if (!assetId) return null;
+  return createScene({
+    id: `candidate-scene-${candidate.id}`,
+    width: baseScene.width,
+    height: baseScene.height,
+    layers: [{
+      id: `candidate-image-${candidate.id}`,
+      type: 'image',
+      role: 'content',
+      assetId,
+      x: 0,
+      y: 0,
+      width: baseScene.width,
+      height: baseScene.height,
+      rotation: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+    }],
+  });
+};
+
 const contributionRoleLabel = (locale: Locale, role: 'lead' | 'direction' | 'revision'): string => {
   if (role === 'lead') return t(locale, '主导', 'Lead');
   if (role === 'direction') return t(locale, '方向', 'Direction');
@@ -138,7 +172,7 @@ const contributionRoleLabel = (locale: Locale, role: 'lead' | 'direction' | 'rev
 export const Workbench = ({
   locale,
   project,
-  workspaceId,
+  libraryId,
   documentId,
   scene: providedScene,
   onBack,
@@ -195,6 +229,7 @@ export const Workbench = ({
   const [canvasOverlayHost, setCanvasOverlayHost] = useState<HTMLElement | null>(null);
   const documentMeta = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
   const [scene, setScene] = useState<DesignScene>(() => providedScene ?? createInitialScene(project, documentId));
+  const [candidateScene, setCandidateScene] = useState<DesignScene | null>(null);
   const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
   const [resizeHeight, setResizeHeight] = useState(() => (providedScene ?? createInitialScene(project, documentId)).height);
   const [revisionState, setRevisionState] = useState<RevisionState>({ revisions: [], timeline: [], finalRevisionId: null });
@@ -209,29 +244,55 @@ export const Workbench = ({
   const [analysisAttachments, setAnalysisAttachments] = useState<Array<ConversationImageAttachment & { previewUrl: string }>>([]);
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [toolCandidateTaskId, setToolCandidateTaskId] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [candidatePreviewId, setCandidatePreviewId] = useState<string | null>(null);
   const [viewportFocusRequest, setViewportFocusRequest] = useState({ id: 0, candidateId: null as string | null });
+  const [canvasSelection, setCanvasSelection] = useState<{ layerId: string; type: 'text' | 'shape' | 'image' } | null>(null);
+  const [toolCompareMode, setToolCompareMode] = useState<'result' | 'before'>('result');
 
   useEffect(() => {
-    if (!workspaceId || !documentId) return undefined;
+    if (!libraryId || !documentId) return undefined;
     let cancelled = false;
-    const request = getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
+    const request = getDesktopApi().loadDocumentRevisions?.(libraryId, project.id, documentId);
     void request?.then((loaded) => { if (!cancelled && loaded) setRevisionState(loaded); }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [documentId, project.id, workspaceId]);
+  }, [documentId, project.id, libraryId]);
 
   useEffect(() => {
-    if (!workspaceId) return undefined;
+    if (!libraryId) return undefined;
     let cancelled = false;
     const refresh = (): void => {
-      const request = getDesktopApi().listTasks?.(workspaceId);
+      const request = getDesktopApi().listTasks?.(libraryId);
       void request?.then((loaded) => { if (!cancelled && loaded) setTasks(loaded.filter((task) => task.documentId === documentId)); }).catch(() => undefined);
     };
     refresh();
     const interval = window.setInterval(refresh, pendingConversationTaskId ? 750 : 2_000);
     return () => { cancelled = true; window.clearInterval(interval); };
-  }, [documentId, pendingConversationTaskId, workspaceId]);
+  }, [documentId, pendingConversationTaskId, libraryId]);
+
+  useEffect(() => {
+    if (!tasks.length) return;
+    const activeBaseRevisionId = revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? revisionState.finalRevisionId ?? null;
+    setAnalysisThreadId((current) => current ?? tasks.find((task) => task.analysisThreadId)?.analysisThreadId);
+    const completed = tasks
+      .filter((task) => task.capability === 'design-generation' && task.state === 'completed')
+      .flatMap((task) => taskCandidates(task).map((candidate) => ({ task, candidate })))
+      .filter(({ candidate }) => activeBaseRevisionId === null || candidate.baseRevisionId === activeBaseRevisionId)
+      .filter(({ candidate }) => Boolean(candidate.sceneAssetId ?? candidate.assetIds[0]))
+      .sort((left, right) => {
+        const leftTime = left.task.createdAt ?? left.candidate.createdAt;
+        const rightTime = right.task.createdAt ?? right.candidate.createdAt;
+        return rightTime.localeCompare(leftTime) || candidateSlotRank(left.task, left.candidate) - candidateSlotRank(right.task, right.candidate);
+      });
+    setSelectedCandidateId((current) => current && completed.some(({ candidate }) => candidate.id === current) ? current : completed[0]?.candidate.id ?? null);
+    if (!completed.length) {
+      const toolTask = tasks.find((task) => task.capability === 'image-editing' && task.state === 'completed' && (task.result?.toolCandidate || task.result?.candidate));
+      setToolCandidateTaskId(toolTask?.id ?? null);
+    } else {
+      setToolCandidateTaskId(null);
+    }
+  }, [revisionState.finalRevisionId, revisionState.revisions, tasks]);
 
   const currentRevisionId = revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? revisionState.finalRevisionId ?? null;
   const pendingConversationTask = pendingConversationTaskId ? tasks.find((task) => task.id === pendingConversationTaskId) : undefined;
@@ -245,17 +306,47 @@ export const Workbench = ({
     }
     return undefined;
   };
+  const toolCandidateFor = (taskId: string): { task: TaskRecord; candidate: ToolCandidate | TaskCandidate } | undefined => {
+    const task = tasks.find((item) => item.id === taskId);
+    if (task?.result?.toolCandidate) return { task, candidate: task.result.toolCandidate };
+    const candidate = task ? taskCandidates(task)[0] : undefined;
+    return task && candidate ? { task, candidate } : undefined;
+  };
   const selectCandidate = (candidateId: string, assetId: string): void => {
     setSelectedCandidateId(candidateId);
     setReferencedAssetIds((current) => current.includes(assetId) ? current : [...current, assetId]);
     notify(t(locale, '候选已加入下一轮对话', 'Candidate added to the next conversation'));
   };
 
+  useEffect(() => {
+    if (!selectedCandidateId && !toolCandidateTaskId) {
+      setCandidateScene(null);
+      return;
+    }
+    const entry = selectedCandidateId
+      ? candidateFor(selectedCandidateId)
+      : toolCandidateTaskId
+        ? toolCandidateFor(toolCandidateTaskId)
+        : undefined;
+    if (!entry || entry.task.state !== 'completed') {
+      setCandidateScene(null);
+      return;
+    }
+    setCandidateScene('candidateScene' in entry.candidate ? entry.candidate.candidateScene : createCandidateScene(scene, entry.candidate));
+  }, [selectedCandidateId, toolCandidateTaskId, tasks, scene.width, scene.height]);
+
+  const discardCandidate = (): void => {
+    setCandidateScene(null);
+    setSelectedCandidateId(null);
+    setToolCandidateTaskId(null);
+    setRevisionBaseId(null);
+  };
+
   const persistScene = (nextScene: DesignScene): void => {
     if (readOnly) return;
     setScene(nextScene);
-    if (workspaceId && documentId) {
-      const request = getDesktopApi().saveDocumentScene?.({ workspaceId, projectId: project.id, documentId, scene: nextScene });
+    if (libraryId && documentId) {
+      const request = getDesktopApi().saveDocumentScene?.({ libraryId, projectId: project.id, documentId, scene: nextScene });
       if (request) void request.catch(() => undefined);
     }
   };
@@ -288,33 +379,77 @@ export const Workbench = ({
       })() : {}),
     }));
   };
-  const saveRevision = async (): Promise<void> => {
-    if (readOnly || !workspaceId || !documentId || revisionBusy) return;
+  const saveRevision = async (override?: { scene?: DesignScene; baseRevisionId?: string | null; operationId?: string }): Promise<void> => {
+    if (readOnly || !libraryId || !documentId || revisionBusy) return;
     setRevisionBusy(true);
     try {
+      const revisionScene = override?.scene ?? scene;
       const result = await getDesktopApi().commitDocumentRevision?.({
-        workspaceId,
+        libraryId,
         projectId: project.id,
         documentId,
-        baseRevisionId: revisionBaseId ?? revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? null,
-        operationId: `workbench-${crypto.randomUUID()}`,
-        sceneAssetId: scene.id,
-        assetIds: scene.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image').map((layer) => layer.assetId),
+        baseRevisionId: override?.baseRevisionId ?? revisionBaseId ?? revisionState.revisions[revisionState.revisions.length - 1]?.revisionId ?? null,
+        operationId: override?.operationId ?? `workbench-${crypto.randomUUID()}`,
+        sceneAssetId: revisionScene.id,
+        assetIds: revisionScene.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image').map((layer) => layer.assetId),
         contributions: revisionContributions(),
-        scene,
+        scene: revisionScene,
       });
       if (result) {
-        const loaded = await getDesktopApi().loadDocumentRevisions?.(workspaceId, project.id, documentId);
+        const loaded = await getDesktopApi().loadDocumentRevisions?.(libraryId, project.id, documentId);
         if (loaded) setRevisionState(loaded);
+        if (override?.scene) persistScene(override.scene);
         setRevisionBaseId(null);
+        if (override?.scene) {
+          setCandidateScene(null);
+          setSelectedCandidateId(null);
+        }
         notify(t(locale, '版本已保存', 'Version saved'));
       }
     } catch {
       notify(t(locale, '版本保存失败', 'Could not save version'));
     } finally { setRevisionBusy(false); }
   };
+
+  const confirmCandidate = async (): Promise<void> => {
+    if (!candidateScene) return;
+    const entry = selectedCandidateId
+      ? candidateFor(selectedCandidateId)
+      : toolCandidateTaskId
+        ? toolCandidateFor(toolCandidateTaskId)
+        : undefined;
+    if (!entry) return;
+    if ('candidateScene' in entry.candidate && libraryId && documentId) {
+      const candidate = entry.candidate;
+      const revisionStore = {
+        commitRevision: async (input: Parameters<RevisionStore['commitRevision']>[0]) => {
+          const committed = await getDesktopApi().commitDocumentRevision?.({ libraryId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, operationId: input.operationId, sceneAssetId: input.sceneAssetId, assetIds: input.assetIds, contributions: input.contributions, scene: input.scene });
+          if (!committed) throw new Error('REVISION_COMMIT_FAILED');
+          return committed;
+        },
+      } as RevisionStore;
+      setRevisionBusy(true);
+      try {
+        const applied = await applyToolResult({ status: 'completed', projectId: project.id, documentId, baseRevisionId: candidate.baseRevisionId, operationId: entry.task.requestId, sceneAssetId: candidate.resultAssetId, assetIds: [candidate.resultAssetId], revisionStore, candidate });
+        if (applied) {
+          const loaded = await getDesktopApi().loadDocumentRevisions?.(libraryId, project.id, documentId);
+          if (loaded) setRevisionState(loaded);
+          persistScene(candidate.candidateScene);
+          setCandidateScene(null); setToolCandidateTaskId(null); setRevisionBaseId(null);
+          notify(t(locale, '版本已保存', 'Version saved'));
+        }
+      } catch { notify(t(locale, '版本保存失败', 'Could not save version')); }
+      finally { setRevisionBusy(false); }
+      return;
+    }
+    await saveRevision({
+      scene: candidateScene,
+      baseRevisionId: entry.candidate.baseRevisionId,
+      operationId: entry.task.requestId,
+    });
+  };
   const exportSelectedCandidate = async (): Promise<void> => {
-    if (!workspaceId || !documentId || !selectedCandidateId || exportBusy) return;
+    if (!libraryId || !documentId || !selectedCandidateId || exportBusy) return;
     const entry = candidateFor(selectedCandidateId);
     const selectedAssetId = entry?.candidate.sceneAssetId ?? entry?.candidate.assetIds[0];
     if (!entry || !selectedAssetId) {
@@ -343,7 +478,7 @@ export const Workbench = ({
     setExportBusy(true);
     try {
       const result = await getDesktopApi().exportDocument?.({
-        workspaceId,
+        libraryId,
         projectId: project.id,
         documentId,
         format: 'png',
@@ -359,13 +494,13 @@ export const Workbench = ({
   const continueCandidate = (candidateId: string): void => {
     if (readOnly) return;
     const entry = candidateFor(candidateId);
-    const assetId = entry?.candidate.assetIds[0];
-    if (!entry || !assetId) return;
-    const imageLayer = scene.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image');
-    if (!imageLayer) return;
-    const nextScene = replaceSceneLayer(scene, { ...imageLayer, assetId });
+    const nextScene = entry ? createCandidateScene(scene, entry.candidate) : null;
+    if (!entry || !nextScene) return;
     setRevisionBaseId(entry.candidate.baseRevisionId);
     persistScene(nextScene);
+    setCandidateScene(null);
+    setSelectedCandidateId(null);
+    setToolCandidateTaskId(null);
     notify(t(locale, '候选已载入，可继续编辑', 'Candidate loaded for continued editing'));
   };
 
@@ -413,7 +548,7 @@ export const Workbench = ({
     'tools',
   ];
   const detailedPanelOpen = panelOpen && (panel === 'history' || panel === 'tools');
-  const hasWorkspaceDocument = Boolean(workspaceId && documentId);
+  const hasWorkspaceDocument = Boolean(libraryId && documentId);
   const propertiesOpen = !hasWorkspaceDocument && panelOpen && panel === 'properties';
   const designerSnapshot = project.designerSnapshot as { id?: string; name?: { zh?: string; en?: string }; artworkUrl?: string; artworkAlt?: { zh?: string; en?: string } } | undefined;
   const conversationDesigner = designerSnapshot?.name?.[locale === 'zh-CN' ? 'zh' : 'en']
@@ -429,6 +564,12 @@ export const Workbench = ({
     '--workbench-rotation': `${rotation}deg`,
   } as CSSProperties;
   const draftDisplayWidth = Math.round(280 * zoom / 68);
+  const toolCandidateTask = toolCandidateTaskId ? tasks.find((task) => task.id === toolCandidateTaskId) : undefined;
+  const activeCandidateId = selectedCandidateId ?? (toolCandidateTask ? taskCandidates(toolCandidateTask)[0]?.id ?? null : null);
+  const activeToolCandidate = toolCandidateTask?.result?.toolCandidate;
+  const displayedCandidateScene = candidateScene && toolCompareMode === 'before' && activeToolCandidate
+    ? activeToolCandidate.beforeScene
+    : candidateScene;
   const hasSceneContent = scene.layers.some((layer) => layer.type !== 'image' || layer.assetId !== 'placeholder');
   const centerDraft = useCallback((element: HTMLElement): void => {
     const container = canvasStageRef.current;
@@ -624,8 +765,8 @@ export const Workbench = ({
     notify(t(locale, '请先发送一轮对话分析。', 'Send a conversation analysis first.'));
   };
   const retryPendingConversation = (): void => {
-    if (!workspaceId || !pendingConversationTaskId) return;
-    void getDesktopApi().retryTask?.(workspaceId, pendingConversationTaskId).then((task) => {
+    if (!libraryId || !pendingConversationTaskId) return;
+    void getDesktopApi().retryTask?.(libraryId, pendingConversationTaskId).then((task) => {
       if (!task) return;
       setTasks((current) => [...current.filter((entry) => entry.id !== task.id), task]);
       setPendingConversationTaskId(task.id);
@@ -633,8 +774,8 @@ export const Workbench = ({
     }).catch(() => notify(t(locale, '重试失败', 'Retry failed')));
   };
   const retryGenerationSlot = async (taskId: string, slotId: DesignGenerationSlotId): Promise<void> => {
-    if (!workspaceId) return;
-    const retried = await getDesktopApi().retryDesignGenerationSlot?.({ workspaceId, taskId, slotId });
+    if (!libraryId) return;
+    const retried = await getDesktopApi().retryDesignGenerationSlot?.({ libraryId, taskId, slotId });
     if (!retried) return;
     setTasks((current) => current.map((task) => task.id === retried.id ? retried : task));
   };
@@ -648,7 +789,11 @@ export const Workbench = ({
       notify(t(locale, '参数无效', 'Invalid parameters'));
       return;
     }
-    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, params, baseRevisionId: currentRevisionId, ...(region ? { region } : {}) })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+    if (tool !== 'resize' && libraryId && documentId && (canvasSelection?.type !== 'image' || !canvasSelection.layerId)) {
+      notify(t(locale, '请选择一个图片图层', 'Select an image layer first'));
+      return;
+    }
+    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, params, baseRevisionId: currentRevisionId, ...(canvasSelection?.type === 'image' ? { targetLayerId: canvasSelection.layerId } : {}), ...(region ? { region } : {}) })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
   const configureImageTool = (tool: ImageTool): void => {
     setActiveTool(tool);
@@ -766,8 +911,8 @@ export const Workbench = ({
             </strong>
             <span>{documentMeta?.name ?? t(locale, '主海报', 'Main poster')}</span>
           </div>
-          <Badge tone={workspaceId ? 'success' : 'warning'}>
-            {workspaceId ? t(locale, '已保存', 'Saved') : t(locale, '预览未保存', 'Unsaved preview')}
+          <Badge tone={libraryId ? 'success' : 'warning'}>
+            {libraryId ? t(locale, '已保存', 'Saved') : t(locale, '预览未保存', 'Unsaved preview')}
           </Badge>
         </div>
 
@@ -950,16 +1095,27 @@ export const Workbench = ({
           <div ref={canvasStageRef} className="workbench-canvas__stage">
             <div className="workbench-canvas-world">
               <div className="workbench-canvas-world__row">
-                {workspaceId && documentId ? (
-                  <div data-draft-role="current" className={`workbench-design-card${hasSceneContent ? '' : ' workbench-design-card--empty'}`} style={{ aspectRatio: `${scene.width} / ${scene.height}`, ...(hasSceneContent ? { width: draftDisplayWidth, flexBasis: draftDisplayWidth } : {}) }}>
+                {libraryId && documentId ? (
+                  <div
+                    data-testid={candidateScene ? 'canvas-candidate-scene' : undefined}
+                    data-draft-role={candidateScene ? 'candidate' : 'current'}
+                    data-candidate-id={candidateScene ? activeCandidateId ?? undefined : undefined}
+                    className={`workbench-design-card${hasSceneContent ? '' : ' workbench-design-card--empty'}`}
+                    style={{ aspectRatio: `${scene.width} / ${scene.height}`, ...(hasSceneContent ? { width: draftDisplayWidth, flexBasis: draftDisplayWidth } : {}) }}
+                  >
                     <CanvasWorkspace
                       locale={locale}
-                      scene={scene}
-                      onSceneChange={handleSceneChange}
-                      readOnly={readOnly}
-                      workspaceId={workspaceId}
+                      scene={displayedCandidateScene ?? scene}
+                      onSceneChange={candidateScene && toolCompareMode === 'result' ? setCandidateScene : handleSceneChange}
+                      onSelectionChange={(selection) => {
+                        setCanvasSelection(selection);
+                        if (selection) setSelectedLayer(selection.type);
+                      }}
+                      readOnly={readOnly || toolCompareMode === 'before'}
+                      libraryId={libraryId}
                       projectId={project.id}
                       documentId={documentId}
+                      persistDocumentScene={!candidateScene}
                       embedded
                       layersOpen={layersExpanded}
                       onLayersClose={() => setLayersExpanded(false)}
@@ -970,6 +1126,11 @@ export const Workbench = ({
                       assetAction={assetAction}
                       onAssetActionHandled={onAssetActionHandled}
                     />
+                    {candidateScene && <div className="workbench-candidate-actions">
+                      {activeToolCandidate && <div role="group" aria-label={t(locale, '结果比较', 'Result comparison')}><Button variant={toolCompareMode === 'before' ? 'secondary' : 'ghost'} icon="image" onClick={() => setToolCompareMode('before')}>{t(locale, '原图', 'Original')}</Button><Button variant={toolCompareMode === 'result' ? 'secondary' : 'ghost'} icon="sparkles" onClick={() => setToolCompareMode('result')}>{t(locale, '结果', 'Result')}</Button></div>}
+                      <Button variant="secondary" icon="check" disabled={readOnly || revisionBusy} onClick={() => { void confirmCandidate(); }}>{t(locale, '确认候选', 'Confirm candidate')}</Button>
+                      <Button variant="ghost" icon="x" disabled={revisionBusy} onClick={discardCandidate}>{t(locale, '放弃候选', 'Discard candidate')}</Button>
+                    </div>}
                   </div>
                 ) : (
                   <div data-draft-role="current" className="workbench-design-card" style={{ width: draftDisplayWidth, flexBasis: draftDisplayWidth, aspectRatio: `${scene.width} / ${scene.height}` }}>
@@ -1009,7 +1170,7 @@ export const Workbench = ({
                 <CandidateBoard
                   locale={locale}
                   tasks={tasks}
-                  workspaceId={workspaceId}
+                  libraryId={libraryId}
                   projectId={project.id}
                   analysisThreadId={analysisThreadId}
                   width={scene.width}
@@ -1057,7 +1218,7 @@ export const Workbench = ({
               className="icon-button workbench-context-tools__export"
               name="download"
               label={t(locale, '导出所选候选', 'Export selected candidate')}
-              disabled={exportBusy || !workspaceId || !documentId || !selectedCandidateId}
+              disabled={exportBusy || !libraryId || !documentId || !selectedCandidateId}
               onClick={() => { void exportSelectedCandidate(); }}
             />
           </div>
@@ -1109,7 +1270,7 @@ export const Workbench = ({
         title={panelCopy[panel].label}
         locale={locale}
         onClose={() => setPanelOpen(false)}
-        footer={panel === 'history' && workspaceId ? (
+        footer={panel === 'history' && libraryId ? (
           <div className="workbench-compose__actions">
             <Button variant="secondary" icon="save" disabled={readOnly || revisionBusy} onClick={() => { void saveRevision(); }}>{t(locale, '保存版本', 'Save version')}</Button>
           </div>
@@ -1128,8 +1289,8 @@ export const Workbench = ({
                 <p className="workbench-section-copy">
                   {t(
                     locale,
-                    workspaceId ? '当前文档的场景会保存到工作区。修订时间线将在版本提交后显示。' : '示例会话只包含初始基线。预览编辑尚未保存为版本。',
-                    workspaceId ? 'The current document scene is saved to the workspace. Revision events appear after a version is committed.' : 'This example session contains only its baseline. Preview edits are not saved as a version.',
+                    libraryId ? '当前文档的场景会保存到工作区。修订时间线将在版本提交后显示。' : '示例会话只包含初始基线。预览编辑尚未保存为版本。',
+                    libraryId ? 'The current document scene is saved to the workspace. Revision events appear after a version is committed.' : 'This example session contains only its baseline. Preview edits are not saved as a version.',
                   )}
                 </p>
                 <ol className="workbench-history-list">
@@ -1316,7 +1477,7 @@ export const Workbench = ({
             ? t(locale, '可见', 'Visible')
             : t(locale, '隐藏', 'Hidden')}
         </span>
-        <span>{workspaceId ? t(locale, '本地会话', 'Local session') : t(locale, '示例会话', 'Example session')}</span>
+        <span>{libraryId ? t(locale, '本地会话', 'Local session') : t(locale, '示例会话', 'Example session')}</span>
       </footer>
       {activeTool && <Modal title={toolName(locale, activeTool)} locale={locale} onClose={() => setActiveTool(null)}>
         <ToolInspector

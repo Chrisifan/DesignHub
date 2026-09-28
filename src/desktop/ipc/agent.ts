@@ -5,7 +5,8 @@ import type { AgentTaskService, ConversationImageAttachment, ConversationTestInp
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isProjectGenerationRatio } from '../../features/projects/size';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
+import { isScene } from '../../features/canvas/scene';
 
 export const conversationSubmitChannel = 'agent:conversation-submit';
 export const designGenerationSubmitChannel = 'agent:design-generation-submit';
@@ -33,17 +34,18 @@ export type ConversationInput = {
   designerVersionId?: string;
   baseRevisionId?: string | null;
   connectionId: string;
+  model?: string;
   message: string;
   attachments?: ConversationImageAttachment[];
 };
-export type ConversationBridgeInput = ConversationInput & { workspaceId: string };
+export type ConversationBridgeInput = ConversationInput & { libraryId: string };
 export type DesignGenerationBridgeInput = DesignGenerationInput;
-export type ConversationTestBridgeInput = ConversationTestInput & { workspaceId: string };
-export type ImageGenerationBridgeInput = ImageGenerationInput & { workspaceId: string };
-export type ImageGenerationTestBridgeInput = ImageGenerationTestInput & { workspaceId: string };
-export type DesignerArtworkGenerationBridgeInput = DesignerArtworkGenerationInput & { workspaceId: string };
-export type ImageEditBridgeInput = ImageEditInput & { workspaceId: string };
-export type PortfolioAnalysisBridgeInput = PortfolioAnalysisInput & { workspaceId: string };
+export type ConversationTestBridgeInput = ConversationTestInput & { libraryId: string };
+export type ImageGenerationBridgeInput = ImageGenerationInput & { libraryId: string };
+export type ImageGenerationTestBridgeInput = ImageGenerationTestInput & { libraryId: string };
+export type DesignerArtworkGenerationBridgeInput = DesignerArtworkGenerationInput & { libraryId: string };
+export type ImageEditBridgeInput = ImageEditInput & { libraryId: string };
+export type PortfolioAnalysisBridgeInput = PortfolioAnalysisInput & { libraryId: string };
 
 const isNonEmpty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 const isTaskSource = (value: unknown): value is TaskSource => value !== null
@@ -66,28 +68,30 @@ const isConversationInput = (value: unknown): value is ConversationBridgeInput =
   const sourceValid = input.source === undefined || isTaskSource(input.source);
   const projectValid = input.projectId === undefined || isNonEmpty(input.projectId);
   const hasBinding = isNonEmpty(input.projectId) || isTaskSource(input.source);
-  return isNonEmpty(input.workspaceId) && hasBinding && sourceValid && projectValid && isNonEmpty(input.connectionId) && isNonEmpty(input.message)
+  return isNonEmpty(input.libraryId) && hasBinding && sourceValid && projectValid && isNonEmpty(input.connectionId) && isNonEmpty(input.message)
     && (input.documentId === undefined || isNonEmpty(input.documentId))
     && (input.analysisThreadId === undefined || isNonEmpty(input.analysisThreadId))
     && (input.conversationParentTaskId === undefined || isNonEmpty(input.conversationParentTaskId))
     && (input.referencedAssetIds === undefined || (Array.isArray(input.referencedAssetIds) && input.referencedAssetIds.length <= 32 && input.referencedAssetIds.every(isNonEmpty)))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
+    && (input.model === undefined || isNonEmpty(input.model))
     && (input.attachments === undefined || (Array.isArray(input.attachments) && input.attachments.length <= 8 && input.attachments.every(isConversationAttachment)));
 };
 const isConversationTestInput = (value: unknown): value is ConversationTestBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  return isNonEmpty(input.workspaceId) && isNonEmpty(input.connectionId)
+  return isNonEmpty(input.libraryId) && isNonEmpty(input.connectionId)
     && (input.model === undefined || isNonEmpty(input.model));
 };
 const isDesignGenerationInput = (value: unknown): value is DesignGenerationBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  return isNonEmpty(input.workspaceId) && isNonEmpty(input.projectId)
+  return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId)
     && isNonEmpty(input.conversationTaskId) && isNonEmpty(input.connectionId)
     && (input.documentId === undefined || isNonEmpty(input.documentId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
+    && (input.model === undefined || isNonEmpty(input.model))
     && (input.generationRatio === undefined || isProjectGenerationRatio(input.generationRatio))
     && (input.count === undefined || input.count === 1 || input.count === 3);
 };
@@ -109,7 +113,7 @@ const isPortfolioAnalysisInput = (value: unknown): value is PortfolioAnalysisBri
   const input = value as Record<string, unknown>;
   const source = input.source;
   if (!source || typeof source !== 'object' || (source as Record<string, unknown>).kind !== 'designer-draft' || !isNonEmpty((source as Record<string, unknown>).id)) return false;
-  if (!isNonEmpty(input.workspaceId) || !isNonEmpty(input.connectionId) || input.rightsConfirmed !== true || !Array.isArray(input.sources) || input.sources.length === 0 || input.sources.length > 8) return false;
+  if (!isNonEmpty(input.libraryId) || !isNonEmpty(input.connectionId) || input.rightsConfirmed !== true || !Array.isArray(input.sources) || input.sources.length === 0 || input.sources.length > 8) return false;
   return input.sources.every((item) => {
     if (!item || typeof item !== 'object') return false;
     const sourceItem = item as Record<string, unknown>;
@@ -117,7 +121,7 @@ const isPortfolioAnalysisInput = (value: unknown): value is PortfolioAnalysisBri
       && isNonEmpty(sourceItem.description) && sourceItem.description.length <= 4000 && isPortfolioImage(sourceItem.image);
   });
 };
-const isCancelInput = (value: unknown): value is { workspaceId: string; taskId: string } => value !== null
+const isCancelInput = (value: unknown): value is { libraryId: string; taskId: string } => value !== null
   && typeof value === 'object'
   && isNonEmpty((value as Record<string, unknown>).libraryId)
   && isNonEmpty((value as Record<string, unknown>).taskId);
@@ -129,7 +133,7 @@ const isDesignGenerationSlotRetryInput = (value: unknown): value is DesignGenera
 const isImageGenerationInput = (value: unknown): value is ImageGenerationBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  return isNonEmpty(input.workspaceId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
+  return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
     && (input.model === undefined || isNonEmpty(input.model))
@@ -139,7 +143,7 @@ const isImageGenerationInput = (value: unknown): value is ImageGenerationBridgeI
 const isImageGenerationTestInput = (value: unknown): value is ImageGenerationTestBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  return isNonEmpty(input.workspaceId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
+  return isNonEmpty(input.libraryId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
     && (input.model === undefined || isNonEmpty(input.model))
     && (input.size === undefined || isNonEmpty(input.size));
 };
@@ -147,7 +151,7 @@ const isDesignerArtworkGenerationInput = (value: unknown): value is DesignerArtw
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
   const source = input.source;
-  return isNonEmpty(input.workspaceId)
+  return isNonEmpty(input.libraryId)
     && isNonEmpty(input.connectionId)
     && isNonEmpty(input.prompt)
     && source !== null
@@ -175,9 +179,10 @@ const isProjectDesignOutput = (value: unknown): boolean => {
 const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  return isNonEmpty(input.workspaceId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
+  return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
     && isBlobLike(input.image)
     && (input.mask === undefined || isBlobLike(input.mask))
+    && (input.maskAssetId === undefined || isNonEmpty(input.maskAssetId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
     && (input.model === undefined || isNonEmpty(input.model))
@@ -187,138 +192,140 @@ const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
       ? input.toolParams === undefined
       : validateToolParams(input.tool as typeof imageTools[number], input.toolParams).ok)
     && (input.region === undefined || isRegion(input.region))
+    && (input.targetLayerId === undefined || isNonEmpty(input.targetLayerId))
+    && (input.beforeScene === undefined || isScene(input.beforeScene))
     && (input.projectDesign === undefined || isProjectDesignOutput(input.projectDesign));
 };
 
 export const createConversationHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   submit: (workspace: ProjectLibraryHandle, input: ConversationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isConversationInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isConversationInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return submit(workspace, input);
 };
 
 export const createConversationTestHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   submit: (workspace: ProjectLibraryHandle, input: ConversationTestBridgeInput) => Promise<ConversationTestResult>,
 ) => async (event: AgentRequest, input: unknown): Promise<ConversationTestResult | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isConversationTestInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isConversationTestInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return submit(workspace, input);
 };
 
 export const createDesignGenerationHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   submit: (workspace: ProjectLibraryHandle, input: DesignGenerationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignGenerationInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isDesignGenerationInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId || workspace.library.openMode !== 'writable') return null;
   return submit(workspace, input);
 };
 
 export const createPortfolioAnalysisHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   submit: (workspace: ProjectLibraryHandle, input: PortfolioAnalysisBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isPortfolioAnalysisInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isPortfolioAnalysisInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return submit(workspace, input);
 };
 
 export const createImageGenerationHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   submit: (workspace: ProjectLibraryHandle, input: ImageGenerationBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageGenerationInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isImageGenerationInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return submit(workspace, input);
 };
 
 export const createImageGenerationTestHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   submit: (workspace: ProjectLibraryHandle, input: ImageGenerationTestBridgeInput) => Promise<ImageGenerationTestResult>,
 ) => async (event: AgentRequest, input: unknown): Promise<ImageGenerationTestResult | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageGenerationTestInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isImageGenerationTestInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return submit(workspace, input);
 };
 
 export const createDesignerArtworkGenerationHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   submit: (workspace: ProjectLibraryHandle, input: DesignerArtworkGenerationInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignerArtworkGenerationInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isDesignerArtworkGenerationInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId || workspace.library.openMode !== 'writable') return null;
   return submit(workspace, input);
 };
 
 export const createImageEditHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   submit: (workspace: ProjectLibraryHandle, input: ImageEditBridgeInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImageEditInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isImageEditInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return submit(workspace, input);
 };
 
 export const cancelTaskHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   cancel: (workspace: ProjectLibraryHandle, taskId: string) => Promise<boolean>,
 ) => async (event: AgentRequest, input: unknown): Promise<boolean> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCancelInput(input)) return false;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return false;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isCancelInput(input)) return false;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return false;
   return cancel(workspace, input.taskId);
 };
 
 export const retryTaskHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   retry: (workspace: ProjectLibraryHandle, taskId: string) => Promise<TaskRecord | undefined>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isCancelInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isCancelInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return (await retry(workspace, input.taskId)) ?? null;
 };
 
 export const createDesignGenerationSlotRetryHandler = (
   window: AgentWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   retry: (workspace: ProjectLibraryHandle, input: DesignGenerationSlotRetryInput) => Promise<TaskRecord>,
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDesignGenerationSlotRetryInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode !== 'writable') return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isDesignGenerationSlotRetryInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId || workspace.library.openMode !== 'writable') return null;
   return retry(workspace, input);
 };
 

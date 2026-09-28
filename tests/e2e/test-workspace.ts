@@ -3,8 +3,25 @@ import type { DesignScene } from '../../src/features/canvas/scene';
 
 type TestWorkspaceOptions = {
   conversationConnected?: boolean;
+  imageConnected?: boolean;
   failProjectCreation?: boolean;
+  failProjectPackageImportOnce?: boolean;
   projectCount?: number;
+};
+
+const testProfile = {
+  formatVersion: 1 as const,
+  displayName: 'E2E Operator',
+  avatarDataUrl: 'data:image/webp;base64,AA==',
+  onboarding: { profileCompleted: true, modelStepCompleted: true },
+};
+
+const testLibrary = {
+  libraryId: 'library-e2e',
+  name: 'E2E Project Library',
+  directory: '/tmp/designhub-e2e',
+  formatVersion: 1,
+  openMode: 'writable' as const,
 };
 
 /** Opens an explicit test workspace; production has no equivalent seed path. */
@@ -13,7 +30,7 @@ export const gotoTestWorkspace = async (
   scene: DesignScene | null = null,
   options: TestWorkspaceOptions = {},
 ): Promise<void> => {
-  await page.addInitScript(({ initialScene, fixtureOptions }) => {
+  await page.addInitScript(({ initialScene, fixtureOptions, profile, library }) => {
     const paper = {
       id: 'e2e-paper',
       name: { zh: '纸感排版', en: 'Paper & Type' },
@@ -79,18 +96,31 @@ export const gotoTestWorkspace = async (
     let createdProjectInput: { name: string; documents?: Array<{ id: string; name: string; width: number; height: number }> } | undefined;
     let projectCoverBytes: Uint8Array | undefined;
     const projectCoverAssetId = 'asset-0123456789abcdef';
+    const sourceImageAssetId = 'asset-source-image';
+    const sourceImageBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
     const submittedTasks: Array<Record<string, unknown>> = [];
+    let projectPackageImportAttempts = 0;
+    let projectPackageImported = false;
+    let selectedLibrary = localStorage.getItem('designhub.e2e.library-selected') === '1';
     (window as typeof window & { designhub?: unknown }).designhub = ({
-      chooseWorkspaceDirectory: async () => '/tmp/designhub-e2e',
-      openWorkspace: async () => ({ workspaceId: 'workspace-e2e', name: '测试工作区', directory: '/tmp/designhub-e2e', formatVersion: 1, openMode: 'writable' }),
-      listActiveProjects: async () => Array.from(
-        { length: fixtureOptions.projectCount ?? 1 },
-        (_, index) => index === 0 ? structuredClone(project) : {
-          ...structuredClone(project),
-          projectId: `project-e2e-${index}`,
-          name: `测试项目 ${index + 1}`,
-        },
-      ),
+      loadProfile: async () => structuredClone(profile),
+      saveProfile: async () => structuredClone(profile),
+      getProjectLibraryStatus: async () => selectedLibrary ? ({ state: 'ready', library: structuredClone(library) }) : ({ state: 'unselected' }),
+      chooseProjectLibrary: async () => {
+        selectedLibrary = true;
+        localStorage.setItem('designhub.e2e.library-selected', '1');
+        return structuredClone(library);
+      },
+      listActiveProjects: async () => projectPackageImported
+        ? [{ ...structuredClone(project), projectId: 'project-imported', name: '导入项目' }]
+        : Array.from(
+          { length: fixtureOptions.projectCount ?? 1 },
+          (_, index) => index === 0 ? structuredClone(project) : {
+            ...structuredClone(project),
+            projectId: `project-e2e-${index}`,
+            name: `测试项目 ${index + 1}`,
+          },
+        ),
       createProjectContainer: async (input: typeof createdProjectInput) => {
         if (fixtureOptions.failProjectCreation) throw new Error('PROJECT_CREATE_FAILED');
         createdProjectInput = input;
@@ -103,7 +133,7 @@ export const gotoTestWorkspace = async (
       },
       updateProjectMetadata: async (input: { projectId: string; patch: { coverAssetId?: string } }) => ({
         projectId: input.projectId,
-        workspaceId: 'workspace-e2e',
+        libraryId: library.libraryId,
         name: createdProjectInput?.name ?? project.name,
         ...input.patch,
         documents: (createdProjectInput?.documents ?? []).map((document) => ({ ...document, updatedAt: '2026-09-19T00:00:00.000Z' })),
@@ -116,9 +146,19 @@ export const gotoTestWorkspace = async (
       submitPortfolioSelection: async () => ({ id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'running', cancelRequested: false, attempt: 1 }),
       loadBrandState: async () => ({ brands: [] }),
       listAssets: async () => [],
-      readAsset: async (input: { assetId: string }) => input.assetId === projectCoverAssetId ? projectCoverBytes ?? null : null,
+      readAsset: async (input: { assetId: string }) => input.assetId === projectCoverAssetId
+        ? projectCoverBytes ?? null
+        : input.assetId === sourceImageAssetId ? sourceImageBytes.slice() : null,
       listTasks: async () => submittedTasks,
-      hasCredential: async () => fixtureOptions.conversationConnected ?? false,
+      loadProviderConfigs: async () => ({
+        'openai-compatible': {
+          conversation: { baseUrl: 'https://text.example.test/v1', models: { conversation: 'chat-model', 'vision-analysis': 'vision-model' } },
+          image: { baseUrl: 'https://image.example.test/v1', imageTransport: 'images', models: { 'image-generation': 'image-model', 'image-editing': 'edit-model' } },
+        },
+      }),
+      hasCredential: async (account: string) => account === 'openai-compatible:conversation'
+        ? fixtureOptions.conversationConnected ?? false
+        : account === 'openai-compatible:image' ? fixtureOptions.imageConnected ?? false : false,
       submitConversation: async (input: { message: string; documentId?: string }) => {
         const task = {
           id: 'task-home-conversation',
@@ -135,17 +175,47 @@ export const gotoTestWorkspace = async (
         submittedTasks.splice(0, submittedTasks.length, task);
         return task;
       },
+      submitImageEdit: async (input: { tool?: string }) => {
+        const task = {
+          id: 'task-image-edit-e2e',
+          requestId: 'request-image-edit-e2e',
+          requestText: input.tool ?? 'image edit',
+          capability: 'image-editing',
+          state: 'queued',
+          cancelRequested: false,
+          attempt: 1,
+          source: { kind: 'project', id: project.projectId },
+          tool: input.tool,
+        };
+        submittedTasks.splice(0, submittedTasks.length, task);
+        return task;
+      },
+      importProjectPackage: async () => {
+        projectPackageImportAttempts += 1;
+        if (fixtureOptions.failProjectPackageImportOnce && projectPackageImportAttempts === 1) {
+          throw new Error('PROJECT_PACKAGE_IMPORT_FAILED');
+        }
+        projectPackageImported = true;
+        return { projectId: 'project-imported' };
+      },
       loadDocumentScene: async () => initialScene,
       loadDocumentRevisions: async () => ({ revisions: [], timeline: [], finalRevisionId: null }),
       saveDocumentScene: async () => true,
     } as never);
-  }, { initialScene: scene, fixtureOptions: options });
+  }, { initialScene: scene, fixtureOptions: options, profile: testProfile, library: testLibrary });
   await page.goto('/');
-  await page.getByRole('button', { name: /打开工作区|Open workspace/ }).click();
+  await page.getByRole('button', { name: /选择项目库|Choose project library/ }).click();
   await page.getByRole('textbox', { name: /设计需求|Design request/ }).waitFor();
 };
 
 export const navigateFromUserMenu = async (page: Page, name: string | RegExp): Promise<void> => {
   await page.getByRole('button', { name: /打开用户菜单|Open user menu/ }).click();
   await page.getByRole('menuitem', { name, exact: typeof name === 'string' }).click();
+  await page.waitForFunction(() => Boolean(
+    document.querySelector('.destination.destination--active')
+      || document.querySelector('.ui-dialog[open]')
+      || document.querySelector('.ui-drawer-root .ui-dialog[open]'),
+  ));
+  await page.waitForFunction(() => [...document.querySelectorAll<HTMLElement>('.studio-view-enter, .ui-drawer-root, .ui-dialog[open]')]
+    .every((element) => element.getAnimations().every((animation) => animation.playState !== 'running')));
 };

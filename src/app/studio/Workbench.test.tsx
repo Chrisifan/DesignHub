@@ -408,7 +408,7 @@ it('chains a completed conversation into design generation', async () => {
 
 it('supports plural candidates and retries a failed generation slot', async () => {
   const retryDesignGenerationSlot = vi.fn();
-  window.designhub = { chooseWorkspaceDirectory: async () => null, retryDesignGenerationSlot };
+  window.designhub = { retryDesignGenerationSlot };
   const conversation = {
     id: 'conversation-1', requestId: 'request-1', state: 'completed' as const, cancelRequested: false, attempt: 1,
     capability: 'conversation', analysisThreadId: 'thread-1', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' },
@@ -437,7 +437,7 @@ it('supports plural candidates and retries a failed generation slot', async () =
   }));
   const onSubmitConversation = vi.fn(async () => conversation);
   const onSubmitDesignGeneration = vi.fn(async () => generation);
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', onSubmitConversation, onSubmitDesignGeneration })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', onSubmitConversation, onSubmitDesignGeneration })} />);
 
   fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成海报' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
@@ -450,7 +450,62 @@ it('supports plural candidates and retries a failed generation slot', async () =
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   expect(screen.getAllByText('候选')).toHaveLength(2);
   fireEvent.click(screen.getByRole('button', { name: '重新生成构图探索' }));
-  await waitFor(() => expect(retryDesignGenerationSlot).toHaveBeenCalledWith({ workspaceId: 'workspace-1', taskId: 'design-1', slotId: 'composition' }));
+  await waitFor(() => expect(retryDesignGenerationSlot).toHaveBeenCalledWith({ libraryId: 'workspace-1', taskId: 'design-1', slotId: 'composition' }));
+});
+
+it('shows the preferred completed design candidate directly in the canvas', async () => {
+  const scene = createScene({ id: 'scene-canvas-candidate', width: 1080, height: 1440, layers: [
+    { id: 'source-image', type: 'image', assetId: 'asset-source', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false },
+  ] });
+  window.designhub = {
+    listTasks: vi.fn(async () => [{
+      id: 'design-candidate-task',
+      requestId: 'request-design-candidate',
+      state: 'completed' as const,
+      cancelRequested: false,
+      attempt: 1,
+      capability: 'design-generation',
+      analysisThreadId: 'thread-candidate',
+      documentId: 'doc-candidate',
+      source: { kind: 'project' as const, id: 'spring-market' },
+      generationSlots: [
+        { id: 'primary' as const, direction: 'primary', state: 'completed' as const, attempt: 1, assetId: 'asset-primary', candidateId: 'candidate-primary' },
+        { id: 'composition' as const, direction: 'composition', state: 'failed' as const, attempt: 1, errorCode: 'IMAGE_RESULT_EMPTY' },
+        { id: 'expressive' as const, direction: 'expressive', state: 'failed' as const, attempt: 1, errorCode: 'IMAGE_RESULT_EMPTY' },
+      ],
+      result: { imageCount: 1, candidates: [{ id: 'candidate-primary', baseRevisionId: 'revision-base', assetIds: ['asset-primary'], sceneAssetId: 'asset-primary', createdAt: '2026-09-28T00:00:00.000Z' }] },
+    }]),
+    readAsset: vi.fn(async () => new Uint8Array([137, 80, 78, 71])),
+  };
+
+  render(<Workbench {...makeProps({ libraryId: 'library-1', documentId: 'doc-candidate', scene })} />);
+
+  await waitFor(() => expect(screen.getByTestId('canvas-candidate-scene')).toHaveAttribute('data-candidate-id', 'candidate-primary'));
+  expect(screen.getByTestId('canvas-candidate-scene')).toHaveAttribute('data-draft-role', 'candidate');
+  expect(screen.getByRole('button', { name: '确认候选' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '放弃候选' })).toBeInTheDocument();
+});
+
+it('shows a completed image-tool result as a confirmable canvas candidate', async () => {
+  const scene = createScene({ id: 'scene-tool-candidate', width: 800, height: 800, layers: [
+    { id: 'image-one', type: 'image', assetId: 'asset-source', x: 0, y: 0, width: 800, height: 800, rotation: 0, opacity: 1, visible: true, locked: false },
+  ] });
+  window.designhub = {
+    listTasks: vi.fn(async () => [{
+      id: 'remove-background-task', requestId: 'request-remove-background', state: 'completed' as const,
+      cancelRequested: false, attempt: 1, capability: 'image-editing', tool: 'remove-background' as const,
+      sourceAssetId: 'asset-source', documentId: 'doc-tool-candidate', baseRevisionId: 'revision-base',
+      source: { kind: 'project' as const, id: 'spring-market' },
+      result: { imageCount: 1, candidate: { id: 'candidate-remove-background', baseRevisionId: 'revision-base', assetIds: ['asset-result'], sceneAssetId: 'asset-result', createdAt: '2026-09-28T00:00:00.000Z' } },
+    }]),
+    readAsset: vi.fn(async () => new Uint8Array([137, 80, 78, 71])),
+  };
+
+  render(<Workbench {...makeProps({ libraryId: 'library-1', documentId: 'doc-tool-candidate', scene })} />);
+
+  await waitFor(() => expect(screen.getByTestId('canvas-candidate-scene')).toHaveAttribute('data-candidate-id', 'candidate-remove-background'));
+  expect(screen.getByRole('button', { name: '确认候选' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '放弃候选' })).toBeInTheDocument();
 });
 
 it('adds pasted images above the prompt and supports preview and removal', async () => {
@@ -497,7 +552,7 @@ it('shows an explicit no-designer state when the project has no persisted snapsh
   render(<Workbench {...makeProps({ modelConnected: true })} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
   expect(screen.getByText('未设置设计师')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /未设置设计师/ })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: '设计师' })).toBeInTheDocument();
   expect(screen.queryByText('当前对话设计师')).not.toBeInTheDocument();
 });
 
@@ -538,7 +593,7 @@ it('keeps a text-only scene on a sized canvas card so its floating layers remain
     id: 'scene-text-only', width: 1080, height: 1440,
     layers: [{ id: 'title', type: 'text', text: '标题', fontFamily: 'Inter', fontSize: 96, fontWeight: 'bold', align: 'center', color: '#24262B', x: 120, y: 520, width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false }],
   });
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene })} />);
 
   const draft = document.querySelector('[data-draft-role="current"]');
   expect(draft).not.toHaveClass('workbench-design-card--empty');
@@ -548,7 +603,7 @@ it('keeps a text-only scene on a sized canvas card so its floating layers remain
 it('reports an empty workspace document when properties cannot inspect a layer', () => {
   const notify = vi.fn();
   const emptyScene = createScene({ id: 'empty-scene', width: 1080, height: 1440, layers: [] });
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene: emptyScene, notify })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene: emptyScene, notify })} />);
 
   fireEvent.click(screen.getByRole('button', { name: '属性' }));
 
@@ -583,6 +638,21 @@ it('submits provider-backed background tools through the active project callback
   fireEvent.click(screen.getByRole('button', { name: '配置去除背景' }));
   fireEvent.click(within(screen.getByRole('dialog', { name: '去除背景' })).getByRole('button', { name: '执行' }));
   await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'remove-background' })));
+});
+
+it('does not submit an image tool without a selected image layer', async () => {
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  const notify = vi.fn();
+  const scene = createScene({ id: 'no-image-scene', width: 800, height: 600, layers: [
+    { id: 'text-only', type: 'text', text: '标题', fontFamily: 'sans-serif', fontSize: 24, fontWeight: '400', align: 'left', color: '#111111', x: 0, y: 0, width: 200, height: 40, rotation: 0, opacity: 1, visible: true, locked: false },
+  ] });
+  render(<Workbench {...makeProps({ libraryId: 'library-1', documentId: 'doc-1', scene, onSubmitImageTask, notify })} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置去除背景' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '去除背景' })).getByRole('button', { name: '执行' }));
+
+  expect(onSubmitImageTask).not.toHaveBeenCalled();
+  expect(notify).toHaveBeenCalledWith('请选择一个图片图层');
 });
 
 it('does not submit an invalid configured image tool', () => {
@@ -651,7 +721,7 @@ it('provides the exact English canvas and back labels', () => {
 });
 
 it('labels a workspace-backed workbench as a local session', () => {
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1' })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1' })} />);
   expect(screen.getByText('本地会话')).toBeInTheDocument();
   expect(screen.queryByText('示例会话')).not.toBeInTheDocument();
 });
@@ -660,12 +730,12 @@ it('keeps a read-only workspace from persisting edits or submitting tasks', asyn
   const saveDocumentScene = vi.fn(async () => true);
   const onSubmitConversation = vi.fn();
   const onSubmitImageTask = vi.fn(async () => undefined);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, saveDocumentScene };
+  window.designhub = { saveDocumentScene };
   const scene = createScene({
     id: 'scene-read-only', width: 1080, height: 1440,
     layers: [{ id: 'title', type: 'text', text: '春间市集', fontFamily: 'Inter', fontSize: 96, fontWeight: 'bold', align: 'center', color: '#24262B', x: 120, y: 520, width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false }],
   });
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene, readOnly: true, onSubmitConversation, onSubmitImageTask })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene, readOnly: true, onSubmitConversation, onSubmitImageTask })} />);
 
   fireEvent.click(screen.getByRole('button', { name: '图层' }));
   fireEvent.click(screen.getByRole('button', { name: '春间市集' }));
@@ -684,7 +754,7 @@ it('keeps a read-only workspace from persisting edits or submitting tasks', asyn
 
 it('renders the persisted canvas workspace for a real project document', () => {
   const scene = createScene({ id: 'scene-1', width: 1080, height: 1440, layers: [] });
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene })} />);
 
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '图层' }));
@@ -694,17 +764,17 @@ it('renders the persisted canvas workspace for a real project document', () => {
 
 it('persists property edits into the active document scene', async () => {
   const saveDocumentScene = vi.fn(async () => true);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, saveDocumentScene };
+  window.designhub = { saveDocumentScene };
   const scene = createScene({
     id: 'scene-1', width: 1080, height: 1440,
     layers: [{ id: 'title', type: 'text', text: '春间市集', fontFamily: 'Inter', fontSize: 96, fontWeight: 'bold', align: 'center', color: '#24262B', x: 120, y: 520, width: 840, height: 140, rotation: 0, opacity: 1, visible: true, locked: false }],
   });
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene })} />);
   fireEvent.click(screen.getByRole('button', { name: '图层' }));
   fireEvent.click(screen.getByRole('button', { name: '春间市集' }));
   fireEvent.change(screen.getByRole('textbox', { name: '文字内容' }), { target: { value: '新的标题' } });
   await waitFor(() => expect(saveDocumentScene).toHaveBeenCalledWith(expect.objectContaining({
-    workspaceId: 'workspace-1', projectId: 'spring-market', documentId: 'doc-1',
+    libraryId: 'workspace-1', projectId: 'spring-market', documentId: 'doc-1',
     scene: expect.objectContaining({ layers: [expect.objectContaining({ text: '新的标题' })] }),
   })));
 });
@@ -715,8 +785,8 @@ it('hydrates a saved document once without reloading on workbench renders', asyn
     layers: [{ id: 'saved-title', type: 'text', text: 'Saved title', fontFamily: 'sans-serif', fontSize: 72, fontWeight: 'bold', align: 'left', color: '#24262B', x: 100, y: 100, width: 880, height: 120, rotation: 0, opacity: 1, visible: true, locked: false }],
   });
   const loadDocumentScene = vi.fn().mockResolvedValueOnce(savedScene).mockResolvedValue(null);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene };
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1' })} />);
+  window.designhub = { loadDocumentScene };
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1' })} />);
 
   fireEvent.click(screen.getByRole('button', { name: '图层' }));
   await screen.findByRole('button', { name: 'Saved title' });
@@ -729,7 +799,7 @@ it('selects the real text layer when the text tool is chosen', () => {
     id: 'tool-scene', width: 1080, height: 1440,
     layers: [{ id: 'real-title', type: 'text', text: 'Real title', fontFamily: 'sans-serif', fontSize: 72, fontWeight: 'bold', align: 'left', color: '#24262B', x: 100, y: 100, width: 880, height: 120, rotation: 0, opacity: 1, visible: true, locked: false }],
   });
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene })} />);
   fireEvent.click(screen.getByRole('button', { name: '文本工具' }));
   expect(screen.getByRole('textbox', { name: '文字内容' })).toHaveValue('Real title');
 });
@@ -737,22 +807,22 @@ it('selects the real text layer when the text tool is chosen', () => {
 it('loads persisted revisions and saves a new version from the history panel', async () => {
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null }));
   const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-1' }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, commitDocumentRevision };
+  window.designhub = { loadDocumentRevisions, commitDocumentRevision };
   const scene = createScene({ id: 'scene-1', width: 1080, height: 1440, layers: [] });
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene })} />);
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   await waitFor(() => expect(loadDocumentRevisions).toHaveBeenCalledWith('workspace-1', 'spring-market', 'doc-1'));
   fireEvent.click(screen.getByRole('button', { name: '保存版本' }));
-  await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', projectId: 'spring-market', documentId: 'doc-1', baseRevisionId: null, sceneAssetId: 'scene-1' })));
+  await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({ libraryId: 'workspace-1', projectId: 'spring-market', documentId: 'doc-1', baseRevisionId: null, sceneAssetId: 'scene-1' })));
 });
 
 it('records the active designer snapshot as a revision contribution', async () => {
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null }));
   const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-1' }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, commitDocumentRevision };
+  window.designhub = { loadDocumentRevisions, commitDocumentRevision };
   const scene = createScene({ id: 'scene-1', width: 1080, height: 1440, layers: [] });
   const attributed = { ...project, activeDesignerVersionId: 'designer-v2', designerSnapshot: { name: { zh: '林夏', en: 'Lin Xia' }, version: 'v2.0' } };
-  render(<Workbench {...makeProps({ project: attributed, workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  render(<Workbench {...makeProps({ project: attributed, libraryId: 'workspace-1', documentId: 'doc-1', scene })} />);
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   fireEvent.click(screen.getByRole('button', { name: '保存版本' }));
   await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({
@@ -764,7 +834,7 @@ it('records the active designer snapshot as a revision contribution', async () =
 it('records additional project contributors with distinct revision roles', async () => {
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null }));
   const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-team' }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, commitDocumentRevision };
+  window.designhub = { loadDocumentRevisions, commitDocumentRevision };
   const scene = createScene({ id: 'scene-team', width: 1080, height: 1440, layers: [] });
   const attributed = {
     ...project,
@@ -772,7 +842,7 @@ it('records additional project contributors with distinct revision roles', async
     designerSnapshot: { name: { zh: '主设计师', en: 'Lead designer' }, version: 'v2.0' },
     contributorDesignerVersionIds: ['designer-lead', 'designer-direction'],
   };
-  render(<Workbench {...makeProps({ project: attributed, workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  render(<Workbench {...makeProps({ project: attributed, libraryId: 'workspace-1', documentId: 'doc-1', scene })} />);
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   fireEvent.click(screen.getByRole('button', { name: '保存版本' }));
   await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledWith(expect.objectContaining({
@@ -785,8 +855,8 @@ it('records additional project contributors with distinct revision roles', async
 
 it('shows revision contributors and operator attribution in history', async () => {
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-attribution', projectId: 'spring-market', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-attribution', sceneAssetId: 'scene-attribution', assetIds: [], contributions: [{ designerVersionId: 'designer-lead', role: 'lead' as const, designerName: '主设计师' }, { designerVersionId: 'designer-direction', role: 'direction' as const, designerName: '方向设计师' }], operatorName: 'Sifan', createdAt: '2026-09-12T00:00:00.000Z' }], timeline: [], finalRevisionId: null }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions };
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1' })} />);
+  window.designhub = { loadDocumentRevisions };
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1' })} />);
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   await waitFor(() => expect(loadDocumentRevisions).toHaveBeenCalledWith('workspace-1', 'spring-market', 'doc-1'));
   await waitFor(() => expect(screen.getByText(/主设计师/)).toBeInTheDocument());
@@ -800,8 +870,8 @@ it('can continue from a revision scene snapshot and branches the next save from 
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-old', projectId: 'spring-market', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-old', sceneAssetId: 'scene-old', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z', scene: olderScene }], timeline: [], finalRevisionId: null }));
   const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-new' }));
   const saveDocumentScene = vi.fn(async () => true);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, commitDocumentRevision, saveDocumentScene };
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene: createScene({ id: 'scene-current', width: 1080, height: 1440, layers: [] }) })} />);
+  window.designhub = { loadDocumentRevisions, commitDocumentRevision, saveDocumentScene };
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene: createScene({ id: 'scene-current', width: 1080, height: 1440, layers: [] }) })} />);
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   await waitFor(() => expect(screen.getByRole('button', { name: '继续' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: '继续' }));
@@ -814,8 +884,8 @@ it('binds image submissions to the latest document revision and exposes candidat
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-current', projectId: 'spring-market', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-current', sceneAssetId: 'scene-current', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z' }], timeline: [], finalRevisionId: null }));
   const listTasks = vi.fn(async () => [{ id: 'task-image', requestId: 'request-image', state: 'completed' as const, cancelRequested: false, attempt: 1, capability: 'image-generation', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' }, result: { imageCount: 1, candidate: { id: 'candidate-task-image', baseRevisionId: 'revision-current', assetIds: ['asset-candidate'], sceneAssetId: 'asset-candidate', createdAt: '2026-09-13T00:00:00.000Z' } } }]);
   const onSubmitImageGeneration = vi.fn();
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, listTasks };
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', onSubmitImageGeneration })} />);
+  window.designhub = { loadDocumentRevisions, listTasks };
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', onSubmitImageGeneration })} />);
   await waitFor(() => expect(loadDocumentRevisions).toHaveBeenCalled());
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
   fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成候选' } });
@@ -840,9 +910,9 @@ it('applies a finalized image candidate to the active canvas scene', async () =>
   const setFinalDocumentRevision = vi.fn(async () => true);
   const saveDocumentScene = vi.fn(async () => true);
   const scene = createScene({ id: 'scene-current', width: 1080, height: 1440, layers: [{ id: 'image', type: 'image', assetId: 'asset-old', x: 0, y: 0, width: 1080, height: 1440, rotation: 0, opacity: 1, visible: true, locked: false }] });
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, listTasks, commitDocumentRevision, setFinalDocumentRevision, saveDocumentScene };
+  window.designhub = { loadDocumentRevisions, listTasks, commitDocumentRevision, setFinalDocumentRevision, saveDocumentScene };
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-  render(<Workbench {...makeProps({ workspaceId: 'workspace-1', documentId: 'doc-1', scene })} />);
+  render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', scene })} />);
   fireEvent.click(screen.getByRole('button', { name: '历史' }));
   await waitFor(() => expect(screen.getByRole('button', { name: '定稿' })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: '定稿' }));
@@ -869,7 +939,7 @@ const renderFinalizableCandidate = async (overrides: Partial<WorkbenchProps> = {
   const onSubmitConversation = vi.fn(async () => completedConversationTask);
   const onSubmitDesignGeneration = vi.fn(async () => completedDesignTask);
   const result = render(<Workbench {...makeProps({
-    workspaceId: 'workspace-1',
+    libraryId: 'workspace-1',
     documentId: 'doc-1',
     onSubmitConversation,
     onSubmitDesignGeneration,
@@ -885,7 +955,6 @@ const renderFinalizableCandidate = async (overrides: Partial<WorkbenchProps> = {
 
 it('enables the right-toolbar finalization action only after selecting a candidate', async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
     readAsset: vi.fn(async () => new Uint8Array([1])),
   };
@@ -909,7 +978,6 @@ it('enables the right-toolbar finalization action only after selecting a candida
 it('exports only the selected candidate as a document-sized PNG scene', async () => {
   const exportDocument = vi.fn(async () => ({ path: '/tmp/selected-candidate.png', sha256: 'a'.repeat(64) }));
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
     readAsset: vi.fn(async () => new Uint8Array([1])),
     exportDocument,
@@ -921,7 +989,7 @@ it('exports only the selected candidate as a document-sized PNG scene', async ()
   fireEvent.click(within(screen.getByRole('toolbar', { name: '上下文工具' })).getByRole('button', { name: '导出所选候选' }));
 
   await waitFor(() => expect(exportDocument).toHaveBeenCalledWith({
-    workspaceId: 'workspace-1',
+    libraryId: 'workspace-1',
     projectId: 'spring-market',
     documentId: 'doc-1',
     format: 'png',
@@ -942,7 +1010,7 @@ it('exports only the selected candidate as a document-sized PNG scene', async ()
 
 it('preserves reference layers and waits for scene storage before leaving', async () => {
   let resolveSave: ((value: boolean) => void) | undefined;
-  const saveDocumentScene = vi.fn((input: { workspaceId: string; projectId: string; documentId: string; scene: DesignScene }) => {
+  const saveDocumentScene = vi.fn((input: { libraryId: string; projectId: string; documentId: string; scene: DesignScene }) => {
     void input;
     return new Promise<boolean>((resolve) => { resolveSave = resolve; });
   });
@@ -958,7 +1026,6 @@ it('preserves reference layers and waits for scene storage before leaving', asyn
     ],
   });
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
     readAsset: vi.fn(async () => new Uint8Array([1])),
     commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),
@@ -988,7 +1055,6 @@ it('keeps the selected candidate when scene storage fails', async () => {
   const notify = vi.fn();
   const onBack = vi.fn();
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
     readAsset: vi.fn(async () => new Uint8Array([1])),
     commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),
@@ -1012,7 +1078,6 @@ it('reports a failed finalization when revision commit returns no result', async
   const onBack = vi.fn();
   const setFinalDocumentRevision = vi.fn(async () => true);
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
     readAsset: vi.fn(async () => new Uint8Array([1])),
     commitDocumentRevision: vi.fn(async () => null),
@@ -1037,7 +1102,6 @@ it('keeps the candidate when selecting the final revision is rejected', async ()
   const onBack = vi.fn();
   const saveDocumentScene = vi.fn(async () => true);
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
     readAsset: vi.fn(async () => new Uint8Array([1])),
     commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),
@@ -1062,7 +1126,6 @@ it('keeps the candidate when project metadata synchronization fails', async () =
   const onBack = vi.fn();
   const onCandidateFinalized = vi.fn(async () => { throw new Error('PROJECT_METADATA_UPDATE_FAILED'); });
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })),
     readAsset: vi.fn(async () => new Uint8Array([1])),
     commitDocumentRevision: vi.fn(async () => ({ revisionId: 'revision-final' })),

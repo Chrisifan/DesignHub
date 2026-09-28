@@ -4,7 +4,7 @@ import type { DesignScene, SceneLayer } from '../../features/canvas/scene';
 import { getDesktopApi } from '../../platform/runtime';
 
 type DeliveryScenePreviewProps = {
-  workspaceId: string;
+  libraryId: string;
   projectId: string;
   scene: DesignScene;
   alt: string;
@@ -14,7 +14,7 @@ const rotation = (layer: SceneLayer): string | undefined => layer.rotation
   ? `rotate(${layer.rotation} ${layer.x + layer.width / 2} ${layer.y + layer.height / 2})`
   : undefined;
 
-export const DeliveryScenePreview = ({ workspaceId, projectId, scene, alt }: DeliveryScenePreviewProps) => {
+export const DeliveryScenePreview = ({ libraryId, projectId, scene, alt }: DeliveryScenePreviewProps) => {
   const [sources, setSources] = useState<Record<string, string>>({});
   const imageAssetIds = useMemo(() => [...new Set(scene.layers.flatMap((layer) => (
     layer.type === 'image' && layer.visible && layer.role !== 'reference' && layer.assetId !== 'placeholder'
@@ -27,7 +27,7 @@ export const DeliveryScenePreview = ({ workspaceId, projectId, scene, alt }: Del
     const objectUrls: string[] = [];
     setSources({});
     void Promise.all(imageAssetIds.map(async (assetId) => {
-      const bytes = await getDesktopApi().readAsset?.({ workspaceId, projectId, assetId });
+      const bytes = await getDesktopApi().readAsset?.({ libraryId, projectId, assetId });
       if (!bytes || cancelled) return null;
       const url = URL.createObjectURL(new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'image/*' }));
       objectUrls.push(url);
@@ -39,7 +39,7 @@ export const DeliveryScenePreview = ({ workspaceId, projectId, scene, alt }: Del
       cancelled = true;
       objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [imageAssetIds, projectId, workspaceId]);
+  }, [imageAssetIds, projectId, libraryId]);
 
   const visibleLayers = scene.layers.filter((layer) => layer.visible && !(layer.type === 'image' && (layer.role === 'reference' || layer.assetId === 'placeholder')));
   const onlyImage = visibleLayers.length === 1 && visibleLayers[0]?.type === 'image' ? visibleLayers[0] : null;

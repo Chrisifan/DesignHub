@@ -1,0 +1,3 @@
+# Single Project Library Replaces User-Visible Workspaces
+
+Status: accepted. DesignHub uses one user-selected project-library directory as the runtime application data boundary; renderer and IPC lifecycle APIs use `libraryId`, while the on-disk compatibility schema may continue to store the same identity in fields named `workspaceId`. Legacy workspace manifests, directories, and recent-workspace preferences are deliberately not scanned, migrated, or written. The main process remains the authority for paths, identity checks, leases, and writes. Windows behavior, signing/notarization, Keychain persistence, and live-provider quality remain external release gates.

@@ -1,5 +1,5 @@
 import { createOpenAICompatibleAdapter, providerCapabilities, type ChatStreamEvent, type MainOnlyAdapterOptions, type OpenAICompatibleAdapter } from '../features/providers/adapter';
-import { type ProviderConfig, type ProviderProfile } from '../features/providers/config';
+import { defaultProviderToolCapabilities, type ProviderConfig, type ProviderProfile } from '../features/providers/config';
 import { resolveProviderCredential } from './security/keyring-credentials';
 
 export type ProviderAdapterResolverOptions = {
@@ -37,6 +37,7 @@ export const createProviderAdapterResolver = (options: ProviderAdapterResolverOp
       baseUrl: configured?.baseUrl || options.environment?.baseUrl || '',
       apiKey,
       models: configured?.models,
+      toolCapabilities: options.config?.toolCapabilities,
       ...(profile === 'image' ? { imageTransport: configured && 'imageTransport' in configured ? configured.imageTransport : 'images' } : {}),
     };
     return createAdapter(adapterOptions);
@@ -53,6 +54,7 @@ export const createProviderAdapterResolver = (options: ProviderAdapterResolverOp
 
   return async () => ({
     capabilities: providerCapabilities,
+    toolCapabilities: options.config?.toolCapabilities ?? defaultProviderToolCapabilities,
     chat: (request, signal) => getProfileAdapter('conversation').then((adapter) => adapter.chat(request, signal)),
     streamChat: (request, signal) => forwardConversationStream(getProfileAdapter('conversation'), request, signal),
     analyzeVision: (request, signal) => getProfileAdapter('conversation').then((adapter) => adapter.analyzeVision(request, signal)),

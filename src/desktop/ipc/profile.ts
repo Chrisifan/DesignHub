@@ -1,6 +1,6 @@
 import type { AppProfile, ProfilePatch } from '../../features/profile/model';
 import type { ProfileAvatarInput } from '../profile-avatar';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const profileLoadChannel = 'profile:get';
 export const profileSaveChannel = 'profile:save';
@@ -50,7 +50,7 @@ export const createProfileLoadHandler = (
   trustedUrl: string,
   store: ProfileStore,
 ) => async (event: ProfileRequest): Promise<AppProfile | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl)) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl)) return null;
   return store.loadProfile();
 };
 
@@ -60,7 +60,7 @@ export const createProfileSaveHandler = (
   store: ProfileStore,
   normalizeAvatar: AvatarNormalizer,
 ) => async (event: ProfileRequest, value: unknown): Promise<AppProfile | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl)) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl)) return null;
   const input = normalizeInput(value);
   if (!input) return null;
   const displayName = input.displayName?.trim();

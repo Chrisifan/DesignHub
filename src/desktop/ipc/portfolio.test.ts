@@ -18,14 +18,14 @@ it('routes the unified native picker and trusted uploaded bytes', async () => {
   const inspect = createPortfolioInspectionHandler(
     fixture.window,
     'http://localhost:5173/?preview=1',
-    () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
+    () => ({ library: { libraryId: 'workspace-1' } }) as never,
     chooseFiles,
     { inspectLocalFiles, inspectUploadedFiles, selectedSources: vi.fn(), discard: vi.fn(), discardAll: vi.fn() },
   );
 
-  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'local-files' } })).resolves.toMatchObject({ id: 'inspection-native' });
+  await expect(inspect(fixture.event, { libraryId: 'workspace-1', request: { kind: 'local-files' } })).resolves.toMatchObject({ id: 'inspection-native' });
   await expect(inspect(fixture.event, {
-    workspaceId: 'workspace-1',
+    libraryId: 'workspace-1',
     request: { kind: 'uploaded-files', files: [{ name: 'pasted.png', mimeType: 'image/png', bytes: png }] },
   })).resolves.toMatchObject({ id: 'inspection-upload' });
   expect(chooseFiles).toHaveBeenCalledTimes(1);
@@ -33,9 +33,9 @@ it('routes the unified native picker and trusted uploaded bytes', async () => {
   expect(inspectUploadedFiles).toHaveBeenCalledWith([{ name: 'pasted.png', mimeType: 'image/png', bytes: png }]);
 
   chooseFiles.mockClear();
-  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'remote-page', url: 'https://public.test/work' } })).resolves.toBeNull();
-  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'remote-image', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
-  await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request: { kind: 'local-files', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
+  await expect(inspect(fixture.event, { libraryId: 'workspace-1', request: { kind: 'remote-page', url: 'https://public.test/work' } })).resolves.toBeNull();
+  await expect(inspect(fixture.event, { libraryId: 'workspace-1', request: { kind: 'remote-image', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
+  await expect(inspect(fixture.event, { libraryId: 'workspace-1', request: { kind: 'local-files', url: 'https://public.test/cover.png' } })).resolves.toBeNull();
   expect(chooseFiles).not.toHaveBeenCalled();
 });
 
@@ -45,7 +45,7 @@ it('rejects malformed or oversized renderer file payloads', async () => {
   const inspect = createPortfolioInspectionHandler(
     fixture.window,
     'http://localhost:5173/?preview=1',
-    () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
+    () => ({ library: { libraryId: 'workspace-1' } }) as never,
     vi.fn(),
     { inspectLocalFiles: vi.fn(), inspectUploadedFiles, selectedSources: vi.fn(), discard: vi.fn(), discardAll: vi.fn() },
   );
@@ -58,7 +58,7 @@ it('rejects malformed or oversized renderer file payloads', async () => {
   ];
 
   for (const request of invalidRequests) {
-    await expect(inspect(fixture.event, { workspaceId: 'workspace-1', request })).resolves.toBeNull();
+    await expect(inspect(fixture.event, { libraryId: 'workspace-1', request })).resolves.toBeNull();
   }
   expect(inspectUploadedFiles).not.toHaveBeenCalled();
 });
@@ -73,12 +73,12 @@ it('submits selected sources from retained inspection batches with an explicit r
   const selection = createPortfolioSelectionHandler(
     fixture.window,
     'http://localhost:5173/?preview=1',
-    () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
+    () => ({ library: { libraryId: 'workspace-1' } }) as never,
     { inspectLocalFiles: vi.fn(), inspectUploadedFiles: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
     submit,
   );
   const input = {
-    workspaceId: 'workspace-1', source: { kind: 'designer-draft' as const, id: 'draft-1' }, connectionId: 'provider-1',
+    libraryId: 'workspace-1', source: { kind: 'designer-draft' as const, id: 'draft-1' }, connectionId: 'provider-1',
     selections: [
       { inspectionId: 'inspection-1', sourceIds: ['candidate-b'] },
       { inspectionId: 'inspection-2', sourceIds: ['candidate-c'] },
@@ -105,11 +105,11 @@ it('rejects duplicated inspection batches and more than eight aggregate sources'
   const selection = createPortfolioSelectionHandler(
     fixture.window,
     'http://localhost:5173/?preview=1',
-    () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
+    () => ({ library: { libraryId: 'workspace-1' } }) as never,
     { inspectLocalFiles: vi.fn(), inspectUploadedFiles: vi.fn(), selectedSources, discard: vi.fn(), discardAll: vi.fn() },
     vi.fn(),
   );
-  const base = { workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', rightsConfirmed: true };
+  const base = { libraryId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', rightsConfirmed: true };
 
   await expect(selection(fixture.event, { ...base, selections: [
     { inspectionId: 'inspection-1', sourceIds: ['candidate-a'] },
@@ -128,13 +128,13 @@ it('retains an inspected source session when task acceptance fails', async () =>
   const selection = createPortfolioSelectionHandler(
     fixture.window,
     'http://localhost:5173/?preview=1',
-    () => ({ workspace: { workspaceId: 'workspace-1' } }) as never,
+    () => ({ library: { libraryId: 'workspace-1' } }) as never,
     { inspectLocalFiles: vi.fn(), inspectUploadedFiles: vi.fn(), selectedSources, discard, discardAll: vi.fn() },
     async () => { throw new Error('TASK_ACCEPTANCE_FAILED'); },
   );
 
   await expect(selection(fixture.event, {
-    workspaceId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', selections: [{ inspectionId: 'inspection-1', sourceIds: ['candidate-a'] }], rightsConfirmed: true,
+    libraryId: 'workspace-1', source: { kind: 'designer-draft', id: 'draft-1' }, connectionId: 'provider-1', selections: [{ inspectionId: 'inspection-1', sourceIds: ['candidate-a'] }], rightsConfirmed: true,
   })).rejects.toThrow('TASK_ACCEPTANCE_FAILED');
   expect(discard).not.toHaveBeenCalled();
 });

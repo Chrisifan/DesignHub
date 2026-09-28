@@ -1,18 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, shell } from 'electron';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
-
-import {
-  createWorkspaceFromParentHandler,
-  createWorkspaceHandler,
-  openWorkspaceHandler,
-  workspaceChannel,
-  workspaceCreateChannel,
-  workspaceOpenChannel,
-} from './ipc/workspace';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createContentSecurityPolicy } from './csp';
 import { createDesignerArtworkProtocolHandler, designerArtworkScheme } from './artwork-protocol';
 import {
@@ -23,7 +14,7 @@ import {
   credentialStatusChannel,
   credentialStoreChannel,
 } from './ipc/credentials';
-import { openWorkspaceForActivation, recreateWindowOnActivate } from './lifecycle';
+import { recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore, resolveProjectDirectory } from './storage/project-store';
 import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 import { addProjectDesignsHandler, createProjectContainerHandler, duplicateProjectHandler, getProjectMetadataHandler, listActiveProjectsHandler, listProjectDesignsHandler, listTrashedProjectsHandler, loadProjectCanvasLayoutHandler, moveProjectToTrashHandler, projectCanvasLayoutLoadChannel, projectCanvasLayoutSaveChannel, projectCreateChannel, projectDesignsAddChannel, projectDesignsListChannel, projectDuplicateChannel, projectListChannel, projectListTrashChannel, projectMetadataGetChannel, projectMetadataUpdateChannel, projectPurgeTrashChannel, projectRestoreTrashChannel, projectTrashChannel, purgeProjectFromTrashHandler, restoreProjectFromTrashHandler, saveProjectCanvasLayoutHandler, updateProjectMetadataHandler } from './ipc/projects';
@@ -38,8 +29,6 @@ import { commitDocumentRevision, loadDocumentRevisions, setFinalDocumentRevision
 import { loadDocumentSceneHandler, saveDocumentSceneHandler, sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
 import { commitRevisionHandler, finalizeRevisionHandler, loadRevisionsHandler, revisionCommitChannel, revisionFinalizeChannel, revisionLoadChannel } from './ipc/revisions';
 import { runStorageSmoke } from './storage/storage-smoke';
-import { createWorkspace, openWorkspace } from './storage/workspace-store';
-import type { WorkspaceHandle } from '../features/workspace/open-workspace';
 import { createWindowOptions } from './window-options';
 import { createCredentialBoundary, createUnavailableCredentialStore, type SystemCredentialStore, type CredentialBoundary } from './security/credentials';
 import { createKeyringCredentialStore, migrateLegacyCredentials, migrateLegacyProviderCredential } from './security/keyring-credentials';
@@ -76,6 +65,23 @@ import { initializeProjectLibrary, openProjectLibrary } from './storage/project-
 import { createProfileStore } from './storage/profile-store';
 import { normalizeProfileAvatar } from './profile-avatar';
 import { createProfileLoadHandler, createProfileSaveHandler, profileLoadChannel, profileSaveChannel } from './ipc/profile';
+import {
+  createImageToolIpcHandlers,
+  imageToolCancelChannel,
+  imageToolChooseInputChannel,
+  imageToolChooseOutputChannel,
+  imageToolCreateChannel,
+  imageToolGetChannel,
+  imageToolListChannel,
+  imageToolOpenOutputChannel,
+  imageToolImportResultChannel,
+  imageToolOpenResultChannel,
+  imageToolPauseChannel,
+  imageToolResumeChannel,
+  imageToolRetryChannel,
+  imageToolRevealResultChannel,
+  imageToolScanChannel,
+} from './ipc/image-tools';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -84,9 +90,11 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
+const testUserDataDirectory = process.env.DESIGNHUB_TEST_USER_DATA;
+if (testUserDataDirectory) app.setPath('userData', testUserDataDirectory);
+
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
-let activeWorkspaceHandle: WorkspaceHandle | null = null;
 let activeProjectLibraryHandle: ProjectLibraryHandle | null = null;
 let taskServicePromise: Promise<AgentTaskService> | null = null;
 let credentialStore: SystemCredentialStore = createUnavailableCredentialStore();
@@ -201,20 +209,10 @@ const createWindow = (): { window: BrowserWindow; trustedUrl: string } => {
     if (activeWindow !== window) return;
     activeWindow = null;
     activeTrustedUrl = null;
-    activeWorkspaceHandle?.close();
-    activeWorkspaceHandle = null;
     closeActiveProjectLibrary();
     portfolioSourceInspector.discardAll();
   });
   return { window, trustedUrl };
-};
-
-const activateWorkspace = (workspace: WorkspaceHandle): WorkspaceHandle => {
-  activeWorkspaceHandle?.close();
-  portfolioSourceInspector.discardAll();
-  activeWorkspaceHandle = workspace;
-  taskServicePromise = null;
-  return workspace;
 };
 
 const getAgentTaskService = (): Promise<AgentTaskService> => {
@@ -232,9 +230,9 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
     const projectStore = createProjectStore(workspace);
     const assetStore = createAssetStore(workspace);
     const loadManagedProviderImage = async (projectId: string, assetId: string) => {
-      const assets = await assetStore.listAssets({ workspaceId: workspace.library.libraryId, projectId, includeContextAssets: true });
+      const assets = await assetStore.listAssets({ libraryId: workspace.library.libraryId, projectId, includeContextAssets: true });
       const asset = assets.find((candidate) => candidate.id === assetId);
-      const bytes = await assetStore.readAsset({ workspaceId: workspace.library.libraryId, projectId, assetId });
+      const bytes = await assetStore.readAsset({ libraryId: workspace.library.libraryId, projectId, assetId });
       if (!asset || !bytes) return null;
       return { name: asset.name, ...await normalizeProviderImage({ bytes, mimeType: asset.mimeType }) };
     };
@@ -246,14 +244,14 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
           const extension = generated.mimeType === 'image/jpeg' ? 'jpg' : generated.mimeType === 'image/webp' ? 'webp' : 'png';
           return { name: `generated-${index + 1}.${extension}`, mimeType: generated.mimeType, data: generated.bytes };
         }));
-        const imported = await assetStore.importAssets({ workspaceId: workspace.library.libraryId, projectId, items });
+        const imported = await assetStore.importAssets({ libraryId: workspace.library.libraryId, projectId, items });
         const failures = imported.filter((result) => result.status === 'error');
         if (failures.length > 0) throw new Error(failures[0].error);
         return imported.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset.id);
       },
       persistProjectDesigns: async ({ projectId, designs }) => {
         await projectStore.addProjectDesigns({
-          workspaceId: workspace.library.libraryId,
+          libraryId: workspace.library.libraryId,
           projectId,
           designs,
         });
@@ -273,9 +271,13 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         const image = await loadManagedProviderImage(projectId, assetId);
         return image ? new Blob([new Uint8Array(image.bytes).buffer as ArrayBuffer], { type: image.mimeType }) : null;
       },
+      loadMaskImage: async ({ projectId, assetId }) => {
+        const image = await loadManagedProviderImage(projectId, assetId);
+        return image ? new Blob([new Uint8Array(image.bytes).buffer as ArrayBuffer], { type: image.mimeType }) : null;
+      },
       persistConversationAttachments: async ({ projectId, attachments }) => {
         const imported = await assetStore.importAssets({
-          workspaceId: workspace.library.libraryId,
+          libraryId: workspace.library.libraryId,
           projectId,
           items: attachments.map((attachment) => ({
             name: attachment.name,
@@ -293,18 +295,18 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
         return image ? { name: image.name, mimeType: image.mimeType, bytes: image.bytes } : null;
       },
       resolveDesignContext: async ({ input, attachmentAssetIds }) => {
-        if (!input.projectId || !input.workspaceId) throw new Error('DESIGN_CONTEXT_BINDING_REQUIRED');
+        if (!input.projectId || !input.libraryId) throw new Error('DESIGN_CONTEXT_BINDING_REQUIRED');
         const metadata = await projectStore.getProjectMetadata(input.projectId);
-        if (!metadata || metadata.workspaceId !== input.workspaceId) throw new Error('PROJECT_NOT_FOUND');
+        if (!metadata || metadata.workspaceId !== input.libraryId) throw new Error('PROJECT_NOT_FOUND');
         const documentId = input.documentId ?? `${input.projectId}-canvas`;
-        const scene = input.documentId ? await loadDocumentScene(workspace, input.workspaceId, input.projectId, input.documentId) : null;
+        const scene = input.documentId ? await loadDocumentScene(workspace, input.libraryId, input.projectId, input.documentId) : null;
         const document = input.documentId ? metadata.documents.find((entry) => entry.id === input.documentId) : undefined;
         const currentImageAssetIds = scene?.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder').map((layer) => layer.assetId)
           ?? (metadata.designs ?? []).map((design) => design.assetId);
         const firstDesign = metadata.designs?.[0];
         return {
           version: 1 as const,
-          workspaceId: input.workspaceId,
+          libraryId: input.libraryId,
           projectId: input.projectId,
           documentId,
           brief: metadata.brief ?? '',
@@ -351,6 +353,41 @@ app.whenReady().then(async () => {
   createWindow();
   const projectLibrarySettings = createProjectLibrarySettingsStore(app.getPath('userData'));
   const profileStore = createProfileStore(app.getPath('userData'));
+  const imageToolHandlers = createImageToolIpcHandlers({
+    window: { webContents: activeWindow!.webContents },
+    trustedUrl: activeTrustedUrl!,
+    getLibrary: () => activeProjectLibraryHandle,
+    showDialog: (browserWindow, properties) => dialog.showOpenDialog(browserWindow, { properties: properties as Array<'openFile' | 'openDirectory' | 'multiSelections' | 'showHiddenFiles' | 'createDirectory' | 'promptToCreate' | 'noResolveAliases' | 'treatPackageAsDirectory'> }),
+    openPath: (path) => shell.openPath(path),
+    revealPath: (path) => shell.showItemInFolder(path),
+    importAsset: async (workspace, input) => {
+      const result = await createAssetStore(workspace).importAssets(input);
+      return result.find((item) => item.status === 'success')?.asset ?? null;
+    },
+    executeProvider: async (request) => {
+      const executor = request.job.executor;
+      if (!executor || executor.kind !== 'provider' || !executor.connectionId) throw new Error('CONNECTION_REQUIRED');
+      const savedConfig = (await loadProviderConfigs(providerConfigPath()))[executor.connectionId as 'openai-compatible'];
+      if (!savedConfig) throw new Error('PROVIDER_NOT_CONFIGURED');
+      const adapter = await createProviderAdapterResolver({
+        connectionId: executor.connectionId,
+        config: savedConfig,
+        environment: { baseUrl: process.env.DESIGNHUB_PROVIDER_BASE_URL, apiKey: process.env.DESIGNHUB_PROVIDER_API_KEY },
+        getCredential: async (account) => credentialStore.getCredential?.(account) ?? null,
+      })();
+      if (!adapter.editImage) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
+      const result = await adapter.editImage({
+        prompt: `Batch ${request.job.tool}`,
+        image: new Blob([new Uint8Array(request.sourceBytes).buffer as ArrayBuffer], { type: 'image/*' }),
+        tool: request.job.tool as import('../features/image-tools/target').ImageTool,
+        toolParams: request.job.params,
+        ...(executor.modelId ? { model: executor.modelId } : {}),
+        requiresTransparency: request.job.tool === 'remove-background',
+      }, request.signal);
+      if (!result.images[0]) throw new Error('IMAGE_RESULT_EMPTY');
+      return { bytes: (await generatedImageBytes(result.images[0])).bytes };
+    },
+  });
   const createProjectLibraryHandlers = () => createProjectLibraryLifecycleHandlers({
     window: activeWindow!,
     trustedUrl: activeTrustedUrl!,
@@ -370,6 +407,20 @@ app.whenReady().then(async () => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createProjectLibraryHandlers().choose(event as never);
   });
+  ipcMain.handle(imageToolChooseInputChannel, (event) => activeWindow ? imageToolHandlers.chooseInput(event as never, activeWindow) : null);
+  ipcMain.handle(imageToolChooseOutputChannel, (event) => activeWindow ? imageToolHandlers.chooseOutput(event as never, activeWindow) : null);
+  ipcMain.handle(imageToolScanChannel, (event, input) => imageToolHandlers.scan(event as never, input));
+  ipcMain.handle(imageToolCreateChannel, (event, input) => imageToolHandlers.create(event as never, input));
+  ipcMain.handle(imageToolListChannel, (event, libraryId) => imageToolHandlers.list(event as never, libraryId));
+  ipcMain.handle(imageToolGetChannel, (event, input) => imageToolHandlers.get(event as never, input));
+  ipcMain.handle(imageToolPauseChannel, (event, input) => imageToolHandlers.pause(event as never, input));
+  ipcMain.handle(imageToolResumeChannel, (event, input) => imageToolHandlers.resume(event as never, input));
+  ipcMain.handle(imageToolCancelChannel, (event, input) => imageToolHandlers.cancel(event as never, input));
+  ipcMain.handle(imageToolRetryChannel, (event, input) => imageToolHandlers.retry(event as never, input));
+  ipcMain.handle(imageToolOpenResultChannel, (event, path) => imageToolHandlers.openResult(event as never, path));
+  ipcMain.handle(imageToolRevealResultChannel, (event, path) => imageToolHandlers.revealResult(event as never, path));
+  ipcMain.handle(imageToolOpenOutputChannel, (event, path) => imageToolHandlers.openOutput(event as never, path));
+  ipcMain.handle(imageToolImportResultChannel, (event, input) => imageToolHandlers.importResult(event as never, input));
   ipcMain.handle(profileLoadChannel, async (event) => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createProfileLoadHandler(activeWindow, activeTrustedUrl, profileStore)(event as never);
@@ -378,35 +429,9 @@ app.whenReady().then(async () => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return createProfileSaveHandler(activeWindow, activeTrustedUrl, profileStore, normalizeProfileAvatar)(event as never, input);
   });
-  ipcMain.handle(workspaceChannel, async (event) => {
+  ipcMain.handle(projectListChannel, async (event, libraryId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return createWorkspaceHandler(activeWindow, activeTrustedUrl, (browserWindow) => dialog.showOpenDialog(browserWindow, { properties: ['openDirectory', 'createDirectory'] }))(event);
-  });
-  ipcMain.handle(workspaceCreateChannel, async (event, input) => {
-    if (!activeWindow || !activeTrustedUrl) return null;
-    return createWorkspaceFromParentHandler(
-      activeWindow,
-      activeTrustedUrl,
-      async (workspaceInput) => activateWorkspace(await createWorkspace(workspaceInput)),
-    )(event, input);
-  });
-  ipcMain.handle(workspaceOpenChannel, async (event, directory) => {
-    if (!activeWindow || !activeTrustedUrl) return null;
-    return openWorkspaceHandler(
-      activeWindow,
-      activeTrustedUrl,
-      (workspaceDirectory) => openWorkspaceForActivation(
-        workspaceDirectory,
-        activeWorkspaceHandle,
-        realpath,
-        openWorkspace,
-        activateWorkspace,
-      ),
-    )(event, directory);
-  });
-  ipcMain.handle(projectListChannel, async (event, workspaceId) => {
-    if (!activeWindow || !activeTrustedUrl) return null;
-    return listActiveProjectsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace) => createProjectStore(workspace).listActiveProjects())(event, workspaceId);
+    return listActiveProjectsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace) => createProjectStore(workspace).listActiveProjects())(event, libraryId);
   });
   ipcMain.handle(projectCreateChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
@@ -436,7 +461,7 @@ app.whenReady().then(async () => {
       const result = await dialog.showOpenDialog(activeWindow!, { properties: ['openFile'], filters: [{ name: 'DesignHub package', extensions: ['zip'] }] });
       if (result.canceled || !result.filePaths[0]) return null;
       const archive = await readFile(result.filePaths[0]);
-      return createProjectStore(workspace).importProjectPackage({ workspaceId: workspace.library.libraryId, operationId: randomUUID(), archive: new Uint8Array(archive) });
+      return createProjectStore(workspace).importProjectPackage({ libraryId: workspace.library.libraryId, operationId: randomUUID(), archive: new Uint8Array(archive) });
     })(event, input);
   });
   ipcMain.handle(projectMetadataGetChannel, async (event, input) => {
@@ -463,9 +488,9 @@ app.whenReady().then(async () => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return saveProjectCanvasLayoutHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, layoutInput) => createProjectStore(workspace).saveProjectCanvasLayout(layoutInput))(event, input);
   });
-  ipcMain.handle(projectListTrashChannel, async (event, workspaceId) => {
+  ipcMain.handle(projectListTrashChannel, async (event, libraryId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listTrashedProjectsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace) => createProjectStore(workspace).listTrashedProjects())(event, workspaceId);
+    return listTrashedProjectsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace) => createProjectStore(workspace).listTrashedProjects())(event, libraryId);
   });
   ipcMain.handle(projectTrashChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
@@ -479,9 +504,9 @@ app.whenReady().then(async () => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return purgeProjectFromTrashHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, projectInput) => createProjectStore(workspace).purgeProjectFromTrash(projectInput))(event, input);
   });
-  ipcMain.handle(designerLoadChannel, async (event, workspaceId) => {
+  ipcMain.handle(designerLoadChannel, async (event, libraryId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadDesignerState)(event, workspaceId);
+    return loadDesignerStateHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadDesignerState)(event, libraryId);
   });
   ipcMain.handle(designerSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
@@ -491,9 +516,9 @@ app.whenReady().then(async () => {
     if (!activeWindow || !activeTrustedUrl) return null;
     return readDesignerArtworkHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, readDesignerArtwork)(event, input);
   });
-  ipcMain.handle(brandLoadChannel, async (event, workspaceId) => {
+  ipcMain.handle(brandLoadChannel, async (event, libraryId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadBrandStateHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadBrandState)(event, workspaceId);
+    return loadBrandStateHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadBrandState)(event, libraryId);
   });
   ipcMain.handle(brandSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
@@ -521,15 +546,15 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(revisionLoadChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadRevisionsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, target) => loadDocumentRevisions(workspace, target.workspaceId, target.projectId, target.documentId))(event, input);
+    return loadRevisionsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, target) => loadDocumentRevisions(workspace, target.libraryId, target.projectId, target.documentId))(event, input);
   });
   ipcMain.handle(revisionCommitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return commitRevisionHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, revisionInput) => commitDocumentRevision(workspace, revisionInput))(event, input);
+    return commitRevisionHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, revisionInput) => commitDocumentRevision(workspace, { ...revisionInput, workspaceId: revisionInput.libraryId }))(event, input);
   });
   ipcMain.handle(revisionFinalizeChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return finalizeRevisionHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, revisionInput) => setFinalDocumentRevision(workspace, revisionInput))(event, input);
+    return finalizeRevisionHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, (workspace, revisionInput) => setFinalDocumentRevision(workspace, { ...revisionInput, workspaceId: revisionInput.libraryId }))(event, input);
   });
   ipcMain.handle(credentialStoreChannel, async (event, connectionId, secret) => {
     if (!activeWindow || !activeTrustedUrl) return false;
@@ -554,9 +579,9 @@ app.whenReady().then(async () => {
       return saveProviderConfigs(providerConfigPath(), { ...current, [saveInput.connectionId]: saveInput.config });
     })(event, input);
   });
-  ipcMain.handle(taskListChannel, async (event, workspaceId) => {
+  ipcMain.handle(taskListChannel, async (event, libraryId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listTasksHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadTaskState)(event, workspaceId);
+    return listTasksHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadTaskState)(event, libraryId);
   });
   ipcMain.handle(conversationSubmitChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
@@ -564,11 +589,11 @@ app.whenReady().then(async () => {
       if (conversation.projectId) {
         const projectStore = createProjectStore(workspace);
         const metadata = await projectStore.getProjectMetadata(conversation.projectId);
-        if (!metadata || metadata.workspaceId !== conversation.workspaceId) throw new Error('PROJECT_NOT_FOUND');
+        if (!metadata || metadata.workspaceId !== conversation.libraryId) throw new Error('PROJECT_NOT_FOUND');
         if (conversation.documentId && !metadata.documents.some((document) => document.id === conversation.documentId)) throw new Error('DOCUMENT_NOT_FOUND');
         if (conversation.referencedAssetIds?.length) {
           const assetStore = createAssetStore(workspace);
-        const assets = await assetStore.listAssets({ workspaceId: conversation.workspaceId, projectId: conversation.projectId, includeContextAssets: true });
+        const assets = await assetStore.listAssets({ libraryId: conversation.libraryId, projectId: conversation.projectId, includeContextAssets: true });
           const available = new Set(assets.map((asset) => asset.id));
           if (conversation.referencedAssetIds.some((assetId) => !available.has(assetId))) throw new Error('CONTEXT_ASSET_MISSING');
         }
@@ -582,11 +607,11 @@ app.whenReady().then(async () => {
     return createDesignGenerationHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (_workspace, generationInput) => {
       const projectStore = createProjectStore(_workspace);
       const metadata = await projectStore.getProjectMetadata(generationInput.projectId);
-      if (!metadata || metadata.workspaceId !== generationInput.workspaceId || (generationInput.documentId && !metadata.documents.some((document) => document.id === generationInput.documentId))) {
+      if (!metadata || metadata.workspaceId !== generationInput.libraryId || (generationInput.documentId && !metadata.documents.some((document) => document.id === generationInput.documentId))) {
         throw new Error('DOCUMENT_NOT_FOUND');
       }
       if (generationInput.baseRevisionId && generationInput.documentId) {
-        const revisions = await loadDocumentRevisions(_workspace, generationInput.workspaceId, generationInput.projectId, generationInput.documentId);
+        const revisions = await loadDocumentRevisions(_workspace, generationInput.libraryId, generationInput.projectId, generationInput.documentId);
         if (!revisions.revisions.some((revision) => revision.revisionId === generationInput.baseRevisionId)) throw new Error('REVISION_NOT_FOUND');
       }
       const service = await getAgentTaskService();
@@ -600,7 +625,7 @@ app.whenReady().then(async () => {
       const existing = service.getTask(retryInput.taskId);
       if (!existing || existing.source?.kind !== 'project') throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
       const metadata = await createProjectStore(workspace).getProjectMetadata(existing.source.id);
-      if (!metadata || metadata.workspaceId !== retryInput.workspaceId || (existing.documentId && !metadata.documents.some((document) => document.id === existing.documentId))) throw new Error('DOCUMENT_NOT_FOUND');
+      if (!metadata || metadata.workspaceId !== retryInput.libraryId || (existing.documentId && !metadata.documents.some((document) => document.id === existing.documentId))) throw new Error('DOCUMENT_NOT_FOUND');
       return service.retryDesignGenerationSlot(retryInput);
     })(event, input);
   });
@@ -692,7 +717,7 @@ app.whenReady().then(async () => {
       try {
         const assetStore = createAssetStore(_workspace);
         const assetsById = new Map((await assetStore.listAssets({
-          workspaceId: exportInput.workspaceId,
+          libraryId: exportInput.libraryId,
           projectId: exportInput.projectId,
           includeContextAssets: true,
         })).map((asset) => [asset.id, asset]));
@@ -705,7 +730,7 @@ app.whenReady().then(async () => {
             const asset = assetsById.get(assetId);
             if (!asset?.managed) return null;
             const bytes = await assetStore.readAsset({
-              workspaceId: exportInput.workspaceId,
+              libraryId: exportInput.libraryId,
               projectId: exportInput.projectId,
               assetId,
             });
@@ -723,7 +748,7 @@ app.whenReady().then(async () => {
             },
           } : {}),
         });
-        await appendWorkspaceExportHistory(_workspace, exportInput.workspaceId, {
+        await appendWorkspaceExportHistory(_workspace, exportInput.libraryId, {
           id: `export-${randomUUID()}`,
           projectId: exportInput.projectId,
           documentId: exportInput.documentId,
@@ -738,7 +763,7 @@ app.whenReady().then(async () => {
         }).catch(() => undefined);
         return { path: exported.path, sha256: exported.sha256, archived: exported.archived, ...(exported.archiveError ? { archiveError: exported.archiveError } : {}) };
       } catch (error) {
-        await appendWorkspaceExportHistory(_workspace, exportInput.workspaceId, {
+        await appendWorkspaceExportHistory(_workspace, exportInput.libraryId, {
           id: `export-${randomUUID()}`,
           projectId: exportInput.projectId,
           documentId: exportInput.documentId,
@@ -756,8 +781,8 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle(exportHistoryListChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return listExportHistoryHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace, workspaceId, projectId) => {
-      const records = await loadWorkspaceExportHistory(workspace, workspaceId, projectId);
+    return listExportHistoryHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, async (workspace, libraryId, projectId) => {
+      const records = await loadWorkspaceExportHistory(workspace, libraryId, projectId);
       return Promise.all(records.map(async (record) => ({ ...record, targetAvailable: await access(record.targetPath).then(() => true).catch(() => false) })));
     })(event, input);
   });
@@ -782,9 +807,9 @@ app.whenReady().then(async () => {
     if (!activeProjectLibraryHandle) return null;
     return restoreBackupHandler(activeWindow, activeTrustedUrl, (restoreInput) => createWorkspaceBackupStore(activeProjectLibraryHandle!).restoreBackup(restoreInput))(event, input);
   });
-  ipcMain.handle(settingsLoadChannel, async (event, workspaceId) => {
+  ipcMain.handle(settingsLoadChannel, async (event, libraryId) => {
     if (!activeWindow || !activeTrustedUrl) return null;
-    return loadSettingsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadWorkspaceSettings)(event, workspaceId);
+    return loadSettingsHandler(activeWindow, activeTrustedUrl, () => activeProjectLibraryHandle, loadWorkspaceSettings)(event, libraryId);
   });
   ipcMain.handle(settingsSaveChannel, async (event, input) => {
     if (!activeWindow || !activeTrustedUrl) return false;
@@ -807,8 +832,6 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  activeWorkspaceHandle?.close();
-  activeWorkspaceHandle = null;
   closeActiveProjectLibrary();
   if (process.platform !== 'darwin') app.quit();
 });

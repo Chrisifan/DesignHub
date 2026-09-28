@@ -16,7 +16,7 @@ import './project-canvas.css';
 type ProjectCanvasProps = {
   locale: Locale;
   project: Project;
-  workspaceId?: string;
+  libraryId?: string;
   readOnly: boolean;
   conversationConnected: boolean;
   designer: PersonaProfile | null;
@@ -26,6 +26,7 @@ type ProjectCanvasProps = {
   onGenerationRatioChange?: (ratio: ProjectGenerationRatio) => void;
   notify: (message: string) => void;
   onBack: () => void;
+  onOpenDocument?: (documentId: string) => void;
   onRename?: () => void;
   onDuplicate?: () => void;
   onArchive?: () => void;
@@ -82,7 +83,7 @@ const getAnalysisStatus = (task: TaskRecord, locale: Locale): { icon: string; ki
   return { icon: 'clock', kind: 'running', label: t(locale, '处理中', 'Processing') };
 };
 
-export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onRename, onDuplicate, onArchive, onRemoveBackground, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
+export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onOpenDocument, onRename, onDuplicate, onArchive, onRemoveBackground, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
   const onDesignsChangeRef = useRef(onDesignsChange);
   onDesignsChangeRef.current = onDesignsChange;
@@ -104,11 +105,11 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
-    if (!workspaceId) return;
+    if (!libraryId) return;
     const [nextDesigns, nextLayout, nextTasks] = await Promise.all([
-      getDesktopApi().listProjectDesigns?.({ workspaceId, projectId: project.id }),
-      getDesktopApi().loadProjectCanvasLayout?.({ workspaceId, projectId: project.id }),
-      getDesktopApi().listTasks?.(workspaceId),
+      getDesktopApi().listProjectDesigns?.({ libraryId, projectId: project.id }),
+      getDesktopApi().loadProjectCanvasLayout?.({ libraryId, projectId: project.id }),
+      getDesktopApi().listTasks?.(libraryId),
     ]);
     if (nextDesigns) {
       setDesigns(nextDesigns);
@@ -122,7 +123,7 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
       setLatestConversation((current) => current ?? persistedLatest);
       setThreadId((current) => current ?? persistedLatest?.analysisThreadId);
     }
-  }, [project.id, workspaceId]);
+  }, [project.id, libraryId]);
   useEffect(() => { void refresh(); const timer = window.setInterval(() => { void refresh(); }, 1200); return () => window.clearInterval(timer); }, [refresh]);
   useEffect(() => {
     setThreadId(undefined);
@@ -147,24 +148,24 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
   useEffect(() => {
     let cancelled = false;
     const assetIds = analysisAssetKey ? analysisAssetKey.split('\0') : [];
-    if (!workspaceId || assetIds.length === 0) {
+    if (!libraryId || assetIds.length === 0) {
       setAnalysisAttachments([]);
       return () => { cancelled = true; };
     }
     void (async () => {
-      const managed = await getDesktopApi().listAssets?.({ workspaceId, projectId: project.id, includeContextAssets: true }) ?? [];
+      const managed = await getDesktopApi().listAssets?.({ libraryId, projectId: project.id, includeContextAssets: true }) ?? [];
       const byId = new Map(managed.map((asset) => [asset.id, asset]));
       const loaded = await Promise.all(assetIds.map(async (assetId) => {
         const asset = byId.get(assetId);
         if (!asset?.mimeType.startsWith('image/')) return null;
-        const bytes = await getDesktopApi().readAsset?.({ workspaceId, projectId: project.id, assetId });
+        const bytes = await getDesktopApi().readAsset?.({ libraryId, projectId: project.id, assetId });
         if (!bytes) return null;
         return { assetId, name: asset.name, mimeType: asset.mimeType, bytes, previewUrl: bytesToDataUrl(asset.mimeType, bytes) } satisfies ConversationDockAttachment;
       }));
       if (!cancelled) setAnalysisAttachments(loaded.filter((entry): entry is NonNullable<(typeof loaded)[number]> => entry !== null));
     })();
     return () => { cancelled = true; };
-  }, [analysisAssetKey, analysisTask?.id, project.id, workspaceId]);
+  }, [analysisAssetKey, analysisTask?.id, project.id, libraryId]);
   const submit = async (): Promise<void> => {
     if (readOnly || !message.trim()) return;
     const currentMessage = message;
@@ -209,14 +210,14 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
   };
   const saveLayout = async (next: ProjectCanvasLayout): Promise<void> => {
     setLayout(next);
-    if (workspaceId && !readOnly) await getDesktopApi().saveProjectCanvasLayout?.({ workspaceId, projectId: project.id, layout: next });
+    if (libraryId && !readOnly) await getDesktopApi().saveProjectCanvasLayout?.({ libraryId, projectId: project.id, layout: next });
   };
   const exportSelected = async (): Promise<void> => {
-    if (selectedDesigns.length === 0 || !workspaceId) return;
+    if (selectedDesigns.length === 0 || !libraryId) return;
     let exported = 0;
     for (const design of selectedDesigns) {
       const result = await getDesktopApi().exportDocument?.({
-        workspaceId,
+        libraryId,
         projectId: project.id,
         documentId: design.id,
         format: 'png',
@@ -229,8 +230,8 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
 
   const addDesignToConversation = async (designId: string): Promise<void> => {
     const design = designs.find((candidate) => candidate.id === designId);
-    if (!design || !workspaceId || attachments.some((attachment) => attachment.assetId === design.assetId)) return;
-    const bytes = await getDesktopApi().readAsset?.({ workspaceId, projectId: project.id, assetId: design.assetId });
+    if (!design || !libraryId || attachments.some((attachment) => attachment.assetId === design.assetId)) return;
+    const bytes = await getDesktopApi().readAsset?.({ libraryId, projectId: project.id, assetId: design.assetId });
     if (!bytes) return;
     setAttachments((current) => current.some((attachment) => attachment.assetId === design.assetId)
       ? current
@@ -274,12 +275,17 @@ export const ProjectCanvas = ({ locale, project, workspaceId, readOnly, conversa
           <span className="project-canvas-toolbar__title">{project.name}</span>
         </div>
         <div className="project-canvas-toolbar__actions">
+          {onOpenDocument && project.documentEntries?.map((entry) => (
+            <button key={entry.id} type="button" className="ui-button ui-button--text" onClick={() => onOpenDocument(entry.id)}>
+              {t(locale, `打开${entry.name}`, `Open ${entry.name}`)}
+            </button>
+          ))}
           <IconButton name="wand-sparkles" label={t(locale, '去除背景', 'Remove background')} disabled={readOnly || selectedDesigns.length !== 1 || backgroundRemovalSubmitting || !onRemoveBackground} onClick={() => { void removeBackground(); }} />
           <IconButton name="download" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
         </div>
       </div>
       <ProjectCanvasStage
-        workspaceId={workspaceId}
+        libraryId={libraryId}
         projectId={project.id}
         designs={designs}
         viewport={layout?.viewport}

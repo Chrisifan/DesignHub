@@ -70,8 +70,8 @@ it('rejects a symlinked designer state instead of reading outside the workspace'
 it('persists generated artwork bytes separately from designer profile metadata', async () => {
   const workspace = await createTemporaryWorkspace();
   const artworkStore = designerStore as typeof designerStore & {
-    saveDesignerArtwork: (handle: Awaited<ReturnType<typeof createTemporaryWorkspace>>, workspaceId: string, artworkId: string, bytes: Uint8Array, mimeType: string) => Promise<{ artworkId: string }>;
-    readDesignerArtwork: (handle: Awaited<ReturnType<typeof createTemporaryWorkspace>>, workspaceId: string, artworkId: string) => Promise<{ artworkId: string; dataUrl: string } | null>;
+    saveDesignerArtwork: (handle: Awaited<ReturnType<typeof createTemporaryWorkspace>>, libraryId: string, artworkId: string, bytes: Uint8Array, mimeType: string) => Promise<{ artworkId: string }>;
+    readDesignerArtwork: (handle: Awaited<ReturnType<typeof createTemporaryWorkspace>>, libraryId: string, artworkId: string) => Promise<{ artworkId: string; dataUrl: string } | null>;
   };
   expect(artworkStore.saveDesignerArtwork).toBeTypeOf('function');
   expect(artworkStore.readDesignerArtwork).toBeTypeOf('function');

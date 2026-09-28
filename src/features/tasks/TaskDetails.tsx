@@ -24,6 +24,7 @@ export const TaskDetails = ({ task, onCancel, onRetry, onViewCandidate, onCompar
       {onFinalizeCandidate && <button type="button" onClick={() => onFinalizeCandidate(task.result!.candidate!.id)}>Finalize</button>}
     </div> : null}
     {task.cancelRequested && onCancel ? <button type="button" onClick={onCancel}>Stop</button> : null}
-    {task.state === 'failed' && onRetry ? <button type="button" onClick={onRetry}>Retry</button> : null}
+    {task.state === 'unknown' ? <span>Result status is unknown; retry only if the provider was not charged.</span> : null}
+    {(task.state === 'failed' || task.state === 'unknown') && onRetry ? <button type="button" onClick={onRetry}>Retry</button> : null}
   </section>
 );

@@ -107,7 +107,7 @@ export const HomeProjectPanel = ({
           >
             <span className="studio-home-project-row__cover">
               <ProjectCoverImage
-                workspaceId={project.workspaceId}
+                libraryId={project.libraryId}
                 projectId={project.id}
                 coverAssetId={project.designs?.[0]?.assetId}
                 alt=""

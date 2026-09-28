@@ -14,14 +14,14 @@ import { PageToolbarHost, PageToolbarProvider } from './PageToolbar';
 const Harness = ({
   initialView = 'designers',
   deliveryProject,
-  workspaceId,
+  libraryId,
   projectId,
   onAssetAction,
   onDesignerProfilesChange,
 }: {
   initialView?: Exclude<View, 'projects'>;
   deliveryProject?: Project | null;
-  workspaceId?: string;
+  libraryId?: string;
   projectId?: string;
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
   onDesignerProfilesChange?: (profiles: typeof personaProfiles) => void;
@@ -48,7 +48,7 @@ const Harness = ({
           onThemeChange={setTheme}
           onLocaleChange={setLocale}
           deliveryProject={deliveryProject}
-          workspaceId={workspaceId}
+          libraryId={libraryId}
           projectId={projectId}
           onAssetAction={onAssetAction}
           preview
@@ -71,10 +71,10 @@ const taskRecord = (overrides: Partial<TaskRecord> = {}): TaskRecord => ({
   ...overrides,
 });
 
-const TaskHarness = ({ workspaceId = 'workspace-1' }: { workspaceId?: string }) => (
+const TaskHarness = ({ libraryId = 'workspace-1' }: { libraryId?: string }) => (
   <PageToolbarProvider>
     <PageToolbarHost />
-    <Harness initialView="tasks" workspaceId={workspaceId} />
+    <Harness initialView="tasks" libraryId={libraryId} />
   </PageToolbarProvider>
 );
 
@@ -141,10 +141,10 @@ it('filters assets and opens the selected asset details in a drawer', () => {
 
 it('places brand detail actions in the drawer footer', async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
+
     loadBrandState: vi.fn(async () => ({ brands: previewBrands as never })),
   };
-  render(<Harness initialView="brands" workspaceId="workspace-1" />);
+  render(<Harness initialView="brands" libraryId="workspace-1" />);
   await waitFor(() => expect(screen.getByRole('button', { name: /春间/ })).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: /春间/ }));
   const dialog = screen.getByRole('dialog', { name: '品牌详情' });
@@ -170,36 +170,36 @@ it('hydrates managed assets for the active workspace project', async () => {
     id: 'asset-1234567890abcdef', name: '品牌原图', format: 'PNG' as const,
     mimeType: 'image/png', contentHash: '1234567890abcdef'.padEnd(64, '0'), managed: true,
   }]);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets };
-  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+  window.designhub = {  listAssets };
+  render(<Harness initialView="assets" libraryId="workspace-1" projectId="project-1" />);
 
   expect(await screen.findByRole('button', { name: /品牌原图/ })).toBeInTheDocument();
-  expect(listAssets).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1' });
+  expect(listAssets).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'project-1' });
 });
 
 it('shows an empty asset state instead of example assets for an empty workspace project', async () => {
   const listAssets = vi.fn(async () => []);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets };
-  render(<Harness initialView="assets" workspaceId="workspace-empty" projectId="project-empty" />);
-  await waitFor(() => expect(listAssets).toHaveBeenCalledWith({ workspaceId: 'workspace-empty', projectId: 'project-empty' }));
+  window.designhub = {  listAssets };
+  render(<Harness initialView="assets" libraryId="workspace-empty" projectId="project-empty" />);
+  await waitFor(() => expect(listAssets).toHaveBeenCalledWith({ libraryId: 'workspace-empty', projectId: 'project-empty' }));
   expect(await screen.findByText('暂无素材')).toBeInTheDocument();
   expect(screen.queryByText('市集原图')).not.toBeInTheDocument();
 });
 
 it('shows an asset load failure instead of an empty example state', async () => {
   const listAssets = vi.fn(async () => { throw new Error('ASSET_LOAD_FAILED'); });
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets };
-  render(<Harness initialView="assets" workspaceId="workspace-failed" projectId="project-failed" />);
+  window.designhub = {  listAssets };
+  render(<Harness initialView="assets" libraryId="workspace-failed" projectId="project-failed" />);
   expect(await screen.findByRole('heading', { name: '素材读取失败' })).toBeInTheDocument();
   expect(screen.queryByText('市集原图')).not.toBeInTheDocument();
 });
 
 it('keeps external asset references visibly unmanaged in project details', async () => {
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => [{
+  window.designhub = {  listAssets: vi.fn(async () => [{
     id: 'asset-external', name: '参考链接', format: 'PNG' as const, mimeType: 'image/png',
     contentHash: 'abcdef'.padEnd(64, '0'), managed: false, externalReference: 'https://example.com/ref.png',
   }]) };
-  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+  render(<Harness initialView="assets" libraryId="workspace-1" projectId="project-1" />);
 
   fireEvent.click(await screen.findByRole('button', { name: /参考链接/ }));
   const details = screen.getByRole('dialog', { name: '素材详情' });
@@ -209,10 +209,10 @@ it('keeps external asset references visibly unmanaged in project details', async
 
 it('exposes explicit asset placement actions from project details', async () => {
   const onAssetAction = vi.fn();
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => [{
+  window.designhub = {  listAssets: vi.fn(async () => [{
     id: 'asset-action', name: '可用原图', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true,
   }]) };
-  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" onAssetAction={onAssetAction} />);
+  render(<Harness initialView="assets" libraryId="workspace-1" projectId="project-1" onAssetAction={onAssetAction} />);
   fireEvent.click(await screen.findByRole('button', { name: /可用原图/ }));
   const details = await screen.findByRole('dialog', { name: '素材详情' });
   expect(details.querySelector('.asset-detail-actions')?.closest('.ui-drawer__footer')).toBeInTheDocument();
@@ -226,18 +226,18 @@ it('exposes explicit asset placement actions from project details', async () => 
 
 it('loads managed asset bytes for the selected workspace preview', async () => {
   const readAsset = vi.fn(async () => new Uint8Array([137, 80, 78, 71]));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => [{ id: 'asset-managed', name: '原图', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true }]), readAsset };
-  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
-  await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-managed' }));
+  window.designhub = {  listAssets: vi.fn(async () => [{ id: 'asset-managed', name: '原图', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true }]), readAsset };
+  render(<Harness initialView="assets" libraryId="workspace-1" projectId="project-1" />);
+  await waitFor(() => expect(readAsset).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'project-1', assetId: 'asset-managed' }));
 });
 
 it('hides internal conversation and project cover assets from the material library', async () => {
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => [
+  window.designhub = {  listAssets: vi.fn(async () => [
     { id: 'asset-visible', name: '公开素材', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true },
     { id: 'asset-conversation', name: '对话附件', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'b'.repeat(64), managed: true, metadata: { purpose: 'conversation-reference' } },
     { id: 'asset-cover', name: '项目封面文件', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'c'.repeat(64), managed: true, metadata: { purpose: 'project-cover' } },
   ]) };
-  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+  render(<Harness initialView="assets" libraryId="workspace-1" projectId="project-1" />);
 
   expect(await screen.findByRole('button', { name: /公开素材/ })).toBeInTheDocument();
   expect(screen.queryByText('对话附件')).not.toBeInTheDocument();
@@ -246,17 +246,17 @@ it('hides internal conversation and project cover assets from the material libra
 
 it('imports dropped files for a workspace project', async () => {
   const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'asset-drop', name: 'drop.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'd'.repeat(64), managed: true } }]);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => []), importAssets };
-  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+  window.designhub = {  listAssets: vi.fn(async () => []), importAssets };
+  render(<Harness initialView="assets" libraryId="workspace-1" projectId="project-1" />);
   const file = new File(['png'], 'drop.png', { type: 'image/png' });
   fireEvent.drop(screen.getByLabelText('素材导入区域'), { dataTransfer: { files: [file] } });
-  await waitFor(() => expect(importAssets).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'workspace-1', projectId: 'project-1', items: [expect.objectContaining({ name: 'drop.png', mimeType: 'image/png' })] })));
+  await waitFor(() => expect(importAssets).toHaveBeenCalledWith(expect.objectContaining({ libraryId: 'workspace-1', projectId: 'project-1', items: [expect.objectContaining({ name: 'drop.png', mimeType: 'image/png' })] })));
 });
 
 it('imports an image pasted from the clipboard for a workspace project', async () => {
   const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'asset-paste', name: 'clipboard.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'p'.repeat(64), managed: true } }]);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listAssets: vi.fn(async () => []), importAssets };
-  render(<Harness initialView="assets" workspaceId="workspace-1" projectId="project-1" />);
+  window.designhub = {  listAssets: vi.fn(async () => []), importAssets };
+  render(<Harness initialView="assets" libraryId="workspace-1" projectId="project-1" />);
   const file = new File(['png'], '', { type: 'image/png' });
   fireEvent.paste(screen.getByLabelText('素材导入区域'), { clipboardData: { files: [file] } });
   await waitFor(() => expect(importAssets).toHaveBeenCalledWith(expect.objectContaining({ items: [expect.objectContaining({ name: 'clipboard.png', mimeType: 'image/png' })] })));
@@ -288,7 +288,7 @@ it('shows a connected state and lets the model groups switch profile configurati
       image: { baseUrl: 'https://image.example/v1', imageTransport: 'images' as const, models: { 'image-generation': 'image-model' } },
     },
   }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, hasCredential, loadProviderConfigs };
+  window.designhub = {  hasCredential, loadProviderConfigs };
   render(<Harness initialView="connections" />);
 
   await waitFor(() => expect(screen.getByText('模型已连接')).toBeInTheDocument());
@@ -308,7 +308,7 @@ it('shows a connected state and lets the model groups switch profile configurati
 it('keeps a saved image credential stable after publishing drawer actions', async () => {
   const hasCredential = vi.fn(async (account: string) => account === 'openai-compatible:image');
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
+
     hasCredential,
     loadProviderConfigs: async () => ({
       'openai-compatible': {
@@ -318,7 +318,7 @@ it('keeps a saved image credential stable after publishing drawer actions', asyn
     }),
     testImageGeneration: async () => null,
   };
-  render(<Harness initialView="connections" workspaceId="workspace-1" />);
+  render(<Harness initialView="connections" libraryId="workspace-1" />);
 
   await waitFor(() => expect(screen.getByRole('button', { name: '图片生成与编辑' })).toHaveTextContent('已连接'));
   fireEvent.click(screen.getByRole('button', { name: '图片生成与编辑' }));
@@ -340,7 +340,7 @@ it('hydrates and saves the non-secret provider connection configuration', async 
     },
   }));
   const saveProviderConfig = vi.fn(async () => true);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadProviderConfigs, saveProviderConfig };
+  window.designhub = {  loadProviderConfigs, saveProviderConfig };
   render(<Harness initialView="connections" />);
 
   fireEvent.click(screen.getByRole('button', { name: '对话与视觉' }));
@@ -359,8 +359,8 @@ it('hydrates and saves the non-secret provider connection configuration', async 
 it('hydrates a workspace brand library and persists create/edit/delete actions', async () => {
   const loadBrandState = vi.fn(async () => ({ brands: [{ id: 'local', name: '本地品牌', version: 'v1', logo: 'mark', colorPalette: ['#000'], fonts: ['Geist'], tone: '清晰', fixedCopy: '开始', sizes: ['1080x1080'] }] }));
   const saveBrandState = vi.fn(async () => true);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadBrandState, saveBrandState };
-  render(<Harness initialView="brands" workspaceId="workspace-1" />);
+  window.designhub = {  loadBrandState, saveBrandState };
+  render(<Harness initialView="brands" libraryId="workspace-1" />);
   fireEvent.click(await screen.findByRole('button', { name: /本地品牌/ }));
   expect(await screen.findByRole('heading', { name: '本地品牌' })).toBeInTheDocument();
   expect(screen.getByRole('dialog', { name: '品牌详情' })).toBeInTheDocument();
@@ -377,8 +377,8 @@ it('hydrates a workspace brand library and persists create/edit/delete actions',
 
 it('does not inject built-in brands into an empty workspace', async () => {
   const loadBrandState = vi.fn(async () => ({ brands: [] }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadBrandState };
-  render(<Harness initialView="brands" workspaceId="workspace-empty" />);
+  window.designhub = {  loadBrandState };
+  render(<Harness initialView="brands" libraryId="workspace-empty" />);
   await waitFor(() => expect(loadBrandState).toHaveBeenCalledWith('workspace-empty'));
   expect(await screen.findByText('暂无品牌包')).toBeInTheDocument();
   expect(screen.queryByText('春间市集')).not.toBeInTheDocument();
@@ -386,8 +386,8 @@ it('does not inject built-in brands into an empty workspace', async () => {
 
 it('shows a brand load failure instead of example brands', async () => {
   const loadBrandState = vi.fn(async () => { throw new Error('BRAND_LOAD_FAILED'); });
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadBrandState };
-  render(<Harness initialView="brands" workspaceId="workspace-failed" />);
+  window.designhub = {  loadBrandState };
+  render(<Harness initialView="brands" libraryId="workspace-failed" />);
   expect(await screen.findByText('品牌读取失败')).toBeInTheDocument();
   expect(screen.queryByText('春间市集')).not.toBeInTheDocument();
 });
@@ -418,7 +418,7 @@ it('derives the delivery preview from the selected project', () => {
 });
 
 it('exposes WebP alongside the supported delivery formats', () => {
-  const project: Project = { id: 'webp-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: 'WebP 项目', enName: 'WebP project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  const project: Project = { id: 'webp-project', libraryId: 'workspace-1', documentId: 'doc-1', name: 'WebP 项目', enName: 'WebP project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   expect(screen.getByRole('button', { name: 'WEBP' })).toBeInTheDocument();
 });
@@ -433,14 +433,14 @@ it('previews the actual managed image from the current document scene', async ()
   const createObjectURL = vi.fn(() => 'blob:delivery-scene');
   const revokeObjectURL = vi.fn();
   vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, readAsset };
-  const project: Project = { id: 'preview-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '预览项目', enName: 'Preview project', description: 'desc', enDescription: 'desc', designers: [], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }] };
+  window.designhub = {  loadDocumentScene, readAsset };
+  const project: Project = { id: 'preview-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '预览项目', enName: 'Preview project', description: 'desc', enDescription: 'desc', designers: [], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }] };
 
   const view = render(<Harness initialView="delivery" deliveryProject={project} />);
 
   expect(await screen.findByRole('img', { name: '主海报导出预览' })).toHaveAttribute('src', 'blob:delivery-scene');
   expect(loadDocumentScene).toHaveBeenCalledWith('workspace-1', 'preview-project', 'doc-1');
-  expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'preview-project', assetId: 'asset-final' });
+  expect(readAsset).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'preview-project', assetId: 'asset-final' });
   expect(view.container.querySelector('.delivery-preview .artwork--blank')).not.toBeInTheDocument();
   view.unmount();
   expect(revokeObjectURL).toHaveBeenCalledWith('blob:delivery-scene');
@@ -448,8 +448,8 @@ it('previews the actual managed image from the current document scene', async ()
 });
 
 it('does not offer image export for an empty formal document scene', async () => {
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene: vi.fn(async () => ({ id: 'scene-empty', version: 1 as const, width: 1080, height: 1440, layers: [] })) };
-  const project: Project = { id: 'empty-project', workspaceId: 'workspace-1', documentId: 'doc-empty', name: '空文档', enName: 'Empty document', description: 'desc', enDescription: 'desc', designers: [], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-empty', name: '空文档', width: 1080, height: 1440 }] };
+  window.designhub = {  loadDocumentScene: vi.fn(async () => ({ id: 'scene-empty', version: 1 as const, width: 1080, height: 1440, layers: [] })) };
+  const project: Project = { id: 'empty-project', libraryId: 'workspace-1', documentId: 'doc-empty', name: '空文档', enName: 'Empty document', description: 'desc', enDescription: 'desc', designers: [], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-empty', name: '空文档', width: 1080, height: 1440 }] };
 
   render(<Harness initialView="delivery" deliveryProject={project} />);
 
@@ -458,8 +458,8 @@ it('does not offer image export for an empty formal document scene', async () =>
 });
 
 it('uses the page toolbar export control to open image export settings', async () => {
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene: vi.fn(async () => ({ id: 'scene-empty', version: 1 as const, width: 1080, height: 1440, layers: [] })) };
-  const project: Project = { id: 'toolbar-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '工具栏项目', enName: 'Toolbar project', description: 'desc', enDescription: 'desc', designers: [], artwork: 'blank', documents: 1 };
+  window.designhub = {  loadDocumentScene: vi.fn(async () => ({ id: 'scene-empty', version: 1 as const, width: 1080, height: 1440, layers: [] })) };
+  const project: Project = { id: 'toolbar-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '工具栏项目', enName: 'Toolbar project', description: 'desc', enDescription: 'desc', designers: [], artwork: 'blank', documents: 1 };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   fireEvent.click(screen.getByRole('button', { name: '关闭' }));
 
@@ -472,8 +472,8 @@ it('lets delivery explicitly export the finalized document revision', async () =
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-final', projectId: 'final-project', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-final', sceneAssetId: 'scene-final', assetIds: [], contributions: [], createdAt: '2026-09-12T00:00:00.000Z', scene: { id: 'scene-final', version: 1 as const, width: 100, height: 100, layers: [{ id: 'shape', type: 'shape' as const, kind: 'rect' as const, x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1, visible: true, locked: false, fill: '#fff', stroke: 'none', strokeWidth: 0 }] } }], timeline: [], finalRevisionId: 'revision-final' }));
   const loadDocumentScene = vi.fn(async () => ({ id: 'scene-current', version: 1 as const, width: 100, height: 100, layers: [] }));
   const exportDocument = vi.fn(async () => ({ path: '/tmp/final.png', sha256: 'a'.repeat(64) }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentRevisions, loadDocumentScene, exportDocument };
-  const project: Project = { id: 'final-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '定稿项目', enName: 'Final project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100, finalizedRevisionId: 'revision-final' }] };
+  window.designhub = {  loadDocumentRevisions, loadDocumentScene, exportDocument };
+  const project: Project = { id: 'final-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '定稿项目', enName: 'Final project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100, finalizedRevisionId: 'revision-final' }] };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   fireEvent.change(screen.getByRole('combobox', { name: '来源' }), { target: { value: 'final' } });
   fireEvent.click(screen.getByRole('button', { name: '导出' }));
@@ -485,8 +485,8 @@ it('lets delivery explicitly export the finalized document revision', async () =
 it('lets delivery select another document in a multi-document project', async () => {
   const loadDocumentScene = vi.fn(async (_workspaceId: string, _projectId: string, documentId: string) => ({ id: `scene-${documentId}`, version: 1 as const, width: 100, height: 100, layers: [{ id: 'shape', type: 'shape' as const, kind: 'rect' as const, x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1, visible: true, locked: false, fill: '#fff', stroke: 'none', strokeWidth: 0 }] }));
   const exportDocument = vi.fn(async () => ({ path: '/tmp/second.png', sha256: 'b'.repeat(64) }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, exportDocument };
-  const project: Project = { id: 'multi-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '多文档项目', enName: 'Multi document', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 2, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }, { id: 'doc-2', name: '方图', width: 100, height: 100 }] };
+  window.designhub = {  loadDocumentScene, exportDocument };
+  const project: Project = { id: 'multi-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '多文档项目', enName: 'Multi document', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 2, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }, { id: 'doc-2', name: '方图', width: 100, height: 100 }] };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   fireEvent.change(screen.getByRole('combobox', { name: '文档' }), { target: { value: 'doc-2' } });
   fireEvent.click(screen.getByRole('button', { name: '导出' }));
@@ -497,7 +497,7 @@ it('lets delivery select another document in a multi-document project', async ()
 it('offers finalized export for the selected non-primary document', () => {
   const project: Project = {
     id: 'multi-final-project',
-    workspaceId: 'workspace-1',
+    libraryId: 'workspace-1',
     name: '多文档定稿',
     enName: 'Multi final',
     description: 'desc',
@@ -518,8 +518,8 @@ it('offers finalized export for the selected non-primary document', () => {
 it('passes the archive choice to document export', async () => {
   const loadDocumentScene = vi.fn(async () => ({ id: 'scene-current', version: 1 as const, width: 100, height: 100, layers: [{ id: 'shape', type: 'shape' as const, kind: 'rect' as const, x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1, visible: true, locked: false, fill: '#fff', stroke: 'none', strokeWidth: 0 }] }));
   const exportDocument = vi.fn(async () => ({ path: '/tmp/archive.png', sha256: 'c'.repeat(64) }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, exportDocument };
-  const project: Project = { id: 'archive-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '归档项目', enName: 'Archive project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }] };
+  window.designhub = {  loadDocumentScene, exportDocument };
+  const project: Project = { id: 'archive-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '归档项目', enName: 'Archive project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }] };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: '导出' }));
@@ -528,13 +528,13 @@ it('passes the archive choice to document export', async () => {
 
 it('shows persisted export history for a project', async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
+
     listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{
       id: 'export-1', projectId: 'history-project', documentId: 'doc-1', revisionId: 'revision-1', format: 'png',
       targetPath: '/tmp/poster.png', sha256: 'a'.repeat(64), status: 'success', archived: false, createdAt: '2026-09-13T00:00:00.000Z',
     }]),
   };
-  const project: Project = { id: 'history-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '历史项目', enName: 'History project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  const project: Project = { id: 'history-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '历史项目', enName: 'History project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   await waitFor(() => expect(screen.getByText('PNG · revision-1')).toBeInTheDocument());
   expect(screen.getByText('成功')).toBeInTheDocument();
@@ -542,13 +542,13 @@ it('shows persisted export history for a project', async () => {
 
 it('uses the error tone for failed export history', async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
+
     listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{
       id: 'export-failed', projectId: 'failed-history-project', documentId: 'doc-1', revisionId: 'revision-1', format: 'png',
       targetPath: '/tmp/poster.png', status: 'failed', archived: false, errorCode: 'WRITE_FAILED', createdAt: '2026-09-13T00:00:00.000Z',
     }]),
   };
-  const project: Project = { id: 'failed-history-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '失败历史', enName: 'Failed history', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  const project: Project = { id: 'failed-history-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '失败历史', enName: 'Failed history', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
   render(<Harness initialView="delivery" deliveryProject={project} />);
 
   expect(await screen.findByText('失败')).toHaveClass('badge--error');
@@ -556,13 +556,13 @@ it('uses the error tone for failed export history', async () => {
 
 it('keeps history when its external target has moved', async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
+
     listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{
       id: 'export-moved', projectId: 'moved-project', documentId: 'doc-1', revisionId: 'revision-1', format: 'png',
       targetPath: '/tmp/missing.png', status: 'success', archived: false, targetAvailable: false, createdAt: '2026-09-13T00:00:00.000Z',
     }]),
   };
-  const project: Project = { id: 'moved-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '移动项目', enName: 'Moved project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  const project: Project = { id: 'moved-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '移动项目', enName: 'Moved project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   await waitFor(() => expect(screen.getByText(/目标已移动/)).toBeInTheDocument());
   expect(screen.getByText('成功')).toBeInTheDocument();
@@ -571,8 +571,8 @@ it('keeps history when its external target has moved', async () => {
 it('re-exports a historical revision through a new destination', async () => {
   const loadDocumentRevisions = vi.fn(async () => ({ revisions: [{ revisionId: 'revision-history', projectId: 'history-export', documentId: 'doc-1', parentRevisionId: null, operationId: 'op-1', sceneAssetId: 'scene-1', assetIds: [], contributions: [], createdAt: '2026-09-13T00:00:00.000Z', scene: { id: 'scene-1', version: 1 as const, width: 100, height: 100, layers: [] } }], timeline: [], finalRevisionId: null }));
   const exportDocument = vi.fn(async () => ({ path: '/tmp/re-export.png', sha256: 'e'.repeat(64) }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{ id: 'export-history', projectId: 'history-export', documentId: 'doc-1', revisionId: 'revision-history', format: 'png', targetPath: '/tmp/old.png', status: 'success', archived: false, createdAt: '2026-09-13T00:00:00.000Z' }]), loadDocumentRevisions, exportDocument };
-  const project: Project = { id: 'history-export', workspaceId: 'workspace-1', documentId: 'doc-1', name: '历史导出', enName: 'History export', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  window.designhub = {  listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{ id: 'export-history', projectId: 'history-export', documentId: 'doc-1', revisionId: 'revision-history', format: 'png', targetPath: '/tmp/old.png', status: 'success', archived: false, createdAt: '2026-09-13T00:00:00.000Z' }]), loadDocumentRevisions, exportDocument };
+  const project: Project = { id: 'history-export', libraryId: 'workspace-1', documentId: 'doc-1', name: '历史导出', enName: 'History export', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   await waitFor(() => expect(screen.getByText('PNG · revision-history')).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: '重新导出' }));
@@ -582,8 +582,8 @@ it('re-exports a historical revision through a new destination', async () => {
 it('reports an archive copy failure while retaining the external export result', async () => {
   const loadDocumentScene = vi.fn(async () => ({ id: 'scene-current', version: 1 as const, width: 100, height: 100, layers: [{ id: 'shape', type: 'shape' as const, kind: 'rect' as const, x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1, visible: true, locked: false, fill: '#fff', stroke: 'none', strokeWidth: 0 }] }));
   const exportDocument = vi.fn(async () => ({ path: '/tmp/archive.png', sha256: 'd'.repeat(64), archived: false, archiveError: 'TARGET_EXISTS' }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, exportDocument };
-  const project: Project = { id: 'archive-failure-project', workspaceId: 'workspace-1', documentId: 'doc-1', name: '归档失败', enName: 'Archive failure', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }] };
+  window.designhub = {  loadDocumentScene, exportDocument };
+  const project: Project = { id: 'archive-failure-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '归档失败', enName: 'Archive failure', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }] };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: '导出' }));
@@ -593,11 +593,11 @@ it('reports an archive copy failure while retaining the external export result',
 
 it('offers project package export for persisted projects', async () => {
   const exportProjectPackage = vi.fn(async () => ({ path: '/tmp/project.zip', sha256: 'a'.repeat(64) }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, exportProjectPackage };
-  const project: Project = { id: 'project-1', workspaceId: 'workspace-1', documentId: 'doc-1', name: '项目', enName: 'Project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
+  window.designhub = {  exportProjectPackage };
+  const project: Project = { id: 'project-1', libraryId: 'workspace-1', documentId: 'doc-1', name: '项目', enName: 'Project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 1 };
   render(<Harness initialView="delivery" deliveryProject={project} />);
   fireEvent.click(screen.getByRole('button', { name: '导出项目包' }));
-  await waitFor(() => expect(exportProjectPackage).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1' }));
+  await waitFor(() => expect(exportProjectPackage).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'project-1' }));
 });
 
 it('routes an empty delivery page back to project selection', () => {
@@ -620,7 +620,7 @@ it('changes theme and locale through the settings controls', () => {
 
 it('reports configured models in settings when a provider credential exists', async () => {
   const hasCredential = vi.fn(async (account: string) => account === 'openai-compatible:conversation');
-  window.designhub = { chooseWorkspaceDirectory: async () => null, hasCredential };
+  window.designhub = {  hasCredential };
   render(<Harness initialView="settings" />);
 
   await waitFor(() => expect(hasCredential).toHaveBeenCalledWith('openai-compatible:image'));
@@ -637,20 +637,20 @@ it('keeps model setup on the connections page without a redundant settings actio
 it('loads workspace trash entries and restores them through the desktop bridge', async () => {
   const listTrashedProjects = vi.fn(async () => [{ projectId: 'project-1', originalRelativePath: 'projects/project-1', deletedAt: '2026-09-12T00:00:00.000Z' }]);
   const restoreProjectFromTrash = vi.fn(async () => ({ projectId: 'project-1', restoredRelativePath: 'projects/project-1' }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTrashedProjects, restoreProjectFromTrash };
-  render(<Harness initialView="storage" workspaceId="workspace-1" />);
+  window.designhub = {  listTrashedProjects, restoreProjectFromTrash };
+  render(<Harness initialView="storage" libraryId="workspace-1" />);
 
   expect(await screen.findByText('project-1')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '恢复' }));
-  await waitFor(() => expect(restoreProjectFromTrash).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1' }));
+  await waitFor(() => expect(restoreProjectFromTrash).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'project-1' }));
   expect(await screen.findByText('废纸篓为空')).toBeInTheDocument();
 });
 
 it('persists backup destination and schedule per workspace', async () => {
-  const createWorkspaceBackup = vi.fn(async () => ({ directory: '/Volumes/Backups/workspace-1-2026.designhub-backup', workspaceId: 'workspace-1', createdAt: '2026-09-13T12:00:00.000Z' }));
+  const createWorkspaceBackup = vi.fn(async () => ({ directory: '/Volumes/Backups/workspace-1-2026.designhub-backup', libraryId: 'workspace-1', createdAt: '2026-09-13T12:00:00.000Z' }));
   localStorage.setItem('designhub.backup.workspace-1', JSON.stringify({ destinationParentDirectory: '/Volumes/Backups', schedule: 'daily', lastRunAt: null, lastArtifactPath: null }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, createWorkspaceBackup };
-  render(<Harness initialView="storage" workspaceId="workspace-1" />);
+  window.designhub = {  createWorkspaceBackup };
+  render(<Harness initialView="storage" libraryId="workspace-1" />);
   fireEvent.click(screen.getByRole('button', { name: '备份' }));
   expect(screen.getByRole('combobox', { name: '备份周期' })).toHaveValue('daily');
   expect(screen.getByText('/Volumes/Backups')).toBeInTheDocument();
@@ -671,8 +671,8 @@ it('hydrates backup preferences from workspace storage and writes updates throug
     },
   }));
   const saveWorkspaceSettings = vi.fn(async () => true);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadWorkspaceSettings, saveWorkspaceSettings };
-  render(<Harness initialView="storage" workspaceId="workspace-1" />);
+  window.designhub = {  loadWorkspaceSettings, saveWorkspaceSettings };
+  render(<Harness initialView="storage" libraryId="workspace-1" />);
   fireEvent.click(screen.getByRole('button', { name: '备份' }));
   expect(await screen.findByText('/WorkspaceBackups')).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: '备份周期' })).toHaveValue('weekly');
@@ -682,7 +682,7 @@ it('hydrates backup preferences from workspace storage and writes updates throug
 
 it('exports a redacted diagnostics preview through the desktop bridge', async () => {
   const exportDiagnostics = vi.fn(async () => '/tmp/designhub-diagnostics.json');
-  window.designhub = { chooseWorkspaceDirectory: async () => null, exportDiagnostics };
+  window.designhub = {  exportDiagnostics };
   render(<Harness initialView="settings" />);
   fireEvent.click(screen.getByRole('button', { name: '导出' }));
   await waitFor(() => expect(exportDiagnostics).toHaveBeenCalledWith({ runtime: 'Electron', errorCode: null }));
@@ -702,8 +702,8 @@ it('hydrates persisted model tasks in the task view', async () => {
     source: { kind: 'project' as const, id: 'project-1' },
     capability: 'image-generation', result: { imageCount: 2, cost: 0.04 },
   }]);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks };
-  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  window.designhub = {  listTasks };
+  render(<Harness initialView="tasks" libraryId="workspace-1" />);
   expect((await screen.findAllByText('处理中')).length).toBeGreaterThan(0);
   expect(screen.getAllByText('1')).toHaveLength(2);
   expect(listTasks).toHaveBeenCalledWith('workspace-1');
@@ -719,7 +719,7 @@ it('filters model tasks from the breadcrumb toolbar and keeps rows compact', asy
     taskRecord({ id: 'task-failed', state: 'failed', requestText: '失败请求', errorCode: 'PROVIDER_UNAVAILABLE' }),
     taskRecord({ id: 'task-cancelled', state: 'cancelled' }),
   ]);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks };
+  window.designhub = {  listTasks };
   render(<TaskHarness />);
 
   const toolbar = await screen.findByRole('group', { name: '任务状态' });
@@ -751,7 +751,7 @@ it('filters model tasks from the breadcrumb toolbar and keeps rows compact', asy
 
 it('shows an empty state when a task category has no matches', async () => {
   const listTasks = vi.fn(async () => [taskRecord({ id: 'task-completed', state: 'completed' })]);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks };
+  window.designhub = {  listTasks };
   render(<TaskHarness />);
   const toolbar = await screen.findByRole('group', { name: '任务状态' });
   fireEvent.click(within(toolbar).getByRole('button', { name: '排队0' }));
@@ -765,8 +765,8 @@ it('lets a running task be stopped through the desktop bridge', async () => {
     source: { kind: 'project' as const, id: 'project-1' },
   }]);
   const cancelTask = vi.fn(async () => true);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, cancelTask };
-  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  window.designhub = {  listTasks, cancelTask };
+  render(<Harness initialView="tasks" libraryId="workspace-1" />);
   await screen.findByText('处理中');
   fireEvent.click(screen.getByRole('button', { name: '停止' }));
   await waitFor(() => expect(cancelTask).toHaveBeenCalledWith('workspace-1', 'task-1'));
@@ -782,8 +782,8 @@ it('lets a failed task create a new retry attempt through the desktop bridge', a
     id: 'task-1-retry', requestId: 'request-1', state: 'running' as const, cancelRequested: false, attempt: 2,
     source: { kind: 'project' as const, id: 'project-1' }, requestText: '调整标题',
   }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask };
-  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  window.designhub = {  listTasks, retryTask };
+  render(<Harness initialView="tasks" libraryId="workspace-1" />);
   const failedTask = await screen.findByRole('article', { name: 'task-1' });
   expect(within(failedTask).getByText('失败')).toHaveClass('badge--error');
   fireEvent.click(screen.getByRole('button', { name: '重试' }));
@@ -824,7 +824,7 @@ it('shows generation batch progress and retries only the failed slot', async () 
       : slot),
     };
   });
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask, retryDesignGenerationSlot };
+  window.designhub = {  listTasks, retryTask, retryDesignGenerationSlot };
   render(<TaskHarness />);
 
   const progress = await screen.findByText('候选生成 2/3');
@@ -834,7 +834,7 @@ it('shows generation batch progress and retries only the failed slot', async () 
   expect(screen.getByText('视觉突破')).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: '重试构图探索' }));
 
-  await waitFor(() => expect(retryDesignGenerationSlot).toHaveBeenCalledWith({ workspaceId: 'workspace-1', taskId: 'design-1', slotId: 'composition' }));
+  await waitFor(() => expect(retryDesignGenerationSlot).toHaveBeenCalledWith({ libraryId: 'workspace-1', taskId: 'design-1', slotId: 'composition' }));
   await waitFor(() => expect(screen.getAllByText('候选生成 3/3').length).toBeGreaterThan(0), { timeout: 2_000 });
   expect(within(screen.getByRole('article', { name: 'design-1' })).queryByText('排队')).not.toBeInTheDocument();
   expect(listTasks.mock.calls.length).toBeGreaterThan(1);
@@ -849,8 +849,8 @@ it('does not offer an implicit retry for portfolio vision tasks without retained
     providerFailure: { kind: 'http' as const, status: 400, providerCode: 'invalid_image_format' },
   }]);
   const retryTask = vi.fn(async () => null);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask };
-  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  window.designhub = {  listTasks, retryTask };
+  render(<Harness initialView="tasks" libraryId="workspace-1" />);
   await screen.findByText('失败');
   expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
   expect(screen.getByTitle('Portfolio analysis: source-a · 服务请求被拒绝（HTTP 400，invalid_image_format） · 请重新选择作品集来源')).toBeInTheDocument();
@@ -864,8 +864,8 @@ it('does not offer an implicit retry for image edits without a recoverable sourc
     requestText: '去除背景', errorCode: 'PROVIDER_REQUEST_FAILED',
   }]);
   const retryTask = vi.fn(async () => null);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, listTasks, retryTask };
-  render(<Harness initialView="tasks" workspaceId="workspace-1" />);
+  window.designhub = {  listTasks, retryTask };
+  render(<Harness initialView="tasks" libraryId="workspace-1" />);
   await screen.findByText('失败');
   expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
   expect(screen.getByTitle('去除背景 · 请重新选择原图')).toBeInTheDocument();

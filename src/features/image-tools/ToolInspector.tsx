@@ -31,6 +31,7 @@ const toolLabel = (locale: Locale, tool: ImageTool): string => {
     'smart-crop': ['智能裁切', 'Smart crop'],
     upscale: ['放大图像', 'Upscale image'],
     resize: ['调整尺寸', 'Resize'],
+    'remove-watermark': ['移除水印', 'Remove watermark'],
   };
   const [zh, en] = labels[tool];
   return t(locale, zh, en);
@@ -40,6 +41,9 @@ const fieldLabel = (locale: Locale, key: string, fallback: string): string => {
   const labels: Record<string, [string, string]> = {
     edgeRefinement: ['边缘优化', 'Edge refinement'],
     prompt: ['描述', 'Prompt'],
+    source: ['背景来源', 'Background source'],
+    backgroundAssetId: ['背景素材', 'Background asset'],
+    backgroundColor: ['背景颜色', 'Background color'],
     lighting: ['光线', 'Lighting'],
     feather: ['羽化', 'Feather'],
     strength: ['强度', 'Strength'],
@@ -50,9 +54,13 @@ const fieldLabel = (locale: Locale, key: string, fallback: string): string => {
     width: ['宽度', 'Width'],
     height: ['高度', 'Height'],
     focus: ['焦点', 'Focus'],
+    safeArea: ['安全区', 'Safe area'],
+    mode: ['模式', 'Mode'],
     scale: ['倍率', 'Scale'],
     preserveDetails: ['细节', 'Detail mode'],
     format: ['格式', 'Format'],
+    fit: ['适配', 'Fit'],
+    rightsConfirmed: ['权利确认', 'Rights confirmation'],
   };
   const value = labels[key];
   return value ? t(locale, value[0], value[1]) : fallback;

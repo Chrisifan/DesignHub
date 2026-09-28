@@ -6,6 +6,7 @@ import { NewProjectForm } from './NewDesignPage';
 import { Drawer } from './Drawer';
 import { PageToolbarHost, PageToolbarProvider } from './PageToolbar';
 import { ProjectCanvas } from './ProjectCanvas';
+import { ProjectDetailPage } from './ProjectDetailPage';
 import { StudioHome } from './StudioHome';
 import { StudioUserMenu } from './StudioUserMenu';
 import { createAutomaticProjectName } from './auto-project-name';
@@ -13,7 +14,7 @@ import { localize, type PersonaProfile } from './personas';
 import { legacySeededDesignerIds } from '../../features/designers/persistence';
 import { Workbench } from './Workbench';
 import type { CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
-import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
+import type { ProjectLibraryDescriptor } from '../../features/project-library/open-project-library';
 import type { AppProfile } from '../../features/profile/model';
 import type { ActiveProject } from '../../features/workspace/project-store';
 import { getDesktopApi } from '../../platform/runtime';
@@ -28,6 +29,9 @@ import {
 import type { HomeConversationRequest, NewDesignDraft, PendingHomeConversation, Project, StudioSurface, Theme, View } from './types';
 import type { ProjectDesign, ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool, ToolParams } from '../../features/image-tools/target';
+import { resizeScene } from '../../features/image-tools/local-transform';
+import { selectConfiguredConnection } from '../../features/providers/connection';
+import type { ProviderConfigMap } from '../../features/providers/config';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
 
@@ -38,6 +42,7 @@ const navigation: { view: View; icon: string; zh: string; en: string }[] = [
   { view: 'brands', icon: 'palette', zh: '品牌包', en: 'Brand kits' },
   { view: 'connections', icon: 'plug', zh: '模型连接', en: 'Connections' },
   { view: 'tasks', icon: 'clock', zh: '模型任务', en: 'Model tasks' },
+  { view: 'image-tools', icon: 'wand-sparkles', zh: '图像工具', en: 'Image tools' },
   { view: 'delivery', icon: 'download', zh: '导出交付', en: 'Delivery' },
   { view: 'storage', icon: 'hard-drive', zh: '工作区管理', en: 'Workspace' },
 ];
@@ -57,13 +62,13 @@ const readOperatorName = (): string => {
   try { return localStorage.getItem('designhub.operator.name') ?? ''; } catch { return ''; }
 };
 
-const toStudioProject = (entry: ActiveProject, workspaceId: string): Project => {
+const toStudioProject = (entry: ActiveProject, libraryId: string): Project => {
   const snapshot = entry.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
   const primaryDesigner = snapshot?.name?.zh ?? snapshot?.name?.en;
   const documentEntries = entry.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }));
   return {
     id: entry.projectId,
-    workspaceId,
+    libraryId,
     documentId: entry.documents?.[0]?.id,
     name: entry.name,
     enName: entry.name,
@@ -109,13 +114,10 @@ type StudioProps = {
   locale: Locale;
   theme: Theme;
   profile?: Pick<AppProfile, 'displayName' | 'avatarDataUrl'> | null;
-  workspace?: WorkspaceDescriptor | null;
+  library?: ProjectLibraryDescriptor | null;
   onLocaleChange: (locale: Locale) => void;
   onThemeChange: (theme: Theme) => void;
   onExit?: () => void;
-  onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
-  recentWorkspaces?: WorkspaceDescriptor[];
-  onOpenWorkspace?: (directory: string) => Promise<WorkspaceDescriptor | null>;
   initialProjects?: Project[];
   initialDesignerOptions?: PersonaProfile[];
   initialAssets?: Parameters<typeof LibraryPages>[0]['initialAssets'];
@@ -125,7 +127,7 @@ type StudioProps = {
 export const Studio = ({
   locale,
   theme,
-  workspace = null,
+  library: workspace = null,
   profile = null,
   onLocaleChange,
   onThemeChange,
@@ -148,7 +150,8 @@ export const Studio = ({
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [deliveryProject] = useState<Project | null>(null);
   const [connectionsDialogOpen, setConnectionsDialogOpen] = useState(false);
-  const [designerCreateRequestId, setDesignerCreateRequestId] = useState(0);
+  const [providerRefreshKey, setProviderRefreshKey] = useState(0);
+  const designerCreateRequestId = 0;
   const [notice, setNotice] = useState('');
   const [newProjectDrawerOpen, setNewProjectDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<NewDesignDraft>({
@@ -166,6 +169,9 @@ export const Studio = ({
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [designerOptions, setDesignerOptions] = useState<PersonaProfile[]>(initialDesignerOptions);
   const [conversationConnected, setConversationConnected] = useState(false);
+  const [conversationConnectionId, setConversationConnectionId] = useState<string | null>(null);
+  const [imageConnectionId, setImageConnectionId] = useState<string | null>(null);
+  const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap | null>(null);
   const [pendingHomeConversation, setPendingHomeConversation] = useState<PendingHomeConversation | null>(null);
   const [operatorName, setOperatorName] = useState(() => profile?.displayName ?? readOperatorName());
   useEffect(() => {
@@ -193,7 +199,7 @@ export const Studio = ({
       setProjectsLoadFailed(false);
       setDesignerOptions([]);
       setDraft((current) => ({ ...current, personaId: '' }));
-      const request = getDesktopApi().listActiveProjects?.(workspace.workspaceId);
+      const request = getDesktopApi().listActiveProjects?.(workspace.libraryId);
       if (!request) {
         setProjects([]);
         setProjectsLoadFailed(true);
@@ -202,7 +208,7 @@ export const Studio = ({
         if (cancelled) return;
         if (!entries) { setProjects([]); setProjectsLoadFailed(true); return; }
         setProjectsLoadFailed(false);
-        setProjects(entries.map((entry) => toStudioProject(entry, workspace.workspaceId)));
+        setProjects(entries.map((entry) => toStudioProject(entry, workspace.libraryId)));
       }).catch(() => { if (!cancelled) { setProjects([]); setProjectsLoadFailed(true); } });
     }
     setSelected(null);
@@ -214,18 +220,48 @@ export const Studio = ({
     setSurface('projects');
     setTransitionDirection('forward');
     return () => { cancelled = true; };
-  }, [initialDesignerOptions, initialProjects, workspace?.workspaceId, locale, projectsReloadKey]);
+  }, [initialDesignerOptions, initialProjects, workspace?.libraryId, locale, projectsReloadKey]);
   useEffect(() => {
     let cancelled = false;
-    if (!workspace) { setConversationConnected(false); return () => { cancelled = true; }; }
-    const request = getDesktopApi().hasCredential?.('openai-compatible:conversation') ?? Promise.resolve(false);
-    void request.then((connected) => { if (!cancelled) setConversationConnected(Boolean(connected)); }).catch(() => undefined);
+    if (!workspace) {
+      setConversationConnected(false);
+      setConversationConnectionId(null);
+      setImageConnectionId(null);
+      setProviderConfigs(null);
+      return () => { cancelled = true; };
+    }
+    const api = getDesktopApi();
+    const configsRequest = api.loadProviderConfigs?.() ?? Promise.resolve(null);
+    const credentialRequest = Promise.all([
+      api.hasCredential?.('openai-compatible:conversation') ?? Promise.resolve(false),
+      api.hasCredential?.('openai-compatible:image') ?? Promise.resolve(false),
+    ]);
+    void Promise.all([configsRequest, credentialRequest]).then(([configs, [conversationCredential, imageCredential]]) => {
+      if (cancelled) return;
+      const normalizedConfigs = configs ?? {};
+      const nextConversationId = conversationCredential
+        ? selectConfiguredConnection('conversation', normalizedConfigs, ['openai-compatible:conversation'])
+        : null;
+      const nextImageId = imageCredential
+        ? selectConfiguredConnection('image-editing', normalizedConfigs, ['openai-compatible:image'])
+        : null;
+      setProviderConfigs(configs);
+      setConversationConnectionId(nextConversationId);
+      setImageConnectionId(nextImageId);
+      setConversationConnected(Boolean(nextConversationId));
+    }).catch(() => {
+      if (cancelled) return;
+      setProviderConfigs(null);
+      setConversationConnectionId(null);
+      setImageConnectionId(null);
+      setConversationConnected(false);
+    });
     return () => { cancelled = true; };
-  }, [workspace?.workspaceId]);
+  }, [providerRefreshKey, workspace?.libraryId]);
   useEffect(() => {
     let cancelled = false;
     if (!workspace) { setDesignerOptions(initialDesignerOptions); return () => { cancelled = true; }; }
-    const request = getDesktopApi().loadDesignerState?.(workspace.workspaceId);
+    const request = getDesktopApi().loadDesignerState?.(workspace.libraryId);
     void request?.then((state) => {
       if (cancelled) return;
       const profiles = (state?.profiles ?? [])
@@ -245,7 +281,12 @@ export const Studio = ({
   }, [initialDesignerOptions, workspace]);
   const navigate = (next: View) => {
     if (next === 'designers') {
-      setDesignerCreateRequestId((current) => current + 1);
+      const currentIndex = viewOrder.indexOf(view);
+      const nextIndex = viewOrder.indexOf(next);
+      setTransitionDirection(nextIndex >= currentIndex ? 'forward' : 'backward');
+      setView(next);
+      setSurface(next);
+      setDocumentOpen(false);
       return;
     }
     if (next === 'connections') {
@@ -280,7 +321,7 @@ export const Studio = ({
   const updateProject = async (patch: ProjectMetadataPatch): Promise<ProjectMetadata | null> => {
     if (!workspace || !selected || workspace.openMode !== 'writable') return null;
     try {
-      const metadata = await getDesktopApi().updateProjectMetadata?.({ workspaceId: workspace.workspaceId, projectId: selected.id, patch });
+      const metadata = await getDesktopApi().updateProjectMetadata?.({ libraryId: workspace.libraryId, projectId: selected.id, patch });
       if (!metadata) {
         notify(t(locale, '项目更新失败，请重试', 'Project update failed; try again'));
         return null;
@@ -298,7 +339,7 @@ export const Studio = ({
   const duplicateSelected = async (): Promise<void> => {
     if (!workspace || !selected || workspace.openMode !== 'writable') return;
     try {
-      const result = await getDesktopApi().duplicateProject?.({ workspaceId: workspace.workspaceId, sourceProjectId: selected.id, operationId: crypto.randomUUID() });
+      const result = await getDesktopApi().duplicateProject?.({ libraryId: workspace.libraryId, sourceProjectId: selected.id, operationId: crypto.randomUUID() });
       if (!result) return;
       const duplicate: Project = { ...selected, id: result.projectId, name: `${selected.name} copy`, enName: `${selected.enName} copy`, archived: false };
       setProjects((current) => [duplicate, ...current]);
@@ -310,11 +351,11 @@ export const Studio = ({
   const importProjectPackage = async (): Promise<void> => {
     if (!workspace || workspace.openMode !== 'writable') return;
     try {
-      const result = await getDesktopApi().importProjectPackage?.({ workspaceId: workspace.workspaceId });
+      const result = await getDesktopApi().importProjectPackage?.({ libraryId: workspace.libraryId });
       if (!result) return;
-      const entries = await getDesktopApi().listActiveProjects?.(workspace.workspaceId);
+      const entries = await getDesktopApi().listActiveProjects?.(workspace.libraryId);
       if (entries) {
-        setProjects(entries.map((entry) => toStudioProject(entry, workspace.workspaceId)));
+        setProjects(entries.map((entry) => toStudioProject(entry, workspace.libraryId)));
       }
       notify(t(locale, '项目包已导入', 'Project package imported'));
     } catch {
@@ -333,7 +374,7 @@ export const Studio = ({
   const searchRecords = projects.map((project) => {
     const brand = project.brandSnapshot as { source?: { brandId?: string } } | undefined;
     return {
-      workspaceId: project.workspaceId ?? 'preview',
+      libraryId: project.libraryId ?? 'preview',
       projectId: project.id,
       documentId: project.documentId ?? `${project.id}-overview`,
       title: `${project.name} ${project.enName}`,
@@ -352,18 +393,18 @@ export const Studio = ({
   const indexedProjects = buildSearchIndex(searchRecords);
   const [persistedSearchIds, setPersistedSearchIds] = useState<string[] | null>(null);
   useEffect(() => {
-    if (!workspace?.workspaceId || projects.length === 0) {
+    if (!workspace?.libraryId || projects.length === 0) {
       setPersistedSearchIds(null);
       return undefined;
     }
     let cancelled = false;
-    const rebuilt = getDesktopApi().rebuildSearchIndex?.(workspace.workspaceId, searchRecords) ?? Promise.resolve(true);
-    void rebuilt.then(() => getDesktopApi().searchProjects?.({ workspaceId: workspace.workspaceId, query }) ?? null).then((results) => {
+    const rebuilt = getDesktopApi().rebuildSearchIndex?.(workspace.libraryId, searchRecords) ?? Promise.resolve(true);
+    void rebuilt.then(() => getDesktopApi().searchProjects?.({ libraryId: workspace.libraryId, query }) ?? null).then((results) => {
       if (!cancelled && results) setPersistedSearchIds(results.map((item) => item.projectId));
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [projects, query, workspace?.workspaceId]);
-  const visibleProjectIds = new Set((persistedSearchIds ?? searchIndex(indexedProjects, { workspaceId: workspace?.workspaceId ?? 'preview', query }).map((item) => item.projectId)));
+  }, [projects, query, workspace?.libraryId]);
+  const visibleProjectIds = new Set((persistedSearchIds ?? searchIndex(indexedProjects, { libraryId: workspace?.libraryId ?? 'preview', query }).map((item) => item.projectId)));
   const visibleProjects = projects.filter((project) =>
     (filter === 'all' || Boolean(project.archived) === (filter === 'archived')) && visibleProjectIds.has(project.id),
   );
@@ -378,14 +419,14 @@ export const Studio = ({
   const createProjectFromHome = async (request: HomeConversationRequest, submitConversation = true): Promise<boolean> => {
     if (!workspace || workspace.openMode !== 'writable' || (submitConversation && !conversationConnected)) return false;
     setHomeCreationBusy(true);
-    const initiatingWorkspaceId = workspace.workspaceId;
+    const initiatingWorkspaceId = workspace.libraryId;
     const selectedDesigner = request.designerId
       ? designerOptions.find((profile) => profile.id === request.designerId && profile.status !== 'archived')
       : undefined;
     const name = createAutomaticProjectName(locale, projects.map((project) => project.name));
     try {
       const created = await getDesktopApi().createProjectContainer?.({
-        workspaceId: workspace.workspaceId,
+        libraryId: workspace.libraryId,
         operationId: crypto.randomUUID(),
         name,
         generationRatio: request.generationRatio,
@@ -400,13 +441,13 @@ export const Studio = ({
         notify(t(locale, '无法创建项目，请重试。', 'Could not create the project. Try again.'));
         return false;
       }
-      if (activeWorkspaceRef.current?.workspaceId !== initiatingWorkspaceId) {
+      if (activeWorkspaceRef.current?.libraryId !== initiatingWorkspaceId) {
         setHomeCreationBusy(false);
         return false;
       }
       const project: Project = {
         id: created.projectId,
-        workspaceId: workspace.workspaceId,
+        libraryId: workspace.libraryId,
         name,
         enName: name,
         generationRatio: request.generationRatio,
@@ -445,7 +486,7 @@ export const Studio = ({
       const selectedDesigner = designerOptions.find((profile) => profile.id === draft.personaId);
       const submittedCover = draft.cover;
       const created = await getDesktopApi().createProjectContainer?.({
-        workspaceId: workspace.workspaceId,
+        libraryId: workspace.libraryId,
         operationId: crypto.randomUUID(),
         name: draft.name.trim(),
         brief: draft.goal || undefined,
@@ -461,7 +502,7 @@ export const Studio = ({
       if (submittedCover) {
         try {
           const results = await getDesktopApi().importAssets?.({
-            workspaceId: workspace.workspaceId,
+            libraryId: workspace.libraryId,
             projectId: created.projectId,
             items: [{
               name: submittedCover.name,
@@ -473,7 +514,7 @@ export const Studio = ({
           const imported = results?.find((result) => result.status === 'success');
           if (!imported) throw new Error('PROJECT_COVER_IMPORT_FAILED');
           const metadata = await getDesktopApi().updateProjectMetadata?.({
-            workspaceId: workspace.workspaceId,
+            libraryId: workspace.libraryId,
             projectId: created.projectId,
             patch: { coverAssetId: imported.asset.id },
           });
@@ -485,7 +526,7 @@ export const Studio = ({
       }
       const project: Project = {
         id: created.projectId,
-        workspaceId: workspace.workspaceId,
+        libraryId: workspace.libraryId,
         name: draft.name.trim(),
         enName: draft.name.trim(),
         description: draft.goal,
@@ -558,15 +599,20 @@ export const Studio = ({
     );
   };
   const submitProjectConversation = async (project: Project, message: string, attachments: import('../../features/agent/task-service').ConversationImageAttachment[] = [], context: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] } = {}): Promise<import('../../features/tasks/state').TaskRecord | null> => {
-    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+    if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return null;
+    }
+    if (!conversationConnectionId) {
+      notify(t(locale, '请先配置对话模型连接。', 'Configure a conversation model connection first.'));
       return null;
     }
     try {
       const task = await getDesktopApi().submitConversation?.({
-        workspaceId: workspace.workspaceId,
+        libraryId: workspace.libraryId,
         projectId: project.id,
-        connectionId: 'openai-compatible',
+        connectionId: conversationConnectionId,
+        ...(providerConfigs?.[conversationConnectionId as keyof ProviderConfigMap]?.conversation.models.conversation ? { model: providerConfigs[conversationConnectionId as keyof ProviderConfigMap]!.conversation.models.conversation } : {}),
         message,
         ...context,
         ...(attachments.length ? { attachments } : {}),
@@ -583,17 +629,22 @@ export const Studio = ({
     }
   };
   const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null, generationRatio: Project['generationRatio'] = project.generationRatio ?? '3:4', count: 1 | 3 = 3): Promise<import('../../features/tasks/state').TaskRecord | null> => {
-    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+    if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return null;
+    }
+    if (!imageConnectionId) {
+      notify(t(locale, '请先配置图片生成连接。', 'Configure an image generation connection first.'));
       return null;
     }
     try {
       const task = await getDesktopApi().submitDesignGeneration?.({
-        workspaceId: workspace.workspaceId,
+        libraryId: workspace.libraryId,
         projectId: project.id,
         conversationTaskId,
         baseRevisionId,
-        connectionId: 'openai-compatible',
+        connectionId: imageConnectionId,
+        ...(providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image.models['image-generation'] ? { model: providerConfigs[imageConnectionId as keyof ProviderConfigMap]!.image.models['image-generation'] } : {}),
         generationRatio,
         count,
       });
@@ -609,25 +660,30 @@ export const Studio = ({
     }
   };
   const submitProjectDesignBackgroundRemoval = async (project: Project, design: ProjectDesign): Promise<void> => {
-    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+    if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return;
+    }
+    if (!imageConnectionId) {
+      notify(t(locale, '请先配置图片编辑连接。', 'Configure an image editing connection first.'));
       return;
     }
     try {
       const api = getDesktopApi();
-      const bytes = await api.readAsset?.({ workspaceId: workspace.workspaceId, projectId: project.id, assetId: design.assetId });
+      const bytes = await api.readAsset?.({ libraryId: workspace.libraryId, projectId: project.id, assetId: design.assetId });
       if (!bytes) {
         notify(t(locale, '无法读取目标设计稿。', 'Could not read the selected design.'));
         return;
       }
       const documentId = project.documentId ?? project.documentEntries?.[0]?.id ?? design.id;
       const task = await api.submitImageEdit?.({
-        workspaceId: workspace.workspaceId,
+        libraryId: workspace.libraryId,
         projectId: project.id,
         documentId,
         baseRevisionId: null,
         designerVersionId: project.activeDesignerVersionId,
-        connectionId: 'openai-compatible',
+        connectionId: imageConnectionId,
+        ...(providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image.models['image-editing'] ? { model: providerConfigs[imageConnectionId as keyof ProviderConfigMap]!.image.models['image-editing'] } : {}),
         prompt: t(locale, '去除图片背景，保留主体并生成干净边缘。', 'Remove the image background while preserving the subject with clean edges.'),
         image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }),
         sourceAssetId: design.assetId,
@@ -651,9 +707,14 @@ export const Studio = ({
       notify(t(locale, '去除背景失败，请检查连接。', 'Background removal failed. Check the connection.'));
     }
   };
-  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; region?: { x: number; y: number; width: number; height: number } }): Promise<void> => {
-    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: { x: number; y: number; width: number; height: number } }): Promise<void> => {
+    if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return;
+    }
+    const requiredConnection = input.tool === 'resize' ? null : imageConnectionId;
+    if (input.tool !== 'resize' && !requiredConnection) {
+      notify(t(locale, '请先配置图片编辑连接。', 'Configure an image editing connection first.'));
       return;
     }
     const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
@@ -663,30 +724,49 @@ export const Studio = ({
     }
     try {
       const api = getDesktopApi();
-      const scene = await api.loadDocumentScene?.(workspace.workspaceId, project.id, documentId);
-      const imageLayer = scene?.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder');
-      if (!imageLayer) {
-        notify(t(locale, '当前文档没有受管图像。', 'The current document has no managed image layer.'));
+      const scene = await api.loadDocumentScene?.(workspace.libraryId, project.id, documentId);
+      if (input.tool === 'resize') {
+        if (!scene) throw new Error('SCENE_NOT_FOUND');
+        const width = typeof input.params.width === 'number' ? input.params.width : scene.width;
+        const height = typeof input.params.height === 'number' ? input.params.height : scene.height;
+        const resized = resizeScene(scene, { width, height });
+        const saved = await api.saveDocumentScene?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, scene: resized });
+        if (!saved) throw new Error('SCENE_SAVE_FAILED');
+        await api.commitDocumentRevision?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, operationId: `local-resize-${crypto.randomUUID()}`, sceneAssetId: resized.id, assetIds: resized.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image').map((layer) => layer.assetId), contributions: [] , scene: resized });
+        notify(t(locale, '尺寸已更新并保存版本。', 'Size updated and revision saved.'));
         return;
       }
-      const bytes = await api.readAsset?.({ workspaceId: workspace.workspaceId, projectId: project.id, assetId: imageLayer.assetId });
+      const imageLayer = scene?.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.id === input.targetLayerId && layer.assetId !== 'placeholder');
+      if (!imageLayer) {
+        notify(t(locale, '请选择一个有效的受管图片图层。', 'Select a valid managed image layer.'));
+        return;
+      }
+      const bytes = await api.readAsset?.({ libraryId: workspace.libraryId, projectId: project.id, assetId: imageLayer.assetId });
       if (!bytes) {
         notify(t(locale, '无法读取目标图像。', 'Could not read the target image.'));
         return;
       }
-      const task = await api.submitImageEdit?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), sourceAssetId: imageLayer.assetId, tool: input.tool, toolParams: input.params, ...(input.region ? { region: input.region } : {}) });
+      const editingModel = requiredConnection ? providerConfigs?.[requiredConnection as keyof ProviderConfigMap]?.image.models['image-editing'] : undefined;
+      const task = await api.submitImageEdit?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: requiredConnection ?? '', ...(editingModel ? { model: editingModel } : {}), prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), sourceAssetId: imageLayer.assetId, targetLayerId: input.targetLayerId, ...(scene ? { beforeScene: scene } : {}), tool: input.tool, toolParams: input.params, ...(input.region ? { region: input.region } : {}) });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;
       }
-      notify(t(locale, `${input.tool} 任务已排队。`, `${input.tool} task queued.`));
+      const toolLabel = input.tool === 'remove-background'
+        ? t(locale, '去除背景', 'Background removal')
+        : input.tool;
+      notify(t(locale, `${toolLabel}任务已排队。`, `${toolLabel} task queued.`));
     } catch {
       notify(t(locale, '图像任务提交失败，请检查连接。', 'Image task submission failed. Check the connection.'));
     }
   };
   const submitProjectImageGeneration = async (project: Project, prompt: string, baseRevisionId: string | null): Promise<void> => {
-    if (!workspace || workspace.openMode !== 'writable' || !project.workspaceId) {
+    if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
+      return;
+    }
+    if (!imageConnectionId) {
+      notify(t(locale, '请先配置图片生成连接。', 'Configure an image generation connection first.'));
       return;
     }
     const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
@@ -696,9 +776,9 @@ export const Studio = ({
     }
     try {
       const api = getDesktopApi();
-      const providerConfigs = await (api.loadProviderConfigs?.() ?? Promise.resolve(null)).catch(() => null);
-      const count = providerConfigs?.['openai-compatible']?.image?.imageTransport === 'responses' ? 1 : 2;
-      const task = await api.submitImageGeneration?.({ workspaceId: workspace.workspaceId, projectId: project.id, documentId, baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: 'openai-compatible', prompt, size: `${project.documentEntries?.find((entry) => entry.id === documentId)?.width ?? 1080}x${project.documentEntries?.find((entry) => entry.id === documentId)?.height ?? 1440}`, count });
+      const count = providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image?.imageTransport === 'responses' ? 1 : 2;
+      const generationModel = providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image.models['image-generation'];
+      const task = await api.submitImageGeneration?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: imageConnectionId, ...(generationModel ? { model: generationModel } : {}), prompt, size: `${project.documentEntries?.find((entry) => entry.id === documentId)?.width ?? 1080}x${project.documentEntries?.find((entry) => entry.id === documentId)?.height ?? 1440}`, count });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;
@@ -719,7 +799,7 @@ export const Studio = ({
   const toolbarActions =
     surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
       <>
-        {workspace?.openMode === 'writable' && selected.workspaceId && <>
+        {workspace?.openMode === 'writable' && selected.libraryId && <>
           <IconButton name="settings" label={t(locale, '重命名', 'Rename')} onClick={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }} />
           <IconButton name="copy" label={t(locale, '复制', 'Duplicate')} onClick={() => { void duplicateSelected(); }} />
           {!selected.archived && <IconButton name="folder" label={t(locale, '归档', 'Archive')} onClick={() => { void updateProject({ archived: true }); }} />}
@@ -771,7 +851,7 @@ export const Studio = ({
         <div className="studio-body">
           {surface === 'projects' && view === 'projects' && !selected && (
             <StudioHome
-              workspaceId={workspace?.workspaceId}
+              libraryId={workspace?.libraryId}
               locale={locale}
               projects={projects}
               visibleProjects={visibleProjects}
@@ -798,12 +878,31 @@ export const Studio = ({
               notify={notify}
             />
           )}
-          {surface === 'projects' && view === 'projects' && selected && !documentOpen && (
+          {surface === 'projects' && view === 'projects' && selected && !documentOpen && !workspace && (
+            <div className={`studio-view-shell studio-view-enter studio-view-enter-${transitionDirection}`}>
+              <ProjectDetailPage
+                locale={locale}
+                project={selected}
+                profiles={designerOptions}
+                projectTitle={selected.name}
+                activeDesignerId={selected.activeDesignerVersionId ?? ''}
+                designerLabel={designerOptions.find((profile) => profile.id === selected.activeDesignerVersionId)?.name.zh ?? ''}
+                contributorIds={[...(selected.activeDesignerVersionId ? [selected.activeDesignerVersionId] : []), ...(selected.contributorDesignerVersionIds ?? [])]}
+                contributorLabel={selected.designers.join('、')}
+                onOpenDocument={(documentId, index) => {
+                  setActiveDocumentId(documentId ?? selected.documentEntries?.[index]?.id ?? selected.documentId ?? null);
+                  setDocumentOpen(true);
+                  setTransitionDirection('forward');
+                }}
+              />
+            </div>
+          )}
+          {surface === 'projects' && view === 'projects' && selected && !documentOpen && workspace && (
             <div className={`studio-view-shell studio-view-enter studio-view-enter-${transitionDirection}`}>
               <ProjectCanvas
                 locale={locale}
                 project={selected}
-                workspaceId={workspace?.workspaceId}
+                libraryId={workspace?.libraryId}
                 readOnly={workspace?.openMode !== 'writable'}
                 conversationConnected={conversationConnected}
                 designer={designerOptions.find((profile) => profile.id === selected.activeDesignerVersionId) ?? null}
@@ -818,6 +917,11 @@ export const Studio = ({
                 }}
                 onGenerationRatioChange={(generationRatio) => { void updateProject({ generationRatio }); }}
                 notify={notify}
+                onOpenDocument={(documentId) => {
+                  setActiveDocumentId(documentId);
+                  setDocumentOpen(true);
+                  setTransitionDirection('forward');
+                }}
               onBack={() => { setTransitionDirection('backward'); setSelected(null); }}
                 onRename={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}
                 onDuplicate={() => { void duplicateSelected(); }}
@@ -843,7 +947,7 @@ export const Studio = ({
               <Workbench
                 locale={locale}
                 project={project}
-                workspaceId={project.workspaceId}
+                libraryId={project.libraryId}
                 documentId={project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId}
                 onBack={() => { setTransitionDirection('backward'); setDocumentOpen(false); }}
                 onConnections={() => navigate('connections')}
@@ -884,7 +988,7 @@ export const Studio = ({
                   locale={locale}
                   view={item.view as Exclude<View, 'projects'>}
                   deliveryProject={deliveryProject}
-                  workspaceId={workspace?.workspaceId}
+                  libraryId={workspace?.libraryId}
                   projectId={selected?.id ?? projects[0]?.id}
                   readOnly={workspace?.openMode === 'read-only'}
                   notify={notify}
@@ -902,7 +1006,10 @@ export const Studio = ({
                   preview={!workspace}
                   active={surface === item.view && view === item.view}
                   connectionsDialogOpen={connectionsDialogOpen}
-                  onConnectionsDialogClose={() => setConnectionsDialogOpen(false)}
+                  onConnectionsDialogClose={() => {
+                    setConnectionsDialogOpen(false);
+                    setProviderRefreshKey((current) => current + 1);
+                  }}
                   designerCreateRequestId={designerCreateRequestId}
                   onDesignerProfilesChange={setDesignerOptions}
                 />

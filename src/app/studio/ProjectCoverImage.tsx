@@ -4,25 +4,25 @@ import { getDesktopApi } from '../../platform/runtime';
 import { defaultProjectCoverUrl } from './project-cover';
 
 type ProjectCoverImageProps = {
-  workspaceId?: string;
+  libraryId?: string;
   projectId: string;
   coverAssetId?: string;
   previewUrl?: string;
   alt: string;
 };
 
-export const ProjectCoverImage = ({ workspaceId, projectId, coverAssetId, previewUrl, alt }: ProjectCoverImageProps) => {
+export const ProjectCoverImage = ({ libraryId, projectId, coverAssetId, previewUrl, alt }: ProjectCoverImageProps) => {
   const [source, setSource] = useState(previewUrl ?? defaultProjectCoverUrl);
 
   useEffect(() => {
-    if (previewUrl || !workspaceId || !coverAssetId) {
+    if (previewUrl || !libraryId || !coverAssetId) {
       setSource(previewUrl ?? defaultProjectCoverUrl);
       return undefined;
     }
     let cancelled = false;
     let objectUrl: string | undefined;
     setSource(defaultProjectCoverUrl);
-    const request = getDesktopApi().readAsset?.({ workspaceId, projectId, assetId: coverAssetId });
+    const request = getDesktopApi().readAsset?.({ libraryId, projectId, assetId: coverAssetId });
     void request?.then((bytes) => {
       if (cancelled || !bytes) return;
       const buffer = bytes.slice().buffer as ArrayBuffer;
@@ -35,7 +35,7 @@ export const ProjectCoverImage = ({ workspaceId, projectId, coverAssetId, previe
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [coverAssetId, previewUrl, projectId, workspaceId]);
+  }, [coverAssetId, previewUrl, projectId, libraryId]);
 
   return (
     <img

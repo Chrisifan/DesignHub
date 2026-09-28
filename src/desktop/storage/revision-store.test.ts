@@ -20,7 +20,7 @@ const withWorkspace = async (run: (workspaceDirectory: string) => Promise<void>)
 it('persists document revisions and finalization across workspace reopen', async () => {
   await withWorkspace(async (directory) => {
     const workspace = await openProjectLibrary(directory);
-    const projectId = (await createProjectStore(workspace).createProjectContainer({ workspaceId: workspace.library.libraryId, operationId: 'revision-project', name: 'Revision project', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200 }] })).projectId;
+    const projectId = (await createProjectStore(workspace).createProjectContainer({ libraryId: workspace.library.libraryId, operationId: 'revision-project', name: 'Revision project', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200 }] })).projectId;
     const first = await commitDocumentRevision(workspace, { workspaceId: workspace.library.libraryId, projectId, documentId: 'doc-1', baseRevisionId: null, operationId: 'revision-1', sceneAssetId: 'scene-1', assetIds: ['asset-1'], contributions: [], operatorName: 'Designer' });
     await setFinalDocumentRevision(workspace, { workspaceId: workspace.library.libraryId, projectId, documentId: 'doc-1', revisionId: first.revisionId });
     await setFinalDocumentRevision(workspace, { workspaceId: workspace.library.libraryId, projectId, documentId: 'doc-1', revisionId: first.revisionId });
@@ -38,7 +38,7 @@ it('reuses an operation id and rejects a foreign parent revision', async () => {
   await withWorkspace(async (directory) => {
     const workspace = await openProjectLibrary(directory);
     try {
-      const projectId = (await createProjectStore(workspace).createProjectContainer({ workspaceId: workspace.library.libraryId, operationId: 'revision-project-2', name: 'Revision project', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200 }, { id: 'doc-2', name: 'Square', width: 100, height: 100 }] })).projectId;
+      const projectId = (await createProjectStore(workspace).createProjectContainer({ libraryId: workspace.library.libraryId, operationId: 'revision-project-2', name: 'Revision project', documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200 }, { id: 'doc-2', name: 'Square', width: 100, height: 100 }] })).projectId;
       const first = await commitDocumentRevision(workspace, { workspaceId: workspace.library.libraryId, projectId, documentId: 'doc-1', baseRevisionId: null, operationId: 'revision-duplicate', sceneAssetId: 'scene-1', assetIds: [], contributions: [] });
       await expect(commitDocumentRevision(workspace, { workspaceId: workspace.library.libraryId, projectId, documentId: 'doc-1', baseRevisionId: null, operationId: 'revision-duplicate', sceneAssetId: 'scene-1', assetIds: [], contributions: [] })).resolves.toEqual(first);
       await expect(commitDocumentRevision(workspace, { workspaceId: workspace.library.libraryId, projectId, documentId: 'doc-2', baseRevisionId: first.revisionId, operationId: 'revision-foreign', sceneAssetId: 'scene-2', assetIds: [], contributions: [] })).rejects.toThrow('REVISION_NOT_FOUND');
@@ -51,7 +51,7 @@ it('rejects a symlinked revision state instead of reading outside the project', 
     const workspace = await openProjectLibrary(directory);
     try {
       const projectId = (await createProjectStore(workspace).createProjectContainer({
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         operationId: 'revision-symlink-project',
         name: 'Revision project',
         documents: [{ id: 'doc-1', name: 'Poster', width: 100, height: 200 }],

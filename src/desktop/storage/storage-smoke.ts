@@ -10,7 +10,7 @@ export const runStorageSmoke = async (resultPath: string): Promise<void> => {
   const workspace = await initializeProjectLibrary(parentDirectory);
   try {
     const result = await createProjectStore(workspace).createProjectContainer({
-      workspaceId: workspace.library.libraryId,
+      libraryId: workspace.library.libraryId,
       operationId: 'electron-storage-smoke',
       name: 'Electron storage smoke',
     });

@@ -1,8 +1,7 @@
 import type { AssetImportItem, AssetImportResult, ManagedAsset } from './import-assets';
 
 export type AssetStoreInput = {
-  workspaceId: string;
-  libraryId?: string;
+  libraryId: string;
   projectId: string;
   /** Internal task recovery may opt into temporary conversation references. */
   includeContextAssets?: boolean;

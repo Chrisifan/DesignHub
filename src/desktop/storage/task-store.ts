@@ -11,6 +11,7 @@ import {
   type DesignGenerationSlot,
   type DesignGenerationSlotId,
   type TaskCandidate,
+  type ToolCandidate,
   type TaskProviderFailure,
   type TaskRecord,
   type TaskSource,
@@ -19,11 +20,12 @@ import {
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { getWritableProjectLibraryLease } from './project-library-store';
+import { isScene } from '../../features/canvas/scene';
 
 export const tasksFileName = 'tasks.json';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
-const isTaskState = (value: unknown): value is TaskState => value === 'queued' || value === 'running' || value === 'completed' || value === 'failed' || value === 'cancelled';
+const isTaskState = (value: unknown): value is TaskState => value === 'queued' || value === 'running' || value === 'completed' || value === 'failed' || value === 'cancelled' || value === 'unknown';
 const isTaskSource = (value: unknown): value is TaskSource => isRecord(value)
   && (value.kind === 'project' || value.kind === 'creation-draft' || value.kind === 'designer-draft')
   && typeof value.id === 'string'
@@ -56,12 +58,27 @@ const isTaskCandidate = (value: unknown): value is TaskCandidate => isRecord(val
   && (value.parentConversationTaskId === undefined || typeof value.parentConversationTaskId === 'string')
   && (value.designerVersionId === undefined || typeof value.designerVersionId === 'string')
   && typeof value.createdAt === 'string';
+const isToolCandidate = (value: unknown): value is ToolCandidate => isRecord(value)
+  && Object.keys(value).every((key) => ['taskId', 'tool', 'sourceAssetId', 'baseRevisionId', 'resultAssetId', 'beforeScene', 'candidateScene', 'toolParams', 'providerId', 'model', 'remoteRequestId'].includes(key))
+  && typeof value.taskId === 'string' && value.taskId.trim().length > 0
+  && imageTools.includes(value.tool as typeof imageTools[number])
+  && typeof value.sourceAssetId === 'string' && value.sourceAssetId.trim().length > 0
+  && (value.baseRevisionId === null || typeof value.baseRevisionId === 'string')
+  && typeof value.resultAssetId === 'string' && value.resultAssetId.trim().length > 0
+  && isScene(value.beforeScene) && isScene(value.candidateScene)
+  && (value.toolParams === undefined || validateToolParams(value.tool as typeof imageTools[number], value.toolParams).ok)
+  && (value.providerId === undefined || typeof value.providerId === 'string')
+  && (value.model === undefined || typeof value.model === 'string')
+  && (value.remoteRequestId === undefined || typeof value.remoteRequestId === 'string');
 const isGenerationSlot = (value: unknown): value is DesignGenerationSlot => isRecord(value)
   && Object.keys(value).every((key) => ['id', 'direction', 'state', 'attempt', 'assetId', 'candidateId', 'errorCode', 'providerFailure', 'cost'].includes(key))
   && designGenerationSlotIds.includes(value.id as DesignGenerationSlotId)
   && typeof value.direction === 'string' && value.direction.trim().length > 0
   && (value.state === 'queued' || value.state === 'running' || value.state === 'completed' || value.state === 'failed' || value.state === 'cancelled')
   && Number.isInteger(value.attempt) && Number(value.attempt) > 0
+  && (value.remoteRequestId === undefined || (typeof value.remoteRequestId === 'string' && value.remoteRequestId.trim().length > 0))
+  && (value.remoteSupportsCancellation === undefined || typeof value.remoteSupportsCancellation === 'boolean')
+  && (value.remoteSupportsStatusQuery === undefined || typeof value.remoteSupportsStatusQuery === 'boolean')
   && (value.assetId === undefined || typeof value.assetId === 'string')
   && (value.candidateId === undefined || typeof value.candidateId === 'string')
   && (value.errorCode === undefined || typeof value.errorCode === 'string')
@@ -77,7 +94,7 @@ const isRegion = (value: unknown): boolean => isRecord(value)
   && Number(value.width) > 0 && Number(value.height) > 0;
 const isDesignContext = (value: unknown): boolean => isRecord(value)
   && value.version === 1
-  && typeof value.workspaceId === 'string' && value.workspaceId.trim().length > 0
+  && ((typeof value.libraryId === 'string' && value.libraryId.trim().length > 0) || (typeof value.workspaceId === 'string' && value.workspaceId.trim().length > 0))
   && typeof value.projectId === 'string' && value.projectId.trim().length > 0
   && typeof value.documentId === 'string' && value.documentId.trim().length > 0
   && typeof value.brief === 'string'
@@ -96,13 +113,14 @@ const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> =>
   const candidatesValid = value.candidates === undefined || (Array.isArray(value.candidates)
     && value.candidates.every(isTaskCandidate)
     && new Set(value.candidates.map((candidate) => candidate.id)).size === value.candidates.length);
-  return Object.keys(value).every((key) => ['text', 'sceneAssetId', 'assetIds', 'imageCount', 'cost', 'candidate', 'candidates'].includes(key))
+  return Object.keys(value).every((key) => ['text', 'sceneAssetId', 'assetIds', 'imageCount', 'cost', 'candidate', 'candidates', 'toolCandidate'].includes(key))
     && (value.text === undefined || typeof value.text === 'string')
     && (value.sceneAssetId === undefined || typeof value.sceneAssetId === 'string')
     && (value.assetIds === undefined || (Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')))
     && (value.imageCount === undefined || (Number.isInteger(value.imageCount) && Number(value.imageCount) >= 0))
     && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0))
     && (value.candidate === undefined || isTaskCandidate(value.candidate))
+    && (value.toolCandidate === undefined || isToolCandidate(value.toolCandidate))
     && candidatesValid;
 };
 const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
@@ -124,6 +142,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.contextVersion === undefined || value.contextVersion === 1)
   && (value.designContext === undefined || isDesignContext(value.designContext))
   && (value.sourceAssetId === undefined || typeof value.sourceAssetId === 'string')
+  && (value.maskAssetId === undefined || typeof value.maskAssetId === 'string')
   && (value.hasMask === undefined || typeof value.hasMask === 'boolean')
   && (value.baseRevisionId === undefined || value.baseRevisionId === null || typeof value.baseRevisionId === 'string')
   && (value.designerVersionId === undefined || typeof value.designerVersionId === 'string')
@@ -183,7 +202,9 @@ export const loadTaskState = async (handle: ProjectLibraryHandle, workspaceId: s
     throw new Error('INVALID_TASK_STATE');
   }
   if (!Array.isArray(parsed) || !parsed.every(isTaskRecord)) throw new Error('INVALID_TASK_STATE');
-  return structuredClone(parsed);
+  return structuredClone(parsed).map((task) => task.designContext && !task.designContext.libraryId
+    ? { ...task, designContext: { ...task.designContext, libraryId: (task.designContext as unknown as { workspaceId: string }).workspaceId } }
+    : task);
 };
 
 export const saveTaskState = async (handle: ProjectLibraryHandle, workspaceId: string, tasks: readonly TaskRecord[]): Promise<boolean> => {
@@ -192,7 +213,10 @@ export const saveTaskState = async (handle: ProjectLibraryHandle, workspaceId: s
   assertRegularTaskFile(path, true);
   const temporary = join(join(path, '..'), `.${tasksFileName}.tmp-${randomUUID()}`);
   try {
-    await writeFile(temporary, `${JSON.stringify(tasks, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
+    const persisted = tasks.map((task) => task.designContext
+      ? { ...task, designContext: { ...task.designContext, workspaceId: task.designContext.libraryId, libraryId: undefined } }
+      : task);
+    await writeFile(temporary, `${JSON.stringify(persisted, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
     await rename(temporary, path);
   } catch (error) {
     await rm(temporary, { force: true });

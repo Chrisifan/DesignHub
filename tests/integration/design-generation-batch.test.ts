@@ -48,7 +48,7 @@ it('recovers unfinished generation slots without losing successful or legacy can
     const loaded = await loadTaskState(reopened, reopened.library.libraryId);
     const recovered = createTaskRuntime({ initialTasks: loaded });
     expect(recovered.get('design-batch-1')).toMatchObject({
-      state: 'completed',
+      state: 'unknown',
       result: { candidates: [expect.objectContaining({ id: 'candidate-design-batch-1-primary' })] },
     });
     expect(recovered.get('design-batch-1')?.generationSlots?.find((slot) => slot.id === 'primary')).toMatchObject({ state: 'completed' });

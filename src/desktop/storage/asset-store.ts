@@ -53,7 +53,7 @@ const isContentManifest = (value: unknown, projectId: string): value is ContentM
   && value.assets.every(isPersistedAsset);
 
 const validateStoreInput = (input: AssetStoreInput): void => {
-  if (typeof (input.libraryId ?? input.workspaceId) !== 'string' || (input.libraryId ?? input.workspaceId).trim().length === 0) throw new Error('INVALID_WORKSPACE_ID');
+  if (typeof (input.libraryId ?? input.libraryId) !== 'string' || (input.libraryId ?? input.libraryId).trim().length === 0) throw new Error('INVALID_WORKSPACE_ID');
   if (typeof input.projectId !== 'string' || !projectIdPattern.test(input.projectId)) throw new Error('INVALID_PROJECT_ID');
 };
 
@@ -70,7 +70,7 @@ const canonicalDirectory = (directory: string, errorMessage: string): string => 
 
 const resolveProjectDirectory = (handle: ProjectLibraryHandle, input: AssetStoreInput, writable: boolean): string => {
   validateStoreInput(input);
-  if (handle.library.libraryId !== (input.libraryId ?? input.workspaceId)) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  if (handle.library.libraryId !== (input.libraryId ?? input.libraryId)) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   if (writable && !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
   const directory = resolveProjectPath(handle, input.projectId);
   if (!directory) throw new Error('PROJECT_NOT_FOUND');

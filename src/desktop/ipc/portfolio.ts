@@ -3,14 +3,14 @@ import type { TaskRecord } from '../../features/tasks/state';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type { PortfolioInspection, PortfolioInspectionRequest, PortfolioSelectionInput, PortfolioUploadFile } from '../../platform/contracts';
 import type { PortfolioSourceInspector } from '../portfolio-source-inspector';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const portfolioInspectChannel = 'portfolio:inspect';
 export const portfolioSelectChannel = 'portfolio:select';
 export const portfolioDiscardChannel = 'portfolio:discard';
 
 export type PortfolioInspectionBridgeInput = {
-  workspaceId: string;
+  libraryId: string;
   request: PortfolioInspectionRequest;
 };
 
@@ -45,7 +45,7 @@ const isUploadBatch = (files: unknown): files is PortfolioUploadFile[] => {
 const isInspectionInput = (value: unknown): value is PortfolioInspectionBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  if (!isNonEmpty(input.workspaceId) || !input.request || typeof input.request !== 'object') return false;
+  if (!isNonEmpty(input.libraryId) || !input.request || typeof input.request !== 'object') return false;
   const request = input.request as Record<string, unknown>;
   if (request.url !== undefined) return false;
   if (request.kind === 'local-files') return request.files === undefined;
@@ -65,25 +65,25 @@ const isSelectionInput = (value: unknown): value is PortfolioSelectionBridgeInpu
   };
   if (!selections.every(isSelection)) return false;
   const sourceCount = selections.reduce((total, selection) => total + selection.sourceIds.length, 0);
-  return isNonEmpty(input.workspaceId) && isNonEmpty(input.connectionId)
+  return isNonEmpty(input.libraryId) && isNonEmpty(input.connectionId)
     && input.rightsConfirmed === true && source !== null && typeof source === 'object'
     && (source as Record<string, unknown>).kind === 'designer-draft' && isIdentifier((source as Record<string, unknown>).id)
     && new Set(selections.map((selection) => selection.inspectionId)).size === selections.length
     && sourceCount <= 8;
 };
-const isDiscardInput = (value: unknown): value is { workspaceId: string; inspectionId: string } => value !== null && typeof value === 'object'
+const isDiscardInput = (value: unknown): value is { libraryId: string; inspectionId: string } => value !== null && typeof value === 'object'
   && isNonEmpty((value as Record<string, unknown>).libraryId) && isIdentifier((value as Record<string, unknown>).inspectionId);
 
 export const createPortfolioInspectionHandler = (
   window: PortfolioWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   chooseFiles: FileChooser,
   inspector: PortfolioSourceInspector,
 ) => async (event: PortfolioRequestEvent, input: unknown): Promise<PortfolioInspection | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isInspectionInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isInspectionInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   if (input.request.kind === 'uploaded-files') return inspector.inspectUploadedFiles(input.request.files);
   const paths = await chooseFiles();
   if (!paths?.length) return null;
@@ -93,13 +93,13 @@ export const createPortfolioInspectionHandler = (
 export const createPortfolioSelectionHandler = (
   window: PortfolioWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   inspector: PortfolioSourceInspector,
   submit: (workspace: ProjectLibraryHandle, input: PortfolioAnalysisInput) => Promise<TaskRecord>,
 ) => async (event: PortfolioRequestEvent, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isSelectionInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId || workspace.library.openMode === 'read-only') return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isSelectionInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId || workspace.library.openMode === 'read-only') return null;
   const sourceBatches = await Promise.all(input.selections.map((selection) => inspector.selectedSources(selection.inspectionId, selection.sourceIds)));
   const sources = sourceBatches.flat();
   if (sources.length === 0 || sources.length > 8 || new Set(sources.map((source) => source.id)).size !== sources.length) throw new Error('PORTFOLIO_SOURCE_LIMIT');
@@ -114,12 +114,12 @@ export const createPortfolioSelectionHandler = (
 export const createPortfolioDiscardHandler = (
   window: PortfolioWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   inspector: PortfolioSourceInspector,
 ) => (event: PortfolioRequestEvent, input: unknown): boolean => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isDiscardInput(input)) return false;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return false;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isDiscardInput(input)) return false;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return false;
   inspector.discard(input.inspectionId);
   return true;
 };

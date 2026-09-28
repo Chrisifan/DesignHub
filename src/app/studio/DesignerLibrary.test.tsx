@@ -90,14 +90,13 @@ it("keeps the portfolio creation drawer at one width", () => {
 it("keeps portfolio analysis in the drawer and shows a loading skeleton", async () => {
   const submission = createDeferred<{ id: string; requestId: string; state: "running"; cancelRequested: false; attempt: number; }>();
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-loading",
       candidates: [{ id: "source-loading", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
     })),
     submitPortfolioSelection: vi.fn(() => submission.promise),
   };
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-loading" />);
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} libraryId="workspace-loading" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
   fireEvent.click(screen.getByRole("button", { name: "上传作品集文件" }));
@@ -153,8 +152,8 @@ it("selects local portfolio candidates by default and submits after an explicit 
   const submitPortfolioSelection = vi.fn(async () => ({
     id: "task-selected", requestId: "request-selected", state: "running" as const, cancelRequested: false, attempt: 1,
   }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources, submitPortfolioSelection };
-  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-selected" />);
+  window.designhub = { inspectPortfolioSources, submitPortfolioSelection };
+  render(<DesignerLibrary locale="en" notify={vi.fn()} libraryId="workspace-selected" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
@@ -166,9 +165,9 @@ it("selects local portfolio candidates by default and submits after an explicit 
   fireEvent.click(screen.getByRole("button", { name: "Start analysis" }));
 
   await waitFor(() => expect(submitPortfolioSelection).toHaveBeenCalledWith(expect.objectContaining({
-    workspaceId: "workspace-selected", selections: [{ inspectionId: "inspection-1", sourceIds: ["candidate-a"] }], rightsConfirmed: true,
+    libraryId: "workspace-selected", selections: [{ inspectionId: "inspection-1", sourceIds: ["candidate-a"] }], rightsConfirmed: true,
   })));
-  expect(inspectPortfolioSources).toHaveBeenCalledWith({ workspaceId: "workspace-selected", request: { kind: "local-files" } });
+  expect(inspectPortfolioSources).toHaveBeenCalledWith({ libraryId: "workspace-selected", request: { kind: "local-files" } });
 });
 
 it("keeps an inspected selection available for retry when portfolio submission rejects", async () => {
@@ -177,8 +176,8 @@ it("keeps an inspected selection available for retry when portfolio submission r
     candidates: [{ id: "candidate-retry", label: "Retry source", description: "Retry source", origin: "local-image" as const, previewUrl: "" }],
   }));
   const submitPortfolioSelection = vi.fn(async () => { throw new Error("TASK_ACCEPTANCE_FAILED"); });
-  window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources, submitPortfolioSelection };
-  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-retry" />);
+  window.designhub = { inspectPortfolioSources, submitPortfolioSelection };
+  render(<DesignerLibrary locale="en" notify={vi.fn()} libraryId="workspace-retry" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
@@ -204,7 +203,6 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
     attempt: 1,
   }));
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources,
     submitPortfolioSelection,
   };
@@ -212,7 +210,7 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
     <DesignerLibrary
       locale="zh-CN"
       notify={vi.fn()}
-      workspaceId="workspace-1"
+      libraryId="workspace-1"
     />,
   );
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
@@ -223,7 +221,7 @@ it("submits a rights-confirmed portfolio analysis task for a workspace designer 
   await waitFor(() =>
     expect(submitPortfolioSelection).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceId: "workspace-1",
+        libraryId: "workspace-1",
         source: expect.objectContaining({ kind: "designer-draft" }),
         selections: [{ inspectionId: "inspection-submit", sourceIds: ["source-submit"] }],
         rightsConfirmed: true,
@@ -245,8 +243,8 @@ it("inspects locally chosen portfolio images through the trusted main process", 
     cancelRequested: false,
     attempt: 1,
   }));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources, submitPortfolioSelection };
-  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-files" />);
+  window.designhub = { inspectPortfolioSources, submitPortfolioSelection };
+  render(<DesignerLibrary locale="en" notify={vi.fn()} libraryId="workspace-files" />);
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
   const filename = await screen.findByText(longFilename);
@@ -259,7 +257,7 @@ it("inspects locally chosen portfolio images through the trusted main process", 
   await waitFor(() => expect(submitPortfolioSelection).toHaveBeenCalledWith(expect.objectContaining({
     selections: [{ inspectionId: "inspection-local", sourceIds: ["source-local"] }], rightsConfirmed: true,
   })));
-  expect(inspectPortfolioSources).toHaveBeenCalledWith({ workspaceId: "workspace-files", request: { kind: "local-files" } });
+  expect(inspectPortfolioSources).toHaveBeenCalledWith({ libraryId: "workspace-files", request: { kind: "local-files" } });
 });
 
 it("keeps the current local inspection when the next file picker is cancelled", async () => {
@@ -269,8 +267,8 @@ it("keeps the current local inspection when the next file picker is cancelled", 
       candidates: [{ id: "source-kept", label: "Keep me.png", description: "Keep me", origin: "local-image" as const, previewUrl: "" }],
     })
     .mockResolvedValueOnce(null);
-  window.designhub = { chooseWorkspaceDirectory: async () => null, inspectPortfolioSources };
-  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-cancel" />);
+  window.designhub = { inspectPortfolioSources };
+  render(<DesignerLibrary locale="en" notify={vi.fn()} libraryId="workspace-cancel" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
@@ -287,7 +285,6 @@ it("keeps the current local inspection when the next file picker is cancelled", 
 it("keeps files, rights, and source selection when returning from analysis", async () => {
   const candidate = { ...personaProfiles[0]!, id: "retained-analysis" };
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-retained",
       candidates: [
@@ -304,7 +301,7 @@ it("keeps files, rights, and source selection when returning from analysis", asy
       result: { text: JSON.stringify({ candidates: [candidate] }) },
     })),
   };
-  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-retained" />);
+  render(<DesignerLibrary locale="en" notify={vi.fn()} libraryId="workspace-retained" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
@@ -358,7 +355,6 @@ it("renders a completed portfolio candidate as a read-only analysis report", asy
     portfolioSheets: [],
   };
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-complete",
       candidates: [{ id: "source-complete", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
@@ -387,7 +383,7 @@ it("renders a completed portfolio candidate as a read-only analysis report", asy
     <DesignerLibrary
       locale="zh-CN"
       notify={notify}
-      workspaceId="workspace-1"
+      libraryId="workspace-1"
     />,
   );
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
@@ -462,7 +458,6 @@ it("requests artwork for a selected candidate and adopts the managed image befor
     dataUrl: "data:image/png;base64,AQID",
   }));
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-artwork",
       candidates: [{ id: "source-artwork", label: "作品集", description: "Artwork portfolio", origin: "local-image" as const, previewUrl: "" }],
@@ -481,7 +476,7 @@ it("requests artwork for a selected candidate and adopts the managed image befor
     saveDesignerState,
   } as typeof window.designhub;
 
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-1" />);
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} libraryId="workspace-1" />);
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
   fireEvent.click(screen.getByRole("button", { name: "上传作品集文件" }));
   await screen.findByText("作品集");
@@ -496,13 +491,13 @@ it("requests artwork for a selected candidate and adopts the managed image befor
   fireEvent.click(screen.getByRole("button", { name: "下一步：生成形象" }));
 
   await waitFor(() => expect(submitDesignerArtworkGeneration).toHaveBeenCalledWith(expect.objectContaining({
-    workspaceId: "workspace-1",
+    libraryId: "workspace-1",
     source: { kind: "designer-draft", id: candidate.id },
     prompt: expect.stringContaining("Future editor"),
     count: 1,
   })));
   await waitFor(() => expect(readDesignerArtwork).toHaveBeenCalledWith({
-    workspaceId: "workspace-1",
+    libraryId: "workspace-1",
     artworkId: "artwork-portrait-1",
   }));
   expect(screen.getByRole("img", { name: "生成的设计师 Avatar" })).toBeInTheDocument();
@@ -552,7 +547,6 @@ it("keeps the review dossier visible when publishing fails", async () => {
     throw new Error("WRITE_FAILED");
   });
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-publish-failure",
       candidates: [{ id: "source-publish-failure", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
@@ -577,7 +571,7 @@ it("keeps the review dossier visible when publishing fails", async () => {
     saveDesignerState,
   } as typeof window.designhub;
 
-  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-publish-failure" />);
+  render(<DesignerLibrary locale="en" notify={vi.fn()} libraryId="workspace-publish-failure" />);
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
   await screen.findByText("Portfolio");
@@ -608,7 +602,6 @@ it("keeps the current Avatar when regeneration fails and replaces it after a suc
       cancelRequested: false, attempt: 1, result: { assetIds: ["artwork-2"], imageCount: 1 },
     });
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-regenerate",
       candidates: [{ id: "source-regenerate", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
@@ -620,7 +613,7 @@ it("keeps the current Avatar when regeneration fails and replaces it after a suc
     submitDesignerArtworkGeneration,
     readDesignerArtwork: vi.fn(async ({ artworkId }) => ({ artworkId, dataUrl: "data:image/png;base64,AQID" })),
   } as typeof window.designhub;
-  render(<DesignerLibrary locale="en" notify={vi.fn()} workspaceId="workspace-regenerate" />);
+  render(<DesignerLibrary locale="en" notify={vi.fn()} libraryId="workspace-regenerate" />);
 
   fireEvent.click(await screen.findByRole("button", { name: "Create from portfolio" }));
   fireEvent.click(screen.getByRole("button", { name: "Upload portfolio files" }));
@@ -682,7 +675,6 @@ it("enters the artwork step immediately and keeps polling beyond six seconds unt
     Array.from({ length: 13 }).forEach(() => listTasks.mockResolvedValueOnce([runningTask]));
     listTasks.mockResolvedValueOnce([completedTask]);
     window.designhub = {
-      chooseWorkspaceDirectory: async () => null,
       inspectPortfolioSources: vi.fn(async () => ({
         id: "inspection-artwork-poll",
         candidates: [{ id: "source-artwork-poll", label: "作品集", description: "Artwork portfolio", origin: "local-image" as const, previewUrl: "" }],
@@ -700,7 +692,7 @@ it("enters the artwork step immediately and keeps polling beyond six seconds unt
       readDesignerArtwork: vi.fn(async () => ({ artworkId: "artwork-long-1", dataUrl: "data:image/png;base64,AQID" })),
     } as typeof window.designhub;
 
-    render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="workspace-artwork-poll" />);
+    render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} libraryId="workspace-artwork-poll" />);
     fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
     fireEvent.click(screen.getByRole("button", { name: "上传作品集文件" }));
     await screen.findByText("作品集");
@@ -738,7 +730,6 @@ it("enters the artwork step immediately and keeps polling beyond six seconds unt
 
 it("does not show fabricated candidates when the completed portfolio task failed", async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     inspectPortfolioSources: vi.fn(async () => ({
       id: "inspection-failed",
       candidates: [{ id: "source-failed", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
@@ -766,7 +757,7 @@ it("does not show fabricated candidates when the completed portfolio task failed
     <DesignerLibrary
       locale="zh-CN"
       notify={vi.fn()}
-      workspaceId="workspace-1"
+      libraryId="workspace-1"
     />,
   );
   fireEvent.click(await screen.findByRole("button", { name: "从作品集创建" }));
@@ -829,7 +820,6 @@ it("keeps polling a portfolio task that completes after the initial six-second w
     });
     listTasks.mockResolvedValueOnce([completedTask]);
     window.designhub = {
-      chooseWorkspaceDirectory: async () => null,
       inspectPortfolioSources: vi.fn(async () => ({
         id: "inspection-poll",
         candidates: [{ id: "source-poll", label: "Portfolio", description: "Portfolio", origin: "local-image" as const, previewUrl: "" }],
@@ -847,7 +837,7 @@ it("keeps polling a portfolio task that completes after the initial six-second w
       <DesignerLibrary
         locale="zh-CN"
         notify={vi.fn()}
-        workspaceId="workspace-poll"
+        libraryId="workspace-poll"
       />,
     );
     await act(async () => {
@@ -897,7 +887,6 @@ it("hydrates and persists designer state through the desktop workspace bridge", 
   }));
   const saveDesignerState = vi.fn(async () => true);
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDesignerState,
     saveDesignerState,
   };
@@ -905,7 +894,7 @@ it("hydrates and persists designer state through the desktop workspace bridge", 
     <DesignerLibrary
       locale="zh-CN"
       notify={vi.fn()}
-      workspaceId="workspace-1"
+      libraryId="workspace-1"
     />,
   );
   await waitFor(() =>
@@ -936,7 +925,6 @@ it("hydrates and persists designer state through the desktop workspace bridge", 
 
 it("does not inject built-in profiles into an empty workspace", async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDesignerState: vi.fn(async () => ({
       profiles: [],
       defaultId: "missing",
@@ -947,7 +935,7 @@ it("does not inject built-in profiles into an empty workspace", async () => {
     <DesignerLibrary
       locale="zh-CN"
       notify={vi.fn()}
-      workspaceId="workspace-empty"
+      libraryId="workspace-empty"
     />,
   );
   await waitFor(() =>
@@ -959,7 +947,6 @@ it("does not inject built-in profiles into an empty workspace", async () => {
 
 it("disables mutation actions in a read-only workspace", async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDesignerState: vi.fn(async () => null),
     saveDesignerState: vi.fn(async () => true),
   };
@@ -967,7 +954,7 @@ it("disables mutation actions in a read-only workspace", async () => {
     <DesignerLibrary
       locale="zh-CN"
       notify={vi.fn()}
-      workspaceId="workspace-readonly"
+      libraryId="workspace-readonly"
       readOnly
     />,
   );
@@ -987,10 +974,9 @@ it("hides legacy seeded profiles in a read-only workspace without inventing a de
     negativeRules: [], portfolioSheets: [],
   };
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDesignerState: vi.fn(async () => ({ profiles: [profile], defaultId: profile.id })),
   };
-  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} workspaceId="legacy-read-only" readOnly />);
+  render(<DesignerLibrary locale="zh-CN" notify={vi.fn()} libraryId="legacy-read-only" readOnly />);
   await waitFor(() => expect(screen.getByText('暂无设计师档案')).toBeInTheDocument());
   expect(screen.queryByRole('button', { name: /纸感排版/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: '当前默认' })).not.toBeInTheDocument();
@@ -1017,7 +1003,6 @@ it("does not invoke a later save until the previous save settles", async () => {
     return true;
   });
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDesignerState,
     saveDesignerState,
   };
@@ -1025,7 +1010,7 @@ it("does not invoke a later save until the previous save settles", async () => {
     <DesignerLibrary
       locale="zh-CN"
       notify={vi.fn()}
-      workspaceId="workspace-queue"
+      libraryId="workspace-queue"
     />,
   );
   await waitFor(() => expect(saveDesignerState).toHaveBeenCalledTimes(1));
@@ -1049,7 +1034,6 @@ it("disables using a designer for new work while loading has failed", async () =
   });
   const onUseForNew = vi.fn();
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDesignerState,
     saveDesignerState: vi.fn(async () => true),
   };
@@ -1057,7 +1041,7 @@ it("disables using a designer for new work while loading has failed", async () =
     <DesignerLibrary
       locale="zh-CN"
       notify={vi.fn()}
-      workspaceId="workspace-failed"
+      libraryId="workspace-failed"
       onUseForNew={onUseForNew}
     />,
   );

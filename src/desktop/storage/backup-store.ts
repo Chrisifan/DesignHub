@@ -551,7 +551,7 @@ const createBackup = async (
     if (existsSync(finalDirectory)) throw new Error('BACKUP_DIRECTORY_CONFLICT');
     assertOwnedStagingDirectory();
     renameSync(stagingDirectory, finalDirectory);
-    return { directory: finalDirectory, workspaceId: manifest.workspaceId, createdAt };
+    return { directory: finalDirectory, libraryId: manifest.workspaceId, createdAt };
   } catch (error) {
     removeOwnedPath(stagingDirectory);
     throw error;
@@ -600,7 +600,7 @@ const restoreBackup = async (
     assertStoredWorkspaceDirectories(stagingDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
     assertStoredWorkspaceDirectories(finalDirectory, backup.manifest, 'UNMANAGED_RESTORE_DESTINATION');
     removeOwnedPath(stagingDirectory);
-    return { directory: finalDirectory, workspaceId: backup.manifest.workspaceId };
+    return { directory: finalDirectory, libraryId: backup.manifest.workspaceId };
   } catch (error) {
     removeOwnedPath(stagingDirectory);
     if (ownsFinalDirectory) removeOwnedPath(finalDirectory);

@@ -1,6 +1,6 @@
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const exportHistoryListChannel = 'export-history:list';
 
@@ -13,13 +13,13 @@ const isId = (value: unknown): value is string => typeof value === 'string' && v
 export const listExportHistoryHandler = (
   window: HistoryWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
-  load: (workspace: ProjectLibraryHandle, workspaceId: string, projectId: string) => Promise<ExportHistoryRecord[]>,
+  getLibrary: () => ProjectLibraryHandle | null,
+  load: (workspace: ProjectLibraryHandle, libraryId: string, projectId: string) => Promise<ExportHistoryRecord[]>,
 ) => async (event: HistoryRequest, input: unknown): Promise<ExportHistoryRecord[] | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return null;
   const value = input as Record<string, unknown>;
-  if (!isId(value.workspaceId) || !isId(value.projectId)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== value.workspaceId) return null;
-  return load(workspace, value.workspaceId, value.projectId);
+  if (!isId(value.libraryId) || !isId(value.projectId)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== value.libraryId) return null;
+  return load(workspace, value.libraryId, value.projectId);
 };

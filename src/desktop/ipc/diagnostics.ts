@@ -1,4 +1,4 @@
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const diagnosticsExportChannel = 'diagnostics:export';
 
@@ -25,6 +25,6 @@ export const exportDiagnosticsHandler = (
   trustedUrl: string,
   write: (input: DiagnosticInput) => Promise<string | null>,
 ) => async (event: DiagnosticRequest, input: unknown): Promise<string | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isInput(input)) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isInput(input)) return null;
   return write(input);
 };

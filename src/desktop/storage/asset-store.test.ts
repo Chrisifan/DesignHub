@@ -16,7 +16,7 @@ const withProject = async (run: (workspaceDirectory: string, projectId: string) 
   const parentDirectory = await mkdtemp(join(tmpdir(), 'designhub-asset-store-'));
   const workspace = await initializeProjectLibrary(parentDirectory);
   const project = await createProjectStore(workspace).createProjectContainer({
-    workspaceId: workspace.library.libraryId,
+    libraryId: workspace.library.libraryId,
     operationId: 'asset-project-create',
     name: 'Asset project',
   });
@@ -35,7 +35,7 @@ it('persists managed bytes and metadata, and deduplicates content across imports
     try {
       const store = createAssetStore(workspace);
       const first = await store.importAssets({
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         projectId,
         items: [{ name: 'poster.png', mimeType: 'image/png', data: bytes('same') }],
       });
@@ -45,7 +45,7 @@ it('persists managed bytes and metadata, and deduplicates content across imports
       expect(first[0].asset.originalBytes).toEqual(bytes('same'));
 
       const second = await store.importAssets({
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         projectId,
         items: [{ name: 'renamed.png', mimeType: 'image/png', data: bytes('same') }],
       });
@@ -53,7 +53,7 @@ it('persists managed bytes and metadata, and deduplicates content across imports
       if (second[0].status !== 'success') throw new Error('expected success');
       expect(second[0].asset.id).toBe(first[0].asset.id);
 
-      await expect(store.listAssets({ workspaceId: workspace.library.libraryId, projectId })).resolves.toHaveLength(1);
+      await expect(store.listAssets({ libraryId: workspace.library.libraryId, projectId })).resolves.toHaveLength(1);
       const assetsDirectory = join(workspaceDirectory, 'projects', projectId, 'assets');
       await expect(readdir(assetsDirectory)).resolves.toHaveLength(1);
       await expect(access(join(assetsDirectory, first[0].asset.contentHash), constants.R_OK)).resolves.toBeUndefined();
@@ -67,7 +67,7 @@ it('loads persisted metadata and bytes after reopening a workspace', async () =>
   await withProject(async (workspaceDirectory, projectId) => {
     const firstWorkspace = await openProjectLibrary(workspaceDirectory);
     const first = await createAssetStore(firstWorkspace).importAssets({
-      workspaceId: firstWorkspace.library.libraryId,
+      libraryId: firstWorkspace.library.libraryId,
       projectId,
       items: [{ name: 'mark.svg', mimeType: 'image/svg+xml', data: bytes('<svg />'), metadata: { role: 'logo' } }],
     });
@@ -77,12 +77,12 @@ it('loads persisted metadata and bytes after reopening a workspace', async () =>
     const reopened = await openProjectLibrary(workspaceDirectory);
     try {
       const store = createAssetStore(reopened);
-      await expect(store.listAssets({ workspaceId: reopened.library.libraryId, projectId })).resolves.toEqual([
+      await expect(store.listAssets({ libraryId: reopened.library.libraryId, projectId })).resolves.toEqual([
         expect.objectContaining({ id: first[0].asset.id, name: 'mark.svg', managed: true, metadata: { role: 'logo' } }),
       ]);
-      const listed = await store.listAssets({ workspaceId: reopened.library.libraryId, projectId });
+      const listed = await store.listAssets({ libraryId: reopened.library.libraryId, projectId });
       expect(listed[0].originalBytes).toBeUndefined();
-      await expect(store.readAsset({ workspaceId: reopened.library.libraryId, projectId, assetId: first[0].asset.id })).resolves.toSatisfy((value) => value ? Array.from(value).join(',') === Array.from(bytes('<svg />')).join(',') : false);
+      await expect(store.readAsset({ libraryId: reopened.library.libraryId, projectId, assetId: first[0].asset.id })).resolves.toSatisfy((value) => value ? Array.from(value).join(',') === Array.from(bytes('<svg />')).join(',') : false);
     } finally {
       reopened.close();
     }
@@ -95,16 +95,16 @@ it('persists external references without pretending they are managed bytes', asy
     try {
       const store = createAssetStore(workspace);
       const [result] = await store.importAssets({
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         projectId,
         items: [{ name: 'remote.png', mimeType: 'image/png', externalReference: 'https://example.com/remote.png' }],
       });
       expect(result.status).toBe('success');
       if (result.status !== 'success') throw new Error('expected success');
-      await expect(store.listAssets({ workspaceId: workspace.library.libraryId, projectId })).resolves.toEqual([
+      await expect(store.listAssets({ libraryId: workspace.library.libraryId, projectId })).resolves.toEqual([
         expect.objectContaining({ id: result.asset.id, managed: false, externalReference: 'https://example.com/remote.png' }),
       ]);
-      await expect(store.readAsset({ workspaceId: workspace.library.libraryId, projectId, assetId: result.asset.id })).resolves.toBeNull();
+      await expect(store.readAsset({ libraryId: workspace.library.libraryId, projectId, assetId: result.asset.id })).resolves.toBeNull();
     } finally {
       workspace.close();
     }
@@ -117,8 +117,8 @@ it('rejects writes in a read-only workspace while allowing metadata reads', asyn
     const readOnly = await openProjectLibrary(workspaceDirectory);
     try {
       const store = createAssetStore(readOnly);
-      await expect(store.importAssets({ workspaceId: readOnly.library.libraryId, projectId, items: [{ name: 'x.png', data: bytes('x') }] })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
-      await expect(store.listAssets({ workspaceId: readOnly.library.libraryId, projectId })).resolves.toEqual([]);
+      await expect(store.importAssets({ libraryId: readOnly.library.libraryId, projectId, items: [{ name: 'x.png', data: bytes('x') }] })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
+      await expect(store.listAssets({ libraryId: readOnly.library.libraryId, projectId })).resolves.toEqual([]);
     } finally {
       readOnly.close();
       workspace.close();
@@ -131,7 +131,7 @@ it('rejects project path traversal before touching the workspace', async () => {
     const workspace = await openProjectLibrary(workspaceDirectory);
     try {
       const store = createAssetStore(workspace);
-      await expect(store.listAssets({ workspaceId: workspace.library.libraryId, projectId: '../outside' })).rejects.toThrow('INVALID_PROJECT_ID');
+      await expect(store.listAssets({ libraryId: workspace.library.libraryId, projectId: '../outside' })).rejects.toThrow('INVALID_PROJECT_ID');
     } finally {
       workspace.close();
     }
@@ -145,7 +145,7 @@ it('does not follow managed asset symlinks outside the project', async () => {
     try {
       const store = createAssetStore(workspace);
       const [result] = await store.importAssets({
-        workspaceId: workspace.library.libraryId,
+        libraryId: workspace.library.libraryId,
         projectId,
         items: [{ name: 'managed.png', mimeType: 'image/png', data: bytes('managed') }],
       });
@@ -155,7 +155,7 @@ it('does not follow managed asset symlinks outside the project', async () => {
       await writeFile(externalPath, 'external');
       await rm(assetPath);
       await symlink(externalPath, assetPath);
-      await expect(store.readAsset({ workspaceId: workspace.library.libraryId, projectId, assetId: result.asset.id })).resolves.toBeNull();
+      await expect(store.readAsset({ libraryId: workspace.library.libraryId, projectId, assetId: result.asset.id })).resolves.toBeNull();
       await expect(readFile(externalPath, 'utf8')).resolves.toBe('external');
     } finally {
       workspace.close();

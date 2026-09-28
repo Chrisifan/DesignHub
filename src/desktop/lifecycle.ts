@@ -1,22 +1,22 @@
-import type { WorkspaceHandle } from '../features/workspace/open-workspace';
+import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 
 export const recreateWindowOnActivate = (hasOpenWindow: () => boolean, createWindow: () => void): void => {
   if (!hasOpenWindow()) createWindow();
 };
 
-export const openWorkspaceForActivation = async (
+export const openProjectLibraryForActivation = async (
   directory: string,
-  activeWorkspace: WorkspaceHandle | null,
+  activeLibrary: ProjectLibraryHandle | null,
   resolveDirectory: (directory: string) => Promise<string>,
-  openWorkspace: (directory: string) => Promise<WorkspaceHandle>,
-  activateWorkspace: (workspace: WorkspaceHandle) => WorkspaceHandle,
-): Promise<WorkspaceHandle> => {
-  if (activeWorkspace) {
+  openProjectLibrary: (directory: string) => Promise<ProjectLibraryHandle>,
+  activateProjectLibrary: (library: ProjectLibraryHandle) => ProjectLibraryHandle,
+): Promise<ProjectLibraryHandle> => {
+  if (activeLibrary) {
     try {
-      if (await resolveDirectory(directory) === activeWorkspace.workspace.directory) return activeWorkspace;
+      if (await resolveDirectory(directory) === activeLibrary.library.directory) return activeLibrary;
     } catch {
       // Let the regular opener report the canonical workspace error.
     }
   }
-  return activateWorkspace(await openWorkspace(directory));
+  return activateProjectLibrary(await openProjectLibrary(directory));
 };

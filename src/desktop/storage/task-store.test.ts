@@ -143,6 +143,30 @@ it('persists the managed source asset binding used for image retries', async () 
   }
 });
 
+it('persists the managed mask asset binding used for regional image retries', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const imageTask: TaskRecord = {
+    ...task,
+    capability: 'image-editing',
+    sourceAssetId: 'asset-source',
+    maskAssetId: 'asset-mask',
+    hasMask: true,
+    requestText: 'remove object',
+    tool: 'remove-object',
+    toolParams: { feather: 10 },
+    region: { x: 1, y: 2, width: 10, height: 12 },
+  };
+  await saveTaskState(workspace, workspace.library.libraryId, [imageTask]);
+  workspace.close();
+
+  const reopened = await openProjectLibrary(temporaryDirectories[0]!);
+  try {
+    await expect(loadTaskState(reopened, reopened.library.libraryId)).resolves.toEqual([imageTask]);
+  } finally {
+    reopened.close();
+  }
+});
+
 it('accepts only selected portfolio IDs and a rights acknowledgement in task state', async () => {
   const workspace = await createTemporaryWorkspace();
   const portfolioTask: TaskRecord = {

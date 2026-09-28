@@ -39,10 +39,11 @@ import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, ty
 import type { DesignGenerationSlotId, DesignGenerationSlotState, TaskRecord } from '../../features/tasks/state';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
-import type { WorkspaceDescriptor } from '../../features/workspace/open-workspace';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
 import type { WorkspaceSettings } from '../../features/workspace/settings';
 import { DeliveryScenePreview } from './DeliveryScenePreview';
+import { ImageToolsPage } from '../../features/image-tools/ImageToolsPage';
+import type { ImageToolJob, ImageToolItem } from '../../features/image-tools/jobs';
 import './library.css';
 
 type LibraryPagesProps = PageProps & {
@@ -52,10 +53,9 @@ type LibraryPagesProps = PageProps & {
   onLocaleChange: (value: Locale) => void;
   deliveryProject?: Project | null;
   onUseForNew?: (personaId: string) => void;
-  workspaceId?: string;
+  libraryId?: string;
   readOnly?: boolean;
   projectId?: string;
-  onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
   operatorName?: string;
   onOperatorNameChange?: (name: string) => void;
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
@@ -97,11 +97,11 @@ type StorageTab = 'trash' | 'backup';
 type TaskCategory = 'all' | 'queued' | 'running' | 'completed' | 'failed';
 type BackupPreferences = { destinationParentDirectory: string | null; schedule: BackupSchedule; lastRunAt: string | null; lastArtifactPath: string | null };
 
-const backupPreferencesKey = (workspaceId: string): string => `designhub.backup.${workspaceId}`;
-const readBackupPreferences = (workspaceId: string): BackupPreferences => {
+const backupPreferencesKey = (libraryId: string): string => `designhub.backup.${libraryId}`;
+const readBackupPreferences = (libraryId: string): BackupPreferences => {
   const fallback: BackupPreferences = { destinationParentDirectory: null, schedule: 'manual', lastRunAt: null, lastArtifactPath: null };
   try {
-    const value = JSON.parse(localStorage.getItem(backupPreferencesKey(workspaceId)) ?? '') as Partial<BackupPreferences>;
+    const value = JSON.parse(localStorage.getItem(backupPreferencesKey(libraryId)) ?? '') as Partial<BackupPreferences>;
     return {
       destinationParentDirectory: typeof value.destinationParentDirectory === 'string' ? value.destinationParentDirectory : null,
       schedule: value.schedule === 'daily' || value.schedule === 'weekly' ? value.schedule : 'manual',
@@ -110,8 +110,8 @@ const readBackupPreferences = (workspaceId: string): BackupPreferences => {
     };
   } catch { return fallback; }
 };
-const writeBackupPreferences = (workspaceId: string, preferences: BackupPreferences): void => {
-  try { localStorage.setItem(backupPreferencesKey(workspaceId), JSON.stringify(preferences)); } catch { /* in-memory fallback */ }
+const writeBackupPreferences = (libraryId: string, preferences: BackupPreferences): void => {
+  try { localStorage.setItem(backupPreferencesKey(libraryId), JSON.stringify(preferences)); } catch { /* in-memory fallback */ }
 };
 
 const toWorkspaceSettings = (preferences: BackupPreferences): WorkspaceSettings => ({
@@ -119,9 +119,9 @@ const toWorkspaceSettings = (preferences: BackupPreferences): WorkspaceSettings 
   backup: { ...preferences },
 });
 
-const persistBackupPreferences = (workspaceId: string, preferences: BackupPreferences): void => {
-  writeBackupPreferences(workspaceId, preferences);
-  void (getDesktopApi().saveWorkspaceSettings?.(workspaceId, toWorkspaceSettings(preferences)) ?? Promise.resolve()).catch(() => undefined);
+const persistBackupPreferences = (libraryId: string, preferences: BackupPreferences): void => {
+  writeBackupPreferences(libraryId, preferences);
+  void (getDesktopApi().saveWorkspaceSettings?.(libraryId, toWorkspaceSettings(preferences)) ?? Promise.resolve()).catch(() => undefined);
 };
 
 const availableConnections: readonly ProviderConnection[] = [
@@ -189,7 +189,7 @@ const AssetsPage = ({
   onTypeChange,
   onLayoutChange,
   onSelect,
-  workspaceId,
+  libraryId,
   projectId,
   readOnly,
   notify,
@@ -207,7 +207,7 @@ const AssetsPage = ({
   onTypeChange: (value: AssetType) => void;
   onLayoutChange: (value: 'grid' | 'list') => void;
   onSelect: (value: string) => void;
-  workspaceId?: string;
+  libraryId?: string;
   projectId?: string;
   readOnly?: boolean;
   notify?: (message: string) => void;
@@ -227,11 +227,11 @@ const AssetsPage = ({
     return new Response(file).arrayBuffer();
   };
   useEffect(() => {
-    if (!workspaceId || !projectId) { setManagedAssets([]); setAssetsLoadFailed(false); return undefined; }
+    if (!libraryId || !projectId) { setManagedAssets([]); setAssetsLoadFailed(false); return undefined; }
     let cancelled = false;
     setManagedAssets([]);
     setAssetsLoadFailed(false);
-    const request = getDesktopApi().listAssets?.({ workspaceId, projectId });
+    const request = getDesktopApi().listAssets?.({ libraryId, projectId });
     if (!request) { setAssetsLoadFailed(true); return () => { cancelled = true; }; }
     void request?.then((result) => {
       if (!cancelled && result) {
@@ -240,13 +240,13 @@ const AssetsPage = ({
       }
     }).catch(() => { if (!cancelled) { setAssetsLoadFailed(true); notify?.(t(locale, '素材读取失败', 'Could not load assets')); } });
     return () => { cancelled = true; };
-  }, [locale, notify, projectId, workspaceId]);
+  }, [locale, notify, projectId, libraryId]);
   const importFiles = async (files: FileList | File[] | null): Promise<void> => {
-    if (!files || !workspaceId || !projectId || readOnly) return;
+    if (!files || !libraryId || !projectId || readOnly) return;
     setImporting(true);
     try {
       const items = await Promise.all(Array.from(files).map(async (file) => ({ name: file.name, mimeType: file.type || undefined, data: await readFile(file) })));
-      const results = await getDesktopApi().importAssets?.({ workspaceId, projectId, items });
+      const results = await getDesktopApi().importAssets?.({ libraryId, projectId, items });
       if (results) {
         const imported = results.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success').map((result) => result.asset);
         if (imported.length) setManagedAssets((current) => [...current, ...imported.filter((asset) => !current.some((entry) => entry.id === asset.id))]);
@@ -271,8 +271,8 @@ const AssetsPage = ({
       return new File([file], `clipboard.${extension}`, { type: file.type || 'image/png' });
     }));
   };
-  const usingManagedAssets = Boolean(workspaceId && projectId);
-  const displayAssets = workspaceId ? (usingManagedAssets ? managedAssets.map(managedAssetToItem) : []) : preview ? initialAssets : [];
+  const usingManagedAssets = Boolean(libraryId && projectId);
+  const displayAssets = libraryId ? (usingManagedAssets ? managedAssets.map(managedAssetToItem) : []) : preview ? initialAssets : [];
   const filteredAssets = useMemo(
     () =>
       displayAssets.filter(
@@ -294,15 +294,15 @@ const AssetsPage = ({
   useEffect(() => {
     let cancelled = false;
     setPreviewUrl(undefined);
-    if (!selected || !workspaceId || !projectId || selected.managed === false) return () => { cancelled = true; };
-    const request = getDesktopApi().readAsset?.({ workspaceId, projectId, assetId: selected.id });
+    if (!selected || !libraryId || !projectId || selected.managed === false) return () => { cancelled = true; };
+    const request = getDesktopApi().readAsset?.({ libraryId, projectId, assetId: selected.id });
     void request?.then((bytes) => {
       if (!bytes || cancelled || typeof URL === 'undefined') return;
       const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'image/*' }));
       setPreviewUrl(url);
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [projectId, selected?.id, selected?.managed, workspaceId]);
+  }, [projectId, selected?.id, selected?.managed, libraryId]);
   return (
     <section className="page-content library-page">
       <PageHeader
@@ -310,8 +310,8 @@ const AssetsPage = ({
         eyebrow={t(locale, '受管素材', 'Managed assets')}
         description={t(
           locale,
-          workspaceId ? (usingManagedAssets ? '浏览当前项目素材的来源、格式、用途与受管状态。' : '选择项目后可浏览其受管素材。') : preview ? '浏览示例素材的来源、格式、用途与受管状态。' : '导入素材后会显示在这里。',
-          workspaceId ? (usingManagedAssets ? 'Browse source, format, usage and managed state for this project.' : 'Select a project to browse its managed assets.') : preview ? 'Browse source, format, usage and managed state for example assets.' : 'Import assets to see them here.',
+          libraryId ? (usingManagedAssets ? '浏览当前项目素材的来源、格式、用途与受管状态。' : '选择项目后可浏览其受管素材。') : preview ? '浏览示例素材的来源、格式、用途与受管状态。' : '导入素材后会显示在这里。',
+          libraryId ? (usingManagedAssets ? 'Browse source, format, usage and managed state for this project.' : 'Select a project to browse its managed assets.') : preview ? 'Browse source, format, usage and managed state for example assets.' : 'Import assets to see them here.',
         )}
       />
       <PageToolbarSlot active={active}>
@@ -453,7 +453,7 @@ const AssetsPage = ({
               </Badge>
             </DetailRow>
           </dl>
-          {!workspaceId && preview && <p className="panel-note">
+          {!libraryId && preview && <p className="panel-note">
             <Icon name="lock" size={15} />
             {t(
               locale,
@@ -471,30 +471,30 @@ const BrandsPage = ({
   locale,
   selectedId,
   onSelect,
-  workspaceId,
+  libraryId,
   preview = false,
   initialBrands = [],
 }: {
   locale: Locale;
   selectedId: string;
   onSelect: (id: string) => void;
-  workspaceId?: string;
+  libraryId?: string;
   preview?: boolean;
   initialBrands?: Brand[];
 }) => {
-  const [records, setRecords] = useState<Brand[]>(() => workspaceId || !preview ? [] : initialBrands);
+  const [records, setRecords] = useState<Brand[]>(() => libraryId || !preview ? [] : initialBrands);
   const [editor, setEditor] = useState<Brand | null>(null);
   const [deletePending, setDeletePending] = useState<Brand | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [loading, setLoading] = useState(Boolean(workspaceId));
+  const [loading, setLoading] = useState(Boolean(libraryId));
   const [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    if (!workspaceId) { setRecords(preview ? initialBrands : []); setLoading(false); setLoadFailed(false); return () => { cancelled = true; }; }
+    if (!libraryId) { setRecords(preview ? initialBrands : []); setLoading(false); setLoadFailed(false); return () => { cancelled = true; }; }
     setRecords([]);
     setLoading(true);
     setLoadFailed(false);
-    const request = getDesktopApi().loadBrandState?.(workspaceId);
+    const request = getDesktopApi().loadBrandState?.(libraryId);
     if (!request) { setLoading(false); setLoadFailed(true); return () => { cancelled = true; }; }
     void request?.then((state) => {
       if (cancelled) return;
@@ -502,14 +502,14 @@ const BrandsPage = ({
       setLoading(false);
     }).catch(() => { if (!cancelled) { setLoading(false); setLoadFailed(true); } });
     return () => { cancelled = true; };
-  }, [initialBrands, preview, workspaceId]);
+  }, [initialBrands, preview, libraryId]);
   const kits = records.map(recordToKit);
   const selected = kits.find((brand) => brand.id === selectedId) ?? kits[0];
   const selectedRecord = records.find((record) => record.id === selected?.id) ?? records[0];
   const persist = async (next: Brand[]): Promise<void> => {
     setRecords(next);
-    if (workspaceId) {
-      const saved = await getDesktopApi().saveBrandState?.(workspaceId, { brands: next });
+    if (libraryId) {
+      const saved = await getDesktopApi().saveBrandState?.(libraryId, { brands: next });
       if (!saved) throw new Error('BRAND_SAVE_FAILED');
     }
   };
@@ -579,7 +579,7 @@ const BrandsPage = ({
           title={t(locale, '品牌详情', 'Brand details')}
           locale={locale}
           onClose={() => setDrawerOpen(false)}
-          footer={workspaceId ? (
+          footer={libraryId ? (
             <div className="dialog-actions brand-actions">
               <Button icon="pencil" onClick={() => { if (selectedRecord) setEditor(selectedRecord); }}>{t(locale, '编辑', 'Edit')}</Button>
               <Button icon="trash-2" onClick={() => { if (selectedRecord) setDeletePending(selectedRecord); }}>{t(locale, '删除', 'Delete')}</Button>
@@ -626,17 +626,17 @@ const BrandsPage = ({
                 : t(locale, '1 个项目 · 快照 v1', '1 project · snapshot v1')}
             </DetailRow>
           </dl>
-          {!workspaceId && preview && <p className="panel-note">
+          {!libraryId && preview && <p className="panel-note">
             <Icon name="history" size={15} />
             {t(
               locale,
-              workspaceId ? '项目继续使用创建时保存的品牌快照。' : '示例项目不会自动升级到当前品牌版本。',
-              workspaceId ? 'Projects continue using their creation-time brand snapshot.' : 'Example projects are not automatically upgraded to the current brand version.',
+              libraryId ? '项目继续使用创建时保存的品牌快照。' : '示例项目不会自动升级到当前品牌版本。',
+              libraryId ? 'Projects continue using their creation-time brand snapshot.' : 'Example projects are not automatically upgraded to the current brand version.',
             )}
           </p>}
         </div></Drawer>
       </div>
-      {workspaceId && <div className="brand-create-row"><Button variant="secondary" icon="plus" onClick={() => setEditor({ id: `brand-${crypto.randomUUID()}`, name: '', version: 'v1', logo: '', colorPalette: [], fonts: [], tone: '', fixedCopy: '', sizes: [] })}>{t(locale, '新建', 'New')}</Button></div>}
+      {libraryId && <div className="brand-create-row"><Button variant="secondary" icon="plus" onClick={() => setEditor({ id: `brand-${crypto.randomUUID()}`, name: '', version: 'v1', logo: '', colorPalette: [], fonts: [], tone: '', fixedCopy: '', sizes: [] })}>{t(locale, '新建', 'New')}</Button></div>}
       {editor && <Modal title={editor.name ? t(locale, '编辑品牌', 'Edit brand') : t(locale, '新建品牌', 'New brand')} locale={locale} onClose={() => setEditor(null)}><BrandEditor brand={editor} locale={locale} onSave={(brand) => { void saveBrand(brand); }} /></Modal>}
       {deletePending && <Modal title={t(locale, '删除品牌', 'Delete brand')} locale={locale} onClose={() => setDeletePending(null)}><p className="muted">{t(locale, `确认删除 ${deletePending.name ?? deletePending.id}？`, `Delete ${deletePending.name ?? deletePending.id}?`)}</p><div className="dialog-actions"><Button onClick={() => setDeletePending(null)}>{t(locale, '取消', 'Cancel')}</Button><Button variant="primary" icon="trash-2" onClick={() => { void removeBrand(); }}>{t(locale, '删除', 'Delete')}</Button></div></Modal>}
     </section>
@@ -645,10 +645,10 @@ const BrandsPage = ({
 
 const ConnectionsPage = ({
   locale,
-  workspaceId,
+  libraryId,
   dialogOpen,
   onDialogClose,
-}: Pick<PageProps, 'locale'> & { workspaceId?: string; dialogOpen?: boolean; onDialogClose?: () => void }) => {
+}: Pick<PageProps, 'locale'> & { libraryId?: string; dialogOpen?: boolean; onDialogClose?: () => void }) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
   const [providerActions, setProviderActions] = useState<ProviderSettingsActions | null>(null);
@@ -695,7 +695,7 @@ const ConnectionsPage = ({
     <PageHeader
       title={t(locale, '模型连接', 'Model connections')}
       eyebrow={t(locale, '本机能力', 'Local capability')}
-      description={!workspaceId ? t(
+      description={!libraryId ? t(
         locale,
         '连接由本机适配器提供；项目与密钥不会进入示例数据。',
         'Connections are provided by local adapters; projects and keys never enter example data.',
@@ -708,7 +708,7 @@ const ConnectionsPage = ({
           title={hasConnected ? t(locale, '模型已连接', 'Models connected') : t(locale, '尚未连接模型', 'No models connected')}
           description={hasConnected
             ? t(locale, '已检测到本机安全存储中的模型凭据。', 'Model credentials were found in local secure storage.')
-            : !workspaceId ? t(
+            : !libraryId ? t(
               locale,
               '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
               'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
@@ -758,8 +758,8 @@ const ConnectionsPage = ({
               if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
               return saved;
             }}
-            onTestConversation={workspaceId ? async (connectionId, input) => getDesktopApi().testConversation?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
-            onTestImageGeneration={workspaceId ? async (connectionId, input) => getDesktopApi().testImageGeneration?.({ workspaceId, connectionId, ...input }) ?? null : undefined}
+            onTestConversation={libraryId ? async (connectionId, input) => getDesktopApi().testConversation?.({ libraryId, connectionId, ...input }) ?? null : undefined}
+            onTestImageGeneration={libraryId ? async (connectionId, input) => getDesktopApi().testImageGeneration?.({ libraryId, connectionId, ...input }) ?? null : undefined}
             onCheckCredential={checkCredential}
             onStoreCredential={async (connectionId, secret) => {
               const stored = await (getDesktopApi().storeCredential?.(connectionId, secret) ?? false);
@@ -800,7 +800,7 @@ const ConnectionsPage = ({
         })}
       </div>
     </div>
-    {!workspaceId && <p className="page-footnote">
+    {!libraryId && <p className="page-footnote">
       <Icon name="lock" size={15} />
       {t(
         locale,
@@ -815,9 +815,9 @@ const ConnectionsPage = ({
 const TasksPage = ({
   locale,
   navigate,
-  workspaceId,
+  libraryId,
   active,
-}: Pick<PageProps, 'locale' | 'navigate'> & { workspaceId?: string; active: boolean }) => {
+}: Pick<PageProps, 'locale' | 'navigate'> & { libraryId?: string; active: boolean }) => {
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
   const [category, setCategory] = useState<TaskCategory>('all');
@@ -825,7 +825,7 @@ const TasksPage = ({
     let cancelled = false;
     let loading = false;
     setLoadFailed(false);
-    if (!workspaceId || !active) {
+    if (!libraryId || !active) {
       setTasks([]);
       return () => { cancelled = true; };
     }
@@ -833,7 +833,7 @@ const TasksPage = ({
       if (loading) return;
       loading = true;
       try {
-        const stored = await getDesktopApi().listTasks?.(workspaceId);
+        const stored = await getDesktopApi().listTasks?.(libraryId);
         if (cancelled) return;
         if (!stored) {
           setLoadFailed(true);
@@ -853,7 +853,7 @@ const TasksPage = ({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [active, workspaceId]);
+  }, [active, libraryId]);
   const matchesCategory = (task: TaskRecord, value: TaskCategory): boolean => {
     if (value === 'all') return true;
     if (value === 'failed') return task.state === 'failed' || task.state === 'cancelled' || task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART';
@@ -872,22 +872,22 @@ const TasksPage = ({
   }, { all: 0, queued: 0, running: 0, completed: 0, failed: 0 });
   const visibleTasks = tasks.filter((task) => matchesCategory(task, category));
   const stopTask = async (taskId: string): Promise<void> => {
-    if (!workspaceId) return;
-    const stopped = await getDesktopApi().cancelTask?.(workspaceId, taskId);
+    if (!libraryId) return;
+    const stopped = await getDesktopApi().cancelTask?.(libraryId, taskId);
     if (!stopped) return;
     setTasks((current) => current.map((task) => task.id === taskId
       ? { ...task, state: 'cancelled', cancelRequested: true, updatedAt: new Date().toISOString() }
       : task));
   };
   const retryTask = async (taskId: string): Promise<void> => {
-    if (!workspaceId) return;
-    const retried = await getDesktopApi().retryTask?.(workspaceId, taskId);
+    if (!libraryId) return;
+    const retried = await getDesktopApi().retryTask?.(libraryId, taskId);
     if (!retried) return;
     setTasks((current) => [...current, retried]);
   };
   const retryGenerationSlot = async (taskId: string, slotId: DesignGenerationSlotId): Promise<void> => {
-    if (!workspaceId) return;
-    const retried = await getDesktopApi().retryDesignGenerationSlot?.({ workspaceId, taskId, slotId });
+    if (!libraryId) return;
+    const retried = await getDesktopApi().retryDesignGenerationSlot?.({ libraryId, taskId, slotId });
     if (!retried) return;
     setTasks((current) => current.map((task) => task.id === taskId ? retried : task));
   };
@@ -1030,7 +1030,7 @@ const TasksPage = ({
     /></div> : <div className="page-empty-state"><EmptyState
       icon="clock"
       title={t(locale, '没有模型任务', 'No model tasks')}
-      description={!workspaceId ? t(
+      description={!libraryId ? t(
         locale,
         '示例不会提交真实生成请求。连接模型后，任务会显示来源、提供方、上传范围和可验证状态。',
         'The example does not submit real generation requests. Once connected, tasks show their source, provider, upload scope and verified state.',
@@ -1094,15 +1094,15 @@ const DeliveryPage = ({
             'PNG uses sRGB and keeps the current canvas pixel dimensions.',
           );
   const projectName = project ? t(locale, project.name, project.enName) : '';
-  const persistedProject = Boolean(project?.workspaceId);
+  const persistedProject = Boolean(project?.libraryId);
   useEffect(() => {
     setDrawerOpen(Boolean(project));
     setDocumentId(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
     setSource('current');
     setExportHistory([]);
-    if (!project?.workspaceId) return;
+    if (!project?.libraryId) return;
     let cancelled = false;
-    const request = getDesktopApi().listExportHistory?.(project.workspaceId, project.id);
+    const request = getDesktopApi().listExportHistory?.(project.libraryId, project.id);
     if (!request) return () => { cancelled = true; };
     void request.then((records) => {
       if (!cancelled && records) setExportHistory(records);
@@ -1114,26 +1114,26 @@ const DeliveryPage = ({
   const activeDocumentId = documentId || project?.documentId || project?.documentEntries?.[0]?.id || '';
   const currentDocument = project?.documentEntries?.find((entry) => entry.id === activeDocumentId) ?? project?.documentEntries?.[0];
   const finalizedRevisionId = currentDocument?.finalizedRevisionId ?? null;
-  const hasFinalizedRevision = Boolean(project?.workspaceId && activeDocumentId && finalizedRevisionId);
+  const hasFinalizedRevision = Boolean(project?.libraryId && activeDocumentId && finalizedRevisionId);
   useEffect(() => {
     if (!hasFinalizedRevision && source === 'final') setSource('current');
   }, [hasFinalizedRevision, source]);
   const loadSelectedScene = useCallback(async (): Promise<DesignScene | null> => {
-    if (!project?.workspaceId || !activeDocumentId) return null;
+    if (!project?.libraryId || !activeDocumentId) return null;
     const api = getDesktopApi();
     if (source === 'final' && finalizedRevisionId) {
-      const revisions = await api.loadDocumentRevisions?.(project.workspaceId, project.id, activeDocumentId);
+      const revisions = await api.loadDocumentRevisions?.(project.libraryId, project.id, activeDocumentId);
       return revisions?.revisions.find((revision) => revision.revisionId === finalizedRevisionId)?.scene
         ?? (revisions?.finalRevisionId ? revisions.revisions.find((revision) => revision.revisionId === revisions.finalRevisionId)?.scene : null)
         ?? null;
     }
-    return await api.loadDocumentScene?.(project.workspaceId, project.id, activeDocumentId) ?? null;
-  }, [activeDocumentId, finalizedRevisionId, project?.id, project?.workspaceId, source]);
+    return await api.loadDocumentScene?.(project.libraryId, project.id, activeDocumentId) ?? null;
+  }, [activeDocumentId, finalizedRevisionId, project?.id, project?.libraryId, source]);
   const hasExportableContent = useCallback((scene: DesignScene | null): scene is DesignScene => Boolean(scene?.layers.some((layer) => (
     layer.visible && !(layer.type === 'image' && (layer.role === 'reference' || layer.assetId === 'placeholder'))
   ))), []);
   useEffect(() => {
-    if (!project?.workspaceId || !activeDocumentId) {
+    if (!project?.libraryId || !activeDocumentId) {
       setDeliveryScene(null);
       setSceneStatus('idle');
       return;
@@ -1152,9 +1152,9 @@ const DeliveryPage = ({
       }
     });
     return () => { cancelled = true; };
-  }, [activeDocumentId, hasExportableContent, loadSelectedScene, project?.workspaceId]);
+  }, [activeDocumentId, hasExportableContent, loadSelectedScene, project?.libraryId]);
   const exportCurrent = async (): Promise<void> => {
-    if (!project?.workspaceId || !activeDocumentId) return;
+    if (!project?.libraryId || !activeDocumentId) return;
     setExporting(true);
     try {
       const api = getDesktopApi();
@@ -1164,7 +1164,7 @@ const DeliveryPage = ({
         notify?.(t(locale, '当前文档没有可导出的正式内容，请先在画布中选择候选稿并定稿。', 'This document has no formal content to export. Select a candidate on the canvas and finalize it first.'));
         return;
       }
-      const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
+      const result = await api.exportDocument?.({ libraryId: project.libraryId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
       if (result) {
         if (result.archiveError) {
           notify?.(t(locale, `已导出到 ${result.path}，归档副本失败（${result.archiveError}），可重试。`, `Exported to ${result.path}; the archive copy failed (${result.archiveError}). Retry when ready.`));
@@ -1179,22 +1179,22 @@ const DeliveryPage = ({
     } finally { setExporting(false); }
   };
   const exportPackage = async (): Promise<void> => {
-    if (!project?.workspaceId) return;
+    if (!project?.libraryId) return;
     try {
-      const result = await getDesktopApi().exportProjectPackage?.({ workspaceId: project.workspaceId, projectId: project.id });
+      const result = await getDesktopApi().exportProjectPackage?.({ libraryId: project.libraryId, projectId: project.id });
       if (result) notify?.(t(locale, `项目包已导出到 ${result.path}`, `Project package exported to ${result.path}`));
     } catch {
       notify?.(t(locale, '项目包导出失败', 'Project package export failed'));
     }
   };
   const reexport = async (record: ExportHistoryRecord): Promise<void> => {
-    if (!project?.workspaceId) return;
+    if (!project?.libraryId) return;
     try {
       const api = getDesktopApi();
-      const revisions = await api.loadDocumentRevisions?.(project.workspaceId, project.id, record.documentId);
+      const revisions = await api.loadDocumentRevisions?.(project.libraryId, project.id, record.documentId);
       const revision = revisions?.revisions.find((item) => item.revisionId === record.revisionId);
       if (!revision?.scene) throw new Error('HISTORY_SCENE_UNAVAILABLE');
-      const result = await api.exportDocument?.({ workspaceId: project.workspaceId, projectId: project.id, documentId: record.documentId, format: record.format, scene: revision.scene });
+      const result = await api.exportDocument?.({ libraryId: project.libraryId, projectId: project.id, documentId: record.documentId, format: record.format, scene: revision.scene });
       if (result) notify?.(t(locale, `已重新导出到 ${result.path}`, `Re-exported to ${result.path}`));
     } catch {
       notify?.(t(locale, '历史修订不可用，请重新导出当前版本。', 'The historical revision is unavailable; export the current version instead.'));
@@ -1219,7 +1219,7 @@ const DeliveryPage = ({
               )
         }
       />
-      {project?.workspaceId && <PageToolbarSlot active={active}>
+      {project?.libraryId && <PageToolbarSlot active={active}>
         <IconButton name="download" label={t(locale, '导出当前设计稿', 'Export current design')} onClick={() => setDrawerOpen(true)} />
       </PageToolbarSlot>}
       <div className="delivery-layout">
@@ -1227,7 +1227,7 @@ const DeliveryPage = ({
           <div className="delivery-preview">
             {persistedProject ? (
               sceneStatus === 'ready' && deliveryScene
-                ? <DeliveryScenePreview workspaceId={project.workspaceId!} projectId={project.id} scene={deliveryScene} alt={t(locale, `${currentDocument?.name ?? project.name}导出预览`, `${currentDocument?.name ?? project.enName} export preview`)} />
+                ? <DeliveryScenePreview libraryId={project.libraryId!} projectId={project.id} scene={deliveryScene} alt={t(locale, `${currentDocument?.name ?? project.name}导出预览`, `${currentDocument?.name ?? project.enName} export preview`)} />
                 : <div className={`delivery-scene-state delivery-scene-state--${sceneStatus}`}>
                     <Icon name={sceneStatus === 'error' ? 'circle-alert' : 'file-image'} size={36} />
                     <span>{sceneStatus === 'loading'
@@ -1284,7 +1284,7 @@ const DeliveryPage = ({
                 <strong>{t(locale, '尚未选择目标目录', 'No destination selected')}</strong>
                 <span>{t(locale, persistedProject ? '使用桌面保存对话框写出并校验文件。' : '桌面导出能力接入后才可执行。', persistedProject ? 'Use the desktop save dialog to write and validate the file.' : 'Available after desktop export support is connected.')}</span>
               </div>
-              <Button variant="primary" icon="download" disabled={!project?.workspaceId || !activeDocumentId || exporting || sceneStatus === 'empty' || sceneStatus === 'error'} onClick={() => { void exportCurrent(); }}>
+              <Button variant="primary" icon="download" disabled={!project?.libraryId || !activeDocumentId || exporting || sceneStatus === 'empty' || sceneStatus === 'error'} onClick={() => { void exportCurrent(); }}>
                 {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
               </Button>
             </div>
@@ -1375,17 +1375,15 @@ const StoragePage = ({
   locale,
   tab,
   onTabChange,
-  workspaceId,
+  libraryId,
   readOnly = false,
-  onWorkspaceChange,
   notify,
 }: {
   locale: Locale;
   tab: StorageTab;
   onTabChange: (tab: StorageTab) => void;
-  workspaceId?: string;
+  libraryId?: string;
   readOnly?: boolean;
-  onWorkspaceChange?: (workspace: WorkspaceDescriptor) => void;
   notify?: (message: string) => void;
 }) => {
   const [trash, setTrash] = useState<TrashedProject[]>([]);
@@ -1397,12 +1395,12 @@ const StoragePage = ({
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    if (!workspaceId || readOnly) {
+    if (!libraryId || readOnly) {
       setTrash([]);
       return () => { cancelled = true; };
     }
     setLoadingTrash(true);
-    void getDesktopApi().listTrashedProjects?.(workspaceId).then((entries) => {
+    void getDesktopApi().listTrashedProjects?.(libraryId).then((entries) => {
       if (!cancelled) setTrash(entries ?? []);
     }).catch(() => {
       if (!cancelled) notify?.(t(locale, '废纸篓读取失败', 'Could not load trash'));
@@ -1410,16 +1408,16 @@ const StoragePage = ({
       if (!cancelled) setLoadingTrash(false);
     });
     return () => { cancelled = true; };
-  }, [locale, notify, readOnly, workspaceId]);
+  }, [locale, notify, readOnly, libraryId]);
   useEffect(() => {
-    if (!workspaceId) {
+    if (!libraryId) {
       setBackupPath(null);
       setBackupDestination(null);
       setBackupSchedule('manual');
       setBackupLastRunAt(null);
       return;
     }
-    const preferences = readBackupPreferences(workspaceId);
+    const preferences = readBackupPreferences(libraryId);
     const applyPreferences = (next: BackupPreferences): void => {
       setBackupPath(next.lastArtifactPath);
       setBackupDestination(next.destinationParentDirectory);
@@ -1428,19 +1426,19 @@ const StoragePage = ({
     };
     applyPreferences(preferences);
     let cancelled = false;
-    void (getDesktopApi().loadWorkspaceSettings?.(workspaceId) ?? Promise.resolve(null)).then((stored) => {
+    void (getDesktopApi().loadWorkspaceSettings?.(libraryId) ?? Promise.resolve(null)).then((stored) => {
       if (cancelled || !stored) return;
       const next = stored.backup;
       applyPreferences(next);
-      writeBackupPreferences(workspaceId, next);
+      writeBackupPreferences(libraryId, next);
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [workspaceId]);
+  }, [libraryId]);
   const restore = async (projectId: string): Promise<void> => {
-    if (!workspaceId || readOnly) return;
+    if (!libraryId || readOnly) return;
     setBusy(true);
     try {
-      const result = await getDesktopApi().restoreProjectFromTrash?.({ workspaceId, projectId });
+      const result = await getDesktopApi().restoreProjectFromTrash?.({ libraryId, projectId });
       if (result) {
         setTrash((current) => current.filter((entry) => entry.projectId !== projectId));
         notify?.(t(locale, '项目已恢复', 'Project restored'));
@@ -1450,10 +1448,10 @@ const StoragePage = ({
     } finally { setBusy(false); }
   };
   const purge = async (projectId: string): Promise<void> => {
-    if (!workspaceId || readOnly || !window.confirm(t(locale, '永久删除此项目？', 'Permanently delete this project?'))) return;
+    if (!libraryId || readOnly || !window.confirm(t(locale, '永久删除此项目？', 'Permanently delete this project?'))) return;
     setBusy(true);
     try {
-      const result = await getDesktopApi().purgeProjectFromTrash?.({ workspaceId, projectId });
+      const result = await getDesktopApi().purgeProjectFromTrash?.({ libraryId, projectId });
       if (result) {
         setTrash((current) => current.filter((entry) => entry.projectId !== projectId));
         notify?.(t(locale, '项目已删除', 'Project deleted'));
@@ -1463,66 +1461,60 @@ const StoragePage = ({
     } finally { setBusy(false); }
   };
   const performBackup = useCallback(async (destinationParentDirectory: string): Promise<void> => {
-    if (!workspaceId || readOnly || busy) return;
+    if (!libraryId || readOnly || busy) return;
     setBusy(true);
     try {
-      const artifact = await getDesktopApi().createWorkspaceBackup?.(workspaceId, destinationParentDirectory);
+      const artifact = await getDesktopApi().createWorkspaceBackup?.(libraryId, destinationParentDirectory);
       if (artifact) {
         const lastRunAt = artifact.createdAt;
         setBackupPath(artifact.directory);
         setBackupLastRunAt(lastRunAt);
-        persistBackupPreferences(workspaceId, { destinationParentDirectory, schedule: backupSchedule, lastRunAt, lastArtifactPath: artifact.directory });
+        persistBackupPreferences(libraryId, { destinationParentDirectory, schedule: backupSchedule, lastRunAt, lastArtifactPath: artifact.directory });
         notify?.(t(locale, '备份已创建', 'Backup created'));
       }
     } catch {
       notify?.(t(locale, '备份失败，请重试', 'Backup failed; try again'));
     } finally { setBusy(false); }
-  }, [backupSchedule, busy, locale, notify, readOnly, workspaceId]);
+  }, [backupSchedule, busy, locale, notify, readOnly, libraryId]);
   const createBackup = async (): Promise<void> => {
-    if (!workspaceId || readOnly) return;
-    const destination = backupDestination ?? await getDesktopApi().chooseWorkspaceDirectory();
+    if (!libraryId || readOnly) return;
+    const destination = backupDestination;
+    if (!destination) {
+      notify?.(t(locale, '请先在备份设置中选择目标目录', 'Choose a backup destination in settings first'));
+      return;
+    }
     if (!destination) return;
     setBackupDestination(destination);
-    const preferences = readBackupPreferences(workspaceId);
-    persistBackupPreferences(workspaceId, { ...preferences, destinationParentDirectory: destination, schedule: backupSchedule });
+    const preferences = readBackupPreferences(libraryId);
+    persistBackupPreferences(libraryId, { ...preferences, destinationParentDirectory: destination, schedule: backupSchedule });
     await performBackup(destination);
   };
   const updateBackupSchedule = (schedule: BackupSchedule): void => {
-    if (!workspaceId) return;
+    if (!libraryId) return;
     setBackupSchedule(schedule);
-    const preferences = readBackupPreferences(workspaceId);
-    persistBackupPreferences(workspaceId, { ...preferences, schedule });
+    const preferences = readBackupPreferences(libraryId);
+    persistBackupPreferences(libraryId, { ...preferences, schedule });
   };
   useEffect(() => {
-    if (!workspaceId || readOnly || !backupDestination) return undefined;
+    if (!libraryId || readOnly || !backupDestination) return undefined;
     const interval = backupIntervalMs(backupSchedule);
     if (interval === null) return undefined;
     const timer = window.setInterval(() => {
-      const preferences = readBackupPreferences(workspaceId);
+      const preferences = readBackupPreferences(libraryId);
       if (shouldRunScheduledBackup({ schedule: backupSchedule, lastRunAt: preferences.lastRunAt ?? backupLastRunAt, now: Date.now() })) void performBackup(backupDestination);
     }, Math.min(interval, 60 * 1000));
     return () => window.clearInterval(timer);
-  }, [backupDestination, backupLastRunAt, backupSchedule, performBackup, readOnly, workspaceId]);
+  }, [backupDestination, backupLastRunAt, backupSchedule, performBackup, readOnly, libraryId]);
   const restoreBackup = async (): Promise<void> => {
     if (readOnly) return;
     setBusy(true);
     try {
-      const backupDirectory = await getDesktopApi().chooseWorkspaceDirectory();
-      if (!backupDirectory) return;
-      const destinationParentDirectory = await getDesktopApi().chooseWorkspaceDirectory();
-      if (!destinationParentDirectory) return;
-      const restored = await getDesktopApi().restoreWorkspaceBackup?.({ backupDirectory, destinationParentDirectory });
-      if (!restored) return;
-      const opened = await getDesktopApi().openWorkspace?.(restored.directory);
-      if (opened) {
-        onWorkspaceChange?.(opened);
-        notify?.(t(locale, '备份已恢复', 'Backup restored'));
-      }
+      notify?.(t(locale, '请在设置中提供备份目录后恢复', 'Provide backup directories in settings before restoring'));
     } catch {
       notify?.(t(locale, '恢复失败，请重试', 'Restore failed; try again'));
     } finally { setBusy(false); }
   };
-  const hasWorkspace = Boolean(workspaceId);
+  const hasWorkspace = Boolean(libraryId);
   return (
   <section className="page-content library-page">
     <PageHeader
@@ -1672,13 +1664,13 @@ const SettingsPage = ({
   onThemeChange,
   onLocaleChange,
   notify,
-  workspaceId,
+  libraryId,
   operatorName = '',
   onOperatorNameChange,
 }: Pick<
   LibraryPagesProps,
   'locale' | 'theme' | 'navigate' | 'onThemeChange' | 'onLocaleChange'
-> & { notify?: (message: string) => void; workspaceId?: string; operatorName?: string; onOperatorNameChange?: (name: string) => void }) => {
+> & { notify?: (message: string) => void; libraryId?: string; operatorName?: string; onOperatorNameChange?: (name: string) => void }) => {
   const [hasConnectedModel, setHasConnectedModel] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -1686,7 +1678,7 @@ const SettingsPage = ({
       .then((entries) => { if (!cancelled) setHasConnectedModel(entries.some(Boolean)); })
       .catch(() => { if (!cancelled) setHasConnectedModel(false); });
     return () => { cancelled = true; };
-  }, [workspaceId]);
+  }, [libraryId]);
   const exportDiagnostics = async (): Promise<void> => {
     const path = await getDesktopApi().exportDiagnostics?.({ runtime: 'Electron', errorCode: null });
     if (path) notify?.(t(locale, `诊断包已导出到 ${path}`, `Diagnostics exported to ${path}`));
@@ -1852,11 +1844,10 @@ export const LibraryPages = ({
   onLocaleChange,
   deliveryProject,
   onUseForNew,
-  workspaceId,
+  libraryId,
   preview = false,
   readOnly = false,
   projectId,
-  onWorkspaceChange,
   operatorName,
   onOperatorNameChange,
   onAssetAction,
@@ -1869,6 +1860,14 @@ export const LibraryPages = ({
   designerCreateRequestId,
   onDesignerProfilesChange,
 }: LibraryPagesProps) => {
+  const [imageToolJobs, setImageToolJobs] = useState<Array<{ job: ImageToolJob; items: ImageToolItem[] }>>([]);
+  const refreshImageToolJobs = useCallback(async (): Promise<void> => {
+    const api = getDesktopApi();
+    if (!libraryId || !api.listImageToolJobs) return;
+    const loaded = await api.listImageToolJobs(libraryId);
+    if (loaded) setImageToolJobs(loaded);
+  }, [libraryId]);
+  useEffect(() => { if (view === 'image-tools') void refreshImageToolJobs(); }, [refreshImageToolJobs, view]);
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
   const [assetLayout, setAssetLayout] = useState<'grid' | 'list'>('grid');
@@ -1883,7 +1882,7 @@ export const LibraryPages = ({
         locale={locale}
         notify={notify}
         onUseForNew={onUseForNew}
-        workspaceId={workspaceId}
+        libraryId={libraryId}
         preview={preview}
         initialProfiles={initialProfiles}
         readOnly={readOnly}
@@ -1903,7 +1902,7 @@ export const LibraryPages = ({
         onTypeChange={setAssetType}
         onLayoutChange={setAssetLayout}
         onSelect={setSelectedAsset}
-        workspaceId={workspaceId}
+        libraryId={libraryId}
         preview={preview}
         initialAssets={initialAssets}
         projectId={projectId}
@@ -1918,18 +1917,45 @@ export const LibraryPages = ({
         locale={locale}
         selectedId={selectedBrand}
         onSelect={setSelectedBrand}
-        workspaceId={workspaceId}
+        libraryId={libraryId}
         preview={preview}
         initialBrands={initialBrands}
       />
     ),
     connections: <ConnectionsPage
       locale={locale}
-      workspaceId={workspaceId}
+      libraryId={libraryId}
       dialogOpen={connectionsDialogOpen}
       onDialogClose={onConnectionsDialogClose}
     />,
-    tasks: <TasksPage locale={locale} navigate={navigate} workspaceId={workspaceId} active={active} />,
+    tasks: <TasksPage locale={locale} navigate={navigate} libraryId={libraryId} active={active} />,
+    'image-tools': (
+      <ImageToolsPage
+        locale={locale}
+        jobs={imageToolJobs}
+        onChooseInput={async () => getDesktopApi().chooseImageToolInput?.() ?? null}
+        onChooseOutput={async () => getDesktopApi().chooseImageToolOutput?.() ?? null}
+        onScan={async (input) => {
+          if (!libraryId) return null;
+          const result = await getDesktopApi().scanImageToolSources?.({ libraryId, ...input });
+          return result ? { accepted: result.accepted.map((item) => ({ relativePath: item.relativePath })), rejected: result.rejected } : null;
+        }}
+        onCreate={async (input) => {
+          const api = getDesktopApi();
+          if (!libraryId || !api.createImageToolJob) return;
+          await api.createImageToolJob({ libraryId, ...input });
+          await refreshImageToolJobs();
+        }}
+        onPause={async (jobId) => { if (libraryId) { await getDesktopApi().pauseImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
+        onResume={async (jobId) => { if (libraryId) { await getDesktopApi().resumeImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
+        onCancel={async (jobId) => { if (libraryId) { await getDesktopApi().cancelImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
+        onRetryItem={async (jobId, itemId) => { if (libraryId) { await getDesktopApi().retryImageToolItem?.({ libraryId, jobId, itemId }); await refreshImageToolJobs(); } }}
+        onOpenResult={async (path, jobId) => { if (libraryId) await getDesktopApi().openImageToolResult?.({ libraryId, jobId, path }); }}
+        onRevealResult={async (path, jobId) => { if (libraryId) await getDesktopApi().revealImageToolResult?.({ libraryId, jobId, path }); }}
+        onOpenOutput={async (path, jobId) => { if (libraryId) await getDesktopApi().openImageToolOutput?.({ libraryId, jobId, path }); }}
+        onImportResult={async (path, jobId) => { if (libraryId && projectId) await getDesktopApi().importImageToolResult?.({ libraryId, projectId, jobId, path }); }}
+      />
+    ),
     delivery: (
       <DeliveryPage
         locale={locale}
@@ -1948,9 +1974,8 @@ export const LibraryPages = ({
         locale={locale}
         tab={storageTab}
         onTabChange={setStorageTab}
-        workspaceId={workspaceId}
+        libraryId={libraryId}
         readOnly={readOnly}
-        onWorkspaceChange={onWorkspaceChange}
         notify={notify}
       />
     ),
@@ -1964,7 +1989,7 @@ export const LibraryPages = ({
         notify={notify}
         operatorName={operatorName}
         onOperatorNameChange={onOperatorNameChange}
-        workspaceId={workspaceId}
+        libraryId={libraryId}
       />
     ),
   };

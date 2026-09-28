@@ -48,7 +48,7 @@ afterEach(async () => {
 
 it('publishes a versioned project database and content manifest exactly once per operation', async () => {
   const { workspace, store } = await createWritableStore();
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'create-1', name: 'Spring campaign' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'create-1', name: 'Spring campaign' };
 
   const created = await store.createProjectContainer(input);
   const retried = await store.createProjectContainer(input);
@@ -71,14 +71,14 @@ it('publishes a versioned project database and content manifest exactly once per
 it('duplicates a project with a new identity while retaining documents and managed assets', async () => {
   const { workspace, store } = await createWritableStore();
   const project = await store.createProjectContainer({
-    workspaceId: workspace.library.libraryId,
+    libraryId: workspace.library.libraryId,
     operationId: 'duplicate-source',
     name: 'Source project',
     documents: [{ id: 'doc-1', name: 'Poster', width: 800, height: 600 }],
   });
   try {
     const duplicate = await store.duplicateProject({
-      workspaceId: workspace.library.libraryId,
+      libraryId: workspace.library.libraryId,
       sourceProjectId: project.projectId,
       operationId: 'duplicate-copy',
       name: 'Copied project',
@@ -96,19 +96,19 @@ it('retains a managed project cover across restart and duplication', async () =>
   let activeWorkspace = workspace;
   try {
     const project = await store.createProjectContainer({
-      workspaceId: workspace.library.libraryId,
+      libraryId: workspace.library.libraryId,
       operationId: 'cover-source',
       name: 'Cover source',
     });
     const [imported] = await createAssetStore(workspace).importAssets({
-      workspaceId: workspace.library.libraryId,
+      libraryId: workspace.library.libraryId,
       projectId: project.projectId,
       items: [{ name: 'cover.png', mimeType: 'image/png', data: new Uint8Array([1, 2, 3]), metadata: { purpose: 'project-cover' } }],
     });
     expect(imported.status).toBe('success');
     if (imported.status !== 'success') return;
     await store.updateProjectMetadata({
-      workspaceId: workspace.library.libraryId,
+      libraryId: workspace.library.libraryId,
       projectId: project.projectId,
       patch: { coverAssetId: imported.asset.id },
     });
@@ -118,19 +118,19 @@ it('retains a managed project cover across restart and duplication', async () =>
     const reopenedStore = createProjectStore(activeWorkspace);
     await expect(reopenedStore.getProjectMetadata(project.projectId)).resolves.toMatchObject({ coverAssetId: imported.asset.id });
     await expect(createAssetStore(activeWorkspace).readAsset({
-      workspaceId: activeWorkspace.library.libraryId,
+      libraryId: activeWorkspace.library.libraryId,
       projectId: project.projectId,
       assetId: imported.asset.id,
     })).resolves.toEqual(new Uint8Array([1, 2, 3]));
 
     const duplicate = await reopenedStore.duplicateProject({
-      workspaceId: activeWorkspace.library.libraryId,
+      libraryId: activeWorkspace.library.libraryId,
       sourceProjectId: project.projectId,
       operationId: 'cover-copy',
     });
     await expect(reopenedStore.getProjectMetadata(duplicate.projectId)).resolves.toMatchObject({ coverAssetId: imported.asset.id });
     await expect(createAssetStore(activeWorkspace).readAsset({
-      workspaceId: activeWorkspace.library.libraryId,
+      libraryId: activeWorkspace.library.libraryId,
       projectId: duplicate.projectId,
       assetId: imported.asset.id,
     })).resolves.toEqual(new Uint8Array([1, 2, 3]));
@@ -142,7 +142,7 @@ it('retains a managed project cover across restart and duplication', async () =>
 it('cleans only its temporary content when database initialization or publish fails, then retries without a duplicate', async () => {
   const { workspace } = await createWritableStore();
   let activeWorkspace = workspace;
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'create-fault', name: 'Fault recovery' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'create-fault', name: 'Fault recovery' };
   const projectsDirectory = join(workspace.library.directory, 'projects');
   const indexPath = join(workspace.library.directory, '.designhub', workspaceProjectIndexName);
 
@@ -173,7 +173,7 @@ it('cleans only its temporary content when database initialization or publish fa
 it('recovers a published project after index update failure and rebuilds a corrupt index without losing projects', async () => {
   const { workspace } = await createWritableStore();
   let activeWorkspace = workspace;
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'create-index-fault', name: 'Index recovery' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'create-index-fault', name: 'Index recovery' };
   const indexPath = join(workspace.library.directory, '.designhub', workspaceProjectIndexName);
 
   try {
@@ -203,17 +203,17 @@ it('gives same display names separate safe directories and rejects invalid works
   const { directory, workspace, store } = await createWritableStore();
 
   try {
-    const first = await store.createProjectContainer({ workspaceId: workspace.library.libraryId, operationId: 'same-name-1', name: 'Same name' });
-    const second = await store.createProjectContainer({ workspaceId: workspace.library.libraryId, operationId: 'same-name-2', name: 'Same name' });
+    const first = await store.createProjectContainer({ libraryId: workspace.library.libraryId, operationId: 'same-name-1', name: 'Same name' });
+    const second = await store.createProjectContainer({ libraryId: workspace.library.libraryId, operationId: 'same-name-2', name: 'Same name' });
     expect(first.projectId).not.toBe(second.projectId);
     expect(existsSync(join(workspace.library.directory, 'projects', first.projectId))).toBe(true);
     expect(existsSync(join(workspace.library.directory, 'projects', second.projectId))).toBe(true);
 
-    await expect(store.createProjectContainer({ workspaceId: workspace.library.libraryId, operationId: 'traversal', name: '../escape' })).rejects.toThrow('INVALID_PROJECT_NAME');
-    await expect(store.createProjectContainer({ workspaceId: '00000000-0000-4000-8000-000000000000', operationId: 'wrong-id', name: 'Wrong identity' })).rejects.toThrow('WORKSPACE_IDENTITY_MISMATCH');
+    await expect(store.createProjectContainer({ libraryId: workspace.library.libraryId, operationId: 'traversal', name: '../escape' })).rejects.toThrow('INVALID_PROJECT_NAME');
+    await expect(store.createProjectContainer({ libraryId: '00000000-0000-4000-8000-000000000000', operationId: 'wrong-id', name: 'Wrong identity' })).rejects.toThrow('WORKSPACE_IDENTITY_MISMATCH');
     await mkdir(join(directory, 'outside'));
-    await expect(createProjectStore({ library: { ...workspace.library, directory: join(directory, 'outside') }, close: workspace.close } as never).createProjectContainer({ workspaceId: workspace.library.libraryId, operationId: 'wrong-path', name: 'Wrong path' })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
-    await expect(createProjectStore({ library: { ...workspace.library, openMode: 'read-only' }, close: workspace.close } as never).createProjectContainer({ workspaceId: workspace.library.libraryId, operationId: 'read-only', name: 'Read only' })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
+    await expect(createProjectStore({ library: { ...workspace.library, directory: join(directory, 'outside') }, close: workspace.close } as never).createProjectContainer({ libraryId: workspace.library.libraryId, operationId: 'wrong-path', name: 'Wrong path' })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
+    await expect(createProjectStore({ library: { ...workspace.library, openMode: 'read-only' }, close: workspace.close } as never).createProjectContainer({ libraryId: workspace.library.libraryId, operationId: 'read-only', name: 'Read only' })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
   } finally {
     workspace.close();
   }
@@ -221,7 +221,7 @@ it('gives same display names separate safe directories and rejects invalid works
 
 it('rejects a store after its writer handle closes and permits a newly opened writer handle', async () => {
   const { workspace } = await createWritableStore();
-  const staleInput = { workspaceId: workspace.library.libraryId, operationId: 'stale-writer', name: 'Stale writer' };
+  const staleInput = { libraryId: workspace.library.libraryId, operationId: 'stale-writer', name: 'Stale writer' };
 
   workspace.close();
   await expect(createProjectStore(workspace).createProjectContainer(staleInput)).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
@@ -256,7 +256,7 @@ it('rejects project writes when the opened workspace path is replaced by another
     await symlink(replacementDirectory, originalDirectory, 'dir');
 
     await expect(store.createProjectContainer({
-      workspaceId: workspace.library.libraryId,
+      libraryId: workspace.library.libraryId,
       operationId: 'replaced-path',
       name: 'Replaced path',
     })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
@@ -288,7 +288,7 @@ it('rejects project writes when the opened workspace path is replaced by a new r
     await mkdir(replacementStaging);
 
     await expect(store.createProjectContainer({
-      workspaceId: workspace.library.libraryId,
+      libraryId: workspace.library.libraryId,
       operationId: 'replaced-real-path',
       name: 'Replaced real path',
     })).rejects.toThrow('WORKSPACE_NOT_WRITABLE');
@@ -301,7 +301,7 @@ it('rejects project writes when the opened workspace path is replaced by a new r
 
 it('reconciles missing and valid empty indexes from published manifests before retrying an operation', async () => {
   const { workspace, store } = await createWritableStore();
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'reconcile-index', name: 'Reconcile index' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'reconcile-index', name: 'Reconcile index' };
   const indexPath = join(workspace.library.directory, '.designhub', workspaceProjectIndexName);
 
   try {
@@ -335,7 +335,7 @@ it('reconciles missing and valid empty indexes from published manifests before r
 
 it('rebuilds corrupt indexes around junk without changing published metadata or deleting unrelated staging', async () => {
   const { workspace } = await createWritableStore();
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'published-metadata', name: 'Published name' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'published-metadata', name: 'Published name' };
   const projectsDirectory = join(workspace.library.directory, 'projects');
   const indexPath = join(workspace.library.directory, '.designhub', workspaceProjectIndexName);
   const crashStaging = join(projectsDirectory, '.00000000-0000-4000-8000-000000000000.creating-10000000-0000-4000-8000-000000000000');
@@ -387,7 +387,7 @@ it('rebuilds corrupt indexes around junk without changing published metadata or 
 
 it('does not reuse a published project when its manifest belongs to another operation', async () => {
   const { workspace, store } = await createWritableStore();
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'manifest-operation', name: 'Manifest operation' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'manifest-operation', name: 'Manifest operation' };
   try {
     const created = await store.createProjectContainer(input);
     const manifestPath = join(workspace.library.directory, 'projects', created.projectId, projectManifestName);
@@ -403,7 +403,7 @@ it('does not reuse a published project when its manifest belongs to another oper
 it('fails closed when a project manifest is replaced by an external symlink', async () => {
   const { directory, workspace, store } = await createWritableStore();
   try {
-    const created = await store.createProjectContainer({ workspaceId: workspace.library.libraryId, operationId: 'manifest-symlink', name: 'Protected project' });
+    const created = await store.createProjectContainer({ libraryId: workspace.library.libraryId, operationId: 'manifest-symlink', name: 'Protected project' });
     const manifestPath = join(workspace.library.directory, 'projects', created.projectId, projectManifestName);
     const externalPath = join(directory, 'external-project.json');
     const manifest = await readFile(manifestPath, 'utf8');
@@ -420,8 +420,8 @@ it('fails closed when a project manifest is replaced by an external symlink', as
 
 it('rejects published retries with an invalid project database or content manifest', async () => {
   const { workspace, store } = await createWritableStore();
-  const databaseInput = { workspaceId: workspace.library.libraryId, operationId: 'invalid-published-database', name: 'Invalid database' };
-  const contentInput = { workspaceId: workspace.library.libraryId, operationId: 'invalid-published-content', name: 'Invalid content' };
+  const databaseInput = { libraryId: workspace.library.libraryId, operationId: 'invalid-published-database', name: 'Invalid database' };
+  const contentInput = { libraryId: workspace.library.libraryId, operationId: 'invalid-published-content', name: 'Invalid content' };
   try {
     const databaseProject = await store.createProjectContainer(databaseInput);
     const contentProject = await store.createProjectContainer(contentInput);
@@ -438,7 +438,7 @@ it('rejects published retries with an invalid project database or content manife
 
 it('rejects a published operation whose index directory is not its UUID directory', async () => {
   const { workspace, store } = await createWritableStore();
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'unsafe-directory', name: 'Unsafe directory' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'unsafe-directory', name: 'Unsafe directory' };
   const indexPath = join(workspace.library.directory, '.designhub', workspaceProjectIndexName);
   try {
     await expect(createProjectStore(workspace, { failAt: 'database-write' }).createProjectContainer(input)).rejects.toThrow('INJECTED_DATABASE_WRITE_FAILURE');
@@ -458,7 +458,7 @@ it('rejects a published operation whose index directory is not its UUID director
 it('propagates a locked index without replacing it as corruption', async () => {
   const { workspace, store } = await createWritableStore();
   const indexPath = join(workspace.library.directory, '.designhub', workspaceProjectIndexName);
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'locked-index', name: 'Locked index' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'locked-index', name: 'Locked index' };
 
   try {
     await store.createProjectContainer(input);
@@ -480,7 +480,7 @@ it('propagates a locked index without replacing it as corruption', async () => {
 
 it('propagates a locked published project database while reconciling a missing index', async () => {
   const { workspace, store } = await createWritableStore();
-  const input = { workspaceId: workspace.library.libraryId, operationId: 'locked-project', name: 'Locked project' };
+  const input = { libraryId: workspace.library.libraryId, operationId: 'locked-project', name: 'Locked project' };
   const indexPath = join(workspace.library.directory, '.designhub', workspaceProjectIndexName);
   try {
     const created = await store.createProjectContainer(input);

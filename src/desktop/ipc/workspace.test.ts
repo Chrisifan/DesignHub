@@ -1,10 +1,6 @@
-import { expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 
-import {
-  createWorkspaceFromParentHandler,
-  isTrustedWorkspaceRequest,
-  openWorkspaceHandler,
-} from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 import { createProjectContainerHandler, listActiveProjectsHandler } from './projects';
 
 const createFixture = () => {
@@ -14,64 +10,25 @@ const createFixture = () => {
   return { window, event, trustedUrl: mainFrame.url };
 };
 
-it('creates a workspace only for a trusted main frame', async () => {
+it('gates project-library operations on the trusted renderer and active library identity', async () => {
   const { window, event, trustedUrl } = createFixture();
-  const createWorkspace = vi.fn(async (input: { parentDirectory: string; name: string }) => ({
-    workspaceId: 'workspace-1',
-    name: input.name,
-    directory: `${input.parentDirectory}/${input.name}`,
-    formatVersion: 1,
-    openMode: 'writable' as const,
-  }));
-
-  await expect(
-    createWorkspaceFromParentHandler(window as never, trustedUrl, createWorkspace)(event as never, {
-      parentDirectory: '/tmp',
-      name: 'My workspace',
-    }),
-  ).resolves.toMatchObject({ workspaceId: 'workspace-1' });
-  expect(createWorkspace).toHaveBeenCalledWith({ parentDirectory: '/tmp', name: 'My workspace' });
-
-  const untrustedEvent = { ...event, senderFrame: { url: 'file:///app/evil.html' } };
-  await expect(
-    createWorkspaceFromParentHandler(window as never, trustedUrl, createWorkspace)(untrustedEvent as never, {
-      parentDirectory: '/tmp',
-      name: 'Nope',
-    }),
-  ).resolves.toBeNull();
-  expect(createWorkspace).toHaveBeenCalledOnce();
-});
-
-it('opens a selected workspace through the same trusted-frame gate', async () => {
-  const { window, event, trustedUrl } = createFixture();
-  const openWorkspace = vi.fn(async (directory: string) => ({
-    workspaceId: 'workspace-2',
-    name: 'Opened workspace',
-    directory,
-    formatVersion: 1,
-    openMode: 'read-only' as const,
-  }));
-
-  await expect(
-    openWorkspaceHandler(window as never, trustedUrl, openWorkspace)(event as never, '/tmp/workspace'),
-  ).resolves.toMatchObject({ workspaceId: 'workspace-2', openMode: 'read-only' });
-  expect(openWorkspace).toHaveBeenCalledWith('/tmp/workspace');
-  expect(isTrustedWorkspaceRequest(event as never, window as never, trustedUrl)).toBe(true);
-});
-
-it('lists and creates projects only for the active trusted workspace', async () => {
-  const { window, event, trustedUrl } = createFixture();
-  const workspace = { workspace: { workspaceId: 'workspace-1' } } as never;
-  const listProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'A project' }]);
-  await expect(listActiveProjectsHandler(window as never, trustedUrl, () => workspace, listProjects)(event as never, 'workspace-1')).resolves.toEqual([
+  const library = { library: { libraryId: 'library-1' } } as never;
+  const listProjects = async () => [{ projectId: 'project-1', name: 'A project' }];
+  await expect(listActiveProjectsHandler(window as never, trustedUrl, () => library, listProjects)(event as never, 'library-1')).resolves.toEqual([
     { projectId: 'project-1', name: 'A project' },
   ]);
-  const createProject = vi.fn(async (_workspace, input) => ({ projectId: `created-${input.name}` }));
-  await expect(createProjectContainerHandler(window as never, trustedUrl, () => workspace, createProject)(event as never, {
-    workspaceId: 'workspace-1',
-    operationId: 'op-1',
-    name: 'New project',
+  const createProject = async (_library: unknown, input: { name: string }) => ({ projectId: `created-${input.name}` });
+  await expect(createProjectContainerHandler(window as never, trustedUrl, () => library, createProject)(event as never, {
+    libraryId: 'library-1', operationId: 'op-1', name: 'New project',
   })).resolves.toEqual({ projectId: 'created-New project' });
-  expect(createProject).toHaveBeenCalledOnce();
-  await expect(listActiveProjectsHandler(window as never, trustedUrl, () => workspace, listProjects)(event as never, 'other')).resolves.toBeNull();
+  await expect(listActiveProjectsHandler(window as never, trustedUrl, () => library, listProjects)(event as never, 'other')).resolves.toBeNull();
+  expect(isTrustedProjectLibraryRequest(event as never, window as never, trustedUrl)).toBe(true);
+});
+
+it('rejects an untrusted renderer before reaching project-library storage', async () => {
+  const { window, event, trustedUrl } = createFixture();
+  const library = { library: { libraryId: 'library-1' } } as never;
+  const listProjects = async () => [{ projectId: 'project-1', name: 'A project' }];
+  const untrusted = { ...event, senderFrame: { url: 'file:///app/evil.html' } };
+  await expect(listActiveProjectsHandler(window as never, trustedUrl, () => library, listProjects)(untrusted as never, 'library-1')).resolves.toBeNull();
 });

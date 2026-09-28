@@ -1,6 +1,6 @@
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { isWorkspaceSettings, type WorkspaceSettings } from '../../features/workspace/settings';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const settingsLoadChannel = 'workspace:settings-load';
 export const settingsSaveChannel = 'workspace:settings-save';
@@ -14,25 +14,25 @@ const isWorkspaceId = (value: unknown): value is string => typeof value === 'str
 export const loadSettingsHandler = (
   window: SettingsWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
-  loadSettings: (workspace: ProjectLibraryHandle, workspaceId: string) => Promise<WorkspaceSettings | null>,
-) => async (event: SettingsRequest, workspaceId: unknown): Promise<WorkspaceSettings | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isWorkspaceId(workspaceId)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== workspaceId) return null;
-  return loadSettings(workspace, workspaceId);
+  getLibrary: () => ProjectLibraryHandle | null,
+  loadSettings: (workspace: ProjectLibraryHandle, libraryId: string) => Promise<WorkspaceSettings | null>,
+) => async (event: SettingsRequest, libraryId: unknown): Promise<WorkspaceSettings | null> => {
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isWorkspaceId(libraryId)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== libraryId) return null;
+  return loadSettings(workspace, libraryId);
 };
 
 export const saveSettingsHandler = (
   window: SettingsWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
-  saveSettings: (workspace: ProjectLibraryHandle, workspaceId: string, settings: WorkspaceSettings) => Promise<boolean>,
+  getLibrary: () => ProjectLibraryHandle | null,
+  saveSettings: (workspace: ProjectLibraryHandle, libraryId: string, settings: WorkspaceSettings) => Promise<boolean>,
 ) => async (event: SettingsRequest, input: unknown): Promise<boolean> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return false;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || typeof input !== 'object' || input === null) return false;
   const value = input as Record<string, unknown>;
-  if (!isWorkspaceId(value.workspaceId) || !isWorkspaceSettings(value.settings)) return false;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== value.workspaceId) return false;
-  return saveSettings(workspace, value.workspaceId, value.settings);
+  if (!isWorkspaceId(value.libraryId) || !isWorkspaceSettings(value.settings)) return false;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== value.libraryId) return false;
+  return saveSettings(workspace, value.libraryId, value.settings);
 };

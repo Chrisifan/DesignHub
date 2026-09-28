@@ -71,7 +71,7 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
   });
   const searchStore = createSearchIndexStore(workspace);
   await searchStore.replace([{
-    workspaceId: workspace.library.libraryId,
+    libraryId: workspace.library.libraryId,
     projectId: 'project-indexed',
     documentId: 'doc-indexed',
     title: 'Indexed project',
@@ -80,16 +80,16 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
   searchStore.close();
   const projects = createProjectStore(workspace);
   const active = await projects.createProjectContainer({
-    workspaceId: workspace.library.libraryId,
+    libraryId: workspace.library.libraryId,
     operationId: 'backup-active',
     name: 'Active project',
   });
   const trashed = await projects.createProjectContainer({
-    workspaceId: workspace.library.libraryId,
+    libraryId: workspace.library.libraryId,
     operationId: 'backup-trash',
     name: 'Trashed project',
   });
-  await projects.moveProjectToTrash({ workspaceId: workspace.library.libraryId, projectId: trashed.projectId });
+  await projects.moveProjectToTrash({ libraryId: workspace.library.libraryId, projectId: trashed.projectId });
   await mkdir(join(workspace.library.directory, 'shared-assets', 'nested'));
   await writeFile(join(workspace.library.directory, 'shared-assets', 'nested', 'asset.txt'), 'managed asset');
   await writeFile(join(workspace.library.directory, 'shared-assets', 'nested', 'raw.sqlite'), 'ordinary asset with a database-like suffix');
@@ -177,7 +177,7 @@ it.each(['file-copy', 'database-backup', 'backup-publish'] as const)('does not p
   const destinationParent = await createTemporaryDirectory(`designhub-backup-failure-target-${failAt}-`);
   const workspace = await initializeProjectLibrary(sourceParent);
   const project = await createProjectStore(workspace).createProjectContainer({
-    workspaceId: workspace.library.libraryId,
+    libraryId: workspace.library.libraryId,
     operationId: `failure-${failAt}`,
     name: `Failure ${failAt}`,
   });
@@ -300,7 +300,7 @@ it('rejects incomplete, tampered, and internally corrupt backup artifacts withou
   const restoreParent = await createTemporaryDirectory('designhub-invalid-restore-target-');
   const workspace = await initializeProjectLibrary(sourceParent);
   const project = await createProjectStore(workspace).createProjectContainer({
-    workspaceId: workspace.library.libraryId,
+    libraryId: workspace.library.libraryId,
     operationId: 'integrity-project',
     name: 'Integrity project',
   });

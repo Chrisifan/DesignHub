@@ -53,12 +53,12 @@ it('clears the pending designer when the workspace changes', async () => {
     onSubmit: vi.fn(async () => true),
     notify: vi.fn(),
   };
-  const { rerender } = render(<StudioHome {...props} workspaceId="workspace-a" />);
+  const { rerender } = render(<StudioHome {...props} libraryId="workspace-a" />);
   fireEvent.click(screen.getByRole('combobox', { name: '设计师' }));
   fireEvent.click(screen.getByRole('option', { name: /纸感排版/ }));
   expect(screen.getByRole('combobox', { name: '设计师' })).toHaveValue('paper-type');
 
-  rerender(<StudioHome {...props} workspaceId="workspace-b" />);
+  rerender(<StudioHome {...props} libraryId="workspace-b" />);
   await waitFor(() => expect(screen.getByRole('combobox', { name: '设计师' })).toHaveValue(''));
 });
 

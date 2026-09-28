@@ -61,7 +61,6 @@ it('defines shared layout tokens for compact toolbar controls and unframed main 
   expect(tokens).toMatch(/--toolbar-control-height:\s*28px/);
   expect(tokens).toMatch(/--toolbar-control-padding-inline:\s*8px/);
   expect(tokens).toMatch(/--content-card-background:\s*transparent/);
-  expect(tokens).toMatch(/--content-card-radius:\s*0/);
   expect(tokens).toMatch(/--content-card-shadow:\s*none/);
   expect(tokens).toMatch(/--scrollbar-size:\s*6px/);
   expect(tokens).toMatch(/--scrollbar-thumb:/);
@@ -187,7 +186,7 @@ it('keeps regular studio pages on one scroll owner and styles compact toolbar ac
     /\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*background:\s*var\(--content-card-background\)/,
   );
   expect(styles).toMatch(
-    /\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*border:\s*0;[\s\S]*border-radius:\s*var\(--content-card-radius\);[\s\S]*box-shadow:\s*var\(--content-card-shadow\)/,
+    /\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*border:\s*0;[\s\S]*border-radius:\s*0;[\s\S]*box-shadow:\s*var\(--content-card-shadow\)/,
   );
   expect(styles).toMatch(
     /\.project-card\s*\{[\s\S]*background:\s*var\(--surface-container-lowest\)/,
@@ -290,7 +289,7 @@ it('keeps the dot workspace visible through glass controls', () => {
   const dockStyles = readStyle('../../src/app/studio/conversation-dock.css');
 
   expect(tokens).toMatch(/rgb\(255 255 255 \/ 0\.(?:[0-4]\d)\)/u);
-  expect(tokens).toMatch(/rgb\(238 242 255 \/ 0\.(?:[0-4]\d)\)/u);
+  expect(tokens).toMatch(/--shell-glass:\s*color-mix\(/u);
   expect(homeStyles).toMatch(/\.studio-home-projects__filters\s*\{[\s\S]*background:\s*color-mix\([^;]*transparent/u);
   expect(homeStyles.match(/\.studio-home-projects__filters button\.is-active\s*\{([^}]*)\}/u)?.[1] ?? '').not.toMatch(/var\(--surface-container-highest\)/u);
   expect(homeStyles.match(/\.home-designer-card\s*\{([^}]*)\}/u)?.[1] ?? '').not.toMatch(/var\(--surface-container\)/u);

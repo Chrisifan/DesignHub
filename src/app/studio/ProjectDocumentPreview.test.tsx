@@ -31,11 +31,11 @@ it('renders the persisted content image and ignores reference layers', async () 
   });
   const loadDocumentScene = vi.fn(async () => scene);
   const readAsset = vi.fn(async () => new Uint8Array([1, 2, 3]));
-  window.designhub = { chooseWorkspaceDirectory: async () => null, loadDocumentScene, readAsset };
+  window.designhub = { loadDocumentScene, readAsset };
 
   const view = render(
     <ProjectDocumentPreview
-      workspaceId="workspace-1"
+      libraryId="workspace-1"
       projectId="project-1"
       documentId="doc-1"
       artwork="market"
@@ -44,7 +44,7 @@ it('renders the persisted content image and ignores reference layers', async () 
   );
 
   expect(await screen.findByRole('img', { name: '主海报定稿预览' })).toHaveAttribute('src', 'blob:finalized-document');
-  expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-final' });
+  expect(readAsset).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'project-1', assetId: 'asset-final' });
   expect(readAsset).not.toHaveBeenCalledWith(expect.objectContaining({ assetId: 'asset-reference' }));
 
   view.unmount();
@@ -62,25 +62,23 @@ it('uses a non-reference image when an older scene has no explicit content role'
   });
   const readAsset = vi.fn(async () => new Uint8Array([1]));
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentScene: vi.fn(async () => scene),
     readAsset,
   };
 
-  render(<ProjectDocumentPreview workspaceId="workspace-1" projectId="project-1" documentId="doc-1" artwork="market" alt="旧文档预览" />);
+  render(<ProjectDocumentPreview libraryId="workspace-1" projectId="project-1" documentId="doc-1" artwork="market" alt="旧文档预览" />);
 
   expect(await screen.findByRole('img', { name: '旧文档预览' })).toHaveAttribute('src', 'blob:finalized-document');
-  expect(readAsset).toHaveBeenCalledWith({ workspaceId: 'workspace-1', projectId: 'project-1', assetId: 'asset-legacy' });
+  expect(readAsset).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'project-1', assetId: 'asset-legacy' });
 });
 
 it('falls back to the artwork preview when no formal image can be read', async () => {
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentScene: vi.fn(async () => createScene({ id: 'doc-1', width: 100, height: 100, layers: [] })),
     readAsset: vi.fn(async () => null),
   };
 
-  const view = render(<ProjectDocumentPreview workspaceId="workspace-1" projectId="project-1" documentId="doc-1" artwork="market" alt="主海报定稿预览" />);
+  const view = render(<ProjectDocumentPreview libraryId="workspace-1" projectId="project-1" documentId="doc-1" artwork="market" alt="主海报定稿预览" />);
 
   await waitFor(() => expect(view.container.querySelector('.artwork--market')).toBeInTheDocument());
   expect(screen.queryByRole('img', { name: '主海报定稿预览' })).not.toBeInTheDocument();
@@ -96,11 +94,10 @@ it('releases the object URL immediately when the managed image cannot be decoded
     ],
   });
   window.designhub = {
-    chooseWorkspaceDirectory: async () => null,
     loadDocumentScene: vi.fn(async () => scene),
     readAsset: vi.fn(async () => new Uint8Array([1])),
   };
-  const view = render(<ProjectDocumentPreview workspaceId="workspace-1" projectId="project-1" documentId="doc-1" artwork="market" alt="损坏图片预览" />);
+  const view = render(<ProjectDocumentPreview libraryId="workspace-1" projectId="project-1" documentId="doc-1" artwork="market" alt="损坏图片预览" />);
   const image = await screen.findByRole('img', { name: '损坏图片预览' });
 
   fireEvent.error(image);

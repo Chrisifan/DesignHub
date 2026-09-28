@@ -23,7 +23,7 @@ export type ProviderSettingsProps = {
 };
 
 export type ProviderSettingsActions = {
-  saveConfig: () => void;
+  saveConfig: () => Promise<void>;
   canSaveConfig: boolean;
   testConversation: () => void;
   showTestConversation: boolean;
@@ -255,7 +255,7 @@ export const ProviderSettings = ({
 
   useEffect(() => {
     onActionsChange?.({
-      saveConfig: () => { void saveConfigRef.current(); },
+      saveConfig: () => saveConfigRef.current(),
       canSaveConfig,
       testConversation: () => { void testConversationRef.current(); },
       showTestConversation,

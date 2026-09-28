@@ -1,4 +1,4 @@
-import { type ProviderCapability } from './config';
+import { providerConnectionIds, type ProviderCapability, type ProviderConfigMap } from './config';
 
 export { providerCapabilities } from './config';
 export type { ProviderCapability } from './config';
@@ -20,3 +20,20 @@ export const connectionSummary = (input: ConnectionInput): ConnectionSummary => 
   id: input.id,
   label: input.label,
 });
+
+export const selectConfiguredConnection = (
+  capability: ProviderCapability,
+  configs: ProviderConfigMap | null | undefined,
+  credentialAccounts: readonly string[],
+): string | null => {
+  if (!configs) return null;
+  const credentialSet = new Set(credentialAccounts);
+  return providerConnectionIds.find((connectionId) => {
+    const config = configs[connectionId];
+    if (!credentialSet.has(`${connectionId}:${capability === 'image-generation' || capability === 'image-editing' ? 'image' : 'conversation'}`)) return false;
+    if (!config) return true;
+    return capability === 'conversation' || capability === 'vision-analysis'
+      ? Boolean(config.conversation)
+      : Boolean(config.image);
+  }) ?? null;
+};

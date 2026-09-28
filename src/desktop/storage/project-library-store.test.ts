@@ -71,7 +71,7 @@ it('rejects unknown non-empty directories without changing their contents', asyn
 it('does not treat or modify a legacy workspace as a project library', async () => {
   const directory = await createLibraryDirectory();
   const legacyManifestPath = join(directory, 'designhub.workspace.json');
-  const legacyManifest = JSON.stringify({ kind: 'designhub-workspace', workspaceId: 'legacy-id', name: 'Legacy', formatVersion: 1 });
+  const legacyManifest = JSON.stringify({ kind: 'designhub-workspace', libraryId: 'legacy-id', name: 'Legacy', formatVersion: 1 });
   await writeFile(legacyManifestPath, legacyManifest);
 
   await expect(openProjectLibrary(directory)).rejects.toThrow('NOT_A_PROJECT_LIBRARY');

@@ -38,6 +38,8 @@
 
 ## 变更回归记录
 
+2026-09-28：功能闭环推进（变更 ID M05-M06-M07-20260928-01）。Workbench/CanvasWorkspace 新增候选画布隔离分支，完成候选自动选择、真实图层选择回传、原图/结果比较和确认/放弃路径；任务 runtime 将重启中的 queued/running 任务标记为 `unknown`，同步 IPC/存储校验及远端请求元数据；图像工具新增 ToolCandidate、持久化 mask、具体 provider capability 和 ImageToolJob/ImageToolItem 路径/聚合状态域模型。全量本地回归：unit 138 files/825 passed/8 skipped、integration 29 files/129 passed、E2E 41/41、native source 2 passed/packaged 1 skipped、provider 3/3、lint/typecheck/build/diff-check 通过。原生文件选择器、批处理执行器、完整 remove-background 真实结果质量、项目包大文件恢复、live provider 和发布门禁仍开放，不将 M05/M06/M07 标为已验证。
+
 后续每个影响已验证模块的改动追加一行，字段为：变更 ID、原因、目标文件、变更前验证版本、影响模块/契约、需重跑测试 ID、实际结果、证据路径、是否恢复已验证。没有历史变更时不伪造示例为真实记录。
 
 2026-09-09：按用户决定从 Tauri 切换 Electron；新增 ADR 0024、Electron 资料报告并改写 M01 前置。Tauri/SQLite 一次性探针保留为历史，不能作为 Electron 回归证据。没有既有已验证的应用模块，因此不伪造“回归通过”；Electron 宿主/事务/凭据实现确定后须覆盖 M02–M08 直接消费者。
@@ -275,3 +277,24 @@
 ## 发布前检查
 
 先查登记中是否还有需回归状态，再核对主计划最终闸门。失败不能用“后面整体测一下”关闭；缺失外部条件只阻塞相关验收，并记录负责人需要提供的是网络、平台设备还是发布凭据。
+
+## 当前工作树进度核对（2026-09-24）
+
+当前完成度、命令输出和推进顺序见[当前完成度与推进基线](CURRENT-STATUS-2026-09-24.md)。本次核对确认：M01–M08 仍全部是“部分验证”；首次启动引导/profile 聚焦套件 7 个文件、32 个测试通过，但全量 unit 为 135 个文件、736 通过/61 失败/8 跳过，integration 为 29 个文件、128 通过/3 失败；E2E 因旧 workspace 启动选择器未迁移而未通过，native 为 1 通过/1 失败/1 跳过。`lint`、`typecheck`、`build` 和 `git diff --check` 通过，但不能抵消失败回归或外部发布门禁。项目库迁移和首次启动引导相关改动必须完成受影响模块回归后，才可恢复任何“已验证”状态。
+
+## 当前工作树本地完整性收口（2026-09-25）
+
+单项目库身份和首次启动 bridge 已迁移到 `libraryId`/`ProjectLibraryDescriptor`；持久化兼容字段 `workspaceId` 保留。浏览器 fixture 先返回已完成 profile，再通过 `chooseProjectLibrary` 进入固定临时库；native smoke 使用 `DESIGNHUB_TEST_USER_DATA` 隔离 profile、project-library 设置和 provider 配置，并验证新 bridge 白名单及旧 workspace lifecycle API 不存在。最新结果为 unit 135 files/800 passed/8 skipped、integration 29 files/129 passed、E2E 41/41、native source 2 passed/packaged 1 skipped、provider 3/3，lint/typecheck/build/diff-check 通过。Provider 任务现在持久化实际模型并在重试时复用；项目包 E2E 覆盖首次导入失败后的恢复。旧 workspace manifest/recent-workspace 不扫描、不迁移、不写入；Windows、签名公证、Keychain、live provider 和人工视觉门禁继续 blocked。
+
+2026-09-25：本地完整性收口复核（变更 ID LOCAL-20260925-01）。修正 E2E 导航 helper 对 dialog/drawer 与入场动画的等待，更新 Designers destination 契约；ProjectCanvasStage 增加 window resize 尺寸同步，避免视口缩放后 Konva canvas 保留旧宽度；收紧 release package-scan 的 key 形状正则，避免 `sk-generation-details` 等合法 bundle 类名误报。最终 `pnpm release:check` 为 `passed-with-blockers`：unit 135 files/796 passed/8 skipped、integration 29 files/129 passed、E2E 39/39、native source 2 passed/1 skipped、lint/typecheck/build/diff-check 和 package scan 均通过。Windows、签名/公证、packaged native、Keychain、installer upgrade 和 live provider 仍是外部门禁；不宣称 Windows、签名、公证、真实 provider 或 packaged runtime 已通过。
+### 2026-09-28：候选修订、mask 和 provider 工具能力矩阵
+
+- `TaskRecord` 现在可保存图像工具候选的基础场景、候选场景、受管素材引用和 provider 元数据；Workbench 结果先显示在候选画布，确认通过 `applyToolResult` 提交不可变修订。
+- mask 支持矩形/笔刷 PNG 栅格化，任务仅保存 `maskAssetId`；缺失或不可重载 mask 的历史任务不提供自动重试。
+- provider adapter 增加按具体工具的 mask、透明度、尺寸、参数范围、远端取消/查询能力校验。
+- 新增 image-tool job 原子 JSON 存储与相对路径校验；原生目录选择、worker、跨作业公平调度和结果导入 IPC 仍开放。
+- 证据：候选/Workbench/task-service 107 passed、mask/provider/task storage/IPC/job store 聚焦 116 passed；typecheck/lint/diff-check 通过。
+- 边界：真实 provider 质量、项目包大文件恢复、智能编排、样机、Windows、签名、公证、Keychain 和人工视觉质量仍 blocked。
+# 2026-09-28 功能闭环补充
+
+M07 图像工具：画布候选、mask、provider 能力矩阵、批量 scanner/worker/scheduler/publisher、IPC/preload 和批量页面已进入本地可验证状态。批量页面已接入扫描预检、拒绝项预览、结果打开/reveal、输出目录和显式导入素材库。真实 provider、native packaged、Windows、签名、公证、Keychain 和人工视觉质量保持 blocked。

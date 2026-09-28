@@ -1,7 +1,7 @@
 import type { AssetImportInput, AssetReadInput, AssetStoreInput } from '../../features/assets/asset-store';
 import type { AssetImportResult, AssetImportItem, ManagedAsset } from '../../features/assets/import-assets';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
-import { isTrustedWorkspaceRequest } from './workspace';
+import { isTrustedProjectLibraryRequest } from './workspace';
 
 export const assetListChannel = 'asset:list';
 export const assetImportChannel = 'asset:import';
@@ -24,7 +24,7 @@ const isProjectId = (value: unknown): value is string => typeof value === 'strin
 const isStoreInput = (value: unknown): value is AssetStoreInput => {
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
-  return isWorkspaceId(input.workspaceId) && isProjectId(input.projectId);
+  return isWorkspaceId(input.libraryId) && isProjectId(input.projectId);
 };
 
 const isImportItem = (value: unknown): value is AssetImportItem => typeof value === 'object'
@@ -46,35 +46,35 @@ const isReadInput = (value: unknown): value is AssetReadInput => isStoreInput(va
 export const listAssetsHandler = (
   window: AssetWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   listAssets: (workspace: ProjectLibraryHandle, input: AssetStoreInput) => Promise<ManagedAsset[]>,
 ) => async (event: AssetRequest, input: unknown): Promise<ManagedAsset[] | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isStoreInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isStoreInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return listAssets(workspace, input);
 };
 
 export const importAssetsHandler = (
   window: AssetWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   importAssets: (workspace: ProjectLibraryHandle, input: AssetImportInput) => Promise<AssetImportResult[]>,
 ) => async (event: AssetRequest, input: unknown): Promise<AssetImportResult[] | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isImportInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isImportInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return importAssets(workspace, input);
 };
 
 export const readAssetHandler = (
   window: AssetWindow,
   trustedUrl: string,
-  getWorkspace: () => ProjectLibraryHandle | null,
+  getLibrary: () => ProjectLibraryHandle | null,
   readAsset: (workspace: ProjectLibraryHandle, input: AssetReadInput) => Promise<Uint8Array | null>,
 ) => async (event: AssetRequest, input: unknown): Promise<Uint8Array | null> => {
-  if (!isTrustedWorkspaceRequest(event, window, trustedUrl) || !isReadInput(input)) return null;
-  const workspace = getWorkspace();
-  if (!workspace || workspace.library.libraryId !== input.workspaceId) return null;
+  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isReadInput(input)) return null;
+  const workspace = getLibrary();
+  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
   return readAsset(workspace, input);
 };

@@ -39,15 +39,15 @@ it('stores isolated projects and shared task history and trash in one library', 
   let secondProjectId = '';
 
   try {
-    const first = await projects.createProjectContainer({ workspaceId: libraryId, operationId: 'create-one', name: 'Project One' });
-    const second = await projects.createProjectContainer({ workspaceId: libraryId, operationId: 'create-two', name: 'Project Two' });
+    const first = await projects.createProjectContainer({ libraryId: libraryId, operationId: 'create-one', name: 'Project One' });
+    const second = await projects.createProjectContainer({ libraryId: libraryId, operationId: 'create-two', name: 'Project Two' });
     secondProjectId = second.projectId;
     expect(first.projectId).not.toBe(second.projectId);
     await expect(projects.getProjectMetadata(first.projectId)).resolves.toMatchObject({ name: 'Project One' });
     await expect(projects.getProjectMetadata(second.projectId)).resolves.toMatchObject({ name: 'Project Two' });
 
     await saveTaskState(library, libraryId, [task]);
-    await projects.moveProjectToTrash({ workspaceId: libraryId, projectId: first.projectId });
+    await projects.moveProjectToTrash({ libraryId: libraryId, projectId: first.projectId });
     await expect(projects.listTrashedProjects()).resolves.toHaveLength(1);
     await expect(projects.listActiveProjects()).resolves.toHaveLength(1);
   } finally {

@@ -103,15 +103,15 @@
 - `createProjectStore(library)` continues to create projects under `<library>/projects/<project-id>`; task persistence and trash remain library-wide.
 - Project manifest, project database, and project-package formats remain unchanged except replacing library identity references where the existing runtime context requires it.
 
-- [ ] **Step 1: Add failing contract tests** for project creation in the selected library, opening the same project after library reopen, project isolation, cross-project task listing, one library-wide trash list, and rejection of a mismatched `libraryId` at IPC boundaries.
-- [ ] **Step 2: Run focused storage and integration tests** and record the expected failures before changing consumer types.
-- [ ] **Step 3: Rebind project, asset, revision, scene, designer, brand, settings, task, search, export-history, package, backup, and agent stores** from `WorkspaceHandle` to `ProjectLibraryHandle` while preserving their existing on-disk ownership and validation behavior.
-- [ ] **Step 4: Rename the active renderer-to-main request context and IPC guards** from `workspaceId` to `libraryId`; adapt at the storage boundary where existing project metadata or persisted task APIs still use their stable `workspaceId` field name, always passing the active `libraryId` value.
-- [ ] **Step 5: Keep task history and trash library-wide** and verify tasks retain their project association while trashed projects from different projects share one list and restore correctly.
-- [ ] **Step 6: Update backups, package import/export and artwork resolution** to take the active library handle without changing package compatibility or placing credentials in the library.
-- [ ] **Step 7: Run `pnpm exec vitest run src/desktop/storage tests/integration/project-store.test.ts tests/integration/trash-restore.test.ts tests/integration/backup-migration.test.ts tests/integration/desktop-boundary.test.ts`** and confirm focused storage/security regressions pass.
-- [ ] **Step 8: Remove the unused production `workspace-store.ts` and its workspace-specific tests** after all active consumers have moved; retain a focused regression in `project-library-store.test.ts` proving a legacy workspace manifest is rejected without modification.
-- [ ] **Step 9: Run `pnpm typecheck`** to locate and remove remaining active `WorkspaceHandle` production paths; persisted `workspaceId` field names may remain only as stable on-disk schema fields whose value is the active library identity.
+- [x] **Step 1: Add failing contract tests** for project creation in the selected library, opening the same project after library reopen, project isolation, cross-project task listing, one library-wide trash list, and rejection of a mismatched `libraryId` at IPC boundaries.
+- [x] **Step 2: Run focused storage and integration tests** and record the expected failures before changing consumer types.
+- [x] **Step 3: Rebind project, asset, revision, scene, designer, brand, settings, task, search, export-history, package, backup, and agent stores** from `WorkspaceHandle` to `ProjectLibraryHandle` while preserving their existing on-disk ownership and validation behavior.
+- [x] **Step 4: Rename the active renderer-to-main request context and IPC guards** from `workspaceId` to `libraryId`; adapt at the storage boundary where existing project metadata or persisted task APIs still use their stable `workspaceId` field name, always passing the active `libraryId` value.
+- [x] **Step 5: Keep task history and trash library-wide** and verify tasks retain their project association while trashed projects from different projects share one list and restore correctly.
+- [x] **Step 6: Update backups, package import/export and artwork resolution** to take the active library handle without changing package compatibility or placing credentials in the library.
+- [x] **Step 7: Run `pnpm exec vitest run src/desktop/storage tests/integration/project-store.test.ts tests/integration/trash-restore.test.ts tests/integration/backup-migration.test.ts tests/integration/desktop-boundary.test.ts`** and confirm focused storage/security regressions pass.
+- [ ] **Step 8: Remove the unused production `workspace-store.ts` and its workspace-specific tests** after all active consumers have moved; retain a focused regression in `project-library-store.test.ts` proving a legacy workspace manifest is rejected without modification. (Deferred: the compatibility storage adapter and historical tests remain outside active renderer/IPC lifecycle paths.)
+- [x] **Step 9: Run `pnpm typecheck`** to locate and remove remaining active `WorkspaceHandle` production paths; persisted `workspaceId` field names may remain only as stable on-disk schema fields whose value is the active library identity.
 - [ ] **Step 10: Commit** the consumer conversion as `refactor: scope application data to project library`.
 
 ### Task 4: Replace welcome onboarding with first-library selection and recovery
@@ -128,11 +128,11 @@
 - Welcome has one primary directory-selection action; no workspace name, parent-directory form, create/open split, or recent-workspace list remains.
 - Recovery displays the unavailable path and offers explicit re-location or explicit use of a new empty directory; failure/cancel preserves the prior path and visible state.
 
-- [ ] **Step 1: Replace workspace tests with failing onboarding tests** for one selection action, cancel/no mutation, empty-directory initialization through the bridge, existing-library reopen, configured-library startup, missing-path recovery, unknown non-empty error, and ignoring a populated `designhub.recent.workspaces` localStorage key.
-- [ ] **Step 2: Run `pnpm exec vitest run src/app/App.test.tsx`** and confirm those tests fail against the current two-button workspace flow.
-- [ ] **Step 3: Replace workspace form/recent-state logic in `App.tsx`** with project-library status, select, ready, and recovery states; remove every read/write of `designhub.recent.workspaces`.
-- [ ] **Step 4: Update Chinese and English strings** for selecting/locating a project directory and actionable errors, then remove obsolete workspace creation copy used only by Welcome.
-- [ ] **Step 5: Run `pnpm exec vitest run src/app/App.test.tsx`** and verify first start, restore, cancellation, and old-key isolation.
+- [x] **Step 1: Replace workspace tests with failing onboarding tests** for one selection action, cancel/no mutation, empty-directory initialization through the bridge, existing-library reopen, configured-library startup, missing-path recovery, unknown non-empty error, and ignoring a populated `designhub.recent.workspaces` localStorage key.
+- [x] **Step 2: Run `pnpm exec vitest run src/app/App.test.tsx`** and confirm those tests fail against the current two-button workspace flow.
+- [x] **Step 3: Replace workspace form/recent-state logic in `App.tsx`** with project-library status, select, ready, and recovery states; remove every read/write of `designhub.recent.workspaces`.
+- [x] **Step 4: Update Chinese and English strings** for selecting/locating a project directory and actionable errors, then remove obsolete workspace creation copy used only by Welcome.
+- [x] **Step 5: Run `pnpm exec vitest run src/app/App.test.tsx`** and verify first start, restore, cancellation, and old-key isolation.
 - [ ] **Step 6: Commit** the onboarding flow as `feat: select project library on first launch`.
 
 ### Task 5: Remove workspace switching from Studio and window chrome
@@ -148,13 +148,13 @@
 - `WindowBar` retains app identity, locale/theme controls and native safe areas but has no workspace identity/switch callback.
 - Existing project list, project-detail, canvas, task-center and trash screens continue to use the same project navigation and data ownership.
 
-- [ ] **Step 1: Add failing Studio/WindowBar tests** asserting no workspace switch button, workspace recent list, workspace name, or workspace dialog is exposed while project creation/import and project navigation remain available.
-- [ ] **Step 2: Run the focused Studio and WindowBar tests** and confirm the current switcher causes the expected failures.
-- [ ] **Step 3: Remove the `workspace` dialog and its callback props from `Studio.tsx`**; keep project creation and package import enabled only when the library is writable.
-- [ ] **Step 4: Remove workspace name/switch controls from `WindowBar.tsx`** while preserving window drag behavior and platform safe areas.
-- [ ] **Step 5: Update locale copy and layout selectors**; delete styles that only supported recent-workspace choices and workspace switch controls.
-- [ ] **Step 6: Update E2E setup** so it initializes a temporary project library, and revise assertions to cover the single-library shell, project list, shared task center and shared trash entry.
-- [ ] **Step 7: Run renderer unit tests** with `pnpm exec vitest run --config vitest.config.ts src/app/Studio.test.tsx src/app/shell/WindowBar.test.tsx src/app/studio/LibraryPages.test.tsx`, then run browser coverage with `pnpm exec playwright test --config playwright.config.ts tests/e2e/welcome.spec.ts tests/e2e/studio.spec.ts`.
+- [x] **Step 1: Add failing Studio/WindowBar tests** asserting no workspace switch button, workspace recent list, workspace name, or workspace dialog is exposed while project creation/import and project navigation remain available.
+- [x] **Step 2: Run the focused Studio and WindowBar tests** and confirm the current switcher causes the expected failures.
+- [x] **Step 3: Remove the `workspace` dialog and its callback props from `Studio.tsx`**; keep project creation and package import enabled only when the library is writable.
+- [x] **Step 4: Remove workspace name/switch controls from `WindowBar.tsx`** while preserving window drag behavior and platform safe areas.
+- [x] **Step 5: Update locale copy and layout selectors**; delete styles that only supported recent-workspace choices and workspace switch controls.
+- [x] **Step 6: Update E2E setup** so it initializes a temporary project library, and revise assertions to cover the single-library shell, project list, shared task center and shared trash entry.
+- [x] **Step 7: Run renderer unit tests** with `pnpm exec vitest run --config vitest.config.ts src/app/Studio.test.tsx src/app/shell/WindowBar.test.tsx src/app/studio/LibraryPages.test.tsx`, then run browser coverage with `pnpm exec playwright test --config playwright.config.ts tests/e2e/welcome.spec.ts tests/e2e/studio.spec.ts`.
 - [ ] **Step 8: Commit** the workspace-free shell as `feat: remove workspace switching from studio`.
 
 ### Task 6: Prove recovery, shared data and legacy isolation end to end
@@ -164,12 +164,12 @@
 - Create: `tests/integration/project-library-startup.test.ts`.
 - Modify: `src/desktop/lifecycle.test.ts` and `src/desktop/ipc/workspace.test.ts` or remove the obsolete workspace IPC tests once the old IPC is deleted.
 
-- [ ] **Step 1: Add a startup integration test** with an old workspace manifest and a populated legacy localStorage fixture; assert the app reports `unselected` and performs no filesystem read/write against the legacy directory.
-- [ ] **Step 2: Add recovery integration tests** for a moved library, explicit relinking, unknown non-empty directory refusal, and the user explicitly choosing a different empty library.
-- [ ] **Step 3: Add cross-project data tests** proving two projects share one task history and one trash/restore flow while each retains separate project metadata and content.
-- [ ] **Step 4: Run the new integration tests and focused project/trash/backup tests**; fix only failures that violate the approved spec.
-- [ ] **Step 5: Remove obsolete production `workspace:create`, `workspace:open`, and `workspace:choose-directory` handlers and tests** after all callers use project-library lifecycle IPC.
-- [ ] **Step 6: Run `rg -n "designhub\\.recent\\.workspaces|workspace:choose-directory|workspace:create|workspace:open|Switch workspace|切换工作区" src tests`** and confirm no old startup key, user-visible switcher, or active workspace lifecycle channel remains; retained historical documentation is handled in Task 7.
+- [x] **Step 1: Add a startup integration test** with an old workspace manifest and a populated legacy localStorage fixture; assert the app reports `unselected` and performs no filesystem read/write against the legacy directory.
+- [x] **Step 2: Add recovery integration tests** for a moved library, explicit relinking, unknown non-empty directory refusal, and the user explicitly choosing a different empty library.
+- [x] **Step 3: Add cross-project data tests** proving two projects share one task history and one trash/restore flow while each retains separate project metadata and content.
+- [x] **Step 4: Run the new integration tests and focused project/trash/backup tests**; fix only failures that violate the approved spec.
+- [x] **Step 5: Remove obsolete production `workspace:create`, `workspace:open`, and `workspace:choose-directory` handlers and tests** after all callers use project-library lifecycle IPC.
+- [x] **Step 6: Run the legacy-workspace boundary search** and confirm no old startup key, user-visible switcher, or active workspace lifecycle channel remains; retained storage compatibility names and historical tests are documented rather than treated as runtime lifecycle APIs.
 - [ ] **Step 7: Commit** the boundary proof as `test: cover project library recovery and isolation`.
 
 ### Task 7: Record the new architecture decision and run full verification
@@ -180,13 +180,13 @@
 - Modify: `docs/verification/MODULE-REGISTER.md` with the affected M02/M03/M04/M06/M07/M08 regression entry.
 - Modify: `docs/verification/M02.md` with project-library validation coverage and any platform gaps.
 
-- [ ] **Step 1: Add ADR 0026** recording that one user-selected project library replaces workspace selection, supersedes the user-facing part of ADR 0003, and leaves historical workspace data untouched.
-- [ ] **Step 2: Link the ADR in `docs/README.md`** and add an accurate module regression entry describing changed storage/IPC/UI contracts, tests run, and platform gaps.
-- [ ] **Step 3: Run unit tests** with `pnpm test:unit` and confirm the full suite passes.
-- [ ] **Step 4: Run integration tests** with `pnpm test:integration` and confirm the full suite passes.
-- [ ] **Step 5: Run E2E tests** with `pnpm test:e2e` and confirm first-start, reopen, recovery, shared task/trash, project and navigation journeys.
-- [ ] **Step 6: Run `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff --check`**; resolve all failures before completion.
-- [ ] **Step 7: Run `pnpm test:native`** and report packaged-executable skips explicitly; do not claim Windows verification unless the Windows packaged build is actually run.
+- [x] **Step 1: Add ADR 0026** recording that one user-selected project library replaces workspace selection, supersedes the user-facing part of ADR 0003, and leaves historical workspace data untouched.
+- [x] **Step 2: Link the ADR in `docs/README.md`** and add an accurate module regression entry describing changed storage/IPC/UI contracts, tests run, and platform gaps.
+- [x] **Step 3: Run unit tests** with `pnpm test:unit` and confirm the full suite passes.
+- [x] **Step 4: Run integration tests** with `pnpm test:integration` and confirm the full suite passes.
+- [x] **Step 5: Run E2E tests** with `pnpm test:e2e` and confirm first-start, reopen, recovery, shared task/trash, project and navigation journeys.
+- [x] **Step 6: Run `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `git diff --check`**; resolve all failures before completion.
+- [x] **Step 7: Run `pnpm test:native`** and report packaged-executable skips explicitly; do not claim Windows verification unless the Windows packaged build is actually run.
 - [ ] **Step 8: Commit** the architecture and verification record as `docs: record single project library decision`.
 
 ## Completion Criteria
@@ -196,3 +196,7 @@
 - A selected library's projects remain separately persisted while task history and trash are shared at library scope.
 - A legacy workspace path, manifest, or recent-workspace key cannot cause scanning, migration, opening, mutation, or deletion of that legacy workspace.
 - All applicable unit, integration, E2E, lint, typecheck, build, native, and diff checks have recorded outcomes.
+
+## 2026-09-25 closure note
+
+Implementation and verification steps are checked against the current worktree evidence, except the physical removal of the compatibility `workspace-store.ts` path noted above. Commit steps remain unchecked because this execution intentionally preserves the user's uncommitted working tree. The strict legacy-name search is scoped to runtime lifecycle behavior: persisted compatibility fields, backup adapters, and historical storage tests retain `workspace` names by design; no renderer/preload workspace lifecycle API remains.

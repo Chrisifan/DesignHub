@@ -1,7 +1,9 @@
 import type { Region } from '../canvas/selection';
+import type { DesignScene } from '../canvas/scene';
 import type { ImageTool, ToolParams } from '../image-tools/target';
+import type { DesignSceneCandidate } from '../composition/design-scene-candidate';
 
-export type TaskState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type TaskState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
 
 export type TaskSource = { kind: 'project' | 'creation-draft' | 'designer-draft'; id: string };
 
@@ -14,6 +16,20 @@ export type TaskCandidate = {
   parentConversationTaskId?: string;
   designerVersionId?: string;
   createdAt: string;
+};
+
+export type ToolCandidate = {
+  taskId: string;
+  tool: ImageTool;
+  sourceAssetId: string;
+  baseRevisionId: string | null;
+  resultAssetId: string;
+  beforeScene: DesignScene;
+  candidateScene: DesignScene;
+  toolParams?: ToolParams;
+  providerId?: string;
+  model?: string;
+  remoteRequestId?: string;
 };
 
 export const designGenerationSlotIds = ['primary', 'composition', 'expressive'] as const;
@@ -98,10 +114,11 @@ export const isSafeProviderCode = (value: unknown): value is string => typeof va
 
 export const taskRecordKeys = new Set<keyof TaskRecord>([
   'id', 'requestId', 'requestText', 'state', 'cancelRequested', 'attempt', 'source', 'documentId',
-  'sourceAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
+  'sourceAssetId', 'maskAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
   'portfolio', 'model', 'size', 'count', 'tool', 'toolParams', 'region', 'createdAt', 'updatedAt',
   'errorCode', 'providerFailure', 'analysisDiagnostic', 'result', 'parentConversationTaskId', 'contextAssetIds', 'contextVersion', 'designContext',
   'analysisThreadId', 'conversationParentTaskId', 'progressText', 'generationSlots',
+  'remoteRequestId', 'remoteSupportsCancellation', 'remoteSupportsStatusQuery',
 ]);
 
 export type TaskRecord = {
@@ -114,6 +131,8 @@ export type TaskRecord = {
   source?: TaskSource;
   documentId?: string;
   sourceAssetId?: string;
+  /** Managed PNG mask used by a regional image task. */
+  maskAssetId?: string;
   hasMask?: boolean;
   baseRevisionId?: string | null;
   designerVersionId?: string;
@@ -126,6 +145,10 @@ export type TaskRecord = {
   conversationParentTaskId?: string;
   /** Incremental analysis text while a conversation task is running. */
   progressText?: string;
+  /** Provider-side request metadata; never used to auto-resubmit after restart. */
+  remoteRequestId?: string;
+  remoteSupportsCancellation?: boolean;
+  remoteSupportsStatusQuery?: boolean;
   generationSlots?: DesignGenerationSlot[];
   contextAssetIds?: string[];
   contextVersion?: number;
@@ -150,6 +173,8 @@ export type TaskRecord = {
     cost?: number | null;
     candidate?: TaskCandidate;
     candidates?: TaskCandidate[];
+    toolCandidate?: ToolCandidate;
+    compositionCandidate?: DesignSceneCandidate;
   };
 };
 
@@ -159,6 +184,7 @@ const transitions: Record<TaskState, TaskState[]> = {
   completed: [],
   failed: [],
   cancelled: [],
+  unknown: ['queued'],
 };
 
 export const mayTransition = (from: TaskState, to: TaskState): boolean => transitions[from].includes(to);
@@ -176,7 +202,7 @@ export const transitionTask = (task: TaskRecord, next: TaskState): TaskRecord =>
 };
 
 export const requestCancellation = (task: TaskRecord): TaskRecord => (
-  task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled'
+  task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled' || task.state === 'unknown'
     ? { ...task }
     : { ...task, cancelRequested: true }
 );
@@ -186,7 +212,7 @@ export const completeTask = (task: TaskRecord): TaskRecord => (
 );
 
 export const retryTask = (task: TaskRecord, id: string): TaskRecord => {
-  if (task.state !== 'failed' && task.state !== 'cancelled') throw new Error('TASK_NOT_RETRYABLE');
+  if (task.state !== 'failed' && task.state !== 'cancelled' && task.state !== 'unknown') throw new Error('TASK_NOT_RETRYABLE');
   return {
     ...task,
     id,

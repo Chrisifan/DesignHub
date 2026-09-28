@@ -109,11 +109,13 @@ const openDatabase = (databasePath: string, writable: boolean): Database.Databas
 };
 
 const parsePayload = (value: unknown): SearchIndexItem | null => {
-  if (!isRecord(value) || typeof value.workspaceId !== 'string' || typeof value.projectId !== 'string' || typeof value.documentId !== 'string') return null;
+  if (!isRecord(value) || typeof value.projectId !== 'string' || typeof value.documentId !== 'string') return null;
+  const libraryId = typeof value.libraryId === 'string' ? value.libraryId : typeof value.workspaceId === 'string' ? value.workspaceId : null;
+  if (!libraryId) return null;
   if (typeof value.title !== 'undefined' && typeof value.title !== 'string') return null;
   if (typeof value.brief !== 'undefined' && typeof value.brief !== 'string') return null;
   if (!Array.isArray(value.contributorIds) || !value.contributorIds.every((entry) => typeof entry === 'string')) return null;
-  return value as unknown as SearchIndexItem;
+  return { ...value, libraryId } as unknown as SearchIndexItem;
 };
 
 export const createSearchIndexStore = (handle: ProjectLibraryHandle): SearchIndexStore => {
@@ -142,13 +144,13 @@ export const createSearchIndexStore = (handle: ProjectLibraryHandle): SearchInde
     const transaction = database.transaction((next: readonly SearchIndexItem[]): void => {
       database.prepare('DELETE FROM search_documents').run();
       const insert = database.prepare('INSERT INTO search_documents (workspace_id, project_id, document_id, payload) VALUES (?, ?, ?, ?)');
-      next.forEach((item) => insert.run(item.workspaceId, item.projectId, item.documentId, JSON.stringify(item)));
+      next.forEach((item) => insert.run(item.libraryId, item.projectId, item.documentId, JSON.stringify({ ...item, workspaceId: item.libraryId })));
     });
     transaction(items);
   };
   const search = async (options: SearchQuery): Promise<SearchIndexItem[]> => {
-    if (!options.workspaceId.trim()) return [];
-    const rows = database.prepare('SELECT payload FROM search_documents WHERE workspace_id = ?').all(options.workspaceId) as Array<{ payload: string }>;
+    if (!options.libraryId.trim()) return [];
+    const rows = database.prepare('SELECT payload FROM search_documents WHERE workspace_id = ?').all(options.libraryId) as Array<{ payload: string }>;
     return rows.flatMap((row) => {
       try {
         const parsed = parsePayload(JSON.parse(row.payload) as unknown);

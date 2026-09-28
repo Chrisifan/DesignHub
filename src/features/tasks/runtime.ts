@@ -11,9 +11,9 @@ import {
   type TaskRecord,
 } from './state';
 
-import type { TaskCandidate } from './state';
+import type { TaskCandidate, ToolCandidate } from './state';
 
-export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null; candidate?: TaskCandidate; candidates?: TaskCandidate[] };
+export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null; candidate?: TaskCandidate; candidates?: TaskCandidate[]; toolCandidate?: ToolCandidate };
 
 export type TaskRuntime = {
   get: (taskId: string) => TaskRecord | undefined;
@@ -63,20 +63,19 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
       const generationSlots = task.generationSlots.map((slot) => slot.state === 'queued' || slot.state === 'running'
         ? { ...slot, state: 'failed' as const, errorCode: 'RESULT_UNKNOWN_AFTER_RESTART' }
         : slot);
-      const hasSuccess = generationSlots.some((slot) => slot.state === 'completed');
       tasks.set(task.id, structuredClone({
         ...task,
-        state: hasSuccess ? 'completed' : 'failed',
+        state: 'unknown' as const,
         cancelRequested: false,
         generationSlots,
-        errorCode: hasSuccess ? undefined : 'RESULT_UNKNOWN_AFTER_RESTART',
+        errorCode: 'RESULT_UNKNOWN_AFTER_RESTART',
         updatedAt: new Date().toISOString(),
       }));
       return;
     }
     if (task.state === 'queued' || task.state === 'running') {
       recoveredInterruptedTask = true;
-      tasks.set(task.id, structuredClone({ ...task, state: 'failed', cancelRequested: false, errorCode: 'RESULT_UNKNOWN_AFTER_RESTART', updatedAt: new Date().toISOString() }));
+      tasks.set(task.id, structuredClone({ ...task, state: 'unknown' as const, cancelRequested: false, errorCode: 'RESULT_UNKNOWN_AFTER_RESTART', updatedAt: new Date().toISOString() }));
       return;
     }
     tasks.set(task.id, structuredClone(task));
@@ -133,7 +132,7 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     const task = tasks.get(taskId);
     if (!task) throw new Error('TASK_NOT_FOUND');
     if (task.state === 'completed') return structuredClone(task);
-    if (task.state === 'failed' || task.state === 'cancelled') return structuredClone(task);
+    if (task.state === 'failed' || task.state === 'cancelled' || task.state === 'unknown') return structuredClone(task);
     const completed = completeTask({ ...task, result: { ...result }, updatedAt: new Date().toISOString() });
     tasks.set(taskId, completed);
     schedulePersistence();
@@ -143,7 +142,7 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
   const fail = async (taskId: string, errorCode: string, providerFailure?: TaskProviderFailure, analysisDiagnostic?: PortfolioAnalysisDiagnostic): Promise<TaskRecord> => {
     const task = tasks.get(taskId);
     if (!task) throw new Error('TASK_NOT_FOUND');
-    if (task.state === 'completed' || task.state === 'cancelled') return structuredClone(task);
+    if (task.state === 'completed' || task.state === 'cancelled' || task.state === 'unknown') return structuredClone(task);
     const failed = transitionTask({ ...task, errorCode, ...(providerFailure ? { providerFailure } : {}), ...(analysisDiagnostic ? { analysisDiagnostic } : {}), updatedAt: new Date().toISOString() }, 'failed');
     tasks.set(taskId, failed);
     schedulePersistence();
@@ -152,7 +151,7 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
   };
   const updateProgress = (taskId: string, progressText: string): TaskRecord | undefined => {
     const task = tasks.get(taskId);
-    if (!task || task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled') return task ? structuredClone(task) : undefined;
+    if (!task || task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled' || task.state === 'unknown') return task ? structuredClone(task) : undefined;
     const updated = { ...task, progressText, updatedAt: new Date().toISOString() };
     tasks.set(taskId, updated);
     progressDirty = true;
@@ -249,7 +248,7 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     if (!task) throw new Error('TASK_NOT_FOUND');
     const existingRevision = results.get(taskId);
     if (existingRevision) return structuredClone({ ...task, state: 'completed' });
-    if (task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled') return structuredClone(task);
+    if (task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled' || task.state === 'unknown') return structuredClone(task);
     if (task.cancelRequested) {
       const cancelled = completeTask({ ...task, result: { ...result }, updatedAt: new Date().toISOString() });
       tasks.set(taskId, cancelled);

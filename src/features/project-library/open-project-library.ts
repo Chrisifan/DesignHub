@@ -2,6 +2,8 @@ export type ProjectLibraryOpenMode = 'writable' | 'read-only' | 'migration-requi
 
 export type ProjectLibraryDescriptor = {
   libraryId: string;
+  /** Display name is optional for persisted descriptors and native fixtures. */
+  name?: string;
   directory: string;
   formatVersion: number;
   openMode: ProjectLibraryOpenMode;
