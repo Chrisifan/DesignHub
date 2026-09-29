@@ -54,6 +54,37 @@ it('persists task state across workspace reopen without secret fields', async ()
   }
 });
 
+it('round-trips a valid visual context plan and still accepts a legacy task', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const planned: TaskRecord = {
+    ...task,
+    id: 'task-planned',
+    visualContextPlan: {
+      version: 1,
+      items: [{ assetId: 'asset-a', roles: ['edit-target', 'visual-anchor'], confidence: 0.95 }],
+      clarificationRequired: false,
+    },
+  };
+
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [task, planned])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.library.libraryId)).resolves.toEqual([task, planned]);
+  workspace.close();
+});
+
+it('rejects malformed visual context plans', async () => {
+  const workspace = await createTemporaryWorkspace();
+
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [{
+    ...task,
+    visualContextPlan: {
+      version: 1,
+      items: [{ assetId: 'asset-a', roles: ['unknown'], confidence: 2 }],
+      clarificationRequired: false,
+    },
+  } as unknown as TaskRecord])).rejects.toThrow('INVALID_TASK_STATE');
+  workspace.close();
+});
+
 it('round-trips a three-slot generation batch and plural candidates', async () => {
   const workspace = await createTemporaryWorkspace();
   const batch: TaskRecord = {

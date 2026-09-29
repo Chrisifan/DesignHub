@@ -17,6 +17,7 @@ import {
   type TaskSource,
   type TaskState,
 } from '../../features/tasks/state';
+import { isVisualContextPlan } from '../../features/agent/visual-context';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { getWritableProjectLibraryLease } from './project-library-store';
@@ -141,6 +142,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.contextAssetIds === undefined || (Array.isArray(value.contextAssetIds) && value.contextAssetIds.every((id) => typeof id === 'string')))
   && (value.contextVersion === undefined || value.contextVersion === 1)
   && (value.designContext === undefined || isDesignContext(value.designContext))
+  && (value.visualContextPlan === undefined || isVisualContextPlan(value.visualContextPlan))
   && (value.sourceAssetId === undefined || typeof value.sourceAssetId === 'string')
   && (value.maskAssetId === undefined || typeof value.maskAssetId === 'string')
   && (value.hasMask === undefined || typeof value.hasMask === 'boolean')

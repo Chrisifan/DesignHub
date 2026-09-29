@@ -3,6 +3,7 @@ import { expect, it, vi } from 'vitest';
 import { createTaskRuntime } from './runtime';
 import { createDesignGenerationSlots, createTaskState, type TaskRecord } from './state';
 import type { RevisionStore } from '../revisions/commit-revision';
+import type { VisualContextPlan } from '../agent/visual-context';
 
 const baseTask: TaskRecord = {
   id: 'task-1',
@@ -20,6 +21,43 @@ const batchTask = () => ({
   documentId: 'document-1',
   capability: 'design-generation',
   generationSlots: createDesignGenerationSlots(),
+});
+
+it('persists a visual context plan on an active conversation task', async () => {
+  const writes: Array<readonly TaskRecord[]> = [];
+  const runtime = createTaskRuntime({ persist: async (tasks) => { writes.push(tasks); } });
+  const task = runtime.start({
+    id: 'conversation-1',
+    requestId: 'request-1',
+    source: { kind: 'project', id: 'project-1' },
+    capability: 'conversation',
+  });
+  const visualContextPlan: VisualContextPlan = {
+    version: 1,
+    items: [{ assetId: 'asset-a', roles: ['edit-target', 'visual-anchor'], confidence: 1 }],
+    clarificationRequired: false,
+  };
+
+  runtime.updateVisualContextPlan(task.id, visualContextPlan);
+  await runtime.flush();
+
+  expect(runtime.get(task.id)?.visualContextPlan).toEqual(visualContextPlan);
+  expect(writes.at(-1)?.[0]?.visualContextPlan).toEqual(visualContextPlan);
+});
+
+it('preserves the visual context plan when retrying a task', () => {
+  const visualContextPlan: VisualContextPlan = {
+    version: 1,
+    items: [{ assetId: 'asset-a', roles: ['edit-target'], confidence: 1 }],
+    clarificationRequired: false,
+  };
+  const runtime = createTaskRuntime({
+    initialTasks: [{ ...baseTask, state: 'failed', visualContextPlan }],
+  });
+
+  const retried = runtime.retry('task-1');
+
+  expect(retried?.visualContextPlan).toEqual(visualContextPlan);
 });
 
 it('persists a completed generation slot without waiting for the batch', async () => {

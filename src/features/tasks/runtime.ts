@@ -12,6 +12,7 @@ import {
 } from './state';
 
 import type { TaskCandidate, ToolCandidate } from './state';
+import type { VisualContextPlan } from '../agent/visual-context';
 
 export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null; candidate?: TaskCandidate; candidates?: TaskCandidate[]; toolCandidate?: ToolCandidate };
 
@@ -24,6 +25,7 @@ export type TaskRuntime = {
   complete: (taskId: string, result?: TaskResult) => Promise<TaskRecord>;
   fail: (taskId: string, errorCode: string, providerFailure?: TaskProviderFailure, analysisDiagnostic?: PortfolioAnalysisDiagnostic) => Promise<TaskRecord>;
   updateProgress: (taskId: string, progressText: string) => TaskRecord | undefined;
+  updateVisualContextPlan: (taskId: string, plan: VisualContextPlan) => TaskRecord | undefined;
   updateGenerationSlot: (
     taskId: string,
     slotId: DesignGenerationSlotId,
@@ -158,6 +160,20 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     scheduleProgressPersistence();
     return structuredClone(updated);
   };
+  const updateVisualContextPlan: TaskRuntime['updateVisualContextPlan'] = (taskId, plan) => {
+    const task = tasks.get(taskId);
+    if (!task || task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled' || task.state === 'unknown') {
+      return task ? structuredClone(task) : undefined;
+    }
+    const updated = {
+      ...task,
+      visualContextPlan: structuredClone(plan),
+      updatedAt: new Date().toISOString(),
+    };
+    tasks.set(taskId, updated);
+    schedulePersistence();
+    return structuredClone(updated);
+  };
   const generationResult = (task: TaskRecord, slots: readonly DesignGenerationSlot[], candidates: readonly TaskCandidate[]): TaskResult => {
     const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
     const orderedCandidates = slots.flatMap((slot) => slot.candidateId && candidateById.has(slot.candidateId)
@@ -284,5 +300,5 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     }
     await persistence;
   };
-  return { get, list, start, run, cancel, complete, fail, updateProgress, updateGenerationSlot, retryGenerationSlot, settleGenerationBatch, retry, finish, flush };
+  return { get, list, start, run, cancel, complete, fail, updateProgress, updateVisualContextPlan, updateGenerationSlot, retryGenerationSlot, settleGenerationBatch, retry, finish, flush };
 };

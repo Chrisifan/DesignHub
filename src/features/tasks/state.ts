@@ -2,6 +2,7 @@ import type { Region } from '../canvas/selection';
 import type { DesignScene } from '../canvas/scene';
 import type { ImageTool, ToolParams } from '../image-tools/target';
 import type { DesignSceneCandidate } from '../composition/design-scene-candidate';
+import type { VisualContextPlan } from '../agent/visual-context';
 
 export type TaskState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
 
@@ -117,7 +118,7 @@ export const taskRecordKeys = new Set<keyof TaskRecord>([
   'sourceAssetId', 'maskAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
   'portfolio', 'model', 'size', 'count', 'tool', 'toolParams', 'region', 'createdAt', 'updatedAt',
   'errorCode', 'providerFailure', 'analysisDiagnostic', 'result', 'parentConversationTaskId', 'contextAssetIds', 'contextVersion', 'designContext',
-  'analysisThreadId', 'conversationParentTaskId', 'progressText', 'generationSlots',
+  'analysisThreadId', 'conversationParentTaskId', 'progressText', 'generationSlots', 'visualContextPlan',
   'remoteRequestId', 'remoteSupportsCancellation', 'remoteSupportsStatusQuery',
 ]);
 
@@ -153,6 +154,7 @@ export type TaskRecord = {
   contextAssetIds?: string[];
   contextVersion?: number;
   designContext?: import('../agent/context').DesignGenerationContext;
+  visualContextPlan?: VisualContextPlan;
   portfolio?: PortfolioTaskMetadata;
   model?: string;
   size?: string;
