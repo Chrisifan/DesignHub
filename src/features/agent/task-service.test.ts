@@ -1,10 +1,11 @@
 import { expect, it, vi } from 'vitest';
 
-import { createTaskRuntime } from '../tasks/runtime';
+import { createTaskRuntime, type TaskRuntime } from '../tasks/runtime';
 import type { TaskRecord } from '../tasks/state';
 import { createAgentTaskService } from './task-service';
 import { createScene } from '../canvas/scene';
 import type { ChatRequest } from '../providers/adapter';
+import type { VisualContextPlan } from './visual-context';
 
 type ImageResponse = { images: Array<{ base64: string; mimeType?: string }>; cost: number | null };
 
@@ -16,6 +17,38 @@ const deferred = <T>() => {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+};
+
+const completedConversationWithPlan = async (
+  runtime: TaskRuntime,
+  visualContextPlan: VisualContextPlan,
+): Promise<TaskRecord> => {
+  const task = runtime.start({
+    id: 'conversation-planned',
+    requestId: 'request-planned',
+    requestText: '保持原图细节，修改当前稿背景',
+    source: { kind: 'project', id: 'project-1' },
+    documentId: 'document-1',
+    providerId: 'provider-1',
+    capability: 'conversation',
+    analysisThreadId: 'analysis-1',
+    contextAssetIds: visualContextPlan.items.map((item) => item.assetId),
+    visualContextPlan,
+    designContext: {
+      version: 1,
+      libraryId: 'workspace-1',
+      projectId: 'project-1',
+      documentId: 'document-1',
+      brief: 'Campaign poster',
+      document: { width: 100, height: 100, currentImageAssetIds: [] },
+      attachmentAssetIds: ['asset-original', 'asset-style'],
+      userMessage: 'first',
+      baseRevisionId: null,
+    },
+    createdAt: '2026-09-29T00:00:00.000Z',
+  });
+  await runtime.complete(task.id, { text: '保持原图细节，修改当前稿背景。' });
+  return runtime.get(task.id)!;
 };
 
 const completePortfolioCandidate = (name: { zh: string; en: string }, overrides: Record<string, unknown> = {}) => ({
@@ -278,6 +311,143 @@ it('stores a clarification plan when no edit target is identifiable', async () =
   });
 });
 
+it('keeps original anchors and references when a generated draft becomes the edit target', async () => {
+  const runtime = createTaskRuntime();
+  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[] }) => ({
+    images: [{ base64: 'result' }], cost: null,
+  }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'unused', cost: null }), editImage }),
+    persistGeneratedImages: async () => ['asset-result'],
+    loadContextImage: async ({ assetId }) => ({
+      name: `${assetId}.png`,
+      mimeType: 'image/png',
+      bytes: new Uint8Array([assetId === 'asset-draft' ? 3 : assetId === 'asset-original' ? 1 : 2]),
+    }),
+  });
+  const plan: VisualContextPlan = {
+    version: 1,
+    items: [
+      { assetId: 'asset-draft', roles: ['edit-target'], confidence: 1 },
+      { assetId: 'asset-original', roles: ['visual-anchor'], confidence: 1 },
+      { assetId: 'asset-style', roles: ['visual-reference'], confidence: 1 },
+    ],
+    clarificationRequired: false,
+  };
+  const conversation = await completedConversationWithPlan(runtime, plan);
+
+  const generation = await service.submitDesignGeneration({
+    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1',
+    conversationTaskId: conversation.id, connectionId: 'provider-1',
+  });
+  await service.flush();
+
+  expect(generation.visualContextPlan).toEqual(plan);
+  expect(generation.contextAssetIds).toEqual(['asset-draft', 'asset-original', 'asset-style']);
+  expect(editImage).toHaveBeenCalledTimes(3);
+  for (const [request] of editImage.mock.calls) {
+    expect(request.referenceImages).toHaveLength(2);
+    expect(request.prompt).toContain('Image 1: assetId=asset-draft; roles=edit-target');
+    expect(request.prompt).toContain('Image 2: assetId=asset-original; roles=visual-anchor');
+    expect(request.prompt).toContain('Image 3: assetId=asset-style; roles=visual-reference');
+  }
+});
+
+it('rejects design generation while visual clarification is required', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'unused', cost: null }) }),
+  });
+  const conversation = await completedConversationWithPlan(runtime, {
+    version: 1,
+    items: [
+      { assetId: 'asset-a', roles: ['visual-reference'], confidence: 0.4 },
+      { assetId: 'asset-b', roles: ['visual-reference'], confidence: 0.4 },
+    ],
+    clarificationRequired: true,
+  });
+
+  await expect(service.submitDesignGeneration({
+    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1',
+    conversationTaskId: conversation.id, connectionId: 'provider-1',
+  })).rejects.toThrow('VISUAL_CONTEXT_CLARIFICATION_REQUIRED');
+  expect(runtime.list().filter((task) => task.capability === 'design-generation')).toHaveLength(0);
+});
+
+it('rejects generation before task creation when a planned asset is missing', async () => {
+  const runtime = createTaskRuntime();
+  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[] }) => ({
+    images: [{ base64: 'result' }], cost: null,
+  }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'unused', cost: null }), editImage }),
+    loadContextImage: async ({ assetId }) => assetId === 'asset-missing'
+      ? null
+      : { name: `${assetId}.png`, mimeType: 'image/png', bytes: new Uint8Array([1]) },
+  });
+  const conversation = await completedConversationWithPlan(runtime, {
+    version: 1,
+    items: [
+      { assetId: 'asset-draft', roles: ['edit-target'], confidence: 1 },
+      { assetId: 'asset-missing', roles: ['visual-anchor'], confidence: 1 },
+    ],
+    clarificationRequired: false,
+  });
+
+  await expect(service.submitDesignGeneration({
+    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1',
+    conversationTaskId: conversation.id, connectionId: 'provider-1',
+  })).rejects.toThrow('CONTEXT_ASSET_MISSING');
+  expect(editImage).not.toHaveBeenCalled();
+  expect(runtime.list().filter((task) => task.capability === 'design-generation')).toHaveLength(0);
+});
+
+it('uses the copied visual plan for every slot and a later retry', async () => {
+  const runtime = createTaskRuntime();
+  let callCount = 0;
+  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[] }) => {
+    callCount += 1;
+    if (callCount === 2) throw new Error('PROVIDER_REQUEST_FAILED');
+    return { images: [{ base64: `result-${callCount}` }], cost: null };
+  });
+  let assetCount = 0;
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: 'unused', cost: null }), editImage }),
+    loadContextImage: async ({ assetId }) => ({
+      name: `${assetId}.png`, mimeType: 'image/png', bytes: new Uint8Array([assetId === 'asset-target' ? 1 : 2]),
+    }),
+    persistGeneratedImages: async () => [`asset-result-${assetCount += 1}`],
+  });
+  const plan: VisualContextPlan = {
+    version: 1,
+    items: [
+      { assetId: 'asset-target', roles: ['edit-target'], confidence: 1 },
+      { assetId: 'asset-anchor', roles: ['visual-anchor'], confidence: 1 },
+    ],
+    clarificationRequired: false,
+  };
+  const conversation = await completedConversationWithPlan(runtime, plan);
+  const generation = await service.submitDesignGeneration({
+    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1',
+    conversationTaskId: conversation.id, connectionId: 'provider-1',
+  });
+  await service.flush();
+
+  await service.retryDesignGenerationSlot({
+    libraryId: 'workspace-1', taskId: generation.id, slotId: 'composition',
+  });
+  await service.flush();
+
+  expect(editImage).toHaveBeenCalledTimes(4);
+  expect(editImage.mock.calls.map(([request]) => request.prompt.split('\n\nCandidate direction')[0]!.split('\n\n').at(-1)))
+    .toEqual(Array(4).fill('Visual input manifest:\nImage 1: assetId=asset-target; roles=edit-target\nImage 2: assetId=asset-anchor; roles=visual-anchor'));
+  expect(runtime.get(generation.id)?.visualContextPlan).toEqual(plan);
+});
+
 it('merges a conversation thread in order and streams analysis progress', async () => {
   const runtime = createTaskRuntime();
   const requests: Array<{ messages: unknown[] }> = [];
@@ -392,11 +562,38 @@ it('uses only explicitly selected images for the current conversation turn', asy
 it('uses the latest generated image group when a continued turn has no image selection', async () => {
   const runtime = createTaskRuntime();
   let generatedIndex = 0;
+  let chatIndex = 0;
   const generationRequests: Array<{ referenceImages?: Blob[] }> = [];
   const service = createAgentTaskService({
     runtime,
     resolveAdapter: async () => ({
-      chat: async () => ({ text: 'brief', cost: null }),
+      chat: async () => {
+        chatIndex += 1;
+        return {
+          text: JSON.stringify(chatIndex === 1 ? {
+            brief: '第一轮简报',
+            visualContext: {
+              version: 1,
+              items: [{ assetId: 'canvas-image', roles: ['edit-target'], confidence: 1 }],
+              clarificationRequired: false,
+            },
+            releasedAssetIds: [],
+          } : {
+            brief: '第二轮简报',
+            visualContext: {
+              version: 1,
+              items: [
+                { assetId: 'generated-1', roles: ['edit-target'], confidence: 1 },
+                { assetId: 'generated-2', roles: ['visual-reference'], confidence: 1 },
+                { assetId: 'generated-3', roles: ['visual-reference'], confidence: 1 },
+              ],
+              clarificationRequired: false,
+            },
+            releasedAssetIds: [],
+          }),
+          cost: null,
+        };
+      },
       generateImage: async (request) => {
         generationRequests.push(request);
         return { images: [{ base64: 'latest-generated' }], cost: null };
@@ -791,7 +988,24 @@ it('passes persisted conversation references to image generation', async () => {
   });
   const service = createAgentTaskService({
     runtime,
-    resolveAdapter: async () => ({ chat: async () => ({ text: 'Use the supplied references.', cost: null }), generateImage }),
+    resolveAdapter: async () => ({
+      chat: async () => ({
+        text: JSON.stringify({
+          brief: 'Use the supplied references.',
+          visualContext: {
+            version: 1,
+            items: [
+              { assetId: 'reference-1', roles: ['visual-reference'], confidence: 1 },
+              { assetId: 'reference-2', roles: ['visual-reference'], confidence: 1 },
+            ],
+            clarificationRequired: false,
+          },
+          releasedAssetIds: [],
+        }),
+        cost: null,
+      }),
+      generateImage,
+    }),
     resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
       version: 1,
       libraryId: input.libraryId ?? 'workspace-1',

@@ -19,11 +19,14 @@ import { validateToolParams, type ImageTool, type ToolParams } from '../image-to
 import { analyzePortfolio, type PortfolioImageSource } from './analyze-portfolio';
 import { buildDesignContextPrompt, type DesignGenerationContext } from './context';
 import {
+  buildGenerationVisualManifest,
   buildVisualContextAnalysisInstruction,
   deriveConservativeVisualContextPlan,
   imageContextLabel,
   mergeVisualContextPlan,
+  orderedVisualContextItems,
   parseVisualContextEnvelope,
+  type VisualContextItem,
   type VisualContextPlan,
   type VisualContextRole,
 } from './visual-context';
@@ -293,6 +296,16 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   const controllers = new Map<string, AbortController>();
   const generationControllers = new Map<string, Map<DesignGenerationSlotId, AbortController>>();
   const pending = new Set<Promise<unknown>>();
+  const loadVisualBlob = async (projectId: string, item: VisualContextItem): Promise<Blob | null> => {
+    const attachment = await options.loadContextImage?.({ projectId, assetId: item.assetId });
+    if (attachment) {
+      return new Blob([new Uint8Array(attachment.bytes).buffer as ArrayBuffer], { type: attachment.mimeType });
+    }
+    if (item.roles.includes('edit-target') && options.loadSourceImage) {
+      return options.loadSourceImage({ projectId, assetId: item.assetId });
+    }
+    return null;
+  };
   const executeTask = async (task: TaskRecord, input: ConversationInput): Promise<void> => {
     const controller = new AbortController();
     controllers.set(task.id, controller);
@@ -620,25 +633,29 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const context = task.designContext;
     if (!context || task.source?.kind !== 'project' || !task.providerId) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
     const adapter = await options.resolveAdapter(task.providerId);
-    const sourceAssetId = task.documentId ? context.document.currentImageAssetIds[0] : undefined;
-    const sourceImage = sourceAssetId && options.loadSourceImage
-      ? await options.loadSourceImage({ projectId: task.source.id, assetId: sourceAssetId })
-      : null;
-    const referenceAssetIds = [...new Set(
-      task.contextAssetIds?.length
-        ? task.contextAssetIds
-        : context.attachmentAssetIds.length
-          ? context.attachmentAssetIds
-          : context.document.currentImageAssetIds,
-    )].filter((assetId) => assetId !== sourceAssetId);
-    const loadedReferences = options.loadContextImage && referenceAssetIds.length
-      ? await Promise.all(referenceAssetIds.map((assetId) => options.loadContextImage!({ projectId: task.source!.id, assetId })))
-      : [];
-    if (loadedReferences.some((attachment) => !attachment)) throw new Error('CONTEXT_ASSET_MISSING');
-    const referenceImages = loadedReferences
-      .filter((attachment): attachment is ConversationImageAttachment => Boolean(attachment))
-      .map((attachment) => new Blob([new Uint8Array(attachment.bytes).buffer as ArrayBuffer], { type: attachment.mimeType }));
-    return { context, adapter, sourceImage, referenceImages };
+    const plan = task.visualContextPlan ?? deriveConservativeVisualContextPlan({
+      previous: undefined,
+      initialAttachmentAssetIds: context.attachmentAssetIds,
+      currentAssetIds: task.contextAssetIds ?? [],
+      canvasAssetIds: context.document.currentImageAssetIds,
+    });
+    if (plan.clarificationRequired) throw new Error('VISUAL_CONTEXT_CLARIFICATION_REQUIRED');
+    const items = orderedVisualContextItems(plan);
+    const loaded = await Promise.all(items.map(async (item) => ({
+      item,
+      image: await loadVisualBlob(task.source!.id, item),
+    })));
+    if (loaded.some(({ image }) => !image)) throw new Error('CONTEXT_ASSET_MISSING');
+    const visualInputs = loaded as Array<{ item: VisualContextItem; image: Blob }>;
+    const editTarget = visualInputs.find(({ item }) => item.roles.includes('edit-target'));
+    return {
+      context,
+      adapter,
+      editTarget,
+      referenceImages: visualInputs.filter((entry) => entry !== editTarget).map(({ image }) => image),
+      generationReferenceImages: visualInputs.map(({ image }) => image),
+      visualManifest: buildGenerationVisualManifest(items),
+    };
   };
   const executeDesignGeneration = async (task: TaskRecord, onlySlots?: readonly DesignGenerationSlotId[]): Promise<void> => {
     const execution = (async (): Promise<void> => {
@@ -674,12 +691,12 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         const controller = new AbortController();
         controllersForTask.set(slotId, controller);
         try {
-          const prompt = `${task.requestText ?? generationPrompt(prepared.context, prepared.context.assistantBrief)}\n\nCandidate direction\n${slot.direction}`;
+          const prompt = `${task.requestText ?? generationPrompt(prepared.context, prepared.context.assistantBrief)}\n\n${prepared.visualManifest}\n\nCandidate direction\n${slot.direction}`;
           const size = `${prepared.context.document.width}x${prepared.context.document.height}`;
-          const response = await requestWithGatewayTimeoutRetry(async () => prepared.sourceImage && prepared.adapter.editImage
-            ? prepared.adapter.editImage({ prompt, image: prepared.sourceImage, ...(task.model ? { model: task.model } : {}), ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size }, controller.signal)
+          const response = await requestWithGatewayTimeoutRetry(async () => prepared.editTarget && prepared.adapter.editImage
+            ? prepared.adapter.editImage({ prompt, image: prepared.editTarget.image, ...(task.model ? { model: task.model } : {}), ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size }, controller.signal)
             : prepared.adapter.generateImage
-              ? prepared.adapter.generateImage({ prompt, ...(task.model ? { model: task.model } : {}), ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size, count: 1 }, controller.signal)
+              ? prepared.adapter.generateImage({ prompt, ...(task.model ? { model: task.model } : {}), ...(prepared.generationReferenceImages.length ? { referenceImages: prepared.generationReferenceImages } : {}), size, count: 1 }, controller.signal)
               : undefined, controller.signal, options.imageRetryDelayMs ?? 2_000);
           const image = response?.images[0];
           if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
@@ -746,23 +763,25 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     }
     if (!parent.designContext) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
     if (parent.designContext.libraryId !== input.libraryId) throw new Error('WORKSPACE_CONTEXT_MISMATCH');
+    const visualContextPlan = parent.visualContextPlan ?? deriveConservativeVisualContextPlan({
+      previous: undefined,
+      initialAttachmentAssetIds: parent.designContext.attachmentAssetIds,
+      currentAssetIds: parent.contextAssetIds ?? [],
+      canvasAssetIds: parent.designContext.document.currentImageAssetIds,
+    });
+    if (visualContextPlan.clarificationRequired) throw new Error('VISUAL_CONTEXT_CLARIFICATION_REQUIRED');
+    const orderedItems = orderedVisualContextItems(visualContextPlan);
+    const plannedAssets = await Promise.all(orderedItems.map((item) => loadVisualBlob(input.projectId, item)));
+    if (plannedAssets.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');
     const threadCandidates = parent.analysisThreadId
       ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && (!input.documentId || candidate.documentId === input.documentId))
       : [parent];
-    const threadAssetIds = [...new Set(
-      parent.contextAssetIds?.length
-        ? parent.contextAssetIds
-        : parent.designContext.document.currentImageAssetIds,
-    )];
+    const threadAssetIds = orderedItems.map((item) => item.assetId);
     const threadUserMessage = threadCandidates
       .sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id))
       .map((candidate) => candidate.requestText?.trim())
       .filter((message): message is string => Boolean(message))
       .join('\n');
-    if (options.loadContextImage && threadAssetIds.length) {
-      const contextAssets = await Promise.all(threadAssetIds.map((assetId) => options.loadContextImage!({ projectId: input.projectId, assetId })));
-      if (contextAssets.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');
-    }
     const task = options.runtime.start({
       id: designTaskId(),
       requestId: requestId(),
@@ -774,6 +793,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       count: input.count ?? 3,
       ...(parent.designerVersionId ? { designerVersionId: parent.designerVersionId } : {}),
       ...(threadAssetIds.length ? { contextAssetIds: threadAssetIds } : {}),
+      visualContextPlan: structuredClone(visualContextPlan),
       ...(parent.analysisThreadId ? { analysisThreadId: parent.analysisThreadId } : {}),
       ...(parent.contextVersion ? { contextVersion: parent.contextVersion } : {}),
       designContext: {
@@ -796,15 +816,15 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     if (task.designContext?.libraryId !== input.libraryId) throw new Error('WORKSPACE_CONTEXT_MISMATCH');
     const slot = task.generationSlots.find((candidate) => candidate.id === input.slotId);
     if (!slot) throw new Error('GENERATION_SLOT_NOT_FOUND');
-    const assetIds = [...new Set(
-      task.contextAssetIds?.length
-        ? task.contextAssetIds
-        : task.designContext?.document.currentImageAssetIds ?? [],
-    )];
-    if (options.loadContextImage && assetIds.length) {
-      const assets = await Promise.all(assetIds.map((assetId) => options.loadContextImage!({ projectId: task.source!.id, assetId })));
-      if (assets.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');
-    }
+    const retryPlan = task.visualContextPlan ?? deriveConservativeVisualContextPlan({
+      previous: undefined,
+      initialAttachmentAssetIds: task.designContext?.attachmentAssetIds ?? [],
+      currentAssetIds: task.contextAssetIds ?? [],
+      canvasAssetIds: task.designContext?.document.currentImageAssetIds ?? [],
+    });
+    if (retryPlan.clarificationRequired) throw new Error('VISUAL_CONTEXT_CLARIFICATION_REQUIRED');
+    const retryAssets = await Promise.all(orderedVisualContextItems(retryPlan).map((item) => loadVisualBlob(task.source!.id, item)));
+    if (retryAssets.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');
     const retried = options.runtime.retryGenerationSlot(task.id, input.slotId);
     if (!retried) throw new Error('GENERATION_SLOT_NOT_FOUND');
     await executeDesignGeneration(retried, [input.slotId]);

@@ -154,14 +154,17 @@ export const deriveConservativeVisualContextPlan = (input: {
   const items = new Map((input.previous?.items ?? []).map((item) => [item.assetId, structuredClone(item)]));
   const current = [...new Set(input.currentAssetIds)];
 
-  if (current.length === 1) {
+  if (current.length > 0) {
     for (const item of items.values()) {
       item.roles = item.roles.filter((role) => role !== 'edit-target');
     }
-    const assetId = current[0]!;
-    const item = items.get(assetId) ?? { assetId, roles: [], confidence: 0 };
-    item.roles = [...new Set<VisualContextRole>(['edit-target', ...item.roles])];
-    items.set(assetId, item);
+    for (const assetId of current) {
+      const item = items.get(assetId) ?? { assetId, roles: [], confidence: 0 };
+      item.roles = current.length === 1
+        ? [...new Set<VisualContextRole>(['edit-target', ...item.roles])]
+        : [...new Set<VisualContextRole>([...item.roles, 'visual-reference'])];
+      items.set(assetId, item);
+    }
   }
 
   for (const assetId of new Set(input.initialAttachmentAssetIds)) {
@@ -171,6 +174,7 @@ export const deriveConservativeVisualContextPlan = (input: {
   }
 
   if (![...items.values()].some((item) => item.roles.includes('edit-target'))
+    && current.length === 0
     && new Set(input.canvasAssetIds).size === 1) {
     const assetId = input.canvasAssetIds[0]!;
     const item = items.get(assetId) ?? { assetId, roles: [], confidence: 0 };

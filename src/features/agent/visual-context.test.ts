@@ -148,6 +148,27 @@ describe('visual context continuity', () => {
       clarificationRequired: false,
     });
   });
+
+  it('keeps every current candidate and clears a stale edit target when the choice is ambiguous', () => {
+    expect(deriveConservativeVisualContextPlan({
+      previous: {
+        version: 1,
+        items: [{ assetId: 'asset-canvas', roles: ['edit-target', 'visual-anchor'], confidence: 1 }],
+        clarificationRequired: false,
+      },
+      initialAttachmentAssetIds: [],
+      currentAssetIds: ['asset-a', 'asset-b'],
+      canvasAssetIds: ['asset-canvas'],
+    })).toEqual({
+      version: 1,
+      items: [
+        { assetId: 'asset-canvas', roles: ['visual-anchor'], confidence: 1 },
+        { assetId: 'asset-a', roles: ['visual-reference'], confidence: 0 },
+        { assetId: 'asset-b', roles: ['visual-reference'], confidence: 0 },
+      ],
+      clarificationRequired: true,
+    });
+  });
 });
 
 describe('visual context presentation', () => {
