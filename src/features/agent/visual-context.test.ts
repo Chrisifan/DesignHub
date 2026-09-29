@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildGenerationVisualManifest,
+  buildVisualContextAnalysisInstruction,
   deriveConservativeVisualContextPlan,
   imageContextLabel,
   isVisualContextPlan,
@@ -20,6 +21,22 @@ const plan: VisualContextPlan = {
 };
 
 describe('visual context envelope', () => {
+  it('requires one strict response envelope with explicit release evidence', () => {
+    const instruction = buildVisualContextAnalysisInstruction({
+      knownAssetIds: ['asset-original', 'asset-draft'],
+      previousPlan: {
+        version: 1,
+        items: [{ assetId: 'asset-original', roles: ['visual-anchor'], confidence: 1 }],
+        clarificationRequired: false,
+      },
+    });
+
+    expect(instruction).toContain('releasedAssetIds');
+    expect(instruction).toContain('asset-original');
+    expect(instruction).toContain('Return JSON only');
+    expect(instruction).toContain('Ask one clarification question');
+  });
+
   it('parses a strict structured conversation response', () => {
     expect(parseVisualContextEnvelope(JSON.stringify({
       brief: '保留原图袖口，修改当前稿背景。',
@@ -101,6 +118,15 @@ describe('visual context continuity', () => {
       ],
       clarificationRequired: true,
     });
+  });
+
+  it('allows a text-only generation request without inventing an edit target', () => {
+    expect(deriveConservativeVisualContextPlan({
+      previous: undefined,
+      initialAttachmentAssetIds: [],
+      currentAssetIds: [],
+      canvasAssetIds: [],
+    })).toEqual({ version: 1, items: [], clarificationRequired: false });
   });
 
   it('uses a single current image as the edit target while retaining original anchors', () => {

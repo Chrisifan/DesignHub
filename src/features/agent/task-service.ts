@@ -18,6 +18,15 @@ import { createScene } from '../canvas/scene';
 import { validateToolParams, type ImageTool, type ToolParams } from '../image-tools/target';
 import { analyzePortfolio, type PortfolioImageSource } from './analyze-portfolio';
 import { buildDesignContextPrompt, type DesignGenerationContext } from './context';
+import {
+  buildVisualContextAnalysisInstruction,
+  deriveConservativeVisualContextPlan,
+  imageContextLabel,
+  mergeVisualContextPlan,
+  parseVisualContextEnvelope,
+  type VisualContextPlan,
+  type VisualContextRole,
+} from './visual-context';
 import type { ProjectDesign } from '../projects/metadata';
 import type { ProjectGenerationRatio } from '../projects/size';
 
@@ -266,8 +275,6 @@ const generationPrompt = (context: DesignGenerationContext, assistantBrief?: str
   context.designerSnapshot && Object.keys(context.designerSnapshot).length > 0 ? 'The result must follow the designer profile and avoid every negative rule.' : '',
 ].filter(Boolean).join('\n\n');
 
-const conversationProgressIntervalMs = 80;
-
 const latestGeneratedAssetIds = (tasks: readonly TaskRecord[], input: ConversationInput, analysisThreadId: string): string[] => {
   const latest = tasks
     .filter((candidate) => candidate.capability === 'design-generation'
@@ -292,23 +299,30 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const execution = (async (): Promise<void> => {
       try {
         const adapter = await options.resolveAdapter(input.connectionId);
-        const loadAssets = async (assetIds: readonly string[]): Promise<ConversationImageAttachment[]> => task.source?.kind === 'project' && options.loadContextImage
-          ? (await Promise.all(assetIds.map((assetId) => options.loadContextImage!({ projectId: task.source!.id, assetId })))).filter((attachment): attachment is ConversationImageAttachment => Boolean(attachment))
-          : [];
+        const loadAssets = async (assetIds: readonly string[]): Promise<Array<{ assetId: string; attachment: ConversationImageAttachment }>> => {
+          if (assetIds.length === 0 || task.source?.kind !== 'project' || !options.loadContextImage) return [];
+          const loaded = await Promise.all(assetIds.map(async (assetId) => ({
+            assetId,
+            attachment: await options.loadContextImage!({ projectId: task.source!.id, assetId }),
+          })));
+          return loaded.filter((entry): entry is { assetId: string; attachment: ConversationImageAttachment } => Boolean(entry.attachment));
+        };
         const imagePart = (attachment: ConversationImageAttachment) => ({
           type: 'image_url' as const,
           image_url: { url: `data:${attachment.mimeType};base64,${Buffer.from(attachment.bytes).toString('base64')}` },
         });
+        const imageParts = (
+          assetId: string,
+          attachment: ConversationImageAttachment,
+          roles: VisualContextRole[],
+          origin: string,
+        ) => [
+          { type: 'text' as const, text: imageContextLabel({ assetId, roles: roles.length ? roles : ['visual-reference'], confidence: 0 }, origin) },
+          imagePart(attachment),
+        ];
         const threadTasks = task.analysisThreadId
           ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === task.analysisThreadId && candidate.source?.id === task.source?.id && candidate.documentId === task.documentId && candidate.id !== task.id).sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id))
           : [];
-        const messages: ChatRequest['messages'] = task.designContext
-          ? [{ role: 'system', content: buildDesignContextPrompt(task.designContext) }]
-          : [];
-        for (const historicalTask of threadTasks) {
-          const historicalAttachments = historicalTask.contextAssetIds?.length ? await loadAssets(historicalTask.contextAssetIds) : [];
-          messages.push({ role: 'user', content: [{ type: 'text', text: historicalTask.requestText ?? '' }, ...historicalAttachments.map(imagePart)] });
-        }
         const currentAssetIds = [...new Set(
           task.contextAssetIds?.length
             ? task.contextAssetIds
@@ -316,26 +330,57 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
               ? []
               : task.designContext?.document.currentImageAssetIds ?? [],
         )];
+        const parent = task.conversationParentTaskId
+          ? options.runtime.get(task.conversationParentTaskId)
+          : undefined;
+        const knownAssetIds = [...new Set([
+          ...(task.designContext?.attachmentAssetIds ?? []),
+          ...(task.designContext?.document.currentImageAssetIds ?? []),
+          ...threadTasks.flatMap((historicalTask) => historicalTask.contextAssetIds ?? []),
+          ...threadTasks.flatMap((historicalTask) => historicalTask.visualContextPlan?.items.map((item) => item.assetId) ?? []),
+          ...(parent?.visualContextPlan?.items.map((item) => item.assetId) ?? []),
+          ...currentAssetIds,
+        ])];
+        const messages: ChatRequest['messages'] = [{
+          role: 'system',
+          content: [
+            task.designContext ? buildDesignContextPrompt(task.designContext) : '',
+            buildVisualContextAnalysisInstruction({
+              knownAssetIds,
+              previousPlan: parent?.visualContextPlan,
+            }),
+          ].filter(Boolean).join('\n\n'),
+        }];
+        for (const historicalTask of threadTasks) {
+          const historicalAttachments = await loadAssets(historicalTask.contextAssetIds ?? []);
+          const historicalParts = historicalAttachments.flatMap(({ assetId, attachment }) => imageParts(
+            assetId,
+            attachment,
+            historicalTask.visualContextPlan?.items.find((item) => item.assetId === assetId)?.roles ?? [],
+            'conversation-history',
+          ));
+          messages.push({
+            role: 'user',
+            content: [{ type: 'text', text: historicalTask.requestText ?? '' }, ...historicalParts],
+          });
+        }
         const storedAttachments = currentAssetIds.length ? await loadAssets(currentAssetIds) : [];
         const rawAttachments = input.attachments?.length ? input.attachments : [];
-        const currentAttachments = [...rawAttachments, ...storedAttachments.filter((stored) => !rawAttachments.some((raw) => raw.name === stored.name))];
-        messages.push({ role: 'user', content: [{ type: 'text', text: input.message }, ...currentAttachments.map(imagePart)] });
+        const currentImageParts = storedAttachments.length
+          ? storedAttachments.flatMap(({ assetId, attachment }) => imageParts(
+              assetId,
+              attachment,
+              parent?.visualContextPlan?.items.find((item) => item.assetId === assetId)?.roles ?? [],
+              'current-turn',
+            ))
+          : rawAttachments.map(imagePart);
+        messages.push({ role: 'user', content: [{ type: 'text', text: input.message }, ...currentImageParts] });
         const request = { messages, ...(task.model ? { model: task.model } : {}) };
         let text = '';
         let cost: number | null = null;
-        let lastProgressAt = 0;
-        const publishProgress = (value: string, force = false): void => {
-          const now = Date.now();
-          if (!force && lastProgressAt > 0 && now - lastProgressAt < conversationProgressIntervalMs) return;
-          lastProgressAt = now;
-          options.runtime.updateProgress(task.id, value);
-        };
         if (adapter.streamChat) {
           for await (const event of adapter.streamChat(request, controller.signal)) {
-            if (event.text) {
-              text += event.text;
-              publishProgress(text);
-            }
+            if (event.text) text += event.text;
           }
         } else {
           const response = await adapter.chat(request, controller.signal);
@@ -343,8 +388,26 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           cost = response.cost;
         }
         if (!text.trim()) throw new Error('EMPTY_PROVIDER_RESPONSE');
-        publishProgress(text, true);
-        await options.runtime.complete(task.id, { text, cost });
+        const parsed = parseVisualContextEnvelope(text);
+        const conservative = deriveConservativeVisualContextPlan({
+          previous: parent?.visualContextPlan,
+          initialAttachmentAssetIds: task.designContext?.attachmentAssetIds ?? [],
+          currentAssetIds,
+          canvasAssetIds: task.designContext?.document.currentImageAssetIds ?? [],
+        });
+        const visualContextPlan: VisualContextPlan = parsed
+          ? mergeVisualContextPlan({
+              previous: parent?.visualContextPlan,
+              proposed: parsed.visualContextPlan,
+              releasedAssetIds: parsed.releasedAssetIds,
+              requiredAssetIds: currentAssetIds,
+              knownAssetIds,
+            })
+          : conservative;
+        const brief = parsed?.brief ?? text.trim();
+        options.runtime.updateVisualContextPlan(task.id, visualContextPlan);
+        options.runtime.updateProgress(task.id, brief);
+        await options.runtime.complete(task.id, { text: brief, cost });
       } catch (error) {
         if (controller.signal.aborted) {
           if (options.runtime.get(task.id)?.cancelRequested) await options.runtime.complete(task.id);

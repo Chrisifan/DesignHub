@@ -91,6 +91,21 @@ export const parseVisualContextEnvelope = (text: string): ParsedVisualContextEnv
   };
 };
 
+export const buildVisualContextAnalysisInstruction = (input: {
+  knownAssetIds: readonly string[];
+  previousPlan?: VisualContextPlan;
+}): string => [
+  'Return JSON only with keys brief, visualContext, and releasedAssetIds.',
+  'visualContext must contain version: 1, items, and clarificationRequired.',
+  'Allowed roles: edit-target, visual-anchor, content-source, visual-reference.',
+  'Every currently supplied image must appear in items. One image may have multiple roles.',
+  'Keep previous visual-anchor roles unless the user explicitly asks to stop using them.',
+  'Only list an existing asset in releasedAssetIds when the current user message explicitly releases it.',
+  'If no single edit target can be determined and an edit target is required, set clarificationRequired true. Ask one clarification question in brief.',
+  `Known asset IDs: ${input.knownAssetIds.join(', ') || 'none'}`,
+  `Previous plan: ${JSON.stringify(input.previousPlan ?? null)}`,
+].join('\n');
+
 export const mergeVisualContextPlan = (input: {
   previous?: VisualContextPlan;
   proposed: VisualContextPlan;
@@ -167,7 +182,8 @@ export const deriveConservativeVisualContextPlan = (input: {
   return {
     version: 1,
     items: result,
-    clarificationRequired: result.filter((item) => item.roles.includes('edit-target')).length !== 1,
+    clarificationRequired: result.length > 0
+      && result.filter((item) => item.roles.includes('edit-target')).length !== 1,
   };
 };
 

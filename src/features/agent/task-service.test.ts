@@ -4,6 +4,7 @@ import { createTaskRuntime } from '../tasks/runtime';
 import type { TaskRecord } from '../tasks/state';
 import { createAgentTaskService } from './task-service';
 import { createScene } from '../canvas/scene';
+import type { ChatRequest } from '../providers/adapter';
 
 type ImageResponse = { images: Array<{ base64: string; mimeType?: string }>; cost: number | null };
 
@@ -77,10 +78,204 @@ it('sends conversation image attachments as multimodal chat content', async () =
   });
   await service.flush();
 
-  expect(chat).toHaveBeenCalledWith({ messages: [{ role: 'user', content: expect.arrayContaining([
-    { type: 'text', text: '按参考图调整' },
-    { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw==' } },
-  ]) }] }, expect.any(AbortSignal));
+  expect(chat).toHaveBeenCalledWith({ messages: [
+    { role: 'system', content: expect.stringContaining('Return JSON only') },
+    { role: 'user', content: expect.arrayContaining([
+      { type: 'text', text: '按参考图调整' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw==' } },
+    ]) },
+  ] }, expect.any(AbortSignal));
+});
+
+it('labels image IDs, publishes only the brief, and persists the inferred plan', async () => {
+  const runtime = createTaskRuntime();
+  const requests: ChatRequest[] = [];
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async (request) => {
+        requests.push(request);
+        return {
+          text: JSON.stringify({
+            brief: '修改图一并参考图二构图。',
+            visualContext: {
+              version: 1,
+              items: [
+                { assetId: 'asset-a', roles: ['edit-target', 'visual-anchor'], confidence: 0.98 },
+                { assetId: 'asset-b', roles: ['visual-reference'], confidence: 0.94 },
+              ],
+              clarificationRequired: false,
+            },
+            releasedAssetIds: [],
+          }),
+          cost: null,
+        };
+      },
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      libraryId: input.libraryId!,
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: '',
+      document: { width: 100, height: 100, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: null,
+    }),
+    persistConversationAttachments: async () => ['asset-a', 'asset-b'],
+    loadContextImage: async ({ assetId }) => ({
+      name: `${assetId}.png`,
+      mimeType: 'image/png',
+      bytes: new Uint8Array([1]),
+    }),
+  });
+
+  const task = await service.submitConversation({
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    documentId: 'document-1',
+    connectionId: 'provider-1',
+    message: '修改图一并参考图二构图',
+    attachments: [
+      { name: 'a.png', mimeType: 'image/png', bytes: new Uint8Array([1]) },
+      { name: 'b.png', mimeType: 'image/png', bytes: new Uint8Array([2]) },
+    ],
+  });
+  await service.flush();
+
+  expect(JSON.stringify(requests[0]!.messages.at(-1)!.content)).toContain('assetId=asset-a');
+  expect(JSON.stringify(requests[0]!.messages.at(-1)!.content)).toContain('assetId=asset-b');
+  expect(runtime.get(task.id)?.result?.text).toBe('修改图一并参考图二构图。');
+  expect(runtime.get(task.id)?.progressText).toBe('修改图一并参考图二构图。');
+  expect(runtime.get(task.id)?.visualContextPlan?.items).toHaveLength(2);
+});
+
+const createConversationPlanHarness = (responses: string[]) => {
+  const runtime = createTaskRuntime();
+  let responseIndex = 0;
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: responses[responseIndex++]!, cost: null }),
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      libraryId: input.libraryId!,
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: '',
+      document: { width: 100, height: 100, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: null,
+    }),
+    persistConversationAttachments: async ({ attachments }) =>
+      attachments.map((attachment) => attachment.name.replace(/\.png$/u, '')),
+    loadContextImage: async ({ assetId }) => ({
+      name: `${assetId}.png`,
+      mimeType: 'image/png',
+      bytes: new Uint8Array([1]),
+    }),
+  });
+  return { runtime, service };
+};
+
+it('recovers plain text without dropping initial attachments', async () => {
+  const { runtime, service } = createConversationPlanHarness(['普通分析文本']);
+  const task = await service.submitConversation({
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    documentId: 'document-1',
+    connectionId: 'provider-1',
+    message: '比较两张图',
+    attachments: [
+      { name: 'asset-a.png', mimeType: 'image/png', bytes: new Uint8Array([1]) },
+      { name: 'asset-b.png', mimeType: 'image/png', bytes: new Uint8Array([2]) },
+    ],
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)?.result?.text).toBe('普通分析文本');
+  expect(runtime.get(task.id)?.visualContextPlan?.items.map((item) => item.assetId).sort())
+    .toEqual(['asset-a', 'asset-b']);
+});
+
+it('removes an anchor only when releasedAssetIds names it', async () => {
+  const envelope = (releasedAssetIds: string[]) => JSON.stringify({
+    brief: '继续修改当前稿。',
+    visualContext: {
+      version: 1,
+      items: [{ assetId: 'asset-draft', roles: ['edit-target'], confidence: 1 }],
+      clarificationRequired: false,
+    },
+    releasedAssetIds,
+  });
+  const firstEnvelope = JSON.stringify({
+    brief: '以原图为基础。',
+    visualContext: {
+      version: 1,
+      items: [{ assetId: 'asset-original', roles: ['edit-target', 'visual-anchor'], confidence: 1 }],
+      clarificationRequired: false,
+    },
+    releasedAssetIds: [],
+  });
+  const { runtime, service } = createConversationPlanHarness([
+    firstEnvelope,
+    envelope([]),
+    envelope(['asset-original']),
+  ]);
+  const first = await service.submitConversation({
+    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1',
+    message: '以原图为基础', attachments: [{ name: 'asset-original.png', mimeType: 'image/png', bytes: new Uint8Array([1]) }],
+  });
+  await service.flush();
+  const second = await service.submitConversation({
+    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1',
+    analysisThreadId: first.analysisThreadId, conversationParentTaskId: first.id,
+    referencedAssetIds: ['asset-draft'], message: '继续修改当前稿',
+  });
+  await service.flush();
+  expect(runtime.get(second.id)?.visualContextPlan?.items.some((item) =>
+    item.assetId === 'asset-original' && item.roles.includes('visual-anchor'))).toBe(true);
+
+  const third = await service.submitConversation({
+    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1',
+    analysisThreadId: first.analysisThreadId, conversationParentTaskId: second.id,
+    referencedAssetIds: ['asset-draft'], message: '只使用当前稿，不再参考原图',
+  });
+  await service.flush();
+  expect(runtime.get(third.id)?.visualContextPlan?.items.some((item) => item.assetId === 'asset-original')).toBe(false);
+});
+
+it('stores a clarification plan when no edit target is identifiable', async () => {
+  const response = JSON.stringify({
+    brief: '你希望修改图一还是图二？',
+    visualContext: {
+      version: 1,
+      items: [
+        { assetId: 'asset-a', roles: ['visual-reference'], confidence: 0.4 },
+        { assetId: 'asset-b', roles: ['visual-reference'], confidence: 0.4 },
+      ],
+      clarificationRequired: true,
+    },
+    releasedAssetIds: [],
+  });
+  const { runtime, service } = createConversationPlanHarness([response]);
+  const task = await service.submitConversation({
+    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1',
+    message: '调整一下', attachments: [
+      { name: 'asset-a.png', mimeType: 'image/png', bytes: new Uint8Array([1]) },
+      { name: 'asset-b.png', mimeType: 'image/png', bytes: new Uint8Array([2]) },
+    ],
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)).toMatchObject({
+    state: 'completed',
+    result: { text: '你希望修改图一还是图二？' },
+    visualContextPlan: { clarificationRequired: true },
+  });
 });
 
 it('merges a conversation thread in order and streams analysis progress', async () => {
@@ -189,6 +384,7 @@ it('uses only explicitly selected images for the current conversation turn', asy
   const secondMessages = requests[1]!.messages as Array<{ content: string | Array<{ type: string; image_url?: { url: string } }> }>;
   expect(secondMessages.at(-1)?.content).toEqual([
     { type: 'text', text: '第二轮' },
+    { type: 'text', text: '[DesignHub image: assetId=selected-image; origin=current-turn; roles=visual-reference]' },
     { type: 'image_url', image_url: { url: 'data:image/png;base64,Ag==' } },
   ]);
 });
