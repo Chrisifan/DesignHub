@@ -84,7 +84,8 @@ The conversation model returns one structured response containing:
       }
     ],
     "clarificationRequired": false
-  }
+  },
+  "releasedAssetIds": []
 }
 ```
 
@@ -95,10 +96,12 @@ The request includes the previous plan. The model updates it incrementally from 
 Deterministic safeguards apply after parsing:
 
 - Every current asset must appear in the returned plan.
-- Existing anchors remain anchors unless the new user instruction explicitly releases them.
+- Existing anchors remain anchors unless the new user instruction explicitly releases them and the response lists their IDs in `releasedAssetIds`.
 - A user-selected generated design is eligible to become the new edit target.
 - Duplicate role and asset entries are normalized.
 - References outside the current project are rejected.
+
+`releasedAssetIds` is validated against the current project and previous plan, then discarded after the merge. It is evidence for an explicit transition, not part of the persisted visual context plan.
 
 The model supplies semantic classification; deterministic safeguards preserve continuity and project isolation.
 
