@@ -54,6 +54,13 @@ describe('visual context envelope', () => {
     expect(isVisualContextPlan({ ...plan, items: [{ assetId: 'a', roles: ['visual-anchor', 'visual-anchor'], confidence: 1 }] })).toBe(false);
     expect(isVisualContextPlan({ ...plan, items: [{ assetId: 'a', roles: ['other'], confidence: 1 }] })).toBe(false);
     expect(isVisualContextPlan({ ...plan, items: [{ assetId: 'a', roles: ['visual-anchor'], confidence: 2 }] })).toBe(false);
+    expect(isVisualContextPlan({
+      ...plan,
+      items: [
+        { assetId: 'a', roles: ['edit-target'], confidence: 1 },
+        { assetId: 'b', roles: ['edit-target'], confidence: 1 },
+      ],
+    })).toBe(false);
   });
 
   it('returns null for plain text or a malformed envelope', () => {
@@ -102,6 +109,27 @@ describe('visual context continuity', () => {
       requiredAssetIds: [],
       knownAssetIds: ['asset-original', 'asset-draft', 'asset-unknown'],
     })).toEqual(plan);
+  });
+
+  it('retains an old edit target only as an anchor when a new target is selected', () => {
+    expect(mergeVisualContextPlan({
+      previous: {
+        version: 1,
+        items: [{ assetId: 'asset-original', roles: ['edit-target', 'visual-anchor'], confidence: 1 }],
+        clarificationRequired: false,
+      },
+      proposed: {
+        version: 1,
+        items: [{ assetId: 'asset-draft', roles: ['edit-target'], confidence: 1 }],
+        clarificationRequired: false,
+      },
+      releasedAssetIds: [],
+      requiredAssetIds: ['asset-draft'],
+      knownAssetIds: ['asset-original', 'asset-draft'],
+    }).items).toEqual([
+      { assetId: 'asset-draft', roles: ['edit-target'], confidence: 1 },
+      { assetId: 'asset-original', roles: ['visual-anchor'], confidence: 1 },
+    ]);
   });
 
   it('derives a conservative ambiguous plan without inventing an edit target', () => {

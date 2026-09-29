@@ -140,7 +140,10 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     ? tasks.find((task) => task.id === selectedAnalysisTaskId) ?? latestAnalysisTask
     : latestAnalysisTask;
   const analysisAssetKey = (analysisTask?.contextAssetIds ?? []).join('\0');
-  const canGenerate = analysisTask?.state === 'completed' && Boolean(analysisTask.result?.text) && !tasks.some((task) => task.capability === 'design-generation' && (task.state === 'queued' || task.state === 'running'));
+  const canGenerate = analysisTask?.state === 'completed'
+    && Boolean(analysisTask.result?.text)
+    && analysisTask.visualContextPlan?.clarificationRequired !== true
+    && !tasks.some((task) => task.capability === 'design-generation' && (task.state === 'queued' || task.state === 'running'));
   const designTasks = tasks.filter((task) => task.capability === 'design-generation' && task.analysisThreadId === threadId);
   const pendingDesigns = designTasks.flatMap((task) => task.generationSlots?.filter((slot) => slot.state === 'queued' || slot.state === 'running').map((slot) => ({ id: `${task.id}-${slot.id}`, rowKey: task.id, width: analysisTask?.designContext?.document.width ?? 1080, height: analysisTask?.designContext?.document.height ?? 1440 })) ?? []);
   const selectedDesigns = designs.filter((design) => selectedDesignIds.includes(design.id));

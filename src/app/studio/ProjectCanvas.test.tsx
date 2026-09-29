@@ -108,6 +108,28 @@ describe('getLatestConversationTask', () => {
 });
 
 describe('ProjectCanvas design references', () => {
+  it('disables design generation while visual clarification is required', async () => {
+    const analysis: TaskRecord = {
+      ...conversation({ id: 'analysis-clarification', createdAt: '2026-09-29T10:00:00.000Z' }),
+      source: { kind: 'project', id: 'project-1' },
+      result: { text: '你希望修改图一还是图二？' },
+      visualContextPlan: {
+        version: 1,
+        items: [
+          { assetId: 'asset-a', roles: ['visual-reference'], confidence: 0.4 },
+          { assetId: 'asset-b', roles: ['visual-reference'], confidence: 0.4 },
+        ],
+        clarificationRequired: true,
+      },
+    };
+
+    renderProjectCanvasWithTasks([analysis]);
+
+    expect(await screen.findByText('你希望修改图一还是图二？')).toBeVisible();
+    expect(screen.getByRole('button', { name: '生成单张' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '生成多张' })).toBeDisabled();
+  });
+
   it('removes the analysis toolbar action and exposes background removal for one selected design', async () => {
     const design: ProjectDesign = {
       id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'generation-1',

@@ -48,7 +48,8 @@ export const isVisualContextPlan = (value: unknown): value is VisualContextPlan 
     || !Array.isArray(value.items)) return false;
 
   const assetIds = new Set<string>();
-  return value.items.every((candidate) => {
+  let editTargetCount = 0;
+  const itemsValid = value.items.every((candidate) => {
     if (!isRecord(candidate)
       || !hasOnlyKeys(candidate, ['assetId', 'roles', 'confidence'])
       || typeof candidate.assetId !== 'string'
@@ -63,9 +64,11 @@ export const isVisualContextPlan = (value: unknown): value is VisualContextPlan 
       || !Number.isFinite(candidate.confidence)
       || candidate.confidence < 0
       || candidate.confidence > 1) return false;
+    if (candidate.roles.includes('edit-target')) editTargetCount += 1;
     assetIds.add(candidate.assetId);
     return true;
   });
+  return itemsValid && editTargetCount <= 1;
 };
 
 export const parseVisualContextEnvelope = (text: string): ParsedVisualContextEnvelope | null => {
@@ -126,7 +129,10 @@ export const mergeVisualContextPlan = (input: {
     if (released.has(previous.assetId) || !known.has(previous.assetId)) continue;
     const current = merged.get(previous.assetId);
     if (!current && previous.roles.includes('visual-anchor')) {
-      merged.set(previous.assetId, structuredClone(previous));
+      merged.set(previous.assetId, {
+        ...structuredClone(previous),
+        roles: previous.roles.filter((role) => role !== 'edit-target'),
+      });
     } else if (current && previous.roles.includes('visual-anchor') && !current.roles.includes('visual-anchor')) {
       current.roles.push('visual-anchor');
     }

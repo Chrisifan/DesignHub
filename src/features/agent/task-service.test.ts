@@ -313,9 +313,10 @@ it('stores a clarification plan when no edit target is identifiable', async () =
 
 it('keeps original anchors and references when a generated draft becomes the edit target', async () => {
   const runtime = createTaskRuntime();
-  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[] }) => ({
-    images: [{ base64: 'result' }], cost: null,
-  }));
+  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[] }) => {
+    void _request;
+    return { images: [{ base64: 'result' }], cost: null };
+  });
   const service = createAgentTaskService({
     runtime,
     resolveAdapter: async () => ({ chat: async () => ({ text: 'unused', cost: null }), editImage }),
@@ -378,9 +379,10 @@ it('rejects design generation while visual clarification is required', async () 
 
 it('rejects generation before task creation when a planned asset is missing', async () => {
   const runtime = createTaskRuntime();
-  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[] }) => ({
-    images: [{ base64: 'result' }], cost: null,
-  }));
+  const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[] }) => {
+    void _request;
+    return { images: [{ base64: 'result' }], cost: null };
+  });
   const service = createAgentTaskService({
     runtime,
     resolveAdapter: async () => ({ chat: async () => ({ text: 'unused', cost: null }), editImage }),
@@ -409,6 +411,7 @@ it('uses the copied visual plan for every slot and a later retry', async () => {
   const runtime = createTaskRuntime();
   let callCount = 0;
   const editImage = vi.fn(async (_request: { prompt: string; image: Blob; referenceImages?: Blob[] }) => {
+    void _request;
     callCount += 1;
     if (callCount === 2) throw new Error('PROVIDER_REQUEST_FAILED');
     return { images: [{ base64: `result-${callCount}` }], cost: null };

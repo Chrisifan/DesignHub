@@ -292,6 +292,13 @@ const latestGeneratedAssetIds = (tasks: readonly TaskRecord[], input: Conversati
   return [...new Set(candidateAssetIds.length > 0 ? candidateAssetIds : latest.result?.assetIds ?? [])];
 };
 
+const latestConversationTask = (tasks: readonly TaskRecord[]): TaskRecord | undefined => {
+  const parentIds = new Set(tasks.flatMap((task) => task.conversationParentTaskId ? [task.conversationParentTaskId] : []));
+  return tasks
+    .filter((task) => !parentIds.has(task.id))
+    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
+};
+
 export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentTaskService => {
   const controllers = new Map<string, AbortController>();
   const generationControllers = new Map<string, Map<DesignGenerationSlotId, AbortController>>();
@@ -586,7 +593,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       : [];
     const parent = input.conversationParentTaskId
       ? options.runtime.get(input.conversationParentTaskId)
-      : existingThreadTasks.filter((candidate) => candidate.state === 'completed').sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
+      : latestConversationTask(existingThreadTasks.filter((candidate) => candidate.state === 'completed'));
     if (parent && (parent.source?.kind !== source.kind || parent.source.id !== source.id || (input.documentId && parent.documentId !== input.documentId))) throw new Error('CONVERSATION_CONTEXT_MISMATCH');
     if (parent?.analysisThreadId && input.analysisThreadId && parent.analysisThreadId !== input.analysisThreadId) throw new Error('CONVERSATION_CONTEXT_MISMATCH');
     const analysisThreadId = input.analysisThreadId ?? parent?.analysisThreadId ?? `analysis-${crypto.randomUUID()}`;
@@ -758,7 +765,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const parent = options.runtime.get(input.conversationTaskId);
     if (!parent || parent.state !== 'completed' || parent.capability !== 'conversation' || parent.source?.kind !== 'project' || parent.source.id !== input.projectId || (input.documentId && parent.documentId !== input.documentId)) throw new Error('CONVERSATION_CONTEXT_REQUIRED');
     if (parent.analysisThreadId) {
-      const latest = options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && (!input.documentId || candidate.documentId === input.documentId) && candidate.state === 'completed').sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
+      const latest = latestConversationTask(options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && (!input.documentId || candidate.documentId === input.documentId) && candidate.state === 'completed'));
       if (!latest || latest.id !== parent.id) throw new Error('CONVERSATION_CONTEXT_STALE');
     }
     if (!parent.designContext) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
