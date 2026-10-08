@@ -117,6 +117,8 @@ export const parseVisualContextEnvelope = (text: string): ParsedVisualContextEnv
   };
 };
 
+export const normalizeAnalysisText = (text: string): string => parseVisualContextEnvelope(text)?.brief ?? text;
+
 export const buildVisualContextAnalysisInstruction = (input: {
   knownAssetIds: readonly string[];
   previousPlan?: VisualContextPlan;

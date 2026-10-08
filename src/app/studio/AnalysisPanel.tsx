@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { Locale } from '../i18n';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { TaskRecord } from '../../features/tasks/state';
+import { normalizeAnalysisText } from '../../features/agent/visual-context';
 import { Button, Icon, IconButton } from './ui';
 
 export type AnalysisPanelAttachment = ConversationImageAttachment & {
@@ -146,7 +147,7 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
   const [requestExpanded, setRequestExpanded] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const progress = task?.progressText || task?.result?.text || '';
+  const progress = normalizeAnalysisText(task?.progressText || task?.result?.text || '');
   const [visibleProgress, setVisibleProgress] = useState(progress);
   const failed = task?.state === 'failed';
   const running = task?.state === 'queued' || task?.state === 'running';

@@ -59,6 +59,22 @@ it('renders streamed markdown as structured analysis content', () => {
   expect(screen.queryByText('## 设计方向')).not.toBeInTheDocument();
 });
 
+it('renders the brief instead of a persisted structured response envelope', () => {
+  renderPanel(JSON.stringify({
+    brief: '抠出人物并输出透明背景。',
+    visualContext: {
+      version: 1,
+      items: [{ assetId: 'asset-person', role: 'edit-target', confidence: 0.99 }],
+      clarificationRequired: false,
+    },
+    releasedAssets: [],
+  }));
+
+  expect(screen.getByText('抠出人物并输出透明背景。')).toBeInTheDocument();
+  expect(screen.queryByText(/visualContext/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/releasedAssets/)).not.toBeInTheDocument();
+});
+
 it('keeps the analysis view following the latest streamed content', () => {
   const { rerender } = renderPanel('第一段');
   expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
