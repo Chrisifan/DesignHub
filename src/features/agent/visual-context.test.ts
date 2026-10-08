@@ -76,7 +76,10 @@ describe('visual context envelope', () => {
       brief: '抠出人物并输出透明背景。',
       visualContext: {
         version: 1,
-        items: [{ assetId: 'asset-person', role: 'edit-target', confidence: 0.99 }],
+        items: [
+          { assetId: 'asset-person', role: 'edit-target', confidence: 0.99 },
+          { assetId: 'asset-person', role: 'visual-reference', confidence: 0.99 },
+        ],
         clarificationRequired: false,
       },
       releasedAssets: [],
@@ -84,7 +87,7 @@ describe('visual context envelope', () => {
       brief: '抠出人物并输出透明背景。',
       visualContextPlan: {
         version: 1,
-        items: [{ assetId: 'asset-person', roles: ['edit-target'], confidence: 0.99 }],
+        items: [{ assetId: 'asset-person', roles: ['edit-target', 'visual-reference'], confidence: 0.99 }],
         clarificationRequired: false,
       },
       releasedAssetIds: [],

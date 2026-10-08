@@ -87,16 +87,36 @@ export const parseVisualContextEnvelope = (text: string): ParsedVisualContextEnv
     ? {
         ...parsed.visualContext,
         items: Array.isArray(parsed.visualContext.items)
-          ? parsed.visualContext.items.map((item) => {
-              if (!isRecord(item)) return item;
-              const normalized: Record<string, unknown> = {
-                ...item,
-                ...(item.roles === undefined && typeof item.role === 'string' ? { roles: [item.role] } : {}),
-                ...(!Object.prototype.hasOwnProperty.call(item, 'confidence') ? { confidence: 0 } : {}),
-              };
-              delete normalized.role;
-              return normalized;
-            })
+          ? (() => {
+              const normalizedItems: unknown[] = [];
+              const byAsset = new Map<string, Record<string, unknown>>();
+              for (const item of parsed.visualContext.items) {
+                if (!isRecord(item)) {
+                  normalizedItems.push(item);
+                  continue;
+                }
+                const normalized: Record<string, unknown> = {
+                  ...item,
+                  ...(item.roles === undefined && typeof item.role === 'string' ? { roles: [item.role] } : {}),
+                  ...(!Object.prototype.hasOwnProperty.call(item, 'confidence') ? { confidence: 0 } : {}),
+                };
+                delete normalized.role;
+                const assetId = typeof normalized.assetId === 'string' ? normalized.assetId : undefined;
+                const previous = assetId ? byAsset.get(assetId) : undefined;
+                if (!previous) {
+                  normalizedItems.push(normalized);
+                  if (assetId) byAsset.set(assetId, normalized);
+                  continue;
+                }
+                if (Array.isArray(previous.roles) && Array.isArray(normalized.roles)) {
+                  previous.roles = [...new Set([...previous.roles, ...normalized.roles])];
+                }
+                if (typeof previous.confidence === 'number' && typeof normalized.confidence === 'number') {
+                  previous.confidence = Math.min(previous.confidence, normalized.confidence);
+                }
+              }
+              return normalizedItems;
+            })()
           : parsed.visualContext.items,
       }
     : undefined;
