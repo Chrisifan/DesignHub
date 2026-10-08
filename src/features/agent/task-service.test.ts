@@ -184,6 +184,126 @@ it('labels image IDs, publishes only the brief, and persists the inferred plan',
   expect(runtime.get(task.id)?.visualContextPlan?.items).toHaveLength(2);
 });
 
+it('publishes only the brief for provider field variants', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({
+        text: JSON.stringify({
+          brief: '抠出人物并输出透明背景。',
+          visualContext: {
+            version: 1,
+            items: [{ assetId: 'asset-person', role: 'edit-target', confidence: 0.99 }],
+            clarificationRequired: false,
+          },
+          releasedAssets: [],
+        }),
+        cost: null,
+      }),
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      libraryId: input.libraryId!,
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: '',
+      document: { width: 100, height: 100, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: null,
+    }),
+    persistConversationAttachments: async () => ['asset-person'],
+    loadContextImage: async () => ({
+      name: 'person.png',
+      mimeType: 'image/png',
+      bytes: new Uint8Array([1]),
+    }),
+  });
+
+  const task = await service.submitConversation({
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    documentId: 'document-1',
+    connectionId: 'provider-1',
+    message: '抠出人物',
+    attachments: [{ name: 'person.png', mimeType: 'image/png', bytes: new Uint8Array([1]) }],
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)?.result?.text).toBe('抠出人物并输出透明背景。');
+  expect(runtime.get(task.id)?.progressText).toBe('抠出人物并输出透明背景。');
+  expect(runtime.get(task.id)?.visualContextPlan).toEqual({
+    version: 1,
+    items: [{ assetId: 'asset-person', roles: ['edit-target'], confidence: 0.99 }],
+    clarificationRequired: false,
+  });
+});
+
+it('recovers a structured response when the provider omits confidence', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({
+        text: JSON.stringify({
+          brief: '以图一为编辑目标，并参考图二。',
+          visualContext: {
+            version: 1,
+            items: [
+              { assetId: 'asset-a', roles: ['edit-target', 'visual-reference'] },
+              { assetId: 'asset-b', roles: ['visual-reference'] },
+            ],
+            clarificationRequired: false,
+          },
+          releasedAssetIds: [],
+        }),
+        cost: null,
+      }),
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      libraryId: input.libraryId!,
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: '',
+      document: { width: 100, height: 100, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: null,
+    }),
+    persistConversationAttachments: async () => ['asset-a', 'asset-b'],
+    loadContextImage: async ({ assetId }) => ({
+      name: `${assetId}.png`,
+      mimeType: 'image/png',
+      bytes: new Uint8Array([1]),
+    }),
+  });
+
+  const task = await service.submitConversation({
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    documentId: 'document-1',
+    connectionId: 'provider-1',
+    message: '以图一为编辑目标，并参考图二',
+    attachments: [
+      { name: 'asset-a.png', mimeType: 'image/png', bytes: new Uint8Array([1]) },
+      { name: 'asset-b.png', mimeType: 'image/png', bytes: new Uint8Array([2]) },
+    ],
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)?.result?.text).toBe('以图一为编辑目标，并参考图二。');
+  expect(runtime.get(task.id)?.progressText).toBe('以图一为编辑目标，并参考图二。');
+  expect(runtime.get(task.id)?.visualContextPlan).toMatchObject({
+    clarificationRequired: false,
+    items: [
+      { assetId: 'asset-a', roles: ['edit-target', 'visual-reference'], confidence: 0 },
+      { assetId: 'asset-b', roles: ['visual-reference'], confidence: 0 },
+    ],
+  });
+});
+
 const createConversationPlanHarness = (responses: string[]) => {
   const runtime = createTaskRuntime();
   let responseIndex = 0;
@@ -523,6 +643,50 @@ it('coalesces high-frequency streamed progress updates', async () => {
   expect(updateProgress.mock.calls.length).toBeLessThanOrEqual(3);
 });
 
+it('publishes streamed progress before the provider finishes', async () => {
+  const runtime = createTaskRuntime();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let firstEventResolve!: () => void;
+  const firstEvent = new Promise<void>((resolve) => { firstEventResolve = resolve; });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: 'fallback', cost: null }),
+      streamChat: () => {
+        let index = 0;
+        return {
+          [Symbol.asyncIterator]: () => ({
+            next: async () => {
+              if (index === 0) {
+                index += 1;
+                return { done: false as const, value: { text: '首段' } };
+              }
+              if (index === 1) {
+                index += 1;
+                firstEventResolve();
+                await gate;
+                return { done: false as const, value: { text: '尾段' } };
+              }
+              return { done: true as const, value: undefined };
+            },
+          }),
+        };
+      },
+    }),
+  });
+
+  const task = await service.submitConversation({ projectId: 'project-1', connectionId: 'provider-1', message: 'streaming response' });
+  await firstEvent;
+  try {
+    expect(runtime.get(task.id)).toMatchObject({ state: 'running', progressText: '首段' });
+  } finally {
+    release();
+  }
+  await service.flush();
+  expect(runtime.get(task.id)).toMatchObject({ state: 'completed', progressText: '首段尾段' });
+});
+
 it('uses only explicitly selected images for the current conversation turn', async () => {
   const runtime = createTaskRuntime();
   const requests: Array<{ messages: unknown[] }> = [];
@@ -728,6 +892,89 @@ it('persists and sends the selected design-generation model', async () => {
 
   expect(generateImage).toHaveBeenCalledWith(expect.objectContaining({ model: 'image-model' }), expect.any(AbortSignal));
   expect(runtime.get(generation.id)).toMatchObject({ providerId: 'provider-1', capability: 'design-generation', model: 'image-model' });
+});
+
+it('waits for the initial design task snapshot to persist before returning it', async () => {
+  let releasePersistence: (() => void) | undefined;
+  const persistence = new Promise<void>((resolve) => { releasePersistence = resolve; });
+  const parent: TaskRecord = {
+    id: 'conversation-persisted',
+    requestId: 'request-conversation-persisted',
+    state: 'completed',
+    cancelRequested: false,
+    attempt: 1,
+    capability: 'conversation',
+    source: { kind: 'project', id: 'project-1' },
+    documentId: 'document-1',
+    analysisThreadId: 'thread-persisted',
+    designContext: {
+      version: 1,
+      libraryId: 'workspace-1',
+      projectId: 'project-1',
+      documentId: 'document-1',
+      brief: '',
+      document: { width: 1080, height: 1440, currentImageAssetIds: [] },
+      attachmentAssetIds: [],
+      userMessage: 'Poster',
+      baseRevisionId: null,
+    },
+    visualContextPlan: { version: 1, items: [], clarificationRequired: false },
+    result: { text: 'Brief' },
+  };
+  const persist = vi.fn(async (tasks: readonly TaskRecord[]) => {
+    if (tasks.some((task) => task.capability === 'design-generation')) await persistence;
+  });
+  const runtime = createTaskRuntime({ initialTasks: [parent], persist });
+  let releaseGeneration: ((value: ImageResponse) => void) | undefined;
+  const generation = new Promise<ImageResponse>((resolve) => { releaseGeneration = resolve; });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({ chat: async () => ({ text: '', cost: null }), generateImage: async () => generation }),
+    persistGeneratedImages: async () => ['asset-generated'],
+  });
+
+  let returned = false;
+  const submission = service.submitDesignGeneration({
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    documentId: 'document-1',
+    conversationTaskId: parent.id,
+    connectionId: 'provider-1',
+    count: 1,
+  }).then((task) => { returned = true; return task; });
+  await vi.waitFor(() => expect(persist).toHaveBeenCalled());
+  await Promise.resolve();
+  expect(returned).toBe(false);
+
+  releasePersistence?.();
+  const task = await submission;
+  expect(task.capability).toBe('design-generation');
+  releaseGeneration?.({ images: [{ base64: 'generated' }], cost: null });
+  await service.flush();
+});
+
+it('aborts an image connection test when its timeout elapses', async () => {
+  vi.useFakeTimers();
+  let receivedSignal: AbortSignal | undefined;
+  const service = createAgentTaskService({
+    runtime: createTaskRuntime(),
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async (_request, signal) => new Promise((resolve, reject) => {
+        receivedSignal = signal;
+        signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+        setTimeout(() => resolve({ images: [{ base64: 'too-late' }], cost: null }), 50);
+      }),
+    }),
+  });
+
+  const result = service.testImageGeneration({ connectionId: 'provider-1', prompt: 'test', timeoutMs: 10 });
+  const rejection = expect(result).rejects.toThrow();
+  await vi.advanceTimersByTimeAsync(50);
+
+  await rejection;
+  expect(receivedSignal?.aborted).toBe(true);
+  vi.useRealTimers();
 });
 
 it('generates one design slot when a single image is requested', async () => {
