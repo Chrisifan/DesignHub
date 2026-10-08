@@ -9,10 +9,10 @@ import { ProjectCanvas } from './ProjectCanvas';
 import { ProjectDetailPage } from './ProjectDetailPage';
 import { StudioHome } from './StudioHome';
 import { StudioUserMenu } from './StudioUserMenu';
+import { DesignerLibrary } from './DesignerLibrary';
 import { createAutomaticProjectName } from './auto-project-name';
 import { localize, type PersonaProfile } from './personas';
 import { legacySeededDesignerIds } from '../../features/designers/persistence';
-import { Workbench } from './Workbench';
 import type { CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import type { ProjectLibraryDescriptor } from '../../features/project-library/open-project-library';
 import type { AppProfile } from '../../features/profile/model';
@@ -30,25 +30,33 @@ import type { HomeConversationRequest, NewDesignDraft, PendingHomeConversation, 
 import type { ProjectDesign, ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool, ToolParams } from '../../features/image-tools/target';
 import { resizeScene } from '../../features/image-tools/local-transform';
+import { createCompositionEntryCandidate, createMockupEntryCandidate } from '../../features/composition/studio-entry';
+import type { DesignSceneCandidate } from '../../features/composition/design-scene-candidate';
+import { builtInMockupTemplates, validateMockupRenderInput } from '../../features/mockups/template';
 import { selectConfiguredConnection } from '../../features/providers/connection';
+import { getProviderProfileStatus } from '../../features/providers/status';
 import type { ProviderConfigMap } from '../../features/providers/config';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
+import { Workbench } from './Workbench';
 
 const navigation: { view: View; icon: string; zh: string; en: string }[] = [
   { view: 'projects', icon: 'layout-grid', zh: '项目库', en: 'Projects' },
-  { view: 'designers', icon: 'users', zh: '设计师', en: 'Designers' },
   { view: 'assets', icon: 'image', zh: '素材库', en: 'Assets' },
   { view: 'brands', icon: 'palette', zh: '品牌包', en: 'Brand kits' },
   { view: 'connections', icon: 'plug', zh: '模型连接', en: 'Connections' },
   { view: 'tasks', icon: 'clock', zh: '模型任务', en: 'Model tasks' },
-  { view: 'image-tools', icon: 'wand-sparkles', zh: '图像工具', en: 'Image tools' },
+  { view: 'image-tool-remove-background', icon: 'wand-sparkles', zh: '去除背景', en: 'Remove background' },
+  { view: 'image-tool-upscale', icon: 'image', zh: '放大图像', en: 'Upscale image' },
+  { view: 'image-tool-resize', icon: 'maximize-2', zh: '尺寸转换', en: 'Resize' },
+  { view: 'image-tool-format-convert', icon: 'file-image', zh: '格式转换', en: 'Format conversion' },
   { view: 'delivery', icon: 'download', zh: '导出交付', en: 'Delivery' },
   { view: 'storage', icon: 'hard-drive', zh: '工作区管理', en: 'Workspace' },
 ];
 
 const destinations: { view: View; icon: string; zh: string; en: string }[] = [
   ...navigation,
+  { view: 'image-tools', icon: 'wand-sparkles', zh: '图像工具', en: 'Image tools' },
   { view: 'settings', icon: 'settings', zh: '设置', en: 'Settings' },
 ];
 const viewOrder = destinations.map(({ view }) => view);
@@ -57,6 +65,13 @@ const emptyProjects: Project[] = [];
 const emptyDesignerOptions: PersonaProfile[] = [];
 const emptyAssets: NonNullable<Parameters<typeof LibraryPages>[0]['initialAssets']> = [];
 const emptyBrands: NonNullable<Parameters<typeof LibraryPages>[0]['initialBrands']> = [];
+
+const fileBytes = async (file: File): Promise<Uint8Array> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+  reader.onerror = () => reject(new Error('FILE_READ_FAILED'));
+  reader.readAsArrayBuffer(file);
+});
 
 const readOperatorName = (): string => {
   try { return localStorage.getItem('designhub.operator.name') ?? ''; } catch { return ''; }
@@ -151,9 +166,10 @@ export const Studio = ({
   const [deliveryProject] = useState<Project | null>(null);
   const [connectionsDialogOpen, setConnectionsDialogOpen] = useState(false);
   const [providerRefreshKey, setProviderRefreshKey] = useState(0);
-  const designerCreateRequestId = 0;
+  const [designerCreateRequestId, setDesignerCreateRequestId] = useState(0);
   const [notice, setNotice] = useState('');
   const [newProjectDrawerOpen, setNewProjectDrawerOpen] = useState(false);
+  const [entryCandidate, setEntryCandidate] = useState<{ projectId: string; candidate: DesignSceneCandidate } | null>(null);
   const [draft, setDraft] = useState<NewDesignDraft>({
     name: '',
     goal: '',
@@ -236,10 +252,13 @@ export const Studio = ({
       api.hasCredential?.('openai-compatible:conversation') ?? Promise.resolve(false),
       api.hasCredential?.('openai-compatible:image') ?? Promise.resolve(false),
     ]);
-    void Promise.all([configsRequest, credentialRequest]).then(([configs, [conversationCredential, imageCredential]]) => {
+    const statusRequest = api.loadProviderConnectionStatuses?.() ?? Promise.resolve(null);
+    void Promise.all([configsRequest, credentialRequest, statusRequest]).then(([configs, [conversationCredential, imageCredential], statuses]) => {
       if (cancelled) return;
       const normalizedConfigs = configs ?? {};
-      const nextConversationId = conversationCredential
+      const statusAware = Boolean(api.loadProviderConnectionStatuses);
+      const conversationHealthy = !statusAware || getProviderProfileStatus(statuses, 'openai-compatible', 'conversation', normalizedConfigs) === 'connected';
+      const nextConversationId = conversationCredential && conversationHealthy
         ? selectConfiguredConnection('conversation', normalizedConfigs, ['openai-compatible:conversation'])
         : null;
       const nextImageId = imageCredential
@@ -281,12 +300,7 @@ export const Studio = ({
   }, [initialDesignerOptions, workspace]);
   const navigate = (next: View) => {
     if (next === 'designers') {
-      const currentIndex = viewOrder.indexOf(view);
-      const nextIndex = viewOrder.indexOf(next);
-      setTransitionDirection(nextIndex >= currentIndex ? 'forward' : 'backward');
-      setView(next);
-      setSurface(next);
-      setDocumentOpen(false);
+      setDesignerCreateRequestId((current) => current + 1);
       return;
     }
     if (next === 'connections') {
@@ -482,9 +496,43 @@ export const Studio = ({
   const createProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft.name.trim()) return;
+    const entryMode = draft.mode;
+    if (entryMode !== 'manual' && workspace?.openMode !== 'writable') {
+      notify(t(locale, '请先打开可写工作区以导入候选素材。', 'Open a writable workspace to import candidate assets.'));
+      return;
+    }
+    const entryFiles = entryMode === 'composition'
+      ? ([['core', draft.coreFile], ['optional', draft.optionalFile], ['reference', draft.referenceFile]] as const).filter((item): item is readonly [typeof item[0], File] => Boolean(item[1]))
+      : entryMode === 'mockup' && draft.mockupFile ? [['core', draft.mockupFile] as const] : [];
+    if (entryMode !== 'manual' && (entryFiles.length === 0 || (entryMode === 'composition' && !draft.coreFile))) {
+      notify(t(locale, '请先选择核心素材。', 'Choose a core asset first.'));
+      return;
+    }
+    let sourceSize: { width: number; height: number } | null = null;
+    const template = builtInMockupTemplates.find((item) => item.id === (draft.templateId ?? builtInMockupTemplates[0]!.id));
+    const templateColor = draft.templateColor ?? template?.colors[0] ?? '';
+    if (entryMode === 'mockup') {
+      try {
+        const bitmap = await createImageBitmap(draft.mockupFile!);
+        sourceSize = { width: bitmap.width, height: bitmap.height };
+        bitmap.close();
+      } catch {
+        notify(t(locale, '无法读取源设计图尺寸。', 'Could not read source artwork dimensions.'));
+        return;
+      }
+      const valid = validateMockupRenderInput({ templateId: template?.id ?? '', sourceWidth: sourceSize.width, sourceHeight: sourceSize.height, color: templateColor });
+      if (!valid.ok) {
+        notify(valid.reason === 'SOURCE_TOO_SMALL' ? t(locale, '源设计图尺寸小于模板要求。', 'Source artwork is smaller than the template requires.') : t(locale, '样机模板或颜色无效。', 'Invalid mockup template or color.'));
+        return;
+      }
+    }
     if (workspace?.openMode === 'writable') {
       const selectedDesigner = designerOptions.find((profile) => profile.id === draft.personaId);
       const submittedCover = draft.cover;
+      const documentId = entryMode === 'manual' ? null : `document-${crypto.randomUUID()}`;
+      const [width, height] = entryMode === 'mockup' && template
+        ? [template.output.width, template.output.height]
+        : draft.size.split(' × ').map(Number);
       const created = await getDesktopApi().createProjectContainer?.({
         libraryId: workspace.libraryId,
         operationId: crypto.randomUUID(),
@@ -492,10 +540,41 @@ export const Studio = ({
         brief: draft.goal || undefined,
         ...(selectedDesigner ? { activeDesignerVersionId: selectedDesigner.id, designerSnapshot: structuredClone(selectedDesigner) } : {}),
         designs: [],
+        ...(documentId ? { documents: [{ id: documentId, name: draft.name.trim(), width, height }] } : {}),
       });
       if (!created) {
         notify(t(locale, '无法保存项目，请检查工作区。', 'Could not save the project. Check the workspace.'));
         return;
+      }
+      let localCandidate: DesignSceneCandidate | null = null;
+      if (documentId && entryFiles.length) {
+        try {
+          const items = await Promise.all(entryFiles.map(async ([role, file]) => ({ name: file.name, mimeType: file.type, data: await fileBytes(file), metadata: { purpose: 'studio-entry', role } })));
+          const imported = await getDesktopApi().importAssets?.({ libraryId: workspace.libraryId, projectId: created.projectId, items });
+          if (!imported || imported.length !== entryFiles.length || imported.some((result) => result.status !== 'success')) throw new Error('ASSET_IMPORT_FAILED');
+          const assets = imported.map((result, index) => ({ assetId: result.status === 'success' ? result.asset.id : '', role: entryFiles[index]![0] }));
+          const identity = { id: `candidate-${crypto.randomUUID()}`, sourceTaskId: `local-entry-${crypto.randomUUID()}`, createdAt: new Date().toISOString() };
+          const result = entryMode === 'mockup'
+            ? createMockupEntryCandidate({ ...identity, sourceAssetId: assets[0]!.assetId, sourceWidth: sourceSize!.width, sourceHeight: sourceSize!.height, templateId: template!.id, color: templateColor })
+            : createCompositionEntryCandidate({ ...identity, width, height, assets });
+          if (!result.ok) throw new Error(result.reason);
+          localCandidate = result.candidate;
+          const publishCandidate = getDesktopApi().publishCompositionCandidate;
+          if (publishCandidate) {
+            const published = await publishCandidate({
+              libraryId: workspace.libraryId,
+              projectId: created.projectId,
+              documentId,
+              candidate: localCandidate,
+            });
+            const persistedCandidate = published?.result?.compositionCandidate;
+            if (!persistedCandidate) throw new Error('CANDIDATE_PERSIST_FAILED');
+            localCandidate = persistedCandidate;
+          }
+        } catch {
+          localCandidate = null;
+          notify(t(locale, '项目已创建，但候选素材导入失败。', 'Project created, but candidate asset import failed.'));
+        }
       }
       let coverAssetId: string | undefined;
       let coverSaveFailed = false;
@@ -537,13 +616,20 @@ export const Studio = ({
         artwork: 'blank',
         designs: [],
         documents: 0,
-        documentEntries: [],
+        documentEntries: documentId ? [{ id: documentId, name: draft.name.trim(), width, height }] : [],
+        ...(documentId ? { documentId } : {}),
       };
+      if (documentId) project.documents = 1;
       setProjects((previous) => [project, ...previous]);
       setNewProjectDrawerOpen(false);
       setTransitionDirection('forward');
       setSurface('projects');
       setSelected(project);
+      if (documentId && localCandidate) {
+        setEntryCandidate({ projectId: project.id, candidate: localCandidate });
+        setActiveDocumentId(documentId);
+        setDocumentOpen(true);
+      }
       setView('projects');
       setQuery('');
       setFilter('active');
@@ -598,6 +684,11 @@ export const Studio = ({
       ),
     );
   };
+  const documentIdForProject = (project: Project): string | undefined => (
+    project.id === selected?.id
+      ? activeDocumentId ?? project.documentId ?? project.documentEntries?.[0]?.id
+      : project.documentId ?? project.documentEntries?.[0]?.id
+  );
   const submitProjectConversation = async (project: Project, message: string, attachments: import('../../features/agent/task-service').ConversationImageAttachment[] = [], context: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] } = {}): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
@@ -611,6 +702,7 @@ export const Studio = ({
       const task = await getDesktopApi().submitConversation?.({
         libraryId: workspace.libraryId,
         projectId: project.id,
+        ...(documentIdForProject(project) ? { documentId: documentIdForProject(project) } : {}),
         connectionId: conversationConnectionId,
         ...(providerConfigs?.[conversationConnectionId as keyof ProviderConfigMap]?.conversation.models.conversation ? { model: providerConfigs[conversationConnectionId as keyof ProviderConfigMap]!.conversation.models.conversation } : {}),
         message,
@@ -628,7 +720,7 @@ export const Studio = ({
       return null;
     }
   };
-  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null, generationRatio: Project['generationRatio'] = project.generationRatio ?? '3:4', count: 1 | 3 = 3): Promise<import('../../features/tasks/state').TaskRecord | null> => {
+  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null, generationRatio: Project['generationRatio'] = project.generationRatio ?? '3:4', count: 1 | 3 = 3, documentId?: string): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return null;
@@ -641,6 +733,7 @@ export const Studio = ({
       const task = await getDesktopApi().submitDesignGeneration?.({
         libraryId: workspace.libraryId,
         projectId: project.id,
+        ...(documentId ? { documentId } : {}),
         conversationTaskId,
         baseRevisionId,
         connectionId: imageConnectionId,
@@ -949,6 +1042,8 @@ export const Studio = ({
                 project={project}
                 libraryId={project.libraryId}
                 documentId={project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId}
+                initialCandidate={entryCandidate?.projectId === project.id ? entryCandidate.candidate : undefined}
+                onEntryCandidateResolved={() => setEntryCandidate((current) => current?.projectId === project.id ? null : current)}
                 onBack={() => { setTransitionDirection('backward'); setDocumentOpen(false); }}
                 onConnections={() => navigate('connections')}
                 designerOptions={designerOptions}
@@ -959,7 +1054,7 @@ export const Studio = ({
                 onGenerationRatioChange={(generationRatio) => { void updateProject({ generationRatio }); }}
                 onTasks={() => navigate('tasks')}
                 onSubmitConversation={(message, attachments, context) => submitProjectConversation(project, message, attachments, context)}
-                onSubmitDesignGeneration={(conversationTaskId, baseRevisionId, generationRatio, count) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId, generationRatio, count)}
+                onSubmitDesignGeneration={(conversationTaskId, baseRevisionId, generationRatio, count) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId, generationRatio, count, activeDocumentId ?? project.documentId)}
                 onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
                 onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
                 assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}
@@ -1015,6 +1110,22 @@ export const Studio = ({
                 />
               </div>
             ))}
+          <DesignerLibrary
+            locale={locale}
+            notify={notify}
+            onUseForNew={(personaId) => openNewDesign(personaId)}
+            libraryId={workspace?.libraryId}
+            preview={!workspace}
+            initialProfiles={initialDesignerOptions}
+            readOnly={workspace?.openMode === 'read-only'}
+            toolbarActive={false}
+            createRequestId={designerCreateRequestId}
+            onProfilesChange={setDesignerOptions}
+            onCreateUnavailable={(reason) => notify(reason === 'read-only'
+              ? t(locale, '当前工作区为只读模式，无法创建设计师档案。', 'This workspace is read-only; designer profiles cannot be created.')
+              : t(locale, '设计师档案读取失败，请重新打开应用后重试。', 'Designer profiles could not be loaded. Reload the app and try again.'))}
+            showLibrary={false}
+          />
         </div>
         </PageToolbarProvider>
         </div>
