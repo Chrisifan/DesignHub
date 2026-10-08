@@ -49,6 +49,60 @@ describe('visual context envelope', () => {
     });
   });
 
+  it('normalizes omitted confidence in a provider response', () => {
+    expect(parseVisualContextEnvelope(JSON.stringify({
+      brief: '以图一为编辑目标，并参考图二。',
+      visualContext: {
+        version: 1,
+        items: [
+          { assetId: 'asset-target', roles: ['edit-target', 'visual-reference'] },
+          { assetId: 'asset-reference', roles: ['visual-reference'] },
+        ],
+        clarificationRequired: false,
+      },
+      releasedAssetIds: [],
+    }))).toMatchObject({
+      visualContextPlan: {
+        items: [
+          { assetId: 'asset-target', confidence: 0 },
+          { assetId: 'asset-reference', confidence: 0 },
+        ],
+      },
+    });
+  });
+
+  it('normalizes singular role and releasedAssets provider variants', () => {
+    expect(parseVisualContextEnvelope(JSON.stringify({
+      brief: '抠出人物并输出透明背景。',
+      visualContext: {
+        version: 1,
+        items: [{ assetId: 'asset-person', role: 'edit-target', confidence: 0.99 }],
+        clarificationRequired: false,
+      },
+      releasedAssets: [],
+    }))).toEqual({
+      brief: '抠出人物并输出透明背景。',
+      visualContextPlan: {
+        version: 1,
+        items: [{ assetId: 'asset-person', roles: ['edit-target'], confidence: 0.99 }],
+        clarificationRequired: false,
+      },
+      releasedAssetIds: [],
+    });
+  });
+
+  it('rejects an explicitly invalid confidence even when normalization is available', () => {
+    expect(parseVisualContextEnvelope(JSON.stringify({
+      brief: '无效置信度',
+      visualContext: {
+        version: 1,
+        items: [{ assetId: 'asset-target', roles: ['edit-target'], confidence: 2 }],
+        clarificationRequired: false,
+      },
+      releasedAssetIds: [],
+    }))).toBeNull();
+  });
+
   it('rejects duplicate assets, duplicate roles, unknown roles, and invalid confidence', () => {
     expect(isVisualContextPlan({ ...plan, items: [...plan.items, plan.items[0]] })).toBe(false);
     expect(isVisualContextPlan({ ...plan, items: [{ assetId: 'a', roles: ['visual-anchor', 'visual-anchor'], confidence: 1 }] })).toBe(false);

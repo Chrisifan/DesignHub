@@ -78,19 +78,42 @@ export const parseVisualContextEnvelope = (text: string): ParsedVisualContextEnv
   } catch {
     return null;
   }
+  const hasReleasedAssetIds = isRecord(parsed) && Object.prototype.hasOwnProperty.call(parsed, 'releasedAssetIds');
+  const hasReleasedAssets = isRecord(parsed) && Object.prototype.hasOwnProperty.call(parsed, 'releasedAssets');
+  const releasedAssetIds = isRecord(parsed)
+    ? parsed.releasedAssetIds ?? parsed.releasedAssets
+    : undefined;
+  const visualContext = isRecord(parsed) && isRecord(parsed.visualContext)
+    ? {
+        ...parsed.visualContext,
+        items: Array.isArray(parsed.visualContext.items)
+          ? parsed.visualContext.items.map((item) => {
+              if (!isRecord(item)) return item;
+              const normalized = {
+                ...item,
+                ...(item.roles === undefined && typeof item.role === 'string' ? { roles: [item.role] } : {}),
+                ...(!Object.prototype.hasOwnProperty.call(item, 'confidence') ? { confidence: 0 } : {}),
+              };
+              delete normalized.role;
+              return normalized;
+            })
+          : parsed.visualContext.items,
+      }
+    : undefined;
   if (!isRecord(parsed)
-    || !hasOnlyKeys(parsed, ['brief', 'visualContext', 'releasedAssetIds'])
+    || !hasOnlyKeys(parsed, ['brief', 'visualContext', 'releasedAssetIds', 'releasedAssets'])
+    || (hasReleasedAssetIds && hasReleasedAssets)
     || typeof parsed.brief !== 'string'
     || !parsed.brief.trim()
-    || !isVisualContextPlan(parsed.visualContext)
-    || !Array.isArray(parsed.releasedAssetIds)
-    || !parsed.releasedAssetIds.every((id) => typeof id === 'string' && id.trim())
-    || new Set(parsed.releasedAssetIds).size !== parsed.releasedAssetIds.length) return null;
+    || !isVisualContextPlan(visualContext)
+    || !Array.isArray(releasedAssetIds)
+    || !releasedAssetIds.every((id) => typeof id === 'string' && id.trim())
+    || new Set(releasedAssetIds).size !== releasedAssetIds.length) return null;
 
   return {
     brief: parsed.brief.trim(),
-    visualContextPlan: structuredClone(parsed.visualContext),
-    releasedAssetIds: [...parsed.releasedAssetIds],
+    visualContextPlan: structuredClone(visualContext),
+    releasedAssetIds: [...releasedAssetIds],
   };
 };
 
@@ -101,6 +124,7 @@ export const buildVisualContextAnalysisInstruction = (input: {
   'Return JSON only with keys brief, visualContext, and releasedAssetIds.',
   'visualContext must contain version: 1, items, and clarificationRequired.',
   'Allowed roles: edit-target, visual-anchor, content-source, visual-reference.',
+  'Every item must include a numeric confidence from 0 to 1; use 0 when uncertain.',
   'Every currently supplied image must appear in items. One image may have multiple roles.',
   'Keep previous visual-anchor roles unless the user explicitly asks to stop using them.',
   'Only list an existing asset in releasedAssetIds when the current user message explicitly releases it.',
