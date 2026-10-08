@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 
-import { listTasksHandler, saveTasksHandler } from './tasks';
+import { listTasksHandler, publishCompositionCandidateHandler, resolveCompositionCandidateHandler, saveTasksHandler } from './tasks';
+import { createScene } from '../../features/canvas/scene';
 import type { TaskRecord } from '../../features/tasks/state';
 
 const makeFixture = (url: string) => {
@@ -48,4 +49,26 @@ it('rejects malformed task writes before storage is called', async () => {
   }] })).resolves.toBe(true);
   await expect(save(fixture.event, { libraryId: 'workspace-1', tasks: [task] })).resolves.toBe(true);
   expect(writes).toBe(2);
+});
+
+it('publishes and resolves a validated local candidate only in the active writable library', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { library: { libraryId: 'workspace-1', openMode: 'writable' } };
+  const candidate = {
+    id: 'candidate-local', sourceTaskId: 'local-task', mode: 'structured' as const, editable: true,
+    scene: createScene({ id: 'candidate-scene', width: 1080, height: 1440, layers: [] }),
+    assets: [{ assetId: 'asset-core', role: 'core' as const }], createdAt: '2026-10-01T00:00:00.000Z',
+  };
+  const publish = publishCompositionCandidateHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_library, input) => ({
+    id: input.candidate.sourceTaskId, requestId: input.candidate.sourceTaskId, state: 'completed', cancelRequested: false, attempt: 1,
+    source: { kind: 'project', id: input.projectId }, documentId: input.documentId, capability: 'local-composition', result: { compositionCandidate: input.candidate },
+  }));
+  await expect(publish(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', documentId: 'doc-1', candidate })).resolves.toMatchObject({ state: 'completed' });
+  await expect(publish(fixture.event, { libraryId: 'other', projectId: 'project-1', documentId: 'doc-1', candidate })).resolves.toBeNull();
+  await expect(publish(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', documentId: 'doc-1', candidate: { ...candidate, scene: { id: 'bad', layers: [] } } })).resolves.toBeNull();
+
+  const resolve = resolveCompositionCandidateHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_library, taskId, resolution) => ({
+    id: taskId, requestId: taskId, state: 'completed', cancelRequested: false, attempt: 1, candidateResolution: resolution,
+  }));
+  await expect(resolve(fixture.event, { libraryId: 'workspace-1', taskId: 'local-task', resolution: 'discarded' })).resolves.toMatchObject({ candidateResolution: 'discarded' });
 });

@@ -76,6 +76,7 @@
   padding: 1px 3px;
   color: var(--on-surface-variant);
   font-size: 10px;
+  white-space: nowrap;
 }
 
 .conversation-dock__status > span {
@@ -144,8 +145,6 @@
 .conversation-dock__toolbar-leading,
 .conversation-dock__toolbar-actions { display: flex; align-items: center; gap: 4px; }
 .conversation-dock__toolbar-actions .icon-button { width: 30px; height: 30px; min-height: 30px; border-radius: 50%; }
-.conversation-dock__shortcut { color: var(--on-surface-variant); font-size: 15px; line-height: 1; }
-
 .conversation-dock__ratio-select.ui-select,
 .conversation-dock__designer-select.ui-select {
   height: 30px;

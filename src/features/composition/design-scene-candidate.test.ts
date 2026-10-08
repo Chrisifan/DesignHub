@@ -17,6 +17,9 @@ describe('design scene candidates', () => {
   it('requires a core asset and valid scene dimensions', () => {
     expect(validateDesignSceneCandidate(candidate({ assets: [] }))).toEqual({ ok: false, reason: 'CORE_ASSET_MISSING' });
     expect(validateDesignSceneCandidate(candidate({ scene: { id: 'bad', width: 0, height: 100, layers: [] } as never }))).toEqual({ ok: false, reason: 'SCENE_INVALID' });
+    expect(validateDesignSceneCandidate(candidate({
+      scene: { version: 1, id: 'bad-layer', width: 100, height: 100, layers: [{ id: 'provider-garbage' }] } as never,
+    }))).toEqual({ ok: false, reason: 'SCENE_INVALID' });
   });
 
   it('does not expose raster fallback as editable structure', () => {

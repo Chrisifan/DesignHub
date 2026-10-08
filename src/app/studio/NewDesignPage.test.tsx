@@ -40,7 +40,7 @@ it('renders only the project fields required by the drawer', () => {
   expect(screen.getByRole('form', { name: '新建项目表单' })).toHaveAttribute('id', 'new-project-form');
   expect(projectName).toHaveAttribute('data-drawer-initial-focus');
   expect(screen.queryByRole('button', { name: '通过对话' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('group', { name: '创建方式' })).not.toBeInTheDocument();
+  expect(screen.getByRole('group', { name: '创建方式' })).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: '设计目标' })).toBeInTheDocument();
   expect(screen.getByRole('group', { name: '选择设计师' })).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: '文档尺寸' })).toBeInTheDocument();
@@ -81,4 +81,19 @@ it('submits through the form id used by the drawer footer', () => {
   fireEvent.submit(screen.getByRole('form', { name: '新建项目表单' }));
 
   expect(onCreate).toHaveBeenCalledOnce();
+});
+
+it('offers standard, composition and mockup creation with role and template controls', () => {
+  render(<NewProjectHarness />);
+  expect(screen.getByRole('group', { name: '创建方式' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('radio', { name: '智能构图' }));
+  expect(screen.getByLabelText('核心素材')).toBeInTheDocument();
+  expect(screen.getByLabelText('可选素材')).toBeInTheDocument();
+  expect(screen.getByLabelText('参考素材')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('radio', { name: '样机' }));
+  expect(screen.getByLabelText('源设计图')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('combobox', { name: '样机模板' }));
+  expect(screen.getByRole('option', { name: '手机屏幕' })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: '海报画框' })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: '包装袋' })).toBeInTheDocument();
 });

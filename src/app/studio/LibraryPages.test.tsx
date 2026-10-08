@@ -660,6 +660,55 @@ it('persists backup destination and schedule per workspace', async () => {
   await waitFor(() => expect(createWorkspaceBackup).toHaveBeenCalledWith('workspace-1', '/Volumes/Backups'));
 });
 
+it('chooses and persists a backup destination from the backup page', async () => {
+  const chooseWorkspaceBackupDirectory = vi.fn(async () => '/Volumes/DesignHub Backups');
+  const saveWorkspaceSettings = vi.fn(async () => true);
+  window.designhub = {
+    chooseWorkspaceBackupDirectory,
+    loadWorkspaceSettings: vi.fn(async () => null),
+    saveWorkspaceSettings,
+  };
+  render(<Harness initialView="storage" libraryId="workspace-1" />);
+
+  fireEvent.click(screen.getByRole('button', { name: '备份' }));
+  fireEvent.click(screen.getByRole('button', { name: '选择备份位置' }));
+
+  expect(await screen.findByText('/Volumes/DesignHub Backups')).toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem('designhub.backup.workspace-1') ?? '{}')).toMatchObject({
+    destinationParentDirectory: '/Volumes/DesignHub Backups',
+  });
+  await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledWith(
+    'workspace-1',
+    expect.objectContaining({
+      backup: expect.objectContaining({ destinationParentDirectory: '/Volumes/DesignHub Backups' }),
+    }),
+  ));
+  expect(chooseWorkspaceBackupDirectory).toHaveBeenCalledWith('destination');
+});
+
+it('restores a selected backup into a newly selected parent directory', async () => {
+  const chooseWorkspaceBackupDirectory = vi.fn(async (kind: 'source' | 'destination') => (
+    kind === 'source' ? '/Volumes/Backups/workspace.designhub-backup' : '/Volumes/Restored Workspaces'
+  ));
+  const restoreWorkspaceBackup = vi.fn(async () => ({
+    directory: '/Volumes/Restored Workspaces/DesignHub-restored-1',
+    libraryId: 'workspace-restored',
+  }));
+  window.designhub = { chooseWorkspaceBackupDirectory, restoreWorkspaceBackup };
+  render(<Harness initialView="storage" libraryId="workspace-1" />);
+
+  fireEvent.click(screen.getByRole('button', { name: '备份' }));
+  fireEvent.click(screen.getByRole('button', { name: '恢复备份' }));
+
+  await waitFor(() => expect(restoreWorkspaceBackup).toHaveBeenCalledWith({
+    backupDirectory: '/Volumes/Backups/workspace.designhub-backup',
+    destinationParentDirectory: '/Volumes/Restored Workspaces',
+  }));
+  expect(screen.getByLabelText('notice')).toHaveTextContent('备份已恢复到 /Volumes/Restored Workspaces/DesignHub-restored-1');
+  expect(chooseWorkspaceBackupDirectory).toHaveBeenNthCalledWith(1, 'source');
+  expect(chooseWorkspaceBackupDirectory).toHaveBeenNthCalledWith(2, 'destination');
+});
+
 it('hydrates backup preferences from workspace storage and writes updates through the bridge', async () => {
   const loadWorkspaceSettings = vi.fn(async () => ({
     formatVersion: 1 as const,

@@ -11,12 +11,16 @@ export type View =
   | 'connections'
   | 'tasks'
   | 'image-tools'
+  | 'image-tool-remove-background'
+  | 'image-tool-upscale'
+  | 'image-tool-resize'
+  | 'image-tool-format-convert'
   | 'delivery'
   | 'storage'
   | 'settings';
 export type Theme = 'system' | 'dark' | 'light';
 export type Artwork = 'market' | 'objects' | 'type' | 'blank';
-export type CreationMode = 'manual';
+export type CreationMode = 'manual' | 'composition' | 'mockup';
 export type StudioSurface = View;
 export type ProjectCoverDraft = ProjectCoverFile & { previewUrl: string };
 export type NewDesignDraft = {
@@ -26,6 +30,12 @@ export type NewDesignDraft = {
   personaId: string;
   size: '1080 × 1440' | '1080 × 1080' | '1920 × 1080';
   mode: CreationMode;
+  coreFile?: File;
+  optionalFile?: File;
+  referenceFile?: File;
+  mockupFile?: File;
+  templateId?: string;
+  templateColor?: string;
   cover?: ProjectCoverDraft;
 };
 export type Project = {

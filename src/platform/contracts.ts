@@ -14,10 +14,12 @@ import type { WorkspaceSettings } from '../features/workspace/settings';
 import type { SearchIndexItem, SearchQuery, SearchRecord } from '../features/library/indexer';
 import type { ExportHistoryRecord } from '../features/delivery/export-history';
 import type { ProviderConfigMap, ProviderConfigSaveInput } from '../features/providers/config';
+import type { ProviderConnectionStatusMap } from '../features/providers/status';
 import type { ProjectLibraryDescriptor, ProjectLibraryStatus } from '../features/project-library/open-project-library';
 import type { AppProfile } from '../features/profile/model';
 import type { BatchImageTool, ImageToolItem, ImageToolJob } from '../features/image-tools/jobs';
 import type { ToolParams } from '../features/image-tools/target';
+import type { DesignSceneCandidate } from '../features/composition/design-scene-candidate';
 
 export type ProfileAvatarInput = {
   mimeType: string;
@@ -103,6 +105,7 @@ export type DesktopApi = {
   moveProjectToTrash?: (input: TrashProjectInput) => Promise<TrashedProject | null>;
   restoreProjectFromTrash?: (input: TrashProjectInput) => Promise<RestoreProjectResult | null>;
   purgeProjectFromTrash?: (input: TrashProjectInput) => Promise<boolean | null>;
+  chooseWorkspaceBackupDirectory?: (kind: 'source' | 'destination') => Promise<string | null>;
   createWorkspaceBackup?: (libraryId: string, destinationParentDirectory: string) => Promise<BackupArtifact | null>;
   restoreWorkspaceBackup?: (input: { backupDirectory: string; destinationParentDirectory: string }) => Promise<RestoreBackupResult | null>;
   loadWorkspaceSettings?: (libraryId: string) => Promise<WorkspaceSettings | null>;
@@ -128,16 +131,20 @@ export type DesktopApi = {
   hasCredential?: (connectionId: string) => Promise<boolean>;
   loadProviderConfigs?: () => Promise<ProviderConfigMap | null>;
   saveProviderConfig?: (input: ProviderConfigSaveInput) => Promise<boolean>;
+  loadProviderConnectionStatuses?: () => Promise<ProviderConnectionStatusMap | null>;
+  saveProviderConnectionStatuses?: (statuses: ProviderConnectionStatusMap) => Promise<boolean>;
   listTasks?: (libraryId: string) => Promise<TaskRecord[] | null>;
+  publishCompositionCandidate?: (input: { libraryId: string; projectId: string; documentId: string; candidate: DesignSceneCandidate }) => Promise<TaskRecord | null>;
+  resolveCompositionCandidate?: (input: { libraryId: string; taskId: string; resolution: 'confirmed' | 'discarded' }) => Promise<TaskRecord | null>;
   submitConversation?: (input: ConversationTaskInput) => Promise<TaskRecord | null>;
   submitDesignGeneration?: (input: DesignGenerationInput & { libraryId: string }) => Promise<TaskRecord | null>;
   retryDesignGenerationSlot?: (input: DesignGenerationSlotRetryInput) => Promise<TaskRecord | null>;
-  testConversation?: (input: { libraryId: string; connectionId: string; model?: string }) => Promise<ConversationTestResult | null>;
+  testConversation?: (input: { libraryId: string; connectionId: string; model?: string; timeoutMs?: number }) => Promise<ConversationTestResult | null>;
   inspectPortfolioSources?: (input: { libraryId: string; request: PortfolioInspectionRequest }) => Promise<PortfolioInspection | null>;
   submitPortfolioSelection?: (input: PortfolioSelectionInput) => Promise<TaskRecord | null>;
   discardPortfolioInspection?: (input: { libraryId: string; inspectionId: string }) => Promise<boolean>;
   submitImageGeneration?: (input: ImageGenerationInput & { libraryId: string }) => Promise<TaskRecord | null>;
-  testImageGeneration?: (input: { libraryId: string; connectionId: string; prompt: string; model?: string; size?: string }) => Promise<ImageGenerationTestResult | null>;
+  testImageGeneration?: (input: { libraryId: string; connectionId: string; prompt: string; model?: string; size?: string; timeoutMs?: number }) => Promise<ImageGenerationTestResult | null>;
   submitDesignerArtworkGeneration?: (input: DesignerArtworkGenerationInput & { libraryId: string }) => Promise<TaskRecord | null>;
   submitImageEdit?: (input: ImageEditInput & { libraryId: string }) => Promise<TaskRecord | null>;
   cancelTask?: (libraryId: string, taskId: string) => Promise<boolean>;
@@ -155,6 +162,7 @@ export type DesktopApi = {
   resumeImageToolJob?: (input: { libraryId: string; jobId: string }) => Promise<ImageToolJobSnapshot | null>;
   cancelImageToolJob?: (input: { libraryId: string; jobId: string }) => Promise<ImageToolJobSnapshot | null>;
   retryImageToolItem?: (input: { libraryId: string; jobId: string; itemId: string }) => Promise<ImageToolJobSnapshot | null>;
+  readImageToolResult?: (input: { libraryId: string; jobId: string; path: string }) => Promise<string | null>;
   openImageToolResult?: (input: { libraryId: string; jobId: string; path: string }) => Promise<boolean>;
   revealImageToolResult?: (input: { libraryId: string; jobId: string; path: string }) => Promise<boolean>;
   openImageToolOutput?: (input: { libraryId: string; jobId: string; path: string }) => Promise<boolean>;

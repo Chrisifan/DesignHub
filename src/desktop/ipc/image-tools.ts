@@ -1,6 +1,6 @@
 import type { BrowserWindow } from 'electron';
 import { randomUUID } from 'node:crypto';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import type { ManagedAsset } from '../../features/assets/import-assets';
 import { batchImageTools, createImageToolJob, recoverImageToolSnapshot, type BatchImageTool, type ImageToolItem, type ToolExecutor, type ToolParams } from '../../features/image-tools/jobs';
@@ -61,30 +61,63 @@ const isWithin = (parent: string, child: string): boolean => {
 export const createImageToolIpcHandlers = (deps: ImageToolIpcDeps) => {
   const schedulers = new Map<string, ReturnType<typeof createImageToolScheduler>>();
   const hydratedJobs = new Map<string, Set<string>>();
+  const hydratingJobs = new Map<string, Promise<ImageToolJobSnapshot | null>>();
+  const saveQueues = new Map<string, Promise<void>>();
+  const saveSnapshot = async (library: ProjectLibraryHandle, snapshot: ImageToolJobSnapshot): Promise<void> => {
+    const key = `${library.library.libraryId}:${snapshot.job.id}`;
+    const previous = saveQueues.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => storeFor(library).save(snapshot.job, snapshot.items));
+    saveQueues.set(key, next);
+    try {
+      await next;
+    } finally {
+      if (saveQueues.get(key) === next) saveQueues.delete(key);
+    }
+  };
+  const queueSnapshotSave = (library: ProjectLibraryHandle, snapshot: ImageToolJobSnapshot): void => {
+    void saveSnapshot(library, snapshot).catch(() => undefined);
+  };
   const getScheduler = (library: ProjectLibraryHandle) => {
     const key = library.library.libraryId;
     const existing = schedulers.get(key);
     if (existing) return existing;
-    const scheduler = createImageToolScheduler({ executeProvider: deps.executeProvider, onUpdate: (snapshot) => { void saveSnapshot(library, snapshot); } });
+    const scheduler = createImageToolScheduler({ executeProvider: deps.executeProvider, onUpdate: (snapshot) => { queueSnapshotSave(library, snapshot); } });
     schedulers.set(key, scheduler);
     hydratedJobs.set(key, new Set());
     return scheduler;
   };
   const hydrateJob = async (library: ProjectLibraryHandle, jobId: string): Promise<ImageToolJobSnapshot | null> => {
     const scheduler = getScheduler(library);
-    const hydrated = hydratedJobs.get(library.library.libraryId)!;
-    if (!hydrated.has(jobId)) {
+    const libraryId = library.library.libraryId;
+    const hydrated = hydratedJobs.get(libraryId)!;
+    const existing = scheduler.get(jobId);
+    if (existing) {
+      hydrated.add(jobId);
+      return existing;
+    }
+    const key = `${libraryId}:${jobId}`;
+    const pending = hydratingJobs.get(key);
+    if (pending) return pending;
+    const hydration = (async (): Promise<ImageToolJobSnapshot | null> => {
       const stored = await storeFor(library).load(jobId);
       if (!stored) return null;
+      const alreadyEnqueued = scheduler.get(jobId);
+      if (alreadyEnqueued) {
+        hydrated.add(jobId);
+        return alreadyEnqueued;
+      }
       const recovered = recoverImageToolSnapshot(stored.job, stored.items);
       scheduler.enqueue(recovered.job, recovered.items);
       hydrated.add(jobId);
       if (JSON.stringify(recovered) !== JSON.stringify(stored)) await saveSnapshot(library, recovered);
+      return scheduler.get(jobId);
+    })();
+    hydratingJobs.set(key, hydration);
+    try {
+      return await hydration;
+    } finally {
+      if (hydratingJobs.get(key) === hydration) hydratingJobs.delete(key);
     }
-    return scheduler.get(jobId);
-  };
-  const saveSnapshot = async (library: ProjectLibraryHandle, snapshot: ImageToolJobSnapshot): Promise<void> => {
-    await storeFor(library).save(snapshot.job, snapshot.items);
   };
   const list = async (library: ProjectLibraryHandle): Promise<ImageToolJobSnapshot[]> => {
     const { readdir } = await import('node:fs/promises');
@@ -161,6 +194,22 @@ export const createImageToolIpcHandlers = (deps: ImageToolIpcDeps) => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isItemRef(input)) return null;
       const library = active(deps, input.libraryId); if (!library) return null; requireWritable(library);
       await hydrateJob(library, input.jobId); const snapshot = getScheduler(library).retryItem(input.jobId, input.itemId); await saveSnapshot(library, snapshot); return snapshot;
+    },
+    readResult: async (event: Request, input: unknown): Promise<string | null> => {
+      if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isPathRef(input)) return null;
+      const library = active(deps, input.libraryId); if (!library) return null;
+      const stored = await storeFor(library).load(input.jobId);
+      if (!stored || !isWithin(stored.job.outputRoot, input.path) || !stored.items.some((item) => item.resultPath === input.path)) return null;
+      const extension = extname(input.path).toLowerCase();
+      const mimeType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : null;
+      if (!mimeType) return null;
+      try {
+        const { readFile } = await import('node:fs/promises');
+        const bytes = await readFile(input.path);
+        return `data:${mimeType};base64,${bytes.toString('base64')}`;
+      } catch {
+        return null;
+      }
     },
     openResult: async (event: Request, input: unknown) => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isPathRef(input) || !deps.openPath) return false;

@@ -150,6 +150,28 @@ export const gotoTestWorkspace = async (
         ? projectCoverBytes ?? null
         : input.assetId === sourceImageAssetId ? sourceImageBytes.slice() : null,
       listTasks: async () => submittedTasks,
+      publishCompositionCandidate: async (input: { projectId: string; documentId: string; candidate: Record<string, unknown> & { sourceTaskId: string; createdAt?: string } }) => {
+        const task = {
+          id: input.candidate.sourceTaskId,
+          requestId: input.candidate.sourceTaskId,
+          state: 'completed',
+          cancelRequested: false,
+          attempt: 1,
+          source: { kind: 'project', id: input.projectId },
+          documentId: input.documentId,
+          capability: 'local-composition',
+          createdAt: input.candidate.createdAt,
+          result: { compositionCandidate: structuredClone(input.candidate) },
+        };
+        submittedTasks.push(task);
+        return structuredClone(task);
+      },
+      resolveCompositionCandidate: async (input: { taskId: string; resolution: 'confirmed' | 'discarded' }) => {
+        const task = submittedTasks.find((candidate) => candidate.id === input.taskId);
+        if (!task) return null;
+        task.candidateResolution = input.resolution;
+        return structuredClone(task);
+      },
       loadProviderConfigs: async () => ({
         'openai-compatible': {
           conversation: { baseUrl: 'https://text.example.test/v1', models: { conversation: 'chat-model', 'vision-analysis': 'vision-model' } },

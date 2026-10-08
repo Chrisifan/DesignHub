@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { App } from './App';
+import { getProviderProfileStatus, providerConfigFingerprint } from '../features/providers/status';
 
 const library = {
   libraryId: 'library-1',
@@ -15,6 +16,13 @@ const completedProfile = {
   displayName: 'Sifan',
   avatarDataUrl: 'data:image/webp;base64,AA==',
   onboarding: { profileCompleted: true, modelStepCompleted: true },
+};
+
+const providerConfigs = {
+  'openai-compatible': {
+    conversation: { baseUrl: 'https://text.example.test/v1', models: { conversation: 'chat-model' } },
+    image: { baseUrl: 'https://image.example.test/v1', imageTransport: 'images' as const, models: { 'image-generation': 'image-model' } },
+  },
 };
 
 beforeEach(() => {
@@ -63,14 +71,155 @@ it('shows the branded splash before first-launch onboarding', async () => {
   expect(screen.getByText('读取本地配置')).toBeVisible();
   expect(screen.queryByRole('heading', { name: '设置你的资料' })).toBeNull();
   await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
-  const halfwayProgress = Number(screen.getByRole('progressbar').getAttribute('aria-valuenow'));
-  expect(halfwayProgress).toBeGreaterThan(0);
-  expect(halfwayProgress).toBeLessThan(100);
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+  expect(screen.queryByRole('heading', { name: '设置你的资料' })).toBeNull();
   await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
   expect(screen.queryByRole('heading', { name: '设置你的资料' })).toBeNull();
   await act(async () => { await vi.advanceTimersByTimeAsync(500); });
   expect(screen.getByRole('heading', { name: '设置你的资料' })).toBeVisible();
+});
+
+it('tests both model connections, persists each result, and completes startup after a failure', async () => {
+  vi.useFakeTimers();
+  const testConversation = vi.fn(async () => ({ cost: null }));
+  const testImageGeneration = vi.fn(async () => { throw new Error('offline'); });
+  const saveProviderConnectionStatuses = vi.fn(async (statuses: import('../features/providers/status').ProviderConnectionStatusMap) => { void statuses; return true; });
+  window.designhub = {
+    loadProfile: async () => completedProfile,
+    getProjectLibraryStatus: async () => ({ state: 'ready', library }),
+    loadProviderConfigs: async () => providerConfigs,
+    loadProviderConnectionStatuses: async () => { throw new Error('corrupt status'); },
+    saveProviderConnectionStatuses,
+    testConversation,
+    testImageGeneration,
+    listActiveProjects: async () => [],
+  } as never;
+
+  render(<App />);
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  expect(testConversation).toHaveBeenCalledWith({ libraryId: library.libraryId, connectionId: 'openai-compatible', model: 'chat-model', timeoutMs: 15_000 });
+  expect(testImageGeneration).toHaveBeenCalledWith(expect.objectContaining({ libraryId: library.libraryId, connectionId: 'openai-compatible', model: 'image-model', timeoutMs: 15_000 }));
+  expect(saveProviderConnectionStatuses).toHaveBeenCalledOnce();
+  const saved = saveProviderConnectionStatuses.mock.calls[0]![0];
+  expect(getProviderProfileStatus(saved, 'openai-compatible', 'conversation', providerConfigs)).toBe('connected');
+  expect(getProviderProfileStatus(saved, 'openai-compatible', 'image', providerConfigs)).toBe('error');
+  expect(screen.getByText('测试图像模型').parentElement).toHaveClass('startup-splash__check--error');
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+
+  await revealSplash();
+  expect(await screen.findByRole('textbox', { name: '设计需求' })).toBeVisible();
+});
+
+it('skips both startup model tests when matching successful results are less than 30 minutes old', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-08T12:00:00.000Z'));
+  const testConversation = vi.fn();
+  const testImageGeneration = vi.fn();
+  window.designhub = {
+    loadProfile: async () => completedProfile,
+    getProjectLibraryStatus: async () => ({ state: 'ready', library }),
+    loadProviderConfigs: async () => providerConfigs,
+    loadProviderConnectionStatuses: async () => ({
+      'openai-compatible': {
+        conversation: {
+          status: 'connected',
+          testedAt: '2026-10-08T11:45:00.000Z',
+          configFingerprint: providerConfigFingerprint(providerConfigs, 'conversation'),
+        },
+        image: {
+          status: 'connected',
+          testedAt: '2026-10-08T11:45:00.000Z',
+          configFingerprint: providerConfigFingerprint(providerConfigs, 'image'),
+        },
+      },
+    }),
+    saveProviderConnectionStatuses: async () => true,
+    testConversation,
+    testImageGeneration,
+    listActiveProjects: async () => [],
+  } as never;
+
+  render(<App />);
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+  expect(testConversation).not.toHaveBeenCalled();
+  expect(testImageGeneration).not.toHaveBeenCalled();
+  expect(screen.getByText('测试对话模型').parentElement).toHaveClass('startup-splash__check--complete');
+  expect(screen.getByText('测试图像模型').parentElement).toHaveClass('startup-splash__check--complete');
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+});
+
+it('only reruns the startup model test whose cached success has expired', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-08T12:00:00.000Z'));
+  const testConversation = vi.fn();
+  const testImageGeneration = vi.fn(async () => ({ image: { base64: 'preview' }, cost: null }));
+  window.designhub = {
+    loadProfile: async () => completedProfile,
+    getProjectLibraryStatus: async () => ({ state: 'ready', library }),
+    loadProviderConfigs: async () => providerConfigs,
+    loadProviderConnectionStatuses: async () => ({
+      'openai-compatible': {
+        conversation: {
+          status: 'connected',
+          testedAt: '2026-10-08T11:45:00.000Z',
+          configFingerprint: providerConfigFingerprint(providerConfigs, 'conversation'),
+        },
+        image: {
+          status: 'connected',
+          testedAt: '2026-10-08T11:29:59.999Z',
+          configFingerprint: providerConfigFingerprint(providerConfigs, 'image'),
+        },
+      },
+    }),
+    saveProviderConnectionStatuses: async () => true,
+    testConversation,
+    testImageGeneration,
+    listActiveProjects: async () => [],
+  } as never;
+
+  render(<App />);
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+  expect(testConversation).not.toHaveBeenCalled();
+  expect(testImageGeneration).toHaveBeenCalledOnce();
+});
+
+it('reports progress from completed startup checks while a model test is still running', async () => {
+  vi.useFakeTimers();
+  let resolveImageTest: ((result: { image: { base64: string }; cost: null }) => void) | undefined;
+  const imageTest = new Promise<{ image: { base64: string }; cost: null }>((resolve) => { resolveImageTest = resolve; });
+  window.designhub = {
+    loadProfile: async () => completedProfile,
+    getProjectLibraryStatus: async () => ({ state: 'ready', library }),
+    loadProviderConfigs: async () => ({}),
+    loadProviderConnectionStatuses: async () => ({}),
+    saveProviderConnectionStatuses: async () => true,
+    testConversation: async () => ({ cost: null }),
+    testImageGeneration: async () => imageTest,
+    listActiveProjects: async () => [],
+  } as never;
+
+  render(<App />);
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(2200); });
+
+  expect(screen.getAllByText('测试图像模型').find((element) => element.parentElement?.classList.contains('startup-splash__check'))?.parentElement).toHaveClass('startup-splash__check--active');
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60');
+
+  await act(async () => {
+    resolveImageTest?.({ image: { base64: 'preview' }, cost: null });
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
 });
 
 it('requires profile fields and advances to the optional model step', async () => {

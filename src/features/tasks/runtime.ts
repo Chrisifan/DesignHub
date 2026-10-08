@@ -1,20 +1,23 @@
 import type { RevisionStore } from '../revisions/commit-revision';
 import {
-  completeTask,
-  createTaskState,
-  retryTask,
-  transitionTask,
   type DesignGenerationSlot,
   type DesignGenerationSlotId,
   type PortfolioAnalysisDiagnostic,
   type TaskProviderFailure,
   type TaskRecord,
 } from './state';
+import {
+  completeTaskRecord as completeTask,
+  createRunningTask as createTaskState,
+  retryTaskRecord as retryTask,
+  transitionTaskRecord as transitionTask,
+} from '../agent/task-state-machine';
 
 import type { TaskCandidate, ToolCandidate } from './state';
 import type { VisualContextPlan } from '../agent/visual-context';
+import type { DesignSceneCandidate } from '../composition/design-scene-candidate';
 
-export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null; candidate?: TaskCandidate; candidates?: TaskCandidate[]; toolCandidate?: ToolCandidate };
+export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null; candidate?: TaskCandidate; candidates?: TaskCandidate[]; toolCandidate?: ToolCandidate; compositionCandidate?: DesignSceneCandidate };
 
 export type TaskRuntime = {
   get: (taskId: string) => TaskRecord | undefined;
@@ -34,7 +37,10 @@ export type TaskRuntime = {
   ) => TaskRecord | undefined;
   retryGenerationSlot: (taskId: string, slotId: DesignGenerationSlotId) => TaskRecord | undefined;
   settleGenerationBatch: (taskId: string) => Promise<TaskRecord>;
+  publishCompositionCandidate: (task: Omit<TaskRecord, 'state' | 'cancelRequested' | 'attempt' | 'candidateResolution'>) => Promise<TaskRecord>;
+  resolveCompositionCandidate: (taskId: string, resolution: 'confirmed' | 'discarded') => Promise<TaskRecord>;
   retry: (taskId: string) => TaskRecord | undefined;
+  markUnknown: (taskId: string, errorCode?: string) => TaskRecord | undefined;
   finish: (taskId: string, result: TaskResult, revisionStore: RevisionStore) => Promise<TaskRecord>;
   flush: () => Promise<void>;
 };
@@ -251,6 +257,33 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     await persistence;
     return structuredClone(settled);
   };
+  const publishCompositionCandidate: TaskRuntime['publishCompositionCandidate'] = async (input) => {
+    const existing = tasks.get(input.id);
+    if (existing) {
+      if (existing.result?.compositionCandidate) return structuredClone(existing);
+      throw new Error('TASK_ALREADY_EXISTS');
+    }
+    if (!input.result?.compositionCandidate) throw new Error('COMPOSITION_CANDIDATE_REQUIRED');
+    const completed = completeTask(createTaskState({ ...input, candidateResolution: undefined, updatedAt: new Date().toISOString() }));
+    tasks.set(completed.id, completed);
+    schedulePersistence();
+    await persistence;
+    return structuredClone(completed);
+  };
+  const resolveCompositionCandidate: TaskRuntime['resolveCompositionCandidate'] = async (taskId, resolution) => {
+    const task = tasks.get(taskId);
+    if (!task) throw new Error('TASK_NOT_FOUND');
+    if (task.state !== 'completed' || !task.result?.compositionCandidate) throw new Error('COMPOSITION_CANDIDATE_REQUIRED');
+    if (task.candidateResolution) {
+      if (task.candidateResolution !== resolution) throw new Error('CANDIDATE_ALREADY_RESOLVED');
+      return structuredClone(task);
+    }
+    const resolved: TaskRecord = { ...task, candidateResolution: resolution, updatedAt: new Date().toISOString() };
+    tasks.set(taskId, resolved);
+    schedulePersistence();
+    await persistence;
+    return structuredClone(resolved);
+  };
   const retry = (taskId: string): TaskRecord | undefined => {
     const task = tasks.get(taskId);
     if (!task) return undefined;
@@ -258,6 +291,24 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     tasks.set(retried.id, retried);
     schedulePersistence();
     return structuredClone(retried);
+  };
+  const markUnknown: TaskRuntime['markUnknown'] = (taskId, errorCode = 'RESULT_UNKNOWN_AFTER_RESTART') => {
+    const task = tasks.get(taskId);
+    if (!task || task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled') return task ? structuredClone(task) : undefined;
+    const generationSlots = task.generationSlots?.map((slot) => slot.state === 'queued' || slot.state === 'running'
+      ? { ...slot, state: 'failed' as const, errorCode }
+      : slot);
+    const unknown = {
+      ...task,
+      state: 'unknown' as const,
+      cancelRequested: false,
+      errorCode,
+      ...(generationSlots ? { generationSlots } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    tasks.set(taskId, unknown);
+    schedulePersistence();
+    return structuredClone(unknown);
   };
   const finish = async (taskId: string, result: TaskResult, revisionStore: RevisionStore): Promise<TaskRecord> => {
     const task = tasks.get(taskId);
@@ -300,5 +351,5 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     }
     await persistence;
   };
-  return { get, list, start, run, cancel, complete, fail, updateProgress, updateVisualContextPlan, updateGenerationSlot, retryGenerationSlot, settleGenerationBatch, retry, finish, flush };
+  return { get, list, start, run, cancel, complete, fail, updateProgress, updateVisualContextPlan, updateGenerationSlot, retryGenerationSlot, settleGenerationBatch, publishCompositionCandidate, resolveCompositionCandidate, retry, markUnknown, finish, flush };
 };

@@ -5,6 +5,8 @@ import { expect, it, vi } from 'vitest';
 import { Workbench, type WorkbenchProps } from './Workbench';
 import type { Project } from './types';
 import { createScene, type DesignScene } from '../../features/canvas/scene';
+import { createDesignGenerationSlots, type TaskRecord } from '../../features/tasks/state';
+import type { DesignSceneCandidate } from '../../features/composition/design-scene-candidate';
 
 vi.mock('react-konva', () => {
   const component = ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => <div {...props}>{children}</div>;
@@ -31,6 +33,46 @@ const makeProps = (
   onConnections: vi.fn(),
   notify: vi.fn(),
   ...overrides,
+});
+
+it('reviews a local scene candidate without committing it until confirmation', async () => {
+  const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-1' }));
+  const saveDocumentScene = vi.fn(async () => true);
+  window.designhub = { commitDocumentRevision, saveDocumentScene, loadDocumentRevisions: vi.fn(async () => ({ revisions: [], timeline: [], finalRevisionId: null })) };
+  const initialCandidate: DesignSceneCandidate = {
+    id: 'candidate-local', sourceTaskId: 'local-task', mode: 'structured', editable: true,
+    scene: createScene({ id: 'candidate-scene', width: 1080, height: 1440, layers: [] }),
+    assets: [{ assetId: 'core-art', role: 'core' }], createdAt: '2026-09-28T00:00:00.000Z',
+  };
+  render(<Workbench {...makeProps({ project: { ...project, libraryId: 'library-1', documentEntries: [{ id: 'doc-1', name: 'Draft', width: 1080, height: 1440 }] }, libraryId: 'library-1', documentId: 'doc-1', initialCandidate })} />);
+  expect(screen.getByTestId('canvas-candidate-scene')).toBeInTheDocument();
+  expect(commitDocumentRevision).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '确认候选' }));
+  await waitFor(() => expect(commitDocumentRevision).toHaveBeenCalledOnce());
+  expect(saveDocumentScene).toHaveBeenCalled();
+});
+
+it('restores an unresolved local candidate from task storage and records discard', async () => {
+  const resolveCompositionCandidate = vi.fn(async () => ({ candidateResolution: 'discarded' as const } as TaskRecord));
+  const candidate: DesignSceneCandidate = {
+    id: 'candidate-restored', sourceTaskId: 'local-task-restored', mode: 'structured', editable: true,
+    scene: createScene({ id: 'candidate-restored-scene', width: 1080, height: 1440, layers: [] }),
+    assets: [{ assetId: 'core-restored', role: 'core' }], createdAt: '2026-10-01T00:00:00.000Z',
+  };
+  window.designhub = {
+    listTasks: vi.fn(async () => [{
+      id: 'local-task-restored', requestId: 'local-task-restored', state: 'completed' as const, cancelRequested: false, attempt: 1,
+      capability: 'local-composition', source: { kind: 'project' as const, id: 'spring-market' }, documentId: 'doc-1', result: { compositionCandidate: candidate },
+    }]),
+    resolveCompositionCandidate,
+  };
+
+  render(<Workbench {...makeProps({ project: { ...project, libraryId: 'library-1' }, libraryId: 'library-1', documentId: 'doc-1' })} />);
+
+  expect(await screen.findByTestId('canvas-candidate-scene')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '放弃候选' }));
+  await waitFor(() => expect(resolveCompositionCandidate).toHaveBeenCalledWith({ libraryId: 'library-1', taskId: 'local-task-restored', resolution: 'discarded' }));
+  expect(screen.queryByTestId('canvas-candidate-scene')).not.toBeInTheDocument();
 });
 
 it('lays out the workbench around one canvas surface', () => {
@@ -70,6 +112,45 @@ it('centers the current draft when the canvas first opens on a wide viewport', a
   render(<Workbench {...makeProps()} />);
 
   await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ left: 140, top: 186.5, behavior: 'smooth' }));
+  rectSpy.mockRestore();
+});
+
+it('keeps an active generation batch centered when an existing candidate is selected', async () => {
+  const scrollTo = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo });
+  const animationFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    callback(0);
+    return 1;
+  });
+  const rect = (left: number, top: number, width: number, height: number): DOMRect => ({
+    left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
+  });
+  const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+  rectSpy.mockImplementation(() => {
+    const element = rectSpy.mock.contexts.at(-1) as HTMLElement;
+    if (element.classList.contains('workbench-canvas__stage')) return rect(0, 0, 800, 600);
+    if (element.dataset.generationBatchId === 'generation-active') return rect(1200, 900, 180, 240);
+    if (element.dataset.candidateId === 'candidate-existing') return rect(400, 300, 280, 373);
+    return rect(0, 0, 0, 0);
+  });
+  const existingTask: TaskRecord = {
+    id: 'generation-existing', requestId: 'request-existing', state: 'completed', cancelRequested: false, attempt: 1,
+    capability: 'design-generation', analysisThreadId: 'thread-1', documentId: 'doc-1', createdAt: '2026-10-08T00:00:00.000Z',
+    source: { kind: 'project', id: 'spring-market' },
+    result: { imageCount: 1, candidate: { id: 'candidate-existing', baseRevisionId: null, assetIds: ['asset-existing'], sceneAssetId: 'asset-existing', createdAt: '2026-10-08T00:00:01.000Z' } },
+  };
+  const activeTask: TaskRecord = {
+    id: 'generation-active', requestId: 'request-active', state: 'running', cancelRequested: false, attempt: 1,
+    capability: 'design-generation', analysisThreadId: 'thread-1', documentId: 'doc-1', createdAt: '2026-10-08T00:01:00.000Z',
+    source: { kind: 'project', id: 'spring-market' }, generationSlots: createDesignGenerationSlots(1),
+  };
+  window.designhub = { listTasks: vi.fn(async () => [existingTask, activeTask]) };
+
+  render(<Workbench {...makeProps({ project: { ...project, libraryId: 'workspace-1' }, libraryId: 'workspace-1', documentId: 'doc-1' })} />);
+
+  await waitFor(() => expect(screen.getByRole('button', { name: '候选设计稿' })).toHaveAttribute('aria-pressed', 'true'));
+  expect(scrollTo.mock.calls.at(-1)?.[0]).toEqual({ left: 890, top: 720, behavior: 'smooth' });
+  animationFrame.mockRestore();
   rectSpy.mockRestore();
 });
 
@@ -329,6 +410,29 @@ it('disables the conversation send control while submission is in flight', () =>
   expect(send).toBeDisabled();
 });
 
+it('refreshes analysis progress at a responsive interval while a conversation runs', async () => {
+  const task = {
+    id: 'conversation-running', requestId: 'request-running', state: 'queued' as const,
+    cancelRequested: false, attempt: 1, capability: 'conversation' as const, documentId: 'doc-1',
+    source: { kind: 'project' as const, id: 'spring-market' },
+  };
+  const listTasks = vi.fn(async () => [task]);
+  window.designhub = { listTasks };
+  const onSubmitConversation = vi.fn(async () => task);
+  const interval = vi.spyOn(window, 'setInterval');
+  const view = render(<Workbench {...makeProps({ libraryId: 'workspace-1', documentId: 'doc-1', onSubmitConversation })} />);
+  try {
+    fireEvent.click(screen.getByRole('button', { name: '对话' }));
+    const panel = screen.getByRole('form', { name: 'AI 操作坞' });
+    fireEvent.change(within(panel).getByRole('textbox', { name: '修改说明' }), { target: { value: '实时显示分析' } });
+    fireEvent.click(within(panel).getByRole('button', { name: '发送' }));
+    await waitFor(() => expect(interval).toHaveBeenCalledWith(expect.any(Function), 250));
+  } finally {
+    view.unmount();
+    interval.mockRestore();
+  }
+});
+
 it('consumes a home conversation once through the normal analysis path', async () => {
   const onSubmitConversation = vi.fn(async () => ({
     id: 'conversation-home',
@@ -375,6 +479,12 @@ it('restores a failed home conversation to the command dock', async () => {
 it('chains a completed conversation into design generation', async () => {
   const scrollTo = vi.fn();
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo });
+  let generationLayoutReady = false;
+  const animationFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    generationLayoutReady = true;
+    callback(0);
+    return 1;
+  });
   const rect = (left: number, top: number, width: number, height: number): DOMRect => ({
     left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
   });
@@ -382,11 +492,11 @@ it('chains a completed conversation into design generation', async () => {
   rectSpy.mockImplementation(() => {
     const element = rectSpy.mock.contexts.at(-1) as HTMLElement;
     if (element.classList.contains('workbench-canvas__stage')) return rect(0, 0, 800, 600);
-    if (element.classList.contains('workbench-candidate-card') && element.dataset.taskId === 'design-1') return rect(1200, 900, 280, 373);
+    if (element.dataset.generationBatchId === 'design-1' && generationLayoutReady) return rect(1200, 900, 900, 373);
     return rect(0, 0, 0, 0);
   });
   const onSubmitConversation = vi.fn(async () => ({ id: 'conversation-1', requestId: 'request-1', state: 'completed' as const, cancelRequested: false, attempt: 1, capability: 'conversation', documentId: 'doc-1', source: { kind: 'project' as const, id: 'spring-market' }, result: { text: 'Use a calm editorial hierarchy.' } }));
-  const onSubmitDesignGeneration = vi.fn(async () => ({ id: 'design-1', requestId: 'request-2', state: 'running' as const, cancelRequested: false, attempt: 1, capability: 'design-generation' }));
+  const onSubmitDesignGeneration = vi.fn(async () => ({ id: 'design-1', requestId: 'request-2', state: 'running' as const, cancelRequested: false, attempt: 1, capability: 'design-generation', generationSlots: createDesignGenerationSlots() }));
   render(<Workbench {...makeProps({ onSubmitConversation, onSubmitDesignGeneration })} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));
   fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '生成一张安静的主视觉' } });
@@ -402,8 +512,43 @@ it('chains a completed conversation into design generation', async () => {
   fireEvent.click(screen.getByRole('button', { name: '生成多张' }));
   await waitFor(() => expect(onSubmitDesignGeneration).toHaveBeenCalledWith('conversation-1', null, '3:4', 3));
   expect(document.querySelector('.workbench-canvas-world .workbench-candidate-board')).toBeInTheDocument();
-  await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ left: 940, top: 786.5, behavior: 'smooth' }));
+  await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ left: 1250, top: 786.5, behavior: 'smooth' }));
+  animationFrame.mockRestore();
   rectSpy.mockRestore();
+});
+
+it('blocks design generation when conversation analysis requires clarification', async () => {
+  const conversation: TaskRecord = {
+    id: 'conversation-ambiguous',
+    requestId: 'request-ambiguous',
+    state: 'completed' as const,
+    cancelRequested: false,
+    attempt: 1,
+    capability: 'conversation' as const,
+    analysisThreadId: 'thread-ambiguous',
+    documentId: 'doc-1',
+    source: { kind: 'project' as const, id: 'spring-market' },
+    result: { text: '请确认要编辑哪一张图片。' },
+    visualContextPlan: {
+      version: 1 as const,
+      items: [
+        { assetId: 'asset-a', roles: ['visual-reference'], confidence: 0 },
+        { assetId: 'asset-b', roles: ['visual-reference'], confidence: 0 },
+      ],
+      clarificationRequired: true,
+    },
+  };
+  const onSubmitConversation = vi.fn(async () => conversation);
+  const onSubmitDesignGeneration = vi.fn(async () => null);
+  render(<Workbench {...makeProps({ onSubmitConversation, onSubmitDesignGeneration })} />);
+
+  fireEvent.change(screen.getByRole('textbox', { name: '修改说明' }), { target: { value: '根据这两张图生成设计稿' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+  await waitFor(() => expect(screen.getByRole('button', { name: '生成单张' })).toBeDisabled());
+  expect(screen.getByRole('button', { name: '生成多张' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: '生成多张' }));
+  expect(onSubmitDesignGeneration).not.toHaveBeenCalled();
 });
 
 it('supports plural candidates and retries a failed generation slot', async () => {

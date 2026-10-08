@@ -56,7 +56,18 @@ it('renders expanded and compact variants from the same dock', () => {
   expect(within(compact).getByRole('button', { name: '模型任务' })).toBeVisible();
   expect(within(compact).getByRole('button', { name: '版本历史' })).toBeVisible();
   expect(within(compact).getByRole('button', { name: '生成' })).toBeVisible();
-  expect(within(compact).queryByText('对话模型已连接')).toBeNull();
+  expect(within(compact).getByText('对话模型已连接')).toBeVisible();
+  expect(within(compact).queryByText('/')).toBeNull();
+
+  rerender(
+    <ConversationDock
+      {...props}
+      variant="compact"
+      conversationConnected={false}
+    />,
+  );
+  expect(within(compact).getByText('对话模型未连接')).toBeVisible();
+  expect(compact.querySelector('.conversation-dock__status > span')).not.toHaveClass('is-connected');
 });
 
 it('uses a vertical up arrow for the expanded send control', () => {

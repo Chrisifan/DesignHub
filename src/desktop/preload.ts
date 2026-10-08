@@ -1,16 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { providerStatusLoadChannel, providerStatusSaveChannel } from './ipc/providers';
 
 import type { DesktopApi } from '../platform/contracts';
 import { credentialDeleteChannel, credentialStatusChannel, credentialStoreChannel } from './ipc/credentials';
 import { designerArtworkReadChannel, designerLoadChannel, designerSaveChannel } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/assets';
 import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
-import { taskListChannel } from './ipc/tasks';
+import { taskCompositionPublishChannel, taskCompositionResolveChannel, taskListChannel } from './ipc/tasks';
 import { conversationSubmitChannel, conversationTestChannel, designGenerationSlotRetryChannel, designGenerationSubmitChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
 import { exportDocumentChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
-import { backupCreateChannel, backupRestoreChannel } from './ipc/backup';
+import { backupChooseDirectoryChannel, backupCreateChannel, backupRestoreChannel } from './ipc/backup';
 import { projectCanvasLayoutLoadChannel, projectCanvasLayoutSaveChannel, projectDesignsAddChannel, projectDesignsListChannel, projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
 import { projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
 import { revisionCommitChannel, revisionFinalizeChannel, revisionLoadChannel } from './ipc/revisions';
@@ -21,7 +22,7 @@ import { exportHistoryListChannel } from './ipc/export-history';
 import { providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
 import { projectLibraryChooseChannel, projectLibraryStatusChannel } from './ipc/project-library';
 import { profileLoadChannel, profileSaveChannel } from './ipc/profile';
-import { imageToolCancelChannel, imageToolChooseInputChannel, imageToolChooseOutputChannel, imageToolCreateChannel, imageToolGetChannel, imageToolImportResultChannel, imageToolListChannel, imageToolOpenOutputChannel, imageToolOpenResultChannel, imageToolPauseChannel, imageToolResumeChannel, imageToolRetryChannel, imageToolRevealResultChannel, imageToolScanChannel } from './ipc/image-tools-channels';
+import { imageToolCancelChannel, imageToolChooseInputChannel, imageToolChooseOutputChannel, imageToolCreateChannel, imageToolGetChannel, imageToolImportResultChannel, imageToolListChannel, imageToolOpenOutputChannel, imageToolOpenResultChannel, imageToolPauseChannel, imageToolReadResultChannel, imageToolResumeChannel, imageToolRetryChannel, imageToolRevealResultChannel, imageToolScanChannel } from './ipc/image-tools-channels';
 
 const api: DesktopApi = {
   loadProfile: () => ipcRenderer.invoke(profileLoadChannel),
@@ -42,6 +43,7 @@ const api: DesktopApi = {
   moveProjectToTrash: (input) => ipcRenderer.invoke(projectTrashChannel, input),
   restoreProjectFromTrash: (input) => ipcRenderer.invoke(projectRestoreTrashChannel, input),
   purgeProjectFromTrash: (input) => ipcRenderer.invoke(projectPurgeTrashChannel, input),
+  chooseWorkspaceBackupDirectory: (kind) => ipcRenderer.invoke(backupChooseDirectoryChannel, kind),
   createWorkspaceBackup: (libraryId, destinationParentDirectory) => ipcRenderer.invoke(backupCreateChannel, { libraryId, destinationParentDirectory }),
   restoreWorkspaceBackup: (input) => ipcRenderer.invoke(backupRestoreChannel, input),
   loadWorkspaceSettings: (libraryId) => ipcRenderer.invoke(settingsLoadChannel, libraryId),
@@ -67,7 +69,11 @@ const api: DesktopApi = {
   hasCredential: (connectionId) => ipcRenderer.invoke(credentialStatusChannel, connectionId),
   loadProviderConfigs: () => ipcRenderer.invoke(providerConfigLoadChannel),
   saveProviderConfig: (input) => ipcRenderer.invoke(providerConfigSaveChannel, input),
+  loadProviderConnectionStatuses: () => ipcRenderer.invoke(providerStatusLoadChannel),
+  saveProviderConnectionStatuses: (statuses) => ipcRenderer.invoke(providerStatusSaveChannel, statuses),
   listTasks: (libraryId) => ipcRenderer.invoke(taskListChannel, libraryId),
+  publishCompositionCandidate: (input) => ipcRenderer.invoke(taskCompositionPublishChannel, input),
+  resolveCompositionCandidate: (input) => ipcRenderer.invoke(taskCompositionResolveChannel, input),
   submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
   submitDesignGeneration: (input) => ipcRenderer.invoke(designGenerationSubmitChannel, input),
   retryDesignGenerationSlot: (input) => ipcRenderer.invoke(designGenerationSlotRetryChannel, input),
@@ -94,6 +100,7 @@ const api: DesktopApi = {
   resumeImageToolJob: (input) => ipcRenderer.invoke(imageToolResumeChannel, input),
   cancelImageToolJob: (input) => ipcRenderer.invoke(imageToolCancelChannel, input),
   retryImageToolItem: (input) => ipcRenderer.invoke(imageToolRetryChannel, input),
+  readImageToolResult: (input) => ipcRenderer.invoke(imageToolReadResultChannel, input),
   openImageToolResult: (input) => ipcRenderer.invoke(imageToolOpenResultChannel, input),
   revealImageToolResult: (input) => ipcRenderer.invoke(imageToolRevealResultChannel, input),
   openImageToolOutput: (input) => ipcRenderer.invoke(imageToolOpenOutputChannel, input),

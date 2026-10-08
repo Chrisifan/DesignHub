@@ -282,7 +282,15 @@ export const ProviderSettings = ({
         <div className="provider-profile-heading">
           <div className="provider-profile-title-row">
             <h3 id={`provider-${profile}-title`}>{profileTitle(locale, profile)}</h3>
-            <Badge tone={configured[profile] ? 'success' : ''}>{configured[profile] ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge>
+            <Badge tone={configured[profile] && (selected?.profileStatuses?.[profile] ?? 'connected') === 'connected' ? 'success' : selected?.profileStatuses?.[profile] === 'error' ? 'error' : ''}>
+              {configured[profile]
+                ? selected?.profileStatuses?.[profile] === 'error'
+                  ? t(locale, '连接失败', 'Connection failed')
+                  : selected?.profileStatuses?.[profile] === 'unknown'
+                    ? t(locale, '待测试', 'Not tested')
+                    : t(locale, '已连接', 'Connected')
+                : t(locale, '未配置', 'Not configured')}
+            </Badge>
           </div>
           <span className="provider-profile-capabilities">{isImage ? t(locale, '图片生成、图片编辑', 'Image generation and editing') : t(locale, '对话、视觉分析', 'Conversation and vision analysis')}</span>
         </div>

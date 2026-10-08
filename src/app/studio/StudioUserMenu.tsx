@@ -10,9 +10,7 @@ type StudioUserMenuProps = {
   avatarDataUrl?: string | null;
   currentView: View;
   onNavigate: (view: View) => void;
-  onNewProject: () => void;
   onImportProject: () => void;
-  newProjectDisabled?: boolean;
   importDisabled?: boolean;
 };
 
@@ -28,7 +26,6 @@ const groups: Array<{ zh: string; en: string; items: MenuItem[] }> = [
     zh: '创作',
     en: 'Create',
     items: [
-      { view: 'projects', icon: 'layout-grid', zh: '首页', en: 'Home' },
       { view: 'designers', icon: 'users', zh: '设计师', en: 'Designers' },
       { view: 'assets', icon: 'image', zh: '素材库', en: 'Assets' },
       { view: 'brands', icon: 'palette', zh: '品牌包', en: 'Brand kits' },
@@ -40,7 +37,10 @@ const groups: Array<{ zh: string; en: string; items: MenuItem[] }> = [
     items: [
       { view: 'connections', icon: 'plug', zh: '模型连接', en: 'Connections' },
       { view: 'tasks', icon: 'clock', zh: '模型任务', en: 'Model tasks' },
-      { view: 'image-tools', icon: 'wand-sparkles', zh: '图像工具', en: 'Image tools' },
+      { view: 'image-tool-remove-background', icon: 'wand-sparkles', zh: '去除背景', en: 'Remove background' },
+      { view: 'image-tool-upscale', icon: 'image', zh: '放大图像', en: 'Upscale image' },
+      { view: 'image-tool-resize', icon: 'maximize-2', zh: '尺寸转换', en: 'Resize' },
+      { view: 'image-tool-format-convert', icon: 'file-image', zh: '格式转换', en: 'Format conversion' },
     ],
   },
   {
@@ -48,7 +48,7 @@ const groups: Array<{ zh: string; en: string; items: MenuItem[] }> = [
     en: 'Manage',
     items: [
       { view: 'delivery', icon: 'download', zh: '导出交付', en: 'Delivery' },
-      { view: 'storage', icon: 'hard-drive', zh: '工作区管理', en: 'Workspace' },
+      { view: 'storage', icon: 'hard-drive', zh: '废纸篓与备份', en: 'Trash & backups' },
       { view: 'settings', icon: 'settings', zh: '设置', en: 'Settings' },
     ],
   },
@@ -60,9 +60,7 @@ export const StudioUserMenu = ({
   avatarDataUrl = null,
   currentView,
   onNavigate,
-  onNewProject,
   onImportProject,
-  newProjectDisabled = false,
   importDisabled = false,
 }: StudioUserMenuProps) => {
   const [open, setOpen] = useState(false);
@@ -170,10 +168,6 @@ export const StudioUserMenu = ({
             </div>
           ))}
           <div className="studio-user-menu__group studio-user-menu__group--actions">
-            <button type="button" role="menuitem" disabled={newProjectDisabled} onClick={() => chooseAction(onNewProject)}>
-              <Icon name="plus" size={16} />
-              <span>{t(locale, '新建项目', 'New project')}</span>
-            </button>
             <button
               type="button"
               role="menuitem"

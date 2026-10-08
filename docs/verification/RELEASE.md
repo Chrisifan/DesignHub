@@ -1,5 +1,88 @@
 # DesignHub V1 Release Verification
 
+## 2026-10-05 remaining IPC continuation
+
+- project-library lifecycle、credentials、document export IPC 注册已从 main.ts 抽出；对应 handler/registrar 聚焦测试通过。
+- 保留 keyring、active library、archive-copy、export-history 和 trusted-window 行为；未重新宣称完整 E2E、packaged native 或真实 provider 通过。
+
+## 2026-10-05 post-remaining-IPC local verification
+
+- Focused: 38 files / 164 passed / 8 skipped.
+- Unit: 164 files / 933 passed / 8 skipped.
+- Integration: 30 files / 131 passed.
+- Build, lint, typecheck, and diff-check passed.
+- Renderer bundle warning remains. Full browser E2E, packaged native, live provider, Windows, signing/notarization, Keychain, ZIP large-package streaming, and human visual QA remain open or blocked.
+
+## 2026-10-04 content IPC continuation
+
+- 内容 IPC 注册已从 main.ts 抽出；相关 contract 6 files / 12 passed。
+- pnpm lint、pnpm typecheck 通过；未重新宣称完整 E2E、packaged native 或真实 provider 通过。
+
+## 2026-10-04 post-content local verification
+
+- Focused: 32 files / 151 passed / 8 skipped.
+- Unit: 161 files / 929 passed / 8 skipped.
+- Integration: 30 files / 131 passed.
+- Build, lint, typecheck, and diff-check passed.
+- Renderer bundle warning remains. Full browser E2E, packaged native, live provider, Windows, signing/notarization, Keychain, ZIP large-package streaming, and human visual QA remain open or blocked.
+
+## 2026-10-03 project IPC continuation
+
+- project lifecycle IPC 注册已从 main.ts 抽出；相关 contract 2 files / 4 passed。
+- pnpm lint、pnpm typecheck 通过；未重新宣称完整 E2E、packaged native 或真实 provider 通过。
+
+## 2026-10-03 post-project local verification
+
+- Focused: 26 files / 139 passed / 8 skipped.
+- Unit: 160 files / 928 passed / 8 skipped.
+- Integration: 30 files / 131 passed.
+- Build, lint, typecheck, and diff-check passed.
+- Renderer bundle warning remains. Full browser E2E, packaged native, live provider, Windows, signing/notarization, Keychain, ZIP large-package streaming, and human visual QA remain open or blocked.
+
+## 2026-10-03 profile IPC continuation
+
+- profile load/save IPC 注册已从 main.ts 抽出；相关 contract 2 files / 6 passed。
+- pnpm lint、pnpm typecheck 通过；未重新宣称完整 E2E、packaged native 或真实 provider 通过。
+
+## 2026-10-03 post-profile local verification
+
+- Focused: 24 files / 135 passed / 8 skipped.
+- Unit: 159 files / 927 passed / 8 skipped.
+- Integration: 30 files / 131 passed.
+- Build, lint, typecheck, and diff-check passed.
+- Renderer bundle warning remains. Full browser E2E, packaged native, live provider, Windows, signing/notarization, Keychain, ZIP large-package streaming, and human visual QA remain open or blocked.
+
+## 2026-10-03 project-package IPC continuation
+
+- 项目包导入/导出 IPC 注册已从 main.ts 抽出；pnpm test:focused 包含 package contract，相关 2 files / 3 passed。
+
+## 2026-10-03 consolidated local verification
+
+- Focused: 18 files / 123 passed / 8 skipped.
+- Unit: 157 files / 925 passed / 8 skipped.
+- Integration: 30 files / 131 passed.
+- Build, lint, typecheck, and diff-check passed.
+- Full browser E2E, packaged native, live provider, Windows, signing/notarization, Keychain, ZIP large-package streaming, and human visual QA remain open or blocked.
+
+## 2026-10-03 support IPC continuation
+
+- backup、export-history、diagnostics IPC 注册已从 main.ts 抽出；相关 contract 4 files / 6 passed。
+- pnpm lint、pnpm typecheck 通过；未重新宣称完整 E2E、packaged native 或真实 provider 通过。
+
+## 2026-10-03 consolidated local verification
+
+- Focused: 22 files / 129 passed / 8 skipped.
+- Unit: 158 files / 926 passed / 8 skipped.
+- Integration: 30 files / 131 passed.
+- Build, lint, typecheck, and diff-check passed.
+- Renderer bundle warning remains. Full browser E2E, packaged native, live provider, Windows, signing/notarization, Keychain, ZIP large-package streaming, and human visual QA remain open or blocked.
+- pnpm lint、pnpm typecheck 通过；项目包格式、归档实现和跨项目库行为未改变。
+- 大包流式/固定内存、完整 browser E2E、packaged native、Windows、签名/公证、Keychain、真实 provider 和人工视觉质量仍 blocked。
+
+## 2026-10-03 search IPC continuation
+
+- search rebuild/query IPC 注册已从 main.ts 抽出；相关 package-independent contract 2 files / 3 passed。
+- pnpm lint、pnpm typecheck 通过；未重新宣称完整 E2E、packaged native 或真实 provider 通过。
 Status: the 2026-09-28 working tree has a fresh local functionality update. `pnpm release:check` is `passed-with-blockers`: unit 138 files/825 passed/8 skipped, integration 29 files/129 passed, E2E 41/41, native source 2 passed/1 packaged skipped, provider 3/3, lint/typecheck/build/diff-check and package scan all passed. Fresh status is tracked in [CURRENT-STATUS-2026-09-24.md](CURRENT-STATUS-2026-09-24.md). Windows packaging/runtime, signed/notarized artifacts, Keychain persistence, live provider, installer upgrade, cross-device recovery, performance and human visual gates remain blocked.
 
 2026-09-25 local closure update: the current worktree now has fresh unit 135 files/796 passed/8 skipped, integration 29 files/129 passed, browser E2E 39/39, native source smoke 2 passed with the packaged executable case explicitly skipped, offline provider 3/3, lint, typecheck, build, and diff check passing. This does not close Windows packaging/runtime, signing/notarization, Keychain persistence, live provider, cross-device recovery, performance, or human visual gates. The Windows Forge dry check is tracked separately and must not be reported as Windows runtime evidence.
@@ -121,3 +204,76 @@ Browser preview tests are not evidence for the native gates above. No release ar
 仍 blocked：真实 provider 质量/费用/远端取消、Windows 真机、签名/公证、Keychain 持久化、项目包大文件和跨设备恢复、native 文件选择器实机证据及人工视觉质量。
 
 最终本地门禁：`pnpm release:check` 为 `passed-with-blockers`；unit 144 files / 843 passed / 8 skipped，integration 29 files / 129 passed，E2E 41/41，native source 2 passed / packaged 1 skipped，lint/typecheck/build/diff-check 和 package scan 290 files 通过。`pnpm provider:live-smoke` 返回 blocked，未伪造真实 provider 证据。
+
+## 2026-10-01 当前工作树功能推进证据
+
+- 高级创建入口、候选确认和项目包交接聚焦套件：21 files / 247 passed / 8 skipped。
+- `pnpm typecheck`、`pnpm lint`、`pnpm build`、`git diff --check`：通过。
+- 未在本轮重新执行全量 `pnpm test:unit`、`pnpm test:integration`、`pnpm test:e2e`、`pnpm test:native`、`pnpm test:provider` 或 `pnpm release:check`，不得把历史全量数字写成本轮证据。
+- 真实 provider、Windows、签名/公证、Keychain、packaged native、ZIP 流式/大包性能和人工视觉质量仍为 blocked。
+
+## 2026-10-01 候选持久化门禁复核
+
+- 本地智能构图/样机候选已通过任务存储跨重启恢复，并以明确审计状态关闭确认或放弃流程。
+- 全量本地证据：unit 148 files / 905 passed / 8 skipped；integration 30 files / 131 passed；E2E 47/47；native source 2 passed / packaged 1 skipped；provider offline 3/3。
+- `pnpm lint`、`pnpm typecheck`、`pnpm build`、`git diff --check` 通过；build 保留 Vite bundle size warning。
+- 未配置 packaged executable，未执行 live provider；Windows、签名/公证、Keychain、安装升级、ZIP 大包流式/固定内存和人工视觉质量继续标记为 blocked。
+
+## 2026-10-01 code optimization evidence
+
+- Added internal task error policy, image-tool view-model helpers, and a dedicated image-tool IPC registrar without changing public bridge contracts.
+- Fresh local evidence: unit 151 files / 914 passed / 8 skipped; integration 30 files / 131 passed; focused browser E2E 4/4; native source 2 passed / packaged 1 skipped; provider offline 3/3; lint, typecheck, build and diff-check passed.
+- A full browser E2E rerun was interrupted by 18 connection-refused failures after the preview server stopped accepting connections. This is recorded as an environment/test-server issue, not as a passing full-gate result.
+- Renderer bundle warning remains. Windows, signing/notarization, live provider, Keychain, packaged native, ZIP large-package streaming and human visual QA remain blocked.
+
+## 2026-10-02 IPC registrar continuation
+
+- 完成 task 与 settings/provider 两组主进程 IPC registrar 抽取；保持 typed bridge、活动 libraryId、可信窗口和现有 provider 配置契约不变。
+- pnpm test:focused：14 files / 117 passed / 8 skipped；pnpm build、pnpm lint、pnpm typecheck、git diff --check 通过。
+- 仍不宣称完整 browser E2E、packaged native、Windows、签名/公证、Keychain、真实 provider、ZIP 大包流式或人工视觉质量通过。
+
+## 2026-10-02 code optimization continuation
+
+- Workbench candidate selection/scene resolution now lives in `candidate-controller.ts`; task refresh timing and disposer behavior live in `task-polling.ts`. Public bridge and candidate revision semantics remain unchanged.
+- Fresh focused evidence: `pnpm test:focused` passed 9 files / 108 tests, with 8 skips.
+- Fresh local regression: `pnpm test:unit` passed 153 files / 921 tests with 8 skips; `pnpm test:integration` passed 30 files / 131 tests; lint, typecheck, build and `git diff --check` passed.
+- Renderer initial chunk is 824.91 kB and ImageToolsPage is split to 28.70 kB; Vite still reports the >500 kB warning.
+- Full browser E2E remains open because the previous rerun had 18 preview-server connection-refused failures. Windows, signing/notarization, live provider, Keychain, packaged native, ZIP large-package streaming and human visual QA remain blocked.
+
+## 2026-10-05 IPC registrar continuation
+
+- Portfolio and agent IPC registration moved out of `src/desktop/main.ts` into tested registrar modules without changing the public bridge contract.
+- `pnpm test:focused`: 41 files / 182 passed / 8 skipped. `pnpm test:unit`: 166 files / 937 passed / 8 skipped. `pnpm test:integration`: 30 files / 131 passed.
+- `pnpm lint`, `pnpm typecheck`, and `git diff --check`: passed.
+- Release status remains local-source verified with blockers. Full browser E2E is not re-claimed after the previous preview-server connection-refused run; packaged native, live provider, Windows, signing/notarization, Keychain, ZIP large-package streaming, and human visual quality remain blocked.
+
+补充本轮稳定门禁：`pnpm test:e2e` 47/47 通过；`pnpm test:native` source 2 passed / packaged 1 skipped；`pnpm release:check` 为 `passed-with-blockers`，package scan 433 files。renderer 初始 chunk 824.91 kB 仍有 Vite warning；packaged native、live provider、Windows、签名/公证、Keychain、ZIP 大包流式和人工视觉质量仍 blocked。
+
+`pnpm test:provider` 离线契约 3/3 通过；`pnpm provider:live-smoke` 未执行，真实 provider 仍是外部门禁。
+
+2026-10-05：批量图像结果预览读取已抽为独立 hook，聚焦门禁更新为 42 files / 184 passed / 8 skipped；lint/typecheck/diff-check 通过。此为内部优化，不改变 release blocker 状态。
+
+## 2026-10-06 优化阶段门禁
+
+- `pnpm test:focused`：45 files / 191 passed / 8 skipped。
+- `pnpm test:perf`：2/2 门槛测试通过（任务历史 100、批量索引 1000）。
+- `pnpm test:unit`：170 files / 946 passed / 8 skipped；`pnpm test:integration`：30 files / 131 passed。
+- `pnpm lint`、`pnpm typecheck`、`pnpm build`、`git diff --check`：通过。
+- renderer 初始 chunk 仍为 824.91 kB，Vite warning 仍存在，不能标记 bundle 优化完成。
+- `pnpm test:unit`、`pnpm test:integration`、`pnpm test:e2e`、`pnpm test:native`、`pnpm test:provider` 和 `pnpm release:check` 未在本轮重新执行，历史数字不作为本轮全量证据。
+- Windows、packaged native、签名/公证、Keychain、live provider、ZIP 固定内存和人工视觉质量保持 blocked。
+
+补充完整门禁证据：`pnpm release:check` 返回 `passed-with-blockers`；unit 170 files / 946 passed / 8 skipped，integration 30 files / 131 passed，E2E 47/47，native source 2 passed / packaged 1 skipped，package scan 433 files。renderer 初始 chunk 824.91 kB 的 Vite warning 仍保留。
+
+## 2026-10-07 Code Optimization Closure Update
+
+- Local evidence was added for task execution boundaries, batch image tooling, selected-layer submission, task service factory, shared fixtures and package/image-tools performance commands.
+- Renderer initial chunk remains 824.91 kB with a Vite warning; strict ZIP streaming/fixed-memory behavior is not claimed.
+- Windows package/native smoke, packaged native, signing/notarization, Keychain persistence, live provider cost/quality/cancellation, cross-device recovery and manual visual QA remain `blocked`.
+
+## 2026-10-07 Remaining optimization local closure
+
+- `pnpm release:check` returned `passed-with-blockers`: unit 176 files / 965 passed / 8 skipped; integration 30 files / 131 passed; E2E 47/47; native source 2 passed / packaged 1 skipped; provider offline 3/3; lint, typecheck, build, `git diff --check`, and package scan 435 files passed.
+- Task executor/recovery/candidate/runtime boundaries, ImageTools page and batch scheduler/job-store boundaries, selected-layer submission, and desktop provider/image-tool/project-package services are now in place without changing typed IPC or `libraryId` semantics.
+- Renderer output now has entry `index` 499.19 kB, `canvas` 325.60 kB, and `ImageToolsPage` 30.15 kB; Vite emitted no >500 kB warning. Strict ZIP streaming/fixed-memory and full first-load network profiling remain unclaimed.
+- Windows, packaged native, signing/notarization, Keychain, live provider quality/cost/cancellation, cross-device recovery, installer upgrade, and manual visual QA remain `blocked`.

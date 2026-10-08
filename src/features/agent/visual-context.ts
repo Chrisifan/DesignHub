@@ -137,7 +137,19 @@ export const parseVisualContextEnvelope = (text: string): ParsedVisualContextEnv
   };
 };
 
-export const normalizeAnalysisText = (text: string): string => parseVisualContextEnvelope(text)?.brief ?? text;
+export const extractAnalysisBrief = (text: string): string | null => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  return isRecord(parsed) && typeof parsed.brief === 'string' && parsed.brief.trim()
+    ? parsed.brief.trim()
+    : null;
+};
+
+export const normalizeAnalysisText = (text: string): string => extractAnalysisBrief(text) ?? text;
 
 export const buildVisualContextAnalysisInstruction = (input: {
   knownAssetIds: readonly string[];

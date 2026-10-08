@@ -4,6 +4,8 @@ import { failureItem, processImageToolItem, unknownItem, type BatchWorkerDeps } 
 export type BatchJobSnapshot = { job: ImageToolJob; items: ImageToolItem[] };
 export type BatchSchedulerOptions = BatchWorkerDeps & {
   maxLocalConcurrency?: number;
+  maxProviderConcurrency?: number;
+  itemTimeoutMs?: number;
   onUpdate?: (snapshot: BatchJobSnapshot) => void;
 };
 
@@ -28,11 +30,17 @@ export const createImageToolScheduler = (options: BatchSchedulerOptions = {}) =>
   const paused = new Set<string>();
   const cancelled = new Set<string>();
   const maxLocalConcurrency = Math.max(1, options.maxLocalConcurrency ?? 2);
+  // A provider connection defaults to one in-flight request. Callers may opt
+  // into a higher limit only when the connection capability explicitly allows
+  // it; each connection key is still throttled independently.
+  const maxProviderConcurrency = Math.max(1, options.maxProviderConcurrency ?? 1);
+  const itemTimeoutMs = Math.max(1, options.itemTimeoutMs ?? 60_000);
   let activeLocal = 0;
   let pumping = false;
   let scheduled = false;
   let stopping = false;
   let idleWaiters: Array<() => void> = [];
+  const activeRuns = new Set<Promise<void>>();
 
   const hasPendingWork = (): boolean => [...jobs.values()].some((runtime) => !paused.has(runtime.job.id) && !cancelled.has(runtime.job.id) && runtime.items.some((item) => item.state === 'queued'));
 
@@ -76,7 +84,19 @@ export const createImageToolScheduler = (options: BatchSchedulerOptions = {}) =>
     emit(runtime);
     if (key === 'local') activeLocal += 1;
     try {
-      const result = await processImageToolItem(runtime.job, runtime.items[index], options, controller.signal);
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          controller.abort();
+          reject(new Error('IMAGE_TOOL_ITEM_TIMEOUT'));
+        }, itemTimeoutMs);
+      });
+      const result = await Promise.race([
+        processImageToolItem(runtime.job, runtime.items[index], options, controller.signal),
+        timeoutPromise,
+      ]).finally(() => {
+        if (timeout) clearTimeout(timeout);
+      });
       runtime.items[index] = result.item;
     } catch (error) {
       runtime.items[index] = stopping ? unknownItem(runtime.items[index]) : failureItem(runtime.items[index], error);
@@ -87,20 +107,33 @@ export const createImageToolScheduler = (options: BatchSchedulerOptions = {}) =>
       schedulePump();
     }
   };
+  const dispatchAvailable = (): void => {
+    if (stopping) return;
+    const keys = availableKeys().filter((key) => key === 'local'
+      ? activeLocal < maxLocalConcurrency
+      : [...running.values()].filter((entry) => entry.key === key).length < maxProviderConcurrency);
+    const taskKeys = keys.flatMap((key) => key === 'local'
+      ? Array.from({ length: maxLocalConcurrency - activeLocal }, () => key)
+      : Array.from({ length: maxProviderConcurrency - [...running.values()].filter((entry) => entry.key === key).length }, () => key));
+    for (const key of taskKeys) {
+      const candidate = candidateFor(key);
+      if (!candidate) continue;
+      const task = runItem(candidate.runtime, candidate.item, key);
+      activeRuns.add(task);
+      void task.finally(() => activeRuns.delete(task));
+    }
+  };
   const pump = async (): Promise<void> => {
-    if (pumping) return;
+    if (pumping) {
+      dispatchAvailable();
+      return;
+    }
     pumping = true;
     try {
       while (!stopping) {
-        const keys = availableKeys().filter((key) => key === 'local' ? activeLocal < maxLocalConcurrency : ![...running.values()].some((entry) => entry.key === key));
-        if (!keys.length) break;
-        const taskKeys = keys.flatMap((key) => key === 'local' ? Array.from({ length: maxLocalConcurrency - activeLocal }, () => key) : [key]);
-        const tasks = taskKeys.map((key) => {
-          const candidate = candidateFor(key);
-          return candidate ? runItem(candidate.runtime, candidate.item, key) : Promise.resolve();
-        });
-        if (!tasks.length) break;
-        await Promise.all(tasks);
+        dispatchAvailable();
+        if (activeRuns.size === 0) break;
+        await Promise.race(activeRuns);
       }
     } finally {
       pumping = false;
@@ -113,7 +146,8 @@ export const createImageToolScheduler = (options: BatchSchedulerOptions = {}) =>
   };
   const schedulePump = (): void => {
     scheduled = true;
-    if (!pumping) void pump();
+    if (pumping) dispatchAvailable();
+    else void pump();
   };
 
   const enqueue = (job: ImageToolJob, items: readonly ImageToolItem[]): BatchJobSnapshot => {

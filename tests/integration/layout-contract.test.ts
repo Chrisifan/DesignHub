@@ -362,6 +362,7 @@ it('hides the backing select input text so the custom label is rendered once', (
   );
 });
 
-it('ships the save icon used by provider actions', () => {
+it('ships the icons used by provider and project actions', () => {
   expect(existsSync('public/icons/save.svg')).toBe(true);
+  expect(existsSync('public/icons/pencil.svg')).toBe(true);
 });

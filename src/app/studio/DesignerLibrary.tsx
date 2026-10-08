@@ -187,6 +187,8 @@ type DesignerLibraryProps = {
   toolbarActive?: boolean;
   createRequestId?: number;
   onProfilesChange?: (profiles: PersonaProfile[]) => void;
+  onCreateUnavailable?: (reason: "read-only" | "load-failed") => void;
+  showLibrary?: boolean;
 };
 
 const mergeProfiles = (persisted: PersonaProfile[] | undefined): PersonaProfile[] =>
@@ -212,6 +214,8 @@ export const DesignerLibrary = ({
   toolbarActive = true,
   createRequestId = 0,
   onProfilesChange,
+  onCreateUnavailable,
+  showLibrary = true,
 }: DesignerLibraryProps) => {
   const [profiles, setProfiles] = useState<PersonaProfile[]>(() => libraryId || !preview ? [] : initialProfiles);
   const [selectedId, setSelectedId] = useState(() => libraryId || !preview ? '' : initialProfiles[0]?.id ?? '');
@@ -369,8 +373,16 @@ export const DesignerLibrary = ({
   useEffect(() => {
     if (!createRequestId || createRequestId === lastCreateRequestId.current || loading) return;
     lastCreateRequestId.current = createRequestId;
+    if (loadFailed) {
+      onCreateUnavailable?.("load-failed");
+      return;
+    }
+    if (readOnly) {
+      onCreateUnavailable?.("read-only");
+      return;
+    }
     openCreate();
-  }, [createRequestId, loading, openCreate]);
+  }, [createRequestId, loadFailed, loading, onCreateUnavailable, openCreate, readOnly]);
   const openEdit = () => {
     if (readOnly || loading || loadFailed) return;
     if (!selected) return;
@@ -750,31 +762,62 @@ export const DesignerLibrary = ({
     notify(t(locale, "档案已移除", "Profile removed"));
   };
   return (
-    <section className="page-content library-page designer-library-page designer-library-page--plain">
-      <PageHeader
-        title={t(locale, "设计师", "Designers")}
-        eyebrow={t(locale, "创作档案", "Creative profiles")}
-        description={t(
-          locale,
-          "管理设计风格、人物形象与创作规则。",
-          "Manage style, character artwork and creative rules.",
-        )}
-      />
-      <div className="library-split library-split--designer">
-        <PersonaRepository
-          locale={locale}
-          profiles={profiles}
-          selectedId={selectedId}
-          query={query}
-          statusFilter={statusFilter}
-          defaultId={defaultId}
-          onQueryChange={setQuery}
-          onStatusFilterChange={setStatusFilter}
-          onSelect={selectProfile}
-          onCreate={readOnly || loading || loadFailed ? undefined : openCreate}
-          toolbarActive={toolbarActive}
+    <>
+      {showLibrary ? <section className="page-content library-page designer-library-page designer-library-page--plain">
+        <PageHeader
+          title={t(locale, "设计师", "Designers")}
+          eyebrow={t(locale, "创作档案", "Creative profiles")}
+          description={t(
+            locale,
+            "管理设计风格、人物形象与创作规则。",
+            "Manage style, character artwork and creative rules.",
+          )}
         />
-      </div>
+        <div className="library-split library-split--designer">
+          <PersonaRepository
+            locale={locale}
+            profiles={profiles}
+            selectedId={selectedId}
+            query={query}
+            statusFilter={statusFilter}
+            defaultId={defaultId}
+            onQueryChange={setQuery}
+            onStatusFilterChange={setStatusFilter}
+            onSelect={selectProfile}
+            onCreate={readOnly || loading || loadFailed ? undefined : openCreate}
+            toolbarActive={toolbarActive}
+          />
+        </div>
+        {(loadFailed || readOnly || (!libraryId && preview)) && <p className="page-footnote">
+          <Icon name="circle-help" size={14} />
+          {loadFailed ? (
+            <>
+              <span>
+                {t(
+                  locale,
+                  "设计师档案读取失败。",
+                  "Designer profiles could not be loaded.",
+                )}
+              </span>
+              <button type="button" onClick={() => window.location.reload()}>
+                {t(locale, "重试", "Retry")}
+              </button>
+            </>
+          ) : readOnly ? (
+            t(
+              locale,
+              "当前工作区只读，设计师档案不可修改。",
+              "This workspace is read-only; designer profiles cannot be changed.",
+            )
+          ) : !libraryId && preview ? (
+            t(
+              locale,
+              "人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。",
+              "When character bitmaps are unavailable, profiles and drafts are saved to the current workspace.",
+            )
+          ) : null}
+        </p>}
+      </section> : null}
       <Drawer
         open={inspectorOpen && Boolean(selected)}
         title={t(locale, "设计师检查器", "Designer inspector")}
@@ -817,35 +860,6 @@ export const DesignerLibrary = ({
           showActions={false}
         />
       </Drawer>
-      {(loadFailed || readOnly || (!libraryId && preview)) && <p className="page-footnote">
-        <Icon name="circle-help" size={14} />
-        {loadFailed ? (
-          <>
-            <span>
-              {t(
-                locale,
-                "设计师档案读取失败。",
-                "Designer profiles could not be loaded.",
-              )}
-            </span>
-            <button type="button" onClick={() => window.location.reload()}>
-              {t(locale, "重试", "Retry")}
-            </button>
-          </>
-        ) : readOnly ? (
-          t(
-            locale,
-            "当前工作区只读，设计师档案不可修改。",
-            "This workspace is read-only; designer profiles cannot be changed.",
-          )
-        ) : !libraryId && preview ? (
-          t(
-            locale,
-            "人物位图尚未生成时会显示待生成；档案和草稿会保存到当前工作区。",
-            "When character bitmaps are unavailable, profiles and drafts are saved to the current workspace.",
-          )
-        ) : null}
-      </p>}
       {editor && (
         <DesignerEditorModal
           locale={locale}
@@ -885,7 +899,7 @@ export const DesignerLibrary = ({
           onSubmit={saveDraft}
         />
       )}
-    </section>
+    </>
   );
 };
 

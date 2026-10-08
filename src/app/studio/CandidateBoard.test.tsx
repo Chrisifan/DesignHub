@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 import { CandidateBoard } from './CandidateBoard';
@@ -42,16 +42,16 @@ it('allows a candidate card to move without selecting it as a click', () => {
   expect(onSelect).toHaveBeenCalledWith('candidate-1', 'asset-1');
 });
 
-it('requests focus for the latest completed draft when the board is restored', () => {
+it('requests focus for the latest completed draft when the board is restored', async () => {
   const onRequestFocus = vi.fn();
   render(<CandidateBoard locale="zh-CN" tasks={[task]} projectId="project-1" analysisThreadId="thread-1" width={1080} height={1440} selectedCandidateId={null} onSelect={vi.fn()} onRequestFocus={onRequestFocus} />);
 
   const candidate = screen.getByRole('button', { name: '候选设计稿' });
-  expect(onRequestFocus).toHaveBeenCalledOnce();
+  await waitFor(() => expect(onRequestFocus).toHaveBeenCalledOnce());
   expect(onRequestFocus).toHaveBeenCalledWith(candidate);
 });
 
-it('renders one proportionate placeholder per running generation and requests focus for the newest one', () => {
+it('renders compact proportionate placeholders while keeping completed candidates at the canvas zoom', async () => {
   const runningTask = {
     ...task,
     id: 'design-generation-2',
@@ -76,13 +76,36 @@ it('renders one proportionate placeholder per running generation and requests fo
   expect(placeholders[0]).toHaveStyle({ aspectRatio: '1080 / 1440' });
   expect(placeholders[1]).toHaveStyle({ aspectRatio: '1080 / 1440' });
   expect(placeholders[1]).toHaveAttribute('data-task-id', 'design-generation-3');
-  expect(placeholders[1].closest('.workbench-candidate-card')).toHaveStyle({ width: '340px', flexBasis: '340px' });
+  expect(placeholders[1].closest('.workbench-candidate-card')).toHaveStyle({ width: '180px', flexBasis: '180px' });
   expect(screen.getByRole('button', { name: '候选设计稿' })).toHaveStyle({ width: '340px', flexBasis: '340px' });
-  expect(onRequestFocus).toHaveBeenCalledOnce();
+  await waitFor(() => expect(onRequestFocus).toHaveBeenCalledOnce());
   expect(onRequestFocus.mock.calls[0]?.[0]).toBe(placeholders[1].closest('.workbench-candidate-card'));
 });
 
-it('renders three stable batch slots and retries only a failed slot', () => {
+it('focuses an active generation instead of a completed draft with a later timestamp', async () => {
+  const completedWithFutureTimestamp = {
+    ...task,
+    createdAt: '2026-10-09T00:00:00.000Z',
+  };
+  const activeGeneration = {
+    ...task,
+    id: 'design-generation-active',
+    requestId: 'request-active',
+    state: 'running' as const,
+    createdAt: '2026-10-08T00:00:00.000Z',
+    result: undefined,
+    generationSlots: createDesignGenerationSlots(1),
+  };
+  const onRequestFocus = vi.fn();
+
+  render(<CandidateBoard locale="zh-CN" tasks={[completedWithFutureTimestamp, activeGeneration]} projectId="project-1" analysisThreadId="thread-1" width={1080} height={1440} selectedCandidateId={null} onSelect={vi.fn()} onRequestFocus={onRequestFocus} />);
+
+  const placeholderBatch = screen.getByLabelText('正在生成设计稿').closest('[data-generation-batch-id]');
+  await waitFor(() => expect(onRequestFocus).toHaveBeenCalledOnce());
+  expect(onRequestFocus).toHaveBeenCalledWith(placeholderBatch);
+});
+
+it('renders three stable batch slots and refocuses the batch when a failed slot starts retrying', async () => {
   const generationSlots = createDesignGenerationSlots();
   const batch = {
     ...task,
@@ -101,7 +124,7 @@ it('renders three stable batch slots and retries only a failed slot', () => {
   expect(initialSlots.map((slot) => slot.getAttribute('data-testid'))).toEqual([
     'generation-slot-primary', 'generation-slot-composition', 'generation-slot-expressive',
   ]);
-  expect(onRequestFocus).toHaveBeenCalledOnce();
+  await waitFor(() => expect(onRequestFocus).toHaveBeenCalledOnce());
   expect(onRequestFocus.mock.calls[0]?.[0]).toHaveAttribute('data-generation-batch-id', 'design-batch-1');
 
   const completedCandidate = {
@@ -137,4 +160,17 @@ it('renders three stable batch slots and retries only a failed slot', () => {
   fireEvent.click(screen.getByRole('button', { name: '重新生成构图探索' }));
   expect(onRetrySlot).toHaveBeenCalledWith('design-batch-1', 'composition');
   expect(onRequestFocus).toHaveBeenCalledOnce();
+  view.rerender(<CandidateBoard locale="zh-CN" tasks={[{
+    ...batch,
+    state: 'running',
+    generationSlots: generationSlots.map((slot) => slot.id === 'primary'
+      ? { ...slot, state: 'completed' as const, assetId: 'asset-primary', candidateId: completedCandidate.id }
+      : slot.id === 'composition'
+        ? { ...slot, state: 'queued' as const, attempt: 2 }
+        : { ...slot, state: 'failed' as const, errorCode: 'PROVIDER_REQUEST_FAILED' }),
+    result: { imageCount: 1, candidates: [completedCandidate] },
+  }]} projectId="project-1" analysisThreadId="thread-1" width={1080} height={1440} selectedCandidateId={null} onSelect={vi.fn()} onRetrySlot={onRetrySlot} onRequestFocus={onRequestFocus} />);
+
+  await vi.waitFor(() => expect(onRequestFocus).toHaveBeenCalledTimes(2));
+  expect(onRequestFocus.mock.calls[1]?.[0]).toHaveAttribute('data-generation-batch-id', 'design-batch-1');
 });

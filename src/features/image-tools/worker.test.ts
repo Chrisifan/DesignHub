@@ -18,6 +18,16 @@ describe('batch image worker', () => {
     await expect(sharp(await readFile(result.item.resultPath!)).metadata()).resolves.toMatchObject({ width: 6, height: 4, format: 'webp' });
   });
 
+  it('returns a file result without creating a project or revision', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'designhub-worker-no-revision-'));
+    await inputImage(join(root, 'source.png'));
+    const job = createImageToolJob({ id: 'job-no-revision', tool: 'resize', params: { width: 6, height: 4, format: 'png' }, sourceRoot: root, outputRoot: `${root}-out`, itemIds: ['item-1'], executor: { kind: 'local', engine: 'image-codec' } });
+    const result = await processImageToolItem(job, item(job.id));
+    expect(result).toHaveProperty('published.path');
+    expect(result.item).not.toHaveProperty('revisionId');
+    expect(result.item).not.toHaveProperty('projectId');
+  });
+
   it('passes provider metadata through the completed item', async () => {
     const root = await mkdtemp(join(tmpdir(), 'designhub-worker-'));
     await inputImage(join(root, 'source.png'));

@@ -90,3 +90,30 @@ it('exports the resolved design image instead of a placeholder rectangle', async
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it('preserves transparent pixels when exporting a PNG scene', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'designhub-export-test-'));
+  const targetPath = join(directory, 'transparent.png');
+  const source = new Uint8Array(await sharp({
+    create: { width: 2, height: 2, channels: 4, background: { r: 18, g: 52, b: 86, alpha: 0 } },
+  }).png().toBuffer());
+  const scene = createScene({ id: 'scene-transparent', width: 2, height: 2, layers: [
+    { id: 'content', type: 'image', assetId: 'asset-transparent', x: 0, y: 0, width: 2, height: 2, rotation: 0, opacity: 1, visible: true, locked: false },
+  ] });
+
+  try {
+    await exportSceneToFile({
+      scene,
+      format: 'png',
+      targetPath,
+      resolveImageAsset: async () => ({ bytes: source, mimeType: 'image/png' }),
+    });
+    const exported = await readFile(targetPath);
+    const { data, info } = await sharp(exported).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+    expect(info.channels).toBe(4);
+    expect(data[3]).toBe(0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -243,6 +243,64 @@ it('publishes only the brief for provider field variants', async () => {
   });
 });
 
+it('persists only the brief when the provider returns an invalid visual context plan', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({
+        text: JSON.stringify({
+          brief: '将人物抠图置于真实、绚丽的极光夜空前。',
+          visualContext: {
+            version: 1,
+            items: [
+              { assetId: 'asset-person', roles: ['edit-target', 'visual-anchor', 'visual-reference'], confidence: 0.92 },
+              { assetId: 'asset-background', roles: ['edit-target', 'visual-reference'], confidence: 1 },
+            ],
+            clarificationRequired: false,
+          },
+          releasedAssets: [],
+        }),
+        cost: null,
+      }),
+    }),
+    resolveDesignContext: async ({ input, attachmentAssetIds }) => ({
+      version: 1,
+      libraryId: input.libraryId!,
+      projectId: input.projectId!,
+      documentId: input.documentId!,
+      brief: '',
+      document: { width: 100, height: 100, currentImageAssetIds: [] },
+      attachmentAssetIds,
+      userMessage: input.message,
+      baseRevisionId: null,
+    }),
+    persistConversationAttachments: async () => ['asset-person', 'asset-background'],
+    loadContextImage: async ({ assetId }) => ({
+      name: `${assetId}.png`,
+      mimeType: 'image/png',
+      bytes: new Uint8Array([1]),
+    }),
+  });
+
+  const task = await service.submitConversation({
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    documentId: 'document-1',
+    connectionId: 'provider-1',
+    message: '替换人物背景为极光',
+    attachments: [
+      { name: 'person.png', mimeType: 'image/png', bytes: new Uint8Array([1]) },
+      { name: 'background.png', mimeType: 'image/png', bytes: new Uint8Array([2]) },
+    ],
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)?.result?.text).toBe('将人物抠图置于真实、绚丽的极光夜空前。');
+  expect(runtime.get(task.id)?.progressText).toBe('将人物抠图置于真实、绚丽的极光夜空前。');
+  expect(runtime.get(task.id)?.visualContextPlan).toMatchObject({ clarificationRequired: true });
+});
+
 it('recovers a structured response when the provider omits confidence', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({

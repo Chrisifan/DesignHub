@@ -1,8 +1,8 @@
 .workbench {
-  --workbench-glass-fill: color-mix(in srgb, var(--surface-container-low) 44%, transparent);
-  --workbench-glass-fill-strong: color-mix(in srgb, var(--surface-container-low) 54%, transparent);
-  --workbench-glass-border: color-mix(in srgb, var(--on-surface) 16%, transparent);
-  --workbench-glass-filter: blur(28px) saturate(125%);
+  --workbench-glass-fill: color-mix(in srgb, var(--surface-container-low) 64%, transparent);
+  --workbench-glass-fill-strong: color-mix(in srgb, var(--surface-container-low) 74%, transparent);
+  --workbench-glass-border: color-mix(in srgb, var(--on-surface) 20%, transparent);
+  --workbench-glass-filter: blur(28px) saturate(130%);
   height: 100%;
   min-height: 0;
   min-width: 0;
@@ -1436,10 +1436,13 @@
 }
 
 .workbench-candidate-batch {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
   flex: 0 0 auto;
   align-items: flex-start;
-  gap: 24px;
+  gap: 32px;
+  width: max-content;
 }
 
 .workbench-candidate-card {

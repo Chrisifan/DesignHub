@@ -6,6 +6,7 @@ import { ProjectCoverPicker } from './ProjectCoverPicker';
 import { Field, Icon, Select, t } from './ui';
 import type { NewDesignDraft } from './types';
 import { documentSizePresets } from '../../features/projects/size';
+import { builtInMockupTemplates } from '../../features/mockups/template';
 
 type NewProjectFormProps = {
   locale: Locale;
@@ -41,6 +42,30 @@ export const NewProjectForm = ({
         value={draft.cover}
         onChange={(cover) => onDraftChange({ ...draft, cover })}
       />
+      <fieldset className="creation-mode-picker" aria-label={t(locale, '创建方式', 'Creation mode')}>
+        <legend>{t(locale, '创建方式', 'Creation mode')}</legend>
+        {(['manual', 'composition', 'mockup'] as const).map((mode) => (
+          <label key={mode}><input type="radio" name="creation-mode" checked={draft.mode === mode} onChange={() => onDraftChange({ ...draft, mode })} />
+            {mode === 'manual' ? t(locale, '标准设计', 'Standard design') : mode === 'composition' ? t(locale, '智能构图', 'Intelligent composition') : t(locale, '样机', 'Mockup')}
+          </label>
+        ))}
+      </fieldset>
+      {draft.mode === 'composition' && <div className="creation-assets">
+        <p className="inline-notice">{t(locale, '本地结构化构图候选，尚未经过模型验证。', 'Local structured composition candidate; no model verification yet.')}</p>
+        {([['coreFile', '核心素材', 'Core asset'], ['optionalFile', '可选素材', 'Optional asset'], ['referenceFile', '参考素材', 'Reference asset']] as const).map(([key, zh, en]) => (
+          <Field key={key} label={t(locale, zh, en)}><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => onDraftChange({ ...draft, [key]: event.target.files?.[0] })} /></Field>
+        ))}
+      </div>}
+      {draft.mode === 'mockup' && <div className="creation-assets">
+        <p className="inline-notice">{t(locale, '本地样机候选；透视和遮挡效果需人工检查。', 'Local mockup candidate; check perspective and occlusion manually.')}</p>
+        <Field label={t(locale, '源设计图', 'Source artwork')}><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => onDraftChange({ ...draft, mockupFile: event.target.files?.[0] })} /></Field>
+        <Field label={t(locale, '样机模板', 'Mockup template')}>
+          <Select ariaLabel={t(locale, '样机模板', 'Mockup template')} value={draft.templateId ?? builtInMockupTemplates[0]!.id} onChange={(value) => onDraftChange({ ...draft, templateId: value, templateColor: builtInMockupTemplates.find((item) => item.id === value)?.colors[0] })} options={builtInMockupTemplates.map((template) => ({ value: template.id, label: template.category === 'phone-screen' ? t(locale, '手机屏幕', 'Phone screen') : template.category === 'poster-frame' ? t(locale, '海报画框', 'Poster frame') : t(locale, '包装袋', 'Packaging bag') }))} />
+        </Field>
+        <Field label={t(locale, '样机颜色', 'Mockup color')}>
+          <Select ariaLabel={t(locale, '样机颜色', 'Mockup color')} value={draft.templateColor ?? builtInMockupTemplates.find((item) => item.id === (draft.templateId ?? builtInMockupTemplates[0]!.id))!.colors[0]!} onChange={(value) => onDraftChange({ ...draft, templateColor: value })} options={(builtInMockupTemplates.find((item) => item.id === (draft.templateId ?? builtInMockupTemplates[0]!.id))?.colors ?? []).map((color) => ({ value: color, label: color }))} />
+        </Field>
+      </div>}
       <Field label={t(locale, '项目名称', 'Project name')}>
         <input
           data-drawer-initial-focus

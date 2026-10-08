@@ -3,6 +3,7 @@ import {
   buildGenerationVisualManifest,
   buildVisualContextAnalysisInstruction,
   deriveConservativeVisualContextPlan,
+  extractAnalysisBrief,
   imageContextLabel,
   isVisualContextPlan,
   mergeVisualContextPlan,
@@ -104,6 +105,24 @@ describe('visual context envelope', () => {
       },
       releasedAssetIds: [],
     }))).toBeNull();
+  });
+
+  it('extracts the brief even when the visual context plan is invalid', () => {
+    const text = JSON.stringify({
+      brief: '将人物抠图置于真实、绚丽的极光夜空前。',
+      visualContext: {
+        version: 1,
+        items: [
+          { assetId: 'asset-a', roles: ['edit-target'], confidence: 0.9 },
+          { assetId: 'asset-b', roles: ['edit-target'], confidence: 1 },
+        ],
+        clarificationRequired: false,
+      },
+      releasedAssets: [],
+    });
+
+    expect(parseVisualContextEnvelope(text)).toBeNull();
+    expect(extractAnalysisBrief(text)).toBe('将人物抠图置于真实、绚丽的极光夜空前。');
   });
 
   it('rejects duplicate assets, duplicate roles, unknown roles, and invalid confidence', () => {

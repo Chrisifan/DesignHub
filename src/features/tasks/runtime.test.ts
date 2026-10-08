@@ -4,6 +4,7 @@ import { createTaskRuntime } from './runtime';
 import { createDesignGenerationSlots, createTaskState, type TaskRecord } from './state';
 import type { RevisionStore } from '../revisions/commit-revision';
 import type { VisualContextPlan } from '../agent/visual-context';
+import { createScene } from '../canvas/scene';
 
 const baseTask: TaskRecord = {
   id: 'task-1',
@@ -21,6 +22,57 @@ const batchTask = () => ({
   documentId: 'document-1',
   capability: 'design-generation',
   generationSlots: createDesignGenerationSlots(),
+});
+
+const compositionCandidate = {
+  id: 'candidate-local',
+  sourceTaskId: 'local-composition-task',
+  mode: 'structured' as const,
+  editable: true,
+  scene: createScene({ id: 'candidate-scene', width: 1080, height: 1440, layers: [] }),
+  assets: [{ assetId: 'asset-core', role: 'core' as const }],
+  createdAt: '2026-10-01T00:00:00.000Z',
+};
+
+it('persists a local composition candidate and its explicit resolution', async () => {
+  const writes: Array<readonly TaskRecord[]> = [];
+  const runtime = createTaskRuntime({ persist: async (tasks) => { writes.push(tasks); } });
+
+  const published = await runtime.publishCompositionCandidate({
+    id: compositionCandidate.sourceTaskId,
+    requestId: compositionCandidate.sourceTaskId,
+    source: { kind: 'project', id: 'project-1' },
+    documentId: 'document-1',
+    capability: 'local-composition',
+    result: { compositionCandidate },
+  });
+
+  expect(published).toMatchObject({ state: 'completed', candidateResolution: undefined, result: { compositionCandidate } });
+  await expect(runtime.resolveCompositionCandidate(published.id, 'discarded')).resolves.toMatchObject({ candidateResolution: 'discarded' });
+  await runtime.flush();
+  expect(writes.at(-1)?.[0]).toMatchObject({ candidateResolution: 'discarded', result: { compositionCandidate } });
+});
+
+it('confirms a local composition candidate idempotently', async () => {
+  const writes: Array<readonly TaskRecord[]> = [];
+  const runtime = createTaskRuntime({ persist: async (tasks) => { writes.push(tasks); } });
+  const published = await runtime.publishCompositionCandidate({
+    id: compositionCandidate.sourceTaskId,
+    requestId: compositionCandidate.sourceTaskId,
+    source: { kind: 'project', id: 'project-1' },
+    documentId: 'document-1',
+    capability: 'local-composition',
+    result: { compositionCandidate },
+  });
+
+  await expect(runtime.resolveCompositionCandidate(published.id, 'confirmed')).resolves.toMatchObject({ candidateResolution: 'confirmed' });
+  await runtime.flush();
+  const writesAfterFirstConfirmation = writes.length;
+
+  await expect(runtime.resolveCompositionCandidate(published.id, 'confirmed')).resolves.toMatchObject({ candidateResolution: 'confirmed' });
+  await runtime.flush();
+
+  expect(writes).toHaveLength(writesAfterFirstConfirmation);
 });
 
 it('persists a visual context plan on an active conversation task', async () => {

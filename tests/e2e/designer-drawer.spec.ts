@@ -14,8 +14,8 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await page.addInitScript(() => localStorage.setItem('designhub.ui.theme', 'dark'));
     await gotoTestWorkspace(page);
     await navigateFromUserMenu(page, '设计师');
-    const createFromPortfolio = page.getByRole('button', { name: '从作品集创建' });
-    if (await createFromPortfolio.count()) await createFromPortfolio.click({ force: true });
+    const initialDrawer = page.getByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' });
+    await expect(initialDrawer).toBeVisible();
     await page.evaluate((longRule) => {
       const api = (window as typeof window & { designhub: Record<string, unknown> }).designhub;
       const candidate = {

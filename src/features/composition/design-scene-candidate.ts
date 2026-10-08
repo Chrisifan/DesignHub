@@ -1,4 +1,4 @@
-import type { DesignScene } from '../canvas/scene';
+import { isScene, type DesignScene } from '../canvas/scene';
 
 export type DesignSceneRole = 'core' | 'optional' | 'reference';
 
@@ -41,10 +41,7 @@ export const validateDesignSceneCandidate = (value: unknown): DesignSceneCandida
   }
   if (candidate.mode === 'raster-fallback' && candidate.editable) return { ok: false, reason: 'INVALID_CANDIDATE' };
   if (assets.filter((asset) => asset.role === 'core').length === 0) return { ok: false, reason: 'CORE_ASSET_MISSING' };
-  if (!Number.isFinite(candidate.scene.width) || !Number.isFinite(candidate.scene.height)
-    || candidate.scene.width <= 0 || candidate.scene.height <= 0 || !Array.isArray(candidate.scene.layers)) {
-    return { ok: false, reason: 'SCENE_INVALID' };
-  }
+  if (!isScene(candidate.scene)) return { ok: false, reason: 'SCENE_INVALID' };
   return { ok: true, candidate: structuredClone(candidate as DesignSceneCandidate) };
 };
 

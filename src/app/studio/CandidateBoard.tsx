@@ -73,6 +73,7 @@ export const CandidateBoard = ({ locale, tasks, libraryId, projectId, analysisTh
   const dragRef = useRef<DragState | null>(null);
   const suppressClickRef = useRef<string | null>(null);
   const latestDraftRef = useRef<HTMLElement>(null);
+  const focusStateRef = useRef<{ taskId: string; active: boolean } | null>(null);
   const threadTasks = tasks.filter((task) => !analysisThreadId || task.analysisThreadId === analysisThreadId);
   const designTasks = threadTasks
     .map((task, index) => ({ task, index }))
@@ -84,14 +85,33 @@ export const CandidateBoard = ({ locale, tasks, libraryId, projectId, analysisTh
     })
     .map(({ task }) => task);
   const candidates = designTasks.flatMap((task) => taskDrafts(task).flatMap((draft) => draft.candidate ? [draft.candidate] : []));
-  const latestDesignTaskId = designTasks.at(-1)?.id;
+  const latestDesignTask = designTasks
+    .filter((task) => taskDrafts(task).some((draft) => draft.state === 'queued' || draft.state === 'running'))
+    .at(-1) ?? designTasks.at(-1);
+  const latestDesignTaskId = latestDesignTask?.id;
+  const latestDesignTaskActive = latestDesignTask
+    ? taskDrafts(latestDesignTask).some((draft) => draft.state === 'queued' || draft.state === 'running')
+    : false;
   const draftAspectRatio = `${Math.max(1, width)} / ${Math.max(1, height)}`;
+  const placeholderDisplayWidth = Math.min(displayWidth, 180);
 
   useLayoutEffect(() => {
-    if (!latestDesignTaskId) return;
-    const draft = latestDraftRef.current;
-    if (draft) onRequestFocus?.(draft);
-  }, [latestDesignTaskId, onRequestFocus]);
+    if (!analysisThreadId || !latestDesignTaskId) {
+      focusStateRef.current = null;
+      return undefined;
+    }
+    const previous = focusStateRef.current;
+    const shouldFocus = previous === null
+      || previous.taskId !== latestDesignTaskId
+      || (!previous.active && latestDesignTaskActive);
+    focusStateRef.current = { taskId: latestDesignTaskId, active: latestDesignTaskActive };
+    if (!shouldFocus) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const draft = latestDraftRef.current;
+      if (draft) onRequestFocus?.(draft);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [analysisThreadId, latestDesignTaskActive, latestDesignTaskId, onRequestFocus]);
   useEffect(() => {
     let cancelled = false;
     const load = async (): Promise<void> => {
@@ -118,7 +138,7 @@ export const CandidateBoard = ({ locale, tasks, libraryId, projectId, analysisTh
       className="workbench-candidate-card workbench-candidate-card--skeleton"
       data-task-id={draft.taskId}
       data-testid={`generation-slot-${draft.slotId ?? 'legacy'}`}
-      style={{ width: displayWidth, flexBasis: displayWidth }}
+      style={{ width: placeholderDisplayWidth, flexBasis: placeholderDisplayWidth }}
     >
       <div data-task-id={draft.taskId} aria-label={locale === 'zh-CN' ? '正在生成设计稿' : 'Generating design draft'} style={{ aspectRatio: draftAspectRatio }} />
       <span>{locale === 'zh-CN' ? '正在生成…' : 'Generating…'}</span>

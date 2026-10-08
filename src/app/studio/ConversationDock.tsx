@@ -233,17 +233,14 @@ export const ConversationDock = ({
               disabled={readOnly}
               onClick={() => attachmentInputRef.current?.click()}
             />
-            {!compact && (
-              <div className="conversation-dock__status" aria-live="polite">
-                <span className={conversationConnected ? 'is-connected' : ''} aria-hidden="true" />
-                {busy && busyLabel
-                  ? busyLabel
-                  : conversationConnected
-                  ? t(locale, '对话模型已连接', 'Conversation model connected')
-                  : t(locale, '对话模型未连接', 'Conversation model disconnected')}
-              </div>
-            )}
-            {compact && <span className="conversation-dock__shortcut" aria-hidden="true">/</span>}
+            <div className="conversation-dock__status" aria-live="polite">
+              <span className={conversationConnected ? 'is-connected' : ''} aria-hidden="true" />
+              {busy && busyLabel
+                ? busyLabel
+                : conversationConnected
+                ? t(locale, '对话模型已连接', 'Conversation model connected')
+                : t(locale, '对话模型未连接', 'Conversation model disconnected')}
+            </div>
           </div>
           <div className="conversation-dock__toolbar-actions">
             <Select

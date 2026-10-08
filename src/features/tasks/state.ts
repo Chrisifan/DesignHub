@@ -120,6 +120,7 @@ export const taskRecordKeys = new Set<keyof TaskRecord>([
   'errorCode', 'providerFailure', 'analysisDiagnostic', 'result', 'parentConversationTaskId', 'contextAssetIds', 'contextVersion', 'designContext',
   'analysisThreadId', 'conversationParentTaskId', 'progressText', 'generationSlots', 'visualContextPlan',
   'remoteRequestId', 'remoteSupportsCancellation', 'remoteSupportsStatusQuery',
+  'candidateResolution',
 ]);
 
 export type TaskRecord = {
@@ -150,6 +151,8 @@ export type TaskRecord = {
   remoteRequestId?: string;
   remoteSupportsCancellation?: boolean;
   remoteSupportsStatusQuery?: boolean;
+  /** Audit state for a persisted local composition or mockup candidate. */
+  candidateResolution?: 'confirmed' | 'discarded';
   generationSlots?: DesignGenerationSlot[];
   contextAssetIds?: string[];
   contextVersion?: number;

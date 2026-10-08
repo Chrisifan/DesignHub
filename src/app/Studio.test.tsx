@@ -8,7 +8,6 @@ import { createScene } from '../features/canvas/scene';
 import { personaProfiles } from '../../tests/fixtures/personas';
 import { exampleProjects } from '../../tests/fixtures/examples';
 import { previewAssets, previewBrands } from '../../tests/fixtures/libraries';
-import type { DesignSceneCandidate } from '../features/composition/design-scene-candidate';
 
 
 const persistedProfileIds = {
@@ -40,10 +39,6 @@ const enter = () => {
 const navigateFromUserMenu = (label: string): void => {
   fireEvent.click(screen.getByRole('button', { name: '打开用户菜单' }));
   fireEvent.click(screen.getByRole('menuitem', { name: label }));
-};
-
-const openNewProjectDrawer = (): void => {
-  navigateFromUserMenu('新建项目');
 };
 
 it('opens model connection settings as a dialog without leaving the current page', () => {
@@ -192,11 +187,14 @@ it('keeps long project names in one compact row without rendering briefs', () =>
   expect(screen.getByRole('button', { name: '长简介项目' })).not.toHaveTextContent(longDescription);
 });
 
-it('moves project creation from the home toolbar into the avatar menu', () => {
+it('keeps project creation on home and omits redundant avatar-menu entries', () => {
   enter();
   expect(screen.queryByRole('banner', { name: '工作区工具栏' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '打开用户菜单' }));
-  expect(screen.getByRole('menuitem', { name: '新建项目' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: '首页' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: '新建项目' })).not.toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: '导入项目包' })).toBeInTheDocument();
 });
 
 it('creates a project directly from the home composer using its selected designer', async () => {
@@ -236,22 +234,6 @@ it('creates a project directly from the home composer using its selected designe
   expect(submitConversation).not.toHaveBeenCalled();
 });
 
-it('opens one new-project drawer without the duplicate creation callout', () => {
-  enter();
-
-  expect(screen.queryByText('下一次创作，从这里开始')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: '开始创作' })).not.toBeInTheDocument();
-
-  openNewProjectDrawer();
-
-  const drawer = screen.getByRole('dialog', { name: '新建项目' });
-  expect(screen.getByRole('button', { name: '春间市集' })).toBeInTheDocument();
-  expect(within(drawer).getByRole('textbox', { name: '项目名称' })).toHaveFocus();
-  expect(within(drawer).getByRole('button', { name: '取消' }).closest('.ui-drawer__footer')).toBeInTheDocument();
-  expect(within(drawer).getByRole('button', { name: '创建预览' }).closest('.ui-drawer__footer')).toBeInTheDocument();
-  expect(within(drawer).queryByLabelText('新建设计的当前设计师')).not.toBeInTheDocument();
-});
-
 it('orders project controls in the workspace toolbar', () => {
   enter();
   const panel = screen.getByRole('complementary', { name: '项目列表' });
@@ -289,7 +271,7 @@ it('orders asset controls in the workspace toolbar', () => {
 it('reverses the page transition when returning to the project home', () => {
   enter();
   navigateFromUserMenu('素材库');
-  navigateFromUserMenu('首页');
+  fireEvent.click(screen.getByRole('button', { name: '返回项目' }));
 
   expect(document.querySelector('.studio-home')).toHaveClass('studio-view-enter-backward');
 });
@@ -332,7 +314,7 @@ it('preserves project search while visiting another destination and offers an em
   });
   expect(screen.getByText('没有匹配的项目。')).toBeInTheDocument();
   navigateFromUserMenu('素材库');
-  navigateFromUserMenu('首页');
+  fireEvent.click(screen.getByRole('button', { name: '返回项目' }));
   expect(screen.getByRole('searchbox', { name: '搜索项目' })).toHaveValue(
     '不存在的项目',
   );
@@ -358,50 +340,6 @@ it('opens a project document and returns to that project', () => {
   expect(screen.getByRole('heading', { name: '春间市集' })).toBeInTheDocument();
 });
 
-it('creates only a labelled preview draft and keeps project input when dismissing the form', async () => {
-  vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:preview-cover'), revokeObjectURL: vi.fn() });
-  enter();
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByLabelText('选择项目封面'), {
-    target: { files: [new File([new Uint8Array([1])], 'cover.png', { type: 'image/png' })] },
-  });
-  await waitFor(() => expect(screen.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', 'blob:preview-cover'));
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), {
-    target: { value: '我的测试项目' },
-  });
-  fireEvent.click(within(screen.getByRole('dialog', { name: '新建项目' })).getByRole('button', { name: '取消' }));
-  openNewProjectDrawer();
-  expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue(
-    '我的测试项目',
-  );
-  expect(screen.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', 'blob:preview-cover');
-  fireEvent.click(screen.getByRole('button', { name: '创建预览' }));
-  expect(
-    screen.getByRole('heading', { name: '我的测试项目' }),
-  ).toBeInTheDocument();
-  expect(screen.getAllByText('未保存草稿').length).toBeGreaterThan(0);
-  expect(screen.queryByText('已保存到本地')).not.toBeInTheDocument();
-  navigateFromUserMenu('首页');
-  expect(screen.getByRole('button', { name: '我的测试项目' }).querySelector('.project-cover__image')).toHaveAttribute('src', '/project-default-cover.png');
-  openNewProjectDrawer();
-  expect(screen.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', '/project-default-cover.png');
-});
-
-it('keeps the draft while the shell controls are used', () => {
-  enter();
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), {
-    target: { value: '保留输入' },
-  });
-  fireEvent.click(within(screen.getByRole('dialog', { name: '新建项目' })).getByRole('button', { name: '取消' }));
-  fireEvent.click(screen.getByRole('button', { name: '切换主题' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Switch to English' }));
-  openNewProjectDrawer();
-  expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue(
-    '保留输入',
-  );
-});
-
 it('preserves the originating project when opening delivery from project details', () => {
   enter();
   fireEvent.click(screen.getByRole('button', { name: '日常之物' }));
@@ -425,143 +363,9 @@ it('hydrates persisted workspace projects and creates through the desktop API', 
   );
   await waitFor(() => expect(screen.getByRole('button', { name: 'Persisted project' })).toBeInTheDocument());
   expect(listActiveProjects).toHaveBeenCalledWith('workspace-1');
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: 'Created project' } });
-  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
-  await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ libraryId: 'workspace-1', name: 'Created project' })));
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }));
+  await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ libraryId: 'workspace-1', name: '未命名项目' })));
   expect(screen.getByTestId('project-canvas')).toBeInTheDocument();
-});
-
-it('opens a mockup as an uncommitted candidate in a new project document', async () => {
-  const createProjectContainer = vi.fn(async () => ({ projectId: 'mockup-project' }));
-  const commitDocumentRevision = vi.fn(async () => ({ revisionId: 'revision-1' }));
-  const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'source-art', name: 'art.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: '0'.repeat(64), managed: true, decode: { width: 1080, height: 1440 } } }]);
-  const publishCompositionCandidate = vi.fn(async (input: { projectId: string; documentId: string; candidate: DesignSceneCandidate }) => ({
-    id: input.candidate.sourceTaskId,
-    requestId: input.candidate.sourceTaskId,
-    state: 'completed' as const,
-    cancelRequested: false,
-    attempt: 1,
-    source: { kind: 'project' as const, id: input.projectId },
-    documentId: input.documentId,
-    capability: 'local-composition',
-    result: { compositionCandidate: input.candidate },
-  }));
-  window.designhub = { listActiveProjects: vi.fn(async () => []), createProjectContainer, importAssets, publishCompositionCandidate, commitDocumentRevision };
-  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 1080, height: 1440, close: vi.fn() })));
-  render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
-  await screen.findByRole('textbox', { name: '设计需求' });
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '手机样机' } });
-  fireEvent.click(screen.getByRole('radio', { name: '样机' }));
-  fireEvent.change(screen.getByLabelText('源设计图'), { target: { files: [new File([new Uint8Array([1, 2, 3])], 'art.png', { type: 'image/png' })] } });
-  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
-  await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({
-    libraryId: 'workspace-1',
-    documents: [{ id: expect.any(String), name: '手机样机', width: 1600, height: 2000 }],
-  })));
-  await waitFor(() => expect(publishCompositionCandidate).toHaveBeenCalledWith(expect.objectContaining({ libraryId: 'workspace-1', projectId: 'mockup-project' })));
-  expect(await screen.findByText('本地候选 · 待确认')).toBeInTheDocument();
-  expect(commitDocumentRevision).not.toHaveBeenCalled();
-});
-
-it('rejects an undersized mockup source before creating a project', async () => {
-  const createProjectContainer = vi.fn(async () => ({ projectId: 'should-not-exist' }));
-  window.designhub = { listActiveProjects: vi.fn(async () => []), createProjectContainer };
-  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 200, height: 200, close: vi.fn() })));
-  render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
-  await screen.findByRole('textbox', { name: '设计需求' });
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '太小的图' } });
-  fireEvent.click(screen.getByRole('radio', { name: '样机' }));
-  fireEvent.change(screen.getByLabelText('源设计图'), { target: { files: [new File([new Uint8Array([1])], 'tiny.png', { type: 'image/png' })] } });
-  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
-  expect(await screen.findByRole('status')).toHaveTextContent('源设计图尺寸小于模板要求。');
-  expect(createProjectContainer).not.toHaveBeenCalled();
-});
-
-it('does not show an in-memory candidate when candidate persistence fails', async () => {
-  const createProjectContainer = vi.fn(async () => ({ projectId: 'mockup-project' }));
-  const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'source-art', name: 'art.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: '0'.repeat(64), managed: true, decode: { width: 1080, height: 1440 } } }]);
-  const publishCompositionCandidate = vi.fn(async () => null);
-  window.designhub = { listActiveProjects: vi.fn(async () => []), createProjectContainer, importAssets, publishCompositionCandidate };
-  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 1080, height: 1440, close: vi.fn() })));
-  render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
-  await screen.findByRole('textbox', { name: '设计需求' });
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '未持久化样机' } });
-  fireEvent.click(screen.getByRole('radio', { name: '样机' }));
-  fireEvent.change(screen.getByLabelText('源设计图'), { target: { files: [new File([new Uint8Array([1, 2, 3])], 'art.png', { type: 'image/png' })] } });
-  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
-  await waitFor(() => expect(publishCompositionCandidate).toHaveBeenCalled());
-  expect(screen.queryByText('本地候选 · 待确认')).not.toBeInTheDocument();
-});
-
-it('imports a selected cover and records only its managed asset id', async () => {
-  const now = '2026-09-19T00:00:00.000Z';
-  const createProjectContainer = vi.fn(async () => ({ projectId: 'project-created' }));
-  const importAssets = vi.fn(async () => [{
-    status: 'success' as const,
-    asset: { id: 'asset-0123456789abcdef', name: 'cover.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: '0'.repeat(64), managed: true },
-  }]);
-  const updateProjectMetadata = vi.fn(async () => ({
-    projectId: 'project-created', libraryId: 'workspace-1', name: '封面项目', coverAssetId: 'asset-0123456789abcdef', documents: [], archived: false, createdAt: now, updatedAt: now,
-  }));
-  window.designhub = {
-    listActiveProjects: vi.fn(async () => []),
-    createProjectContainer,
-    importAssets,
-    updateProjectMetadata,
-  };
-  vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:selected-cover'), revokeObjectURL: vi.fn() });
-  render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
-  await screen.findByRole('textbox', { name: '设计需求' });
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByLabelText('选择项目封面'), {
-    target: { files: [new File([new Uint8Array([1, 2, 3])], 'cover.png', { type: 'image/png' })] },
-  });
-  await waitFor(() => expect(screen.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', 'blob:selected-cover'));
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '封面项目' } });
-  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
-
-  await waitFor(() => expect(updateProjectMetadata).toHaveBeenCalledWith({
-    libraryId: 'workspace-1',
-    projectId: 'project-created',
-    patch: { coverAssetId: 'asset-0123456789abcdef' },
-  }));
-  expect(createProjectContainer.mock.invocationCallOrder[0]).toBeLessThan(importAssets.mock.invocationCallOrder[0]!);
-  expect(importAssets).toHaveBeenCalledWith({
-    libraryId: 'workspace-1',
-    projectId: 'project-created',
-    items: [{ name: 'cover.png', mimeType: 'image/png', data: new Uint8Array([1, 2, 3]), metadata: { purpose: 'project-cover' } }],
-  });
-});
-
-it('keeps the created project and falls back to the default cover when cover import fails', async () => {
-  const createProjectContainer = vi.fn(async () => ({ projectId: 'project-cover-failed' }));
-  const updateProjectMetadata = vi.fn();
-  window.designhub = {
-    listActiveProjects: vi.fn(async () => []),
-    createProjectContainer,
-    importAssets: vi.fn(async () => [{ status: 'error' as const, error: 'DECODE_FAILED', item: { name: 'cover.png' } }]),
-    updateProjectMetadata,
-  };
-  vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:failed-cover'), revokeObjectURL: vi.fn() });
-  render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
-  await screen.findByRole('textbox', { name: '设计需求' });
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByLabelText('选择项目封面'), {
-    target: { files: [new File([new Uint8Array([1])], 'cover.png', { type: 'image/png' })] },
-  });
-  await waitFor(() => expect(screen.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', 'blob:failed-cover'));
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '降级封面项目' } });
-  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
-
-  await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ name: '降级封面项目' })));
-  expect(screen.getByRole('status')).toHaveTextContent('项目已创建，但封面保存失败，已使用默认封面。');
-  expect(updateProjectMetadata).not.toHaveBeenCalled();
-  navigateFromUserMenu('首页');
-  expect(screen.getByRole('button', { name: '降级封面项目' }).querySelector('.project-cover__image')).toHaveAttribute('src', '/project-default-cover.png');
 });
 
 it('keeps an empty real workspace free of example projects and designers', async () => {
@@ -596,19 +400,6 @@ it('shows a project load failure without falling back to example projects', asyn
   expect(screen.queryByRole('button', { name: '春间市集' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '重试' }));
   expect(listActiveProjects).toHaveBeenCalledTimes(2);
-});
-
-it('uses the selected document size when creating a project', async () => {
-  const listActiveProjects = vi.fn(async () => []);
-  const createProjectContainer = vi.fn(async () => ({ projectId: 'project-square' }));
-  window.designhub = { listActiveProjects, createProjectContainer };
-  render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
-  await screen.findByRole('textbox', { name: '设计需求' });
-  openNewProjectDrawer();
-  fireEvent.change(screen.getByRole('textbox', { name: '项目名称' }), { target: { value: '方图项目' } });
-  fireEvent.change(screen.getByRole('combobox', { name: '文档尺寸' }), { target: { value: '1080 × 1080' } });
-  fireEvent.click(screen.getByRole('button', { name: '创建项目' }));
-  await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ libraryId: 'workspace-1', name: '方图项目' })));
 });
 
 it('waits for the persisted search index rebuild before querying it', async () => {
@@ -664,7 +455,8 @@ it('renames, archives and duplicates a persisted project from its detail view', 
   fireEvent.click(screen.getByRole('button', { name: '项目操作' }));
   fireEvent.click(screen.getByRole('menuitem', { name: '复制项目' }));
   await waitFor(() => expect(duplicateProject).toHaveBeenCalledWith(expect.objectContaining({ sourceProjectId: 'project-1' })));
-  navigateFromUserMenu('首页');
+  fireEvent.click(screen.getByRole('button', { name: '项目操作' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '返回首页' }));
   expect(await screen.findByRole('button', { name: /Renamed project copy/ })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Renamed project' }));
   fireEvent.click(screen.getByRole('button', { name: '项目操作' }));
@@ -882,8 +674,9 @@ it('shows every project contributor in the card and detail view', async () => {
   window.designhub = { listActiveProjects, loadDesignerState };
   render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'read-only' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   const card = await screen.findByRole('button', { name: '协作项目' });
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: '打开用户菜单' }));
-  expect(screen.getByRole('menuitem', { name: '新建项目' })).toBeDisabled();
+  expect(screen.queryByRole('menuitem', { name: '新建项目' })).not.toBeInTheDocument();
   fireEvent.keyDown(document, { key: 'Escape' });
   fireEvent.click(card);
   expect(screen.getByTestId('project-canvas')).toBeInTheDocument();
@@ -1008,16 +801,16 @@ it('keeps a created size variant and reports when its scene conversion cannot be
   expect(screen.getByTestId('project-canvas')).toBeInTheDocument();
 });
 
-it('keeps conversation creation on home and manual creation in the avatar menu', async () => {
+it('keeps conversation and direct project creation on home', async () => {
   const listActiveProjects = vi.fn(async () => []);
   window.designhub = { listActiveProjects };
   render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
   expect(await screen.findByRole('textbox', { name: '设计需求' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '新建项目' })).toBeInTheDocument();
   expect(document.querySelector('.studio-sidebar')).not.toBeInTheDocument();
   expect(document.querySelector('.studio-status')).not.toBeInTheDocument();
-  openNewProjectDrawer();
-  expect(screen.getByRole('textbox', { name: '设计目标' })).toBeInTheDocument();
-  expect(screen.queryByLabelText('品牌包')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '打开用户菜单' }));
+  expect(screen.queryByRole('menuitem', { name: '新建项目' })).not.toBeInTheDocument();
 });
 
 it('creates a localized project and opens its workbench from the first home prompt', async () => {
@@ -1063,7 +856,7 @@ it('uses the first free localized suffix for automatic projects', async () => {
   window.designhub = { listActiveProjects, createProjectContainer, hasCredential };
   render(<Studio locale="en" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={vi.fn()} onThemeChange={vi.fn()} onExit={vi.fn()} />);
 
-  await screen.findByText('Conversation model connected');
+  await waitFor(() => expect(hasCredential).toHaveBeenCalledWith('openai-compatible:conversation'));
   fireEvent.change(await screen.findByRole('textbox', { name: 'Design request' }), { target: { value: 'Make a poster' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send and create project' }));
   await waitFor(() => expect(createProjectContainer).toHaveBeenCalledWith(expect.objectContaining({ name: 'Untitled project (1)' })));

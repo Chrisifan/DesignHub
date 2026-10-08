@@ -22,6 +22,7 @@ import { imageTools, validateToolParams } from '../../features/image-tools/targe
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { getWritableProjectLibraryLease } from './project-library-store';
 import { isScene } from '../../features/canvas/scene';
+import { validateDesignSceneCandidate } from '../../features/composition/design-scene-candidate';
 
 export const tasksFileName = 'tasks.json';
 
@@ -86,10 +87,10 @@ const isGenerationSlot = (value: unknown): value is DesignGenerationSlot => isRe
   && (value.providerFailure === undefined || isProviderFailure(value.providerFailure))
   && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0));
 const isGenerationSlots = (value: unknown): value is DesignGenerationSlot[] => Array.isArray(value)
-  && value.length === designGenerationSlotIds.length
+  && (value.length === 1 || value.length === designGenerationSlotIds.length)
   && value.every(isGenerationSlot)
   && new Set(value.map((slot) => slot.id)).size === value.length
-  && designGenerationSlotIds.every((id, index) => value[index]?.id === id);
+  && value.every((slot, index) => slot.id === designGenerationSlotIds[index]);
 const isRegion = (value: unknown): boolean => isRecord(value)
   && ['x', 'y', 'width', 'height'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0)
   && Number(value.width) > 0 && Number(value.height) > 0;
@@ -114,7 +115,7 @@ const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> =>
   const candidatesValid = value.candidates === undefined || (Array.isArray(value.candidates)
     && value.candidates.every(isTaskCandidate)
     && new Set(value.candidates.map((candidate) => candidate.id)).size === value.candidates.length);
-  return Object.keys(value).every((key) => ['text', 'sceneAssetId', 'assetIds', 'imageCount', 'cost', 'candidate', 'candidates', 'toolCandidate'].includes(key))
+  return Object.keys(value).every((key) => ['text', 'sceneAssetId', 'assetIds', 'imageCount', 'cost', 'candidate', 'candidates', 'toolCandidate', 'compositionCandidate'].includes(key))
     && (value.text === undefined || typeof value.text === 'string')
     && (value.sceneAssetId === undefined || typeof value.sceneAssetId === 'string')
     && (value.assetIds === undefined || (Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')))
@@ -122,6 +123,7 @@ const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> =>
     && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0))
     && (value.candidate === undefined || isTaskCandidate(value.candidate))
     && (value.toolCandidate === undefined || isToolCandidate(value.toolCandidate))
+    && (value.compositionCandidate === undefined || validateDesignSceneCandidate(value.compositionCandidate).ok)
     && candidatesValid;
 };
 const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
@@ -150,6 +152,10 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.designerVersionId === undefined || typeof value.designerVersionId === 'string')
   && (value.providerId === undefined || typeof value.providerId === 'string')
   && (value.capability === undefined || typeof value.capability === 'string')
+  && (value.remoteRequestId === undefined || (typeof value.remoteRequestId === 'string' && value.remoteRequestId.trim().length > 0))
+  && (value.remoteSupportsCancellation === undefined || typeof value.remoteSupportsCancellation === 'boolean')
+  && (value.remoteSupportsStatusQuery === undefined || typeof value.remoteSupportsStatusQuery === 'boolean')
+  && (value.candidateResolution === undefined || value.candidateResolution === 'confirmed' || value.candidateResolution === 'discarded')
   && (value.portfolio === undefined || isPortfolioMetadata(value.portfolio))
   && (value.model === undefined || typeof value.model === 'string')
   && (value.size === undefined || typeof value.size === 'string')
@@ -164,7 +170,8 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.errorCode === undefined || typeof value.errorCode === 'string')
   && (value.providerFailure === undefined || isProviderFailure(value.providerFailure))
   && (value.analysisDiagnostic === undefined || isPortfolioAnalysisDiagnostic(value.analysisDiagnostic))
-  && (value.result === undefined || isResult(value.result));
+  && (value.result === undefined || isResult(value.result))
+  && (value.candidateResolution === undefined || (isRecord(value.result) && value.result.compositionCandidate !== undefined));
 
 const validateWorkspace = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
   if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');

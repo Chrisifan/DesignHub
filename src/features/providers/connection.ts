@@ -1,4 +1,5 @@
 import { providerConnectionIds, type ProviderCapability, type ProviderConfigMap } from './config';
+import type { ProviderTestStatus } from './status';
 
 export { providerCapabilities } from './config';
 export type { ProviderCapability } from './config';
@@ -14,6 +15,7 @@ export type ConnectionSummary = {
 export type ProviderConnection = ConnectionSummary & {
   status: 'connected' | 'not-configured' | 'error';
   capabilities: readonly ProviderCapability[];
+  profileStatuses?: Partial<Record<'conversation' | 'image', ProviderTestStatus>>;
 };
 
 export const connectionSummary = (input: ConnectionInput): ConnectionSummary => ({

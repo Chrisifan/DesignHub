@@ -1,5 +1,46 @@
 # 模块测试、checklist 与回归登记
 
+## 2026-10-05 剩余 IPC 注册边界
+
+- project-library lifecycle、credentials、document export 注册抽为独立 registrar，保持 trusted sender、active library、keyring 和导出归档行为。
+- 聚焦验证：project-library 8/8，credentials/export 5/5；lint、typecheck 通过。
+- agent/portfolio 复杂注册、ImageToolsPage 后端拆分和大包内存优化仍未完成。
+
+## 2026-10-04 内容 IPC 注册边界
+
+- designer、brand、asset、scene、revision 注册抽为独立 registrar，保持活动库、可写库和持久化兼容字段映射。
+- 聚焦内容验证：6 files / 12 passed；lint、typecheck 通过。
+- agent、export-document 注册拆分和项目包大文件优化仍未完成。
+
+## 2026-10-03 project IPC 注册边界
+
+- 项目生命周期注册抽为独立 registrar，保持活动库、可写库和 project-store 行为。
+- 聚焦 project 验证：2 files / 4 passed；lint、typecheck 通过。
+- agent、export-document 注册拆分和项目包大文件优化仍未完成。
+
+## 2026-10-03 profile IPC 注册边界
+
+- profile load/save 注册抽为独立 registrar，保持 trusted sender、profile schema 和头像归一化行为。
+- 聚焦 profile 验证：2 files / 6 passed；lint、typecheck 通过。
+- agent、project、export-document 注册拆分和项目包大文件优化仍未完成。
+
+## 2026-10-03 项目包 IPC 注册边界
+
+- 项目包导入/导出注册抽为独立 registrar，保持活动 libraryId、可写库、可信发送方和归档实现不变。
+- 聚焦 package 验证：2 files / 3 passed；lint、typecheck 通过。
+- main.ts 其余领域拆分和项目包大文件优化仍未完成。
+
+## 2026-10-03 搜索 IPC 注册边界
+
+- search rebuild/query 注册抽为独立 registrar，保持活动 libraryId、可信发送方和索引 store close 语义。
+- 聚焦 search 验证：2 files / 3 passed；lint、typecheck 通过。
+- agent、project、export、backup 注册拆分和项目包大文件优化仍未完成。
+
+## 2026-10-03 支持型 IPC 注册边界
+
+- backup、export-history、diagnostics 注册抽为独立 registrar，保持活动库、可信窗口和领域存储行为不变。
+- 聚焦支持型 IPC 验证：4 files / 6 passed；lint、typecheck 通过。
+- agent、project、export-document 注册拆分和项目包大文件优化仍未完成。
 创建：2026-09-08；更新：2026-09-13。本文件是实施与回归协议。Electron 框架已选；M01–M08 的可验证契约已落地，未覆盖的平台、真实模型、签名与人工质量前提继续单列。
 
 | 模块 | 当前状态 | 实现前测试/清单文件 | 必须回归的直接消费者 |
@@ -295,6 +336,29 @@
 - 新增 image-tool job 原子 JSON 存储与相对路径校验；原生目录选择、worker、跨作业公平调度和结果导入 IPC 仍开放。
 - 证据：候选/Workbench/task-service 107 passed、mask/provider/task storage/IPC/job store 聚焦 116 passed；typecheck/lint/diff-check 通过。
 - 边界：真实 provider 质量、项目包大文件恢复、智能编排、样机、Windows、签名、公证、Keychain 和人工视觉质量仍 blocked。
+# 2026-10-02 M05/M06/M07 IPC 注册边界优化
+
+- 任务列表/候选构图以及 settings/provider 注册从 main.ts 抽为独立、可测试的 registrar；公共频道、libraryId 边界和 trusted bridge 语义不变。
+- 聚焦门禁：14 files / 117 passed / 8 skipped；lint、typecheck、build、git diff --check 通过。
+- 未关闭项：main.ts 其余领域注册拆分、完整 browser E2E 稳定重跑、renderer bundle warning、ZIP 大包流式、真实 provider、Windows、签名/公证、Keychain、packaged native 和人工视觉质量。
+
 # 2026-09-28 功能闭环补充
 
 M07 图像工具：画布候选、mask、provider 能力矩阵、批量 scanner/worker/scheduler/publisher、IPC/preload 和批量页面已进入本地可验证状态。批量页面已接入扫描预检、拒绝项预览、结果打开/reveal、输出目录和显式导入素材库。真实 provider、native packaged、Windows、签名、公证、Keychain 和人工视觉质量保持 blocked。
+
+2026-10-01：M07 高级创建入口与项目包交接（变更 ID M07-20261001-01）。新建项目抽屉接入标准/智能构图/样机模式；候选场景经正式 `isScene` 校验后进入 Workbench，确认前不创建 revision。内置手机屏幕、海报画框和包装袋模板执行源尺寸/颜色校验，真实透视与遮挡仍作为人工门禁。项目包新增存储层 archive builder，跨项目库集成验证源库隔离后导入、重开、编辑、再导出；外部 archive 采用临时文件和 no-replace 发布。聚焦高级创建、图像工具、项目包共 21 files / 247 passed / 8 skipped；typecheck、lint、build、diff check 通过。ZIP 流式、固定内存、大包 benchmark、真实 provider、Windows、签名、公证、Keychain、native packaged 和人工视觉质量仍开放。
+
+2026-10-01：M06/M07 本地候选恢复（变更 ID M06-M07-20261001-02）。智能构图和样机候选接入 `TaskRecord.result.compositionCandidate`、任务 JSON 校验及受信 publish/resolve bridge；Workbench 按项目和文档恢复未解决候选，并以 `candidateResolution` 记录确认/放弃，避免重启重复出现；publish 失败时不再展示仅存于 renderer 的候选。全量结果：unit 148 files / 905 passed / 8 skipped，integration 30 files / 131 passed，E2E 47/47，native source 2 passed / packaged 1 skipped，provider 3/3，lint/typecheck/build/diff-check 通过。ZIP 流式大包、真实 provider、Windows、签名/公证、Keychain、packaged native 和人工视觉质量仍开放。
+
+2026-10-01：M06/M07 代码优化推进。任务错误分类抽为纯 helper，批量图像工具页面的纯视图计算抽为 view-model，主进程 image-tool IPC 注册抽为独立注册器；公共 runtime identity、typed IPC、TaskRecord 和候选修订契约不变。聚焦任务、image-tools、IPC 与 UI 测试通过；完整 E2E 本轮因 web server ERR_CONNECTION_REFUSED 未形成全量证据。
+2026-10-02：M05/M06/M07 代码优化续记。Workbench 候选筛选/场景解析抽为 `candidate-controller`，任务刷新与清理抽为 `task-polling`；新增纯函数回归覆盖候选恢复、候选排序、立即刷新和幂等清理。`pnpm test:focused` 9 files/108 passed/8 skipped；新鲜全量 unit 153 files/921 passed/8 skipped，integration 30/131，lint/typecheck/build/diff-check 通过。renderer 初始 chunk 824.91 kB，ImageToolsPage chunk 28.70 kB；Vite bundle warning、完整 browser E2E 服务器稳定性、ZIP 大包流式、真实 provider、Windows、签名/公证、Keychain、packaged native 和人工视觉质量继续开放。
+
+2026-10-05：IPC registrar continuation。portfolio inspection/selection/discard 已抽出到 `register-portfolio.ts`；conversation、design generation、image generation/editing、artwork、slot retry、task cancel/retry 已抽出到 `register-agent.ts`。`main.ts` 不再直接调用 `ipcMain.handle`，公共 channel、`libraryId` 授权和原有业务回调保持不变。`pnpm test:focused` 41 files/182 passed/8 skipped，lint/typecheck/diff-check 通过。storage/domain service 深度拆分、bundle warning、完整 E2E 稳定性和外部发布门禁仍开放。
+
+2026-10-05：ImageTools preview state continuation。结果预览读取和缓存生命周期抽为 `use-image-tool-previews.ts`，页面组件不再直接持有异步读取 refs；新增 2 条 hook 回归测试。`pnpm test:focused` 42 files/184 passed/8 skipped，lint/typecheck/diff-check 通过。其余批量页面分层、后端职责拆分和 renderer bundle warning 仍开放。
+
+2026-10-06：代码优化内部边界（变更 ID OPT-20261006-01）。新增 `task-record-factory.ts`、`task-state-machine.ts` 和 `image-tool-commands.ts`，保留现有 TaskRecord、typed IPC、候选修订和批量作业语义；先执行 Red 再 Green。`pnpm test:focused` 45 files / 191 passed / 8 skipped，`pnpm test:perf` 2/2，`pnpm test:unit` 170 files / 946 passed / 8 skipped，`pnpm test:integration` 30 files / 131 passed，lint/typecheck/build/diff-check 通过。任务 executor/recovery 深拆、页面后端完整边界、内存和 bundle 优化仍开放。
+
+2026-10-07：代码优化增量（变更 ID OPT-20261007-01）。任务 executor/recovery/candidate/runtime adapter、ImageTools 页面分层、批量 scheduler/job-store 恢复边界、Workbench selection/tool-submit controller、task service factory、共享 fixture 和 package/image-tools benchmark 已加入。公共 `libraryId`、typed IPC、TaskRecord 和候选修订协议未改变。renderer bundle、严格 ZIP 固定内存、其余 desktop service 下沉和外部发布门禁仍开放。
+
+2026-10-07：剩余优化本地关账（变更 ID OPT-20261007-02）。新增 `desktop/services/provider-service.ts`、`image-tool-service.ts`、`project-package-service.ts` 并从 `main.ts` 下沉批量 provider、素材导入和项目包对话框业务；Vite 以函数式 `manualChunks` 分离 canvas，入口 chunk 499.19 kB，构建 warning 消失。`pnpm release:check` 实际通过 unit 176/965（8 skipped）、integration 30/131、E2E 47/47、native source 2 passed/packaged 1 skipped、provider 3/3、lint/typecheck/build/diff-check/package scan 435 files。严格 ZIP 固定内存和所有外部发布/人工质量门禁仍为 blocked。

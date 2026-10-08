@@ -4,6 +4,7 @@ import type { Locale } from '../i18n';
 import { Button, t } from '../studio/ui';
 import { ProviderSettings, type ProviderSettingsActions } from '../../features/providers/ProviderSettings';
 import { providerCredentialAccount, providerProfiles, type ProviderConfigMap } from '../../features/providers/config';
+import { getProviderProfileStatus, type ProviderConnectionStatusMap } from '../../features/providers/status';
 import type { ProviderConnection } from '../../features/providers/connection';
 import { getDesktopApi } from '../../platform/runtime';
 import './onboarding.css';
@@ -21,9 +22,11 @@ const availableConnections: readonly ProviderConnection[] = [
 export const ModelStep = ({ locale, onComplete, onSkip }: ModelStepProps) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
+  const [providerStatuses, setProviderStatuses] = useState<ProviderConnectionStatusMap>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [providerActions, setProviderActions] = useState<ProviderSettingsActions | null>(null);
+  const statusAware = Boolean(getDesktopApi().loadProviderConnectionStatuses);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,10 +37,12 @@ export const ModelStep = ({ locale, onComplete, onSkip }: ModelStepProps) => {
     void Promise.all([
       Promise.all(checks),
       getDesktopApi().loadProviderConfigs?.() ?? Promise.resolve(null),
-    ]).then(([entries, configs]) => {
+      getDesktopApi().loadProviderConnectionStatuses?.() ?? Promise.resolve(null),
+    ]).then(([entries, configs, statuses]) => {
       if (cancelled) return;
       setConnectionState(Object.fromEntries(entries));
       setProviderConfigs(configs ?? {});
+      setProviderStatuses(statuses ?? {});
     }).catch(() => {
       if (!cancelled) setError(t(locale, '无法读取模型配置，请稍后重试。', 'Could not read model configuration. Try again later.'));
     });
@@ -48,12 +53,21 @@ export const ModelStep = ({ locale, onComplete, onSkip }: ModelStepProps) => {
     async (connectionId: string) => getDesktopApi().hasCredential?.(connectionId) ?? false,
     [],
   );
-  const connections = availableConnections.map((connection) => ({
-    ...connection,
-    status: providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)])
-      ? 'connected' as const
-      : 'not-configured' as const,
-  }));
+  const connections = availableConnections.map((connection) => {
+    const profileStatuses = Object.fromEntries(providerProfiles.map((profile) => [
+      profile,
+      statusAware
+        ? getProviderProfileStatus(providerStatuses, connection.id as 'openai-compatible', profile, providerConfigs)
+        : connectionState[providerCredentialAccount(connection.id, profile)] ? 'connected' : 'unknown',
+    ])) as Record<typeof providerProfiles[number], ReturnType<typeof getProviderProfileStatus>>;
+    const credentialConfigured = providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)]);
+    const connected = providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)] && profileStatuses[profile] === 'connected');
+    return {
+      ...connection,
+      profileStatuses,
+      status: statusAware ? connected ? 'connected' as const : 'not-configured' as const : credentialConfigured ? 'connected' as const : 'not-configured' as const,
+    };
+  });
   const saveConfig = async (connectionId: string, config: ProviderConfigMap['openai-compatible']): Promise<boolean> => {
     if (!config) return false;
     const saved = await (getDesktopApi().saveProviderConfig?.({ connectionId: connectionId as 'openai-compatible', config }) ?? false);

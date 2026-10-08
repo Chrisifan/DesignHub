@@ -10,6 +10,7 @@ import { afterEach, expect, it } from 'vitest';
 import { initializeProjectLibrary, openProjectLibrary } from './project-library-store';
 import { loadTaskState, saveTaskState, tasksFileName } from './task-store';
 import type { TaskRecord } from '../../features/tasks/state';
+import { createScene } from '../../features/canvas/scene';
 
 const temporaryDirectories: string[] = [];
 
@@ -52,6 +53,29 @@ it('persists task state across workspace reopen without secret fields', async ()
   } finally {
     reopened.close();
   }
+});
+
+it('round-trips a validated unresolved composition candidate and its resolution audit', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const compositionTask: TaskRecord = {
+    ...task,
+    id: 'local-composition-task',
+    requestId: 'local-composition-task',
+    state: 'completed',
+    capability: 'local-composition',
+    candidateResolution: 'confirmed',
+    result: {
+      compositionCandidate: {
+        id: 'candidate-local', sourceTaskId: 'local-composition-task', mode: 'structured', editable: true,
+        scene: createScene({ id: 'candidate-scene', width: 1080, height: 1440, layers: [] }),
+        assets: [{ assetId: 'asset-core', role: 'core' }], createdAt: '2026-10-01T00:00:00.000Z',
+      },
+    },
+  };
+
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [compositionTask])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.library.libraryId)).resolves.toEqual([compositionTask]);
+  workspace.close();
 });
 
 it('round-trips a valid visual context plan and still accepts a legacy task', async () => {
@@ -102,6 +126,22 @@ it('round-trips a three-slot generation batch and plural candidates', async () =
 
   await expect(saveTaskState(workspace, workspace.library.libraryId, [batch])).resolves.toBe(true);
   await expect(loadTaskState(workspace, workspace.library.libraryId)).resolves.toEqual([batch]);
+  workspace.close();
+});
+
+it('round-trips a single-slot design generation task', async () => {
+  const workspace = await createTemporaryWorkspace();
+  const single: TaskRecord = {
+    ...task,
+    capability: 'design-generation',
+    count: 1,
+    generationSlots: [
+      { id: 'primary', direction: 'primary direction', state: 'queued', attempt: 1 },
+    ],
+  };
+
+  await expect(saveTaskState(workspace, workspace.library.libraryId, [single])).resolves.toBe(true);
+  await expect(loadTaskState(workspace, workspace.library.libraryId)).resolves.toEqual([single]);
   workspace.close();
 });
 

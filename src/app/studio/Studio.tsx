@@ -51,7 +51,7 @@ const navigation: { view: View; icon: string; zh: string; en: string }[] = [
   { view: 'image-tool-resize', icon: 'maximize-2', zh: '尺寸转换', en: 'Resize' },
   { view: 'image-tool-format-convert', icon: 'file-image', zh: '格式转换', en: 'Format conversion' },
   { view: 'delivery', icon: 'download', zh: '导出交付', en: 'Delivery' },
-  { view: 'storage', icon: 'hard-drive', zh: '工作区管理', en: 'Workspace' },
+  { view: 'storage', icon: 'hard-drive', zh: '废纸篓与备份', en: 'Trash & backups' },
 ];
 
 const destinations: { view: View; icon: string; zh: string; en: string }[] = [
@@ -916,9 +916,7 @@ export const Studio = ({
             avatarDataUrl={profile?.avatarDataUrl}
             currentView={view}
             onNavigate={navigate}
-            onNewProject={() => openNewDesign()}
             onImportProject={() => { void importProjectPackage(); }}
-            newProjectDisabled={workspace?.openMode === 'read-only'}
             importDisabled={workspace?.openMode !== 'writable'}
           />
         )}

@@ -84,6 +84,7 @@ h1 { margin: 0; font: 600 24px/32px Geist, "PingFang SC", sans-serif; }
 .startup-splash__check { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 .startup-splash__check--complete .startup-splash__check-dot { background: var(--tertiary); box-shadow: none; }
 .startup-splash__check--active { color: var(--on-surface); }
+.startup-splash__check--active .startup-splash__check-dot { animation: startup-splash-loading 900ms linear infinite; }
 .startup-splash__check--error { color: var(--error); }
 .startup-splash__check--error .startup-splash__check-dot { background: var(--error); box-shadow: none; }
 .startup-splash__check--pending .startup-splash__check-dot { background: var(--outline-variant); box-shadow: none; }
@@ -91,6 +92,7 @@ h1 { margin: 0; font: 600 24px/32px Geist, "PingFang SC", sans-serif; }
 .startup-splash__footer span:last-child { text-align: right; }
 .onboarding-shell { min-height: calc(100% - 40px); display: grid; place-items: center; padding: 24px; overflow: auto; }
 @keyframes startup-splash-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes startup-splash-loading { from { transform: scale(.72); opacity: .45; } 50% { transform: scale(1.12); opacity: 1; } to { transform: scale(.72); opacity: .45; } }
 .button { min-height: 32px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--radius-ui); cursor: pointer; white-space: nowrap; }
 .button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .button-primary { background: var(--primary-container); color: #061016; }

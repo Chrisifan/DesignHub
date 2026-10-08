@@ -136,11 +136,12 @@
   z-index: 3;
   max-width: 260px;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--studio-border, #cbd5e1) 65%, transparent);
+  border: 1px solid var(--shell-glass-border);
   border-radius: var(--radius-ui);
-  background: color-mix(in srgb, var(--studio-surface, #fff) 66%, transparent);
+  background: var(--shell-glass);
   box-shadow: 0 12px 32px rgb(15 23 42 / 10%);
-  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+  backdrop-filter: var(--shell-backdrop);
 }
 
 .project-canvas-menu { position: relative; }

@@ -1,8 +1,10 @@
 import { expect, it, vi } from 'vitest';
 
 import {
+  backupChooseDirectoryChannel,
   backupCreateChannel,
   backupRestoreChannel,
+  chooseBackupDirectoryHandler,
   createBackupHandler,
   restoreBackupHandler,
 } from './backup';
@@ -26,6 +28,25 @@ it('keeps backup operations behind the trusted active workspace', async () => {
   await expect(restoreBackupHandler(window as never, trustedUrl, restoreBackup)(event as never, { backupDirectory: '/tmp/backup', destinationParentDirectory: '/tmp' })).resolves.toMatchObject({ directory: '/tmp/restored' });
   expect(createBackup).toHaveBeenCalledOnce();
   expect(restoreBackup).toHaveBeenCalledOnce();
+});
+
+it('chooses source and destination directories only for a trusted main frame', async () => {
+  expect(backupChooseDirectoryChannel).toBe('workspace:backup-choose-directory');
+  const { window, event, trustedUrl } = createFixture();
+  const showDirectoryDialog = vi.fn()
+    .mockResolvedValueOnce({ canceled: false, filePaths: ['/tmp/workspace.designhub-backup'] })
+    .mockResolvedValueOnce({ canceled: false, filePaths: ['/tmp/restored'] });
+  const choose = chooseBackupDirectoryHandler(window as never, trustedUrl, showDirectoryDialog);
+
+  await expect(choose(event as never, 'source')).resolves.toBe('/tmp/workspace.designhub-backup');
+  await expect(choose(event as never, 'destination')).resolves.toBe('/tmp/restored');
+  expect(showDirectoryDialog).toHaveBeenNthCalledWith(1, expect.anything(), ['openDirectory', 'treatPackageAsDirectory']);
+  expect(showDirectoryDialog).toHaveBeenNthCalledWith(2, expect.anything(), ['openDirectory', 'createDirectory']);
+
+  const untrustedEvent = { ...event, senderFrame: { url: 'file:///app/evil.html' } };
+  await expect(choose(untrustedEvent as never, 'destination')).resolves.toBeNull();
+  await expect(choose(event as never, 'unknown')).resolves.toBeNull();
+  expect(showDirectoryDialog).toHaveBeenCalledTimes(2);
 });
 
 it('rejects backup paths and untrusted senders', async () => {

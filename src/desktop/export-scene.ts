@@ -21,7 +21,7 @@ export const renderSceneSvg = (scene: DesignScene, imageAssets: ReadonlyMap<stri
     const href = `data:${escapeXml(asset.mimeType)};base64,${Buffer.from(asset.bytes).toString('base64')}`;
     return `<image href="${href}" x="${layer.x}" y="${layer.y}" width="${layer.width}" height="${layer.height}" opacity="${layer.opacity}" preserveAspectRatio="none" />`;
   }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}"><rect width="100%" height="100%" fill="#ffffff" />${layers}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}">${layers}</svg>`;
 };
 
 export const exportSceneToFile = async (input: { scene: DesignScene; format: ExportFormat; targetPath: string; background?: string; resolveImageAsset?: ExportImageAssetResolver; archiveCopy?: (input: { revisionId: string; path: string; sha256: string }) => Promise<void> }): Promise<ExportResult> => {

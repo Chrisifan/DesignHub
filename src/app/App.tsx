@@ -12,13 +12,15 @@ import type { AppProfile } from '../features/profile/model';
 import { getDesktopApi } from '../platform/desktop';
 import type { ProfileAvatarInput } from '../platform/contracts';
 import { usePointerDotBackground } from './usePointerDotBackground';
-import { createStartupProgressProfile, getVisualStartupProgress, type StartupCheck, type StartupCheckStatus, type StartupProgressProfile } from './startup-progress';
+import { getStartupProgress, type StartupCheck, type StartupCheckStatus } from './startup-progress';
+import { isProviderProfileStatusCacheValid, mergeProviderConnectionStatus } from '../features/providers/status';
 import './styles/tokens.css';
 import './styles/window.css';
 
 const splashDurationMs = 2200;
 const splashCompletionHoldMs = 320;
-const startupCheckIds = ['profile', 'library', 'workspace'] as const;
+const providerCheckTimeoutMs = 15_000;
+const startupCheckIds = ['profile', 'library', 'conversation', 'image', 'workspace'] as const;
 type AppPhase = 'splash' | 'profile' | 'model' | 'library' | 'studio';
 
 const createStartupChecks = (): StartupCheck[] => startupCheckIds.map((id, index) => ({
@@ -29,6 +31,8 @@ const createStartupChecks = (): StartupCheck[] => startupCheckIds.map((id, index
 const getStartupCheckLabels = (copy: Messages): Record<string, string> => ({
   profile: copy.splashCheckProfile,
   library: copy.splashCheckLibrary,
+  conversation: copy.splashCheckConversation,
+  image: copy.splashCheckImage,
   workspace: copy.splashCheckWorkspace,
 });
 
@@ -40,6 +44,11 @@ const savePreference = (key: string, value: string): void => {
   try { localStorage.setItem(key, value); } catch { /* in-memory fallback */ }
 };
 
+const withTimeout = async <T,>(request: Promise<T>): Promise<T> => new Promise<T>((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('PROVIDER_TEST_TIMEOUT')), providerCheckTimeoutMs);
+  void request.then(resolve, reject).finally(() => clearTimeout(timer));
+});
+
 export const App = () => {
   const [locale, setLocale] = useState<Locale>(() => readPreference('designhub.ui.locale') === 'en' ? 'en' : 'zh-CN');
   const [theme, setTheme] = useState<Theme>(() => {
@@ -48,8 +57,6 @@ export const App = () => {
   });
   const [phase, setPhase] = useState<AppPhase>('splash');
   const [startupChecks, setStartupChecks] = useState<StartupCheck[]>(createStartupChecks);
-  const [startupElapsedMs, setStartupElapsedMs] = useState(0);
-  const [startupProgressProfile] = useState<StartupProgressProfile>(() => createStartupProgressProfile());
   const [profile, setProfile] = useState<AppProfile | null>(null);
   const [libraryStatus, setLibraryStatus] = useState<ProjectLibraryStatus>({ state: 'unselected' });
   const [error, setError] = useState('');
@@ -72,17 +79,7 @@ export const App = () => {
   }, [theme]);
 
   useEffect(() => {
-    if (phase !== 'splash') return;
-    const startedAt = Date.now();
-    const progressTimer = setInterval(() => {
-      setStartupElapsedMs(Date.now() - startedAt);
-    }, 50);
-    return () => clearInterval(progressTimer);
-  }, [phase]);
-
-  useEffect(() => {
     let cancelled = false;
-    let completeTimer: ReturnType<typeof setTimeout> | undefined;
     let revealTimer: ReturnType<typeof setTimeout> | undefined;
     const startedAt = Date.now();
     const loadStartupState = async (): Promise<void> => {
@@ -99,18 +96,53 @@ export const App = () => {
         if (cancelled) return;
         if (status) setLibraryStatus(status);
         updateStartupCheck('library', 'complete');
+        const providerConfigs = await (api.loadProviderConfigs?.() ?? Promise.resolve(null)).catch(() => null);
+        let providerStatuses = await (api.loadProviderConnectionStatuses?.() ?? Promise.resolve({})).catch(() => ({}));
+        const providerConfig = providerConfigs?.['openai-compatible'];
+        const runProviderCheck = async (profile: 'conversation' | 'image'): Promise<void> => {
+          if (isProviderProfileStatusCacheValid(providerStatuses, 'openai-compatible', profile, providerConfig)) {
+            updateStartupCheck(profile, 'complete');
+            return;
+          }
+          updateStartupCheck(profile, 'active');
+          try {
+            if (status?.state !== 'ready') throw new Error('PROJECT_LIBRARY_NOT_OPEN');
+            if (profile === 'conversation') {
+              const model = providerConfig?.conversation.models.conversation;
+              if (!api.testConversation) throw new Error('CONVERSATION_TEST_UNAVAILABLE');
+              const result = await withTimeout(api.testConversation({ libraryId: status.library.libraryId, connectionId: 'openai-compatible', ...(model ? { model } : {}), timeoutMs: providerCheckTimeoutMs }));
+              if (!result) throw new Error('CONVERSATION_TEST_FAILED');
+            } else {
+              const model = providerConfig?.image.models['image-generation'];
+              if (!api.testImageGeneration) throw new Error('IMAGE_TEST_UNAVAILABLE');
+              const result = await withTimeout(api.testImageGeneration({
+                libraryId: status.library.libraryId,
+                connectionId: 'openai-compatible',
+                prompt: 'A clean editorial poster with a single orange chair on a pale blue background',
+                ...(model ? { model } : {}),
+                size: '1024x1024',
+                timeoutMs: providerCheckTimeoutMs,
+              }));
+              if (!result?.image) throw new Error('IMAGE_TEST_FAILED');
+            }
+            providerStatuses = mergeProviderConnectionStatus(providerStatuses ?? {}, 'openai-compatible', profile, 'connected', providerConfig);
+            updateStartupCheck(profile, 'complete');
+          } catch {
+            providerStatuses = mergeProviderConnectionStatus(providerStatuses ?? {}, 'openai-compatible', profile, 'error', providerConfig);
+            updateStartupCheck(profile, 'error');
+          }
+        };
+        await Promise.all([runProviderCheck('conversation'), runProviderCheck('image')]);
+        if (api.saveProviderConnectionStatuses && providerStatuses) await api.saveProviderConnectionStatuses(providerStatuses).catch(() => undefined);
         activeCheckId = 'workspace';
         updateStartupCheck(activeCheckId, 'active');
+        updateStartupCheck(activeCheckId, 'complete');
         const nextPhase: AppPhase = !loadedProfile?.onboarding.profileCompleted
           ? 'profile'
           : !loadedProfile.onboarding.modelStepCompleted
             ? 'model'
             : status?.state === 'ready' ? 'studio' : 'library';
         const remaining = Math.max(0, splashDurationMs + splashCompletionHoldMs - (Date.now() - startedAt));
-        const completeRemaining = Math.max(0, splashDurationMs - (Date.now() - startedAt));
-        completeTimer = setTimeout(() => {
-          if (!cancelled) updateStartupCheck('workspace', 'complete');
-        }, completeRemaining);
         revealTimer = setTimeout(() => {
           if (cancelled) return;
           setPhase(nextPhase);
@@ -127,7 +159,6 @@ export const App = () => {
     void loadStartupState();
     return () => {
       cancelled = true;
-      if (completeTimer) clearTimeout(completeTimer);
       if (revealTimer) clearTimeout(revealTimer);
     };
   }, []);
@@ -189,7 +220,7 @@ export const App = () => {
 
   const library = libraryStatus.state === 'ready' ? libraryStatus.library : null;
   const entered = phase === 'studio' && library !== null;
-  const startupProgress = getVisualStartupProgress(startupElapsedMs, splashDurationMs, startupProgressProfile);
+  const startupProgress = getStartupProgress(startupChecks);
   const startupCheckLabels = getStartupCheckLabels(copy);
   const activeStartupCheck = startupChecks.find((check) => check.status === 'active');
   const activeStartupLabel = activeStartupCheck

@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useMemo,
   useEffect,
@@ -36,15 +38,20 @@ import { BrandEditor } from '../../features/brands/BrandEditor';
 import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
 import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, type ProviderProfile } from '../../features/providers/config';
+import { getProviderProfileStatus, mergeProviderConnectionStatus, type ProviderConnectionStatusMap } from '../../features/providers/status';
 import type { DesignGenerationSlotId, DesignGenerationSlotState, TaskRecord } from '../../features/tasks/state';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
 import type { WorkspaceSettings } from '../../features/workspace/settings';
 import { DeliveryScenePreview } from './DeliveryScenePreview';
-import { ImageToolsPage } from '../../features/image-tools/ImageToolsPage';
-import type { ImageToolJob, ImageToolItem } from '../../features/image-tools/jobs';
+import type { BatchImageTool, ImageToolJob, ImageToolItem } from '../../features/image-tools/jobs';
 import './library.css';
+
+const ImageToolsPage = lazy(async () => {
+  const module = await import('../../features/image-tools/ImageToolsPage');
+  return { default: module.ImageToolsPage };
+});
 
 type LibraryPagesProps = PageProps & {
   view: Exclude<View, 'projects'>;
@@ -651,9 +658,11 @@ const ConnectionsPage = ({
 }: Pick<PageProps, 'locale'> & { libraryId?: string; dialogOpen?: boolean; onDialogClose?: () => void }) => {
   const [connectionState, setConnectionState] = useState<Record<string, boolean>>({});
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap>({});
+  const [providerStatuses, setProviderStatuses] = useState<ProviderConnectionStatusMap>({});
   const [providerActions, setProviderActions] = useState<ProviderSettingsActions | null>(null);
   const [activeProfile, setActiveProfile] = useState<ProviderProfile>('conversation');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const statusAware = Boolean(getDesktopApi().loadProviderConnectionStatuses);
   const isDialogOpen = dialogOpen ?? drawerOpen;
   const openDialog = (profile: ProviderProfile) => {
     setActiveProfile(profile);
@@ -677,15 +686,33 @@ const ConnectionsPage = ({
     void Promise.all([
       Promise.all(checks),
       getDesktopApi().loadProviderConfigs?.() ?? Promise.resolve(null),
-    ]).then(([entries, configs]) => {
+      getDesktopApi().loadProviderConnectionStatuses?.() ?? Promise.resolve(null),
+    ]).then(([entries, configs, statuses]) => {
       if (cancelled) return;
       setConnectionState(Object.fromEntries(entries));
       setProviderConfigs(configs ?? {});
+      setProviderStatuses(statuses ?? {});
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
-  const connections = availableConnections.map((connection) => ({ ...connection, status: providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)]) ? 'connected' as const : 'not-configured' as const }));
-  const hasConnected = availableConnections.some((connection) => providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)]));
+  const connections = availableConnections.map((connection) => {
+    const profileStatuses = Object.fromEntries(providerProfiles.map((profile) => [
+      profile,
+      statusAware
+        ? getProviderProfileStatus(providerStatuses, connection.id as 'openai-compatible', profile, providerConfigs)
+        : connectionState[providerCredentialAccount(connection.id, profile)] ? 'connected' : 'unknown',
+    ])) as Record<ProviderProfile, ReturnType<typeof getProviderProfileStatus>>;
+    const connected = providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)] && profileStatuses[profile] === 'connected');
+    const failed = providerProfiles.some((profile) => connectionState[providerCredentialAccount(connection.id, profile)] && profileStatuses[profile] === 'error');
+    return { ...connection, profileStatuses, status: connected ? 'connected' as const : failed ? 'error' as const : 'not-configured' as const };
+  });
+  const hasConnected = connections.some((connection) => connection.status === 'connected');
+  const hasFailure = connections.some((connection) => connection.status === 'error');
+  const recordProviderStatus = async (profile: ProviderProfile, status: 'connected' | 'error'): Promise<void> => {
+    const next = mergeProviderConnectionStatus(providerStatuses, 'openai-compatible', profile, status, providerConfigs);
+    setProviderStatuses(next);
+    await (getDesktopApi().saveProviderConnectionStatuses?.(next) ?? Promise.resolve(false)).catch(() => undefined);
+  };
   const profileRows: readonly { profile: ProviderProfile; icon: string; label: string }[] = [
     { profile: 'conversation', icon: 'message-square', label: t(locale, '对话与视觉', 'Conversation and vision') },
     { profile: 'image', icon: 'image', label: t(locale, '图片生成与编辑', 'Image generation and editing') },
@@ -705,9 +732,11 @@ const ConnectionsPage = ({
       <div className="page-empty-state">
         <EmptyState
           icon="plug"
-          title={hasConnected ? t(locale, '模型已连接', 'Models connected') : t(locale, '尚未连接模型', 'No models connected')}
+          title={hasConnected ? t(locale, '模型已连接', 'Models connected') : hasFailure ? t(locale, '模型连接失败', 'Model connection failed') : t(locale, '尚未连接模型', 'No models connected')}
           description={hasConnected
-            ? t(locale, '已检测到本机安全存储中的模型凭据。', 'Model credentials were found in local secure storage.')
+            ? t(locale, '启动自检已验证模型连接可用。', 'Startup checks verified that the model connection is available.')
+            : hasFailure
+              ? t(locale, '最近一次连接测试失败，请检查地址、密钥和模型。', 'The latest connection test failed. Check the URL, key and model.')
             : !libraryId ? t(
               locale,
               '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
@@ -758,8 +787,28 @@ const ConnectionsPage = ({
               if (saved) setProviderConfigs((current) => ({ ...current, [connectionId]: config }));
               return saved;
             }}
-            onTestConversation={libraryId ? async (connectionId, input) => getDesktopApi().testConversation?.({ libraryId, connectionId, ...input }) ?? null : undefined}
-            onTestImageGeneration={libraryId ? async (connectionId, input) => getDesktopApi().testImageGeneration?.({ libraryId, connectionId, ...input }) ?? null : undefined}
+            onTestConversation={libraryId ? async (connectionId, input) => {
+              try {
+                const result = await (getDesktopApi().testConversation?.({ libraryId, connectionId, ...input }) ?? null);
+                if (!result) throw new Error('CONVERSATION_TEST_FAILED');
+                await recordProviderStatus('conversation', 'connected');
+                return result;
+              } catch (error) {
+                await recordProviderStatus('conversation', 'error');
+                throw error;
+              }
+            } : undefined}
+            onTestImageGeneration={libraryId ? async (connectionId, input) => {
+              try {
+                const result = await (getDesktopApi().testImageGeneration?.({ libraryId, connectionId, ...input }) ?? null);
+                if (!result?.image) throw new Error('IMAGE_TEST_FAILED');
+                await recordProviderStatus('image', 'connected');
+                return result;
+              } catch (error) {
+                await recordProviderStatus('image', 'error');
+                throw error;
+              }
+            } : undefined}
             onCheckCredential={checkCredential}
             onStoreCredential={async (connectionId, secret) => {
               const stored = await (getDesktopApi().storeCredential?.(connectionId, secret) ?? false);
@@ -780,7 +829,11 @@ const ConnectionsPage = ({
           <span>{t(locale, '连接状态', 'Connection state')}</span>
         </div>
         {profileRows.map(({ profile, icon, label }) => {
-          const connected = Boolean(connectionState[providerCredentialAccount('openai-compatible', profile)]);
+          const profileStatus = connections[0]?.profileStatuses?.[profile] ?? 'unknown';
+          const connected = profileStatus === 'connected'
+            && Boolean(connectionState[providerCredentialAccount('openai-compatible', profile)]);
+          const failed = profileStatus === 'error'
+            && Boolean(connectionState[providerCredentialAccount('openai-compatible', profile)]);
           return (
             <button
               type="button"
@@ -794,7 +847,7 @@ const ConnectionsPage = ({
                 <Icon name={icon} size={17} />
                 {label}
               </span>
-              <Badge tone={connected ? 'success' : ''}>{connected ? t(locale, '已连接', 'Connected') : t(locale, '未配置', 'Not configured')}</Badge>
+              <Badge tone={connected ? 'success' : failed ? 'error' : ''}>{connected ? t(locale, '已连接', 'Connected') : failed ? t(locale, '连接失败', 'Connection failed') : t(locale, '未配置', 'Not configured')}</Badge>
             </button>
           );
         })}
@@ -1476,6 +1529,20 @@ const StoragePage = ({
       notify?.(t(locale, '备份失败，请重试', 'Backup failed; try again'));
     } finally { setBusy(false); }
   }, [backupSchedule, busy, locale, notify, readOnly, libraryId]);
+  const chooseBackupDestination = async (): Promise<void> => {
+    if (!libraryId || readOnly || busy) return;
+    setBusy(true);
+    try {
+      const destination = await getDesktopApi().chooseWorkspaceBackupDirectory?.('destination');
+      if (!destination) return;
+      const preferences = { ...readBackupPreferences(libraryId), destinationParentDirectory: destination, schedule: backupSchedule };
+      setBackupDestination(destination);
+      persistBackupPreferences(libraryId, preferences);
+      notify?.(t(locale, '备份位置已更新', 'Backup destination updated'));
+    } catch {
+      notify?.(t(locale, '无法选择备份位置', 'Could not choose a backup destination'));
+    } finally { setBusy(false); }
+  };
   const createBackup = async (): Promise<void> => {
     if (!libraryId || readOnly) return;
     const destination = backupDestination;
@@ -1506,10 +1573,17 @@ const StoragePage = ({
     return () => window.clearInterval(timer);
   }, [backupDestination, backupLastRunAt, backupSchedule, performBackup, readOnly, libraryId]);
   const restoreBackup = async (): Promise<void> => {
-    if (readOnly) return;
+    if (!libraryId || readOnly || busy) return;
     setBusy(true);
     try {
-      notify?.(t(locale, '请在设置中提供备份目录后恢复', 'Provide backup directories in settings before restoring'));
+      const api = getDesktopApi();
+      const backupDirectory = await api.chooseWorkspaceBackupDirectory?.('source');
+      if (!backupDirectory) return;
+      const destinationParentDirectory = await api.chooseWorkspaceBackupDirectory?.('destination');
+      if (!destinationParentDirectory) return;
+      const result = await api.restoreWorkspaceBackup?.({ backupDirectory, destinationParentDirectory });
+      if (!result) throw new Error('BACKUP_RESTORE_FAILED');
+      notify?.(t(locale, `备份已恢复到 ${result.directory}`, `Backup restored to ${result.directory}`));
     } catch {
       notify?.(t(locale, '恢复失败，请重试', 'Restore failed; try again'));
     } finally { setBusy(false); }
@@ -1518,7 +1592,7 @@ const StoragePage = ({
   return (
   <section className="page-content library-page">
     <PageHeader
-      title={t(locale, '工作区管理', 'Workspace management')}
+      title={t(locale, '废纸篓与备份', 'Trash & backups')}
       eyebrow={t(locale, '本地内容', 'Local content')}
       description={t(
         locale,
@@ -1528,7 +1602,7 @@ const StoragePage = ({
     />
     <div
       className="tab-bar"
-      aria-label={t(locale, '工作区管理', 'Workspace management')}
+      aria-label={t(locale, '废纸篓与备份', 'Trash & backups')}
     >
       <button
         type="button"
@@ -1608,8 +1682,9 @@ const StoragePage = ({
           </Field>
         </div>
         <div className="storage-actions">
+          <Button icon="folder-open" disabled={!hasWorkspace || readOnly || busy} onClick={() => { void chooseBackupDestination(); }}>{t(locale, '选择备份位置', 'Choose backup destination')}</Button>
           <Button icon="download" disabled={!hasWorkspace || readOnly || busy} onClick={() => { void createBackup(); }}>{t(locale, '创建备份', 'Create backup')}</Button>
-          <Button icon="upload" disabled={readOnly || busy} onClick={() => { void restoreBackup(); }}>{t(locale, '恢复备份', 'Restore backup')}</Button>
+          <Button icon="upload" disabled={!hasWorkspace || readOnly || busy} onClick={() => { void restoreBackup(); }}>{t(locale, '恢复备份', 'Restore backup')}</Button>
         </div>
       </div>
     )}
@@ -1674,8 +1749,19 @@ const SettingsPage = ({
   const [hasConnectedModel, setHasConnectedModel] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    void Promise.all(providerProfiles.map(async (profile) => getDesktopApi().hasCredential?.(providerCredentialAccount('openai-compatible', profile)) ?? false))
-      .then((entries) => { if (!cancelled) setHasConnectedModel(entries.some(Boolean)); })
+    const api = getDesktopApi();
+    void Promise.all([
+      Promise.all(providerProfiles.map(async (profile) => getDesktopApi().hasCredential?.(providerCredentialAccount('openai-compatible', profile)) ?? false)),
+      api.loadProviderConfigs?.() ?? Promise.resolve(null),
+      api.loadProviderConnectionStatuses?.() ?? Promise.resolve(null),
+    ])
+      .then(([entries, configs, statuses]) => {
+        if (cancelled) return;
+        const connected = api.loadProviderConnectionStatuses
+          ? providerProfiles.some((profile, index) => entries[index] && getProviderProfileStatus(statuses, 'openai-compatible', profile, configs ?? undefined) === 'connected')
+          : entries.some(Boolean);
+        setHasConnectedModel(connected);
+      })
       .catch(() => { if (!cancelled) setHasConnectedModel(false); });
     return () => { cancelled = true; };
   }, [libraryId]);
@@ -1867,7 +1953,12 @@ export const LibraryPages = ({
     const loaded = await api.listImageToolJobs(libraryId);
     if (loaded) setImageToolJobs(loaded);
   }, [libraryId]);
-  useEffect(() => { if (view === 'image-tools') void refreshImageToolJobs(); }, [refreshImageToolJobs, view]);
+  useEffect(() => {
+    if (!(view === 'image-tools' || view.startsWith('image-tool-'))) return;
+    void refreshImageToolJobs();
+    const timer = window.setInterval(() => { void refreshImageToolJobs(); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [refreshImageToolJobs, view]);
   const [assetQuery, setAssetQuery] = useState('');
   const [assetType, setAssetType] = useState<AssetType>('all');
   const [assetLayout, setAssetLayout] = useState<'grid' | 'list'>('grid');
@@ -1876,6 +1967,41 @@ export const LibraryPages = ({
   const [deliveryFormat, setDeliveryFormat] = useState<DeliveryFormat>('png');
   const [archiveCopy, setArchiveCopy] = useState(false);
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
+  const renderImageToolsPage = (tool?: BatchImageTool): ReactNode => !active ? null : (
+    <Suspense fallback={<EmptyState icon="loader-circle" title={t(locale, '正在加载图像工具', 'Loading image tools')} description={t(locale, '正在准备批量处理工作台。', 'Preparing the batch image workbench.')} />}>
+      <ImageToolsPage
+      locale={locale}
+      tool={tool}
+      jobs={imageToolJobs}
+      onChooseInput={async () => getDesktopApi().chooseImageToolInput?.() ?? null}
+      onChooseOutput={async () => getDesktopApi().chooseImageToolOutput?.() ?? null}
+      onOpenConnections={() => navigate('connections')}
+      onScan={async (input) => {
+        if (!libraryId) return null;
+        const result = await getDesktopApi().scanImageToolSources?.({ libraryId, ...input });
+        return result ? { accepted: result.accepted.map((item) => ({ relativePath: item.relativePath })), rejected: result.rejected } : null;
+      }}
+      onCreate={async (input) => {
+        const api = getDesktopApi();
+        if (!libraryId || !api.createImageToolJob) return;
+        await api.createImageToolJob({ libraryId, ...input });
+        await refreshImageToolJobs();
+      }}
+      onPause={async (jobId) => { if (libraryId) { await getDesktopApi().pauseImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
+      onResume={async (jobId) => { if (libraryId) { await getDesktopApi().resumeImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
+      onCancel={async (jobId) => { if (libraryId) { await getDesktopApi().cancelImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
+      onRetryItem={async (jobId, itemId) => { if (libraryId) { await getDesktopApi().retryImageToolItem?.({ libraryId, jobId, itemId }); await refreshImageToolJobs(); } }}
+      onReadResult={async (path, jobId) => {
+        if (!libraryId) return null;
+        return getDesktopApi().readImageToolResult?.({ libraryId, jobId, path }) ?? null;
+      }}
+      onOpenResult={async (path, jobId) => { if (libraryId) await getDesktopApi().openImageToolResult?.({ libraryId, jobId, path }); }}
+      onRevealResult={async (path, jobId) => { if (libraryId) await getDesktopApi().revealImageToolResult?.({ libraryId, jobId, path }); }}
+      onOpenOutput={async (path, jobId) => { if (libraryId) await getDesktopApi().openImageToolOutput?.({ libraryId, jobId, path }); }}
+      onImportResult={async (path, jobId) => { if (libraryId && projectId) await getDesktopApi().importImageToolResult?.({ libraryId, projectId, jobId, path }); }}
+      />
+    </Suspense>
+  );
   const pages: Record<Exclude<View, 'projects'>, ReactNode> = {
     designers: (
       <DesignerLibrary
@@ -1929,33 +2055,11 @@ export const LibraryPages = ({
       onDialogClose={onConnectionsDialogClose}
     />,
     tasks: <TasksPage locale={locale} navigate={navigate} libraryId={libraryId} active={active} />,
-    'image-tools': (
-      <ImageToolsPage
-        locale={locale}
-        jobs={imageToolJobs}
-        onChooseInput={async () => getDesktopApi().chooseImageToolInput?.() ?? null}
-        onChooseOutput={async () => getDesktopApi().chooseImageToolOutput?.() ?? null}
-        onScan={async (input) => {
-          if (!libraryId) return null;
-          const result = await getDesktopApi().scanImageToolSources?.({ libraryId, ...input });
-          return result ? { accepted: result.accepted.map((item) => ({ relativePath: item.relativePath })), rejected: result.rejected } : null;
-        }}
-        onCreate={async (input) => {
-          const api = getDesktopApi();
-          if (!libraryId || !api.createImageToolJob) return;
-          await api.createImageToolJob({ libraryId, ...input });
-          await refreshImageToolJobs();
-        }}
-        onPause={async (jobId) => { if (libraryId) { await getDesktopApi().pauseImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
-        onResume={async (jobId) => { if (libraryId) { await getDesktopApi().resumeImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
-        onCancel={async (jobId) => { if (libraryId) { await getDesktopApi().cancelImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
-        onRetryItem={async (jobId, itemId) => { if (libraryId) { await getDesktopApi().retryImageToolItem?.({ libraryId, jobId, itemId }); await refreshImageToolJobs(); } }}
-        onOpenResult={async (path, jobId) => { if (libraryId) await getDesktopApi().openImageToolResult?.({ libraryId, jobId, path }); }}
-        onRevealResult={async (path, jobId) => { if (libraryId) await getDesktopApi().revealImageToolResult?.({ libraryId, jobId, path }); }}
-        onOpenOutput={async (path, jobId) => { if (libraryId) await getDesktopApi().openImageToolOutput?.({ libraryId, jobId, path }); }}
-        onImportResult={async (path, jobId) => { if (libraryId && projectId) await getDesktopApi().importImageToolResult?.({ libraryId, projectId, jobId, path }); }}
-      />
-    ),
+    'image-tools': renderImageToolsPage(),
+    'image-tool-remove-background': renderImageToolsPage('remove-background'),
+    'image-tool-upscale': renderImageToolsPage('upscale'),
+    'image-tool-resize': renderImageToolsPage('resize'),
+    'image-tool-format-convert': renderImageToolsPage('format-convert'),
     delivery: (
       <DeliveryPage
         locale={locale}

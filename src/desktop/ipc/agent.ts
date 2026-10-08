@@ -82,7 +82,8 @@ const isConversationTestInput = (value: unknown): value is ConversationTestBridg
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
   return isNonEmpty(input.libraryId) && isNonEmpty(input.connectionId)
-    && (input.model === undefined || isNonEmpty(input.model));
+    && (input.model === undefined || isNonEmpty(input.model))
+    && (input.timeoutMs === undefined || (Number.isInteger(input.timeoutMs) && Number(input.timeoutMs) >= 1 && Number(input.timeoutMs) <= 300_000));
 };
 const isDesignGenerationInput = (value: unknown): value is DesignGenerationBridgeInput => {
   if (!value || typeof value !== 'object') return false;
@@ -145,7 +146,8 @@ const isImageGenerationTestInput = (value: unknown): value is ImageGenerationTes
   const input = value as Record<string, unknown>;
   return isNonEmpty(input.libraryId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
     && (input.model === undefined || isNonEmpty(input.model))
-    && (input.size === undefined || isNonEmpty(input.size));
+    && (input.size === undefined || isNonEmpty(input.size))
+    && (input.timeoutMs === undefined || (Number.isInteger(input.timeoutMs) && Number(input.timeoutMs) >= 1 && Number(input.timeoutMs) <= 300_000));
 };
 const isDesignerArtworkGenerationInput = (value: unknown): value is DesignerArtworkGenerationBridgeInput => {
   if (!value || typeof value !== 'object') return false;

@@ -1,5 +1,95 @@
 # DesignHub 当前完成度与推进基线（2026-09-27）
 
+## 2026-10-05 remaining IPC 续推进
+
+- 将 project-library lifecycle、credential store/delete/status 和 document export IPC 注册从 src/desktop/main.ts 抽出到独立 registrar；保留可信窗口、活动 libraryId、可写库、keyring、归档副本和导出历史语义。
+- 新增对应注册完整性测试；project-library 8/8，credentials/export 5/5；pnpm lint、pnpm typecheck 通过。
+- 本轮尚未重新宣称完整 E2E、native packaged 或真实 provider 通过。
+
+## 2026-10-05 remaining IPC 合并验证
+
+- pnpm test:focused：38 files / 164 passed / 8 skipped。
+- pnpm test:unit：164 files / 933 passed / 8 skipped。
+- pnpm test:integration：30 files / 131 passed。
+- pnpm build、pnpm lint、pnpm typecheck、git diff --check：通过。
+- renderer 初始 chunk 仍为 824.91 kB，Vite warning 尚未关闭；完整 browser E2E 仍需稳定 preview server 后重跑。
+
+## 2026-10-04 content IPC 续推进
+
+- 将 designer、brand、asset、scene、revision IPC 注册从 src/desktop/main.ts 抽出到 src/desktop/ipc/register-content-handlers.ts，保持 libraryId 绑定、可写库边界、scene/revision 校验和 workspaceId 持久化映射不变。
+- 新增 register-content-handlers.test.ts，并纳入 pnpm test:focused；聚焦验证 6 files / 12 passed。
+- pnpm lint、pnpm typecheck 通过；完整 E2E、native packaged 和真实 provider 仍未在本轮重新验证。
+
+## 2026-10-04 content 后合并验证
+
+- pnpm test:focused：32 files / 151 passed / 8 skipped。
+- pnpm test:unit：161 files / 929 passed / 8 skipped。
+- pnpm test:integration：30 files / 131 passed。
+- pnpm build、pnpm lint、pnpm typecheck、git diff --check：通过。
+- renderer 初始 chunk 仍为 824.91 kB，Vite warning 尚未关闭；完整 browser E2E 仍需稳定 preview server 后重跑。
+
+## 2026-10-03 project IPC 续推进
+
+- 将项目列表、创建/复制、metadata、designs、canvas layout 与 trash 生命周期 IPC 注册从 src/desktop/main.ts 抽出到 src/desktop/ipc/register-projects.ts，保持活动 libraryId、可写库检查、输入校验和 project-store 回调不变。
+- 新增 register-projects.test.ts，并纳入 pnpm test:focused；聚焦验证 2 files / 4 passed。
+- pnpm lint、pnpm typecheck 通过；完整 E2E、native packaged 和真实 provider 仍未在本轮重新验证。
+
+## 2026-10-03 project 后合并验证
+
+- pnpm test:focused：26 files / 139 passed / 8 skipped。
+- pnpm test:unit：160 files / 928 passed / 8 skipped。
+- pnpm test:integration：30 files / 131 passed。
+- pnpm build、pnpm lint、pnpm typecheck、git diff --check：通过。
+- renderer 初始 chunk 仍为 824.91 kB，Vite warning 尚未关闭；完整 browser E2E 仍需稳定 preview server 后重跑。
+
+## 2026-10-03 profile IPC 续推进
+
+- 将 profile load/save IPC 注册从 src/desktop/main.ts 抽出到 src/desktop/ipc/register-profile.ts，保持可信发送方、profile schema、头像归一化和 profile store 行为不变。
+- 新增 register-profile.test.ts，并纳入 pnpm test:focused；聚焦验证 2 files / 6 passed。
+- pnpm lint、pnpm typecheck 通过；完整 E2E、native packaged 和真实 provider 仍未在本轮重新验证。
+
+## 2026-10-03 profile 后合并验证
+
+- pnpm test:focused：24 files / 135 passed / 8 skipped。
+- pnpm test:unit：159 files / 927 passed / 8 skipped。
+- pnpm test:integration：30 files / 131 passed。
+- pnpm build、pnpm lint、pnpm typecheck、git diff --check：通过。
+- renderer 初始 chunk 仍为 824.91 kB，Vite warning 尚未关闭；完整 browser E2E 仍需稳定 preview server 后重跑。
+
+## 2026-10-03 代码优化续推进
+
+- 将项目包导入/导出 IPC 注册从 src/desktop/main.ts 抽出到 src/desktop/ipc/register-project-package.ts，保持活动 libraryId、可信发送方、可写库边界、对话框和归档存储语义不变。
+- 新增 register-project-package.test.ts，并将项目包合约套件纳入 pnpm test:focused；聚焦验证 2 files / 3 passed。
+- pnpm lint、pnpm typecheck 通过；本轮未重新宣称完整 E2E、native packaged 或真实 provider 通过。
+- Task 5 仍为 partial，agent/project/export/search/backup 等注册组尚待拆分。
+
+## 2026-10-03 合并验证
+
+- pnpm test:focused：18 files / 123 passed / 8 skipped。
+- pnpm test:unit：157 files / 925 passed / 8 skipped。
+- pnpm test:integration：30 files / 131 passed。
+- pnpm build、pnpm lint、pnpm typecheck、git diff --check：通过。
+- renderer 初始 chunk 仍为 824.91 kB，Vite 500 kB warning 尚未关闭；完整 browser E2E 仍等待稳定 preview server 后重跑。
+
+## 2026-10-03 支持型 IPC 续推进
+
+- 将 backup、export-history、diagnostics IPC 注册从 src/desktop/main.ts 抽出到 src/desktop/ipc/register-support-handlers.ts，保持可信发送方、活动 libraryId、备份存储生命周期、导出目标可用性和诊断文件写入语义不变。
+- 新增 register-support-handlers.test.ts，并纳入 pnpm test:focused；聚焦验证 4 files / 6 passed。
+- pnpm lint、pnpm typecheck 通过；本轮未重新宣称完整 E2E、native packaged 或真实 provider 通过。
+
+## 2026-10-03 支持型 IPC 合并验证
+
+- pnpm test:focused：22 files / 129 passed / 8 skipped。
+- pnpm test:unit：158 files / 926 passed / 8 skipped。
+- pnpm test:integration：30 files / 131 passed。
+- pnpm build、pnpm lint、pnpm typecheck、git diff --check：通过。
+- renderer 初始 chunk 仍为 824.91 kB，Vite warning 尚未关闭；完整 browser E2E 仍需稳定 preview server 后重跑。
+
+## 2026-10-03 搜索 IPC 续推进
+
+- 将 search rebuild/query IPC 注册从 src/desktop/main.ts 抽出到 src/desktop/ipc/register-search.ts，保留活动 libraryId、可信发送方和索引 store 关闭语义。
+- 新增 register-search.test.ts，并纳入 pnpm test:focused；聚焦验证 2 files / 3 passed。
+- pnpm lint、pnpm typecheck 通过；完整 E2E、native packaged 和真实 provider 仍不在本轮证据内。
 ## 当前结论（2026-09-27）
 
 本地完整性闭环已收口：单项目库迁移、首次启动引导/启动屏、App/Studio/native/E2E 契约和布局回归均已完成本地可验证闭环。`pnpm release:check` 最终为 `passed-with-blockers`，所有本地命令和 package scan 通过；剩余阻塞均为未在当前 macOS 环境中可诚实验证的外部门禁。
@@ -171,3 +261,91 @@
 - 外部/高风险门禁仍保持 blocked：真实 provider、Windows、签名、公证、Keychain、native packaged、项目包大文件/跨设备和人工视觉质量。
 
 本轮最终门禁：`pnpm release:check` = `passed-with-blockers`；unit 144/843（8 skipped）、integration 29/129、E2E 41/41、native source 2 passed/packaged 1 skipped，lint/typecheck/build/diff-check/package scan 通过。live provider smoke 因未显式授权而 blocked。
+
+## 2026-10-01 当前工作树推进
+
+本轮关闭了两个本地功能缺口：
+
+1. 新建项目抽屉接入标准设计、智能构图和样机模式。智能构图候选保留核心/可选/参考素材角色；样机模式接入内置手机屏幕、海报画框、包装袋模板及颜色/最小尺寸校验。所有结果以候选场景打开 Workbench，确认前不落正式修订。
+2. 项目包新增存储层导出服务和跨项目库交接集成测试，验证源库隔离后仍可导入、重开、编辑、提交新修订并再次导出；外部 ZIP 使用临时文件和 no-replace 发布，目标冲突不覆盖且临时文件清理。
+
+新鲜聚焦验证：21 个文件，247 passed、8 skipped；`pnpm typecheck`、`pnpm lint`、`pnpm build`、`git diff --check` 通过。尚未重新执行全量 unit/integration/E2E/native/provider/release-check，因此历史全量数字不作为本轮全量证据。
+
+仍保持 blocked：ZIP 流式/固定内存大包处理、批量 native 文件选择器实机、真实 provider 质量/费用/远端取消、Windows 真机、签名/公证、Keychain、跨设备恢复、packaged native 和人工视觉质量。
+
+## 2026-10-01 候选恢复与当前全量门禁
+
+智能构图和样机候选现已由任务存储持久化。重启后 Workbench 会恢复同一项目、同一文档中尚未解决的候选；确认或放弃会写入 `confirmed` / `discarded` 审计状态，避免候选在下一次启动重复出现。发布边界校验活动 `libraryId`、可写 lease、项目/文档归属、正式 scene schema 和受管素材引用。
+
+本轮新鲜结果：unit 148 files / 905 passed / 8 skipped；integration 30 files / 131 passed；E2E 47/47；native source 2 passed / packaged 1 skipped；provider offline 3/3；lint、typecheck、build、diff-check 通过。浏览器 E2E 仍是 bridge fixture，native packaged 仍因未配置 `DESIGNHUB_PACKAGED_APP_PATH` 跳过。
+
+本地仍未关闭：ZIP 流式/固定内存大包处理和 benchmark。外部或授权门禁仍为真实 provider、Windows、签名/公证、Keychain、安装升级、跨设备恢复、packaged native 和人工视觉质量。
+
+## 2026-10-01 代码优化推进
+
+- 任务服务新增纯函数 task error policy，保持原有错误优先级和公共 AgentTaskService facade；新增候选确认幂等回归测试，确认重复 resolve 不重复写入持久化状态。
+- 批量图像工具页面抽出 view-model helpers，集中处理作业过滤、进度、内容名、路径冲突、结果预览路径和 active/unknown 状态判断；页面继续保留现有 bridge 与交互契约。
+- 主进程批量图像工具 IPC 注册抽为独立、可测试的 register-image-tools 模块，频道名称和 handler 入参保持不变。
+- 本轮聚焦证据：unit 151 files / 914 passed / 8 skipped；integration 30 files / 131 passed；聚焦 image-tools/candidate E2E 4/4；native source 2 passed / packaged 1 skipped；provider offline 3/3；lint、typecheck、build、git diff --check 通过。
+- 完整 browser E2E 首次重跑中途出现 18 个 ERR_CONNECTION_REFUSED，已确认聚焦 image-tools/candidate E2E 通过；该环境性失败不能标记全量 E2E 通过，需在稳定 web server 后单独重跑。
+- build 仍有 renderer bundle size warning；ZIP 大包流式、真实 provider、Windows、签名/公证、Keychain、packaged native 和人工视觉质量继续 blocked。
+
+## 2026-10-02 设置与 provider IPC 续推进
+
+- 将 settings 与 provider 配置 IPC 注册从 src/desktop/main.ts 抽出到 src/desktop/ipc/register-settings-provider.ts，保持活动 libraryId 绑定、可信发送方校验、设置 schema 校验和 provider 配置归一化不变。
+- 新增 register-settings-provider.test.ts，并将 settings/provider 合约套件纳入 pnpm test:focused；聚焦验证 3 files / 5 passed。
+- pnpm lint、pnpm typecheck 通过；本轮未重新宣称全量 E2E、native packaged 或真实 provider 通过。
+- Task 5（主进程 IPC 与存储分层）仍为 partial，agent/package/export/search/backup 等注册组继续保留在 main.ts，后续按相同兼容策略增量拆分。
+
+## 2026-10-02 代码优化续推进
+
+- 将任务列表与候选构图发布/决议的 IPC 注册从 src/desktop/main.ts 抽出到 src/desktop/ipc/register-task-handlers.ts，保持频道名、活动 libraryId 校验、可写项目库边界和候选素材校验不变。
+- 新增 src/desktop/ipc/register-task-handlers.test.ts，并纳入 pnpm test:focused；聚焦 IPC 套件 2 files / 4 passed。
+- pnpm lint、pnpm typecheck 通过；本轮未重新宣称全量 E2E、native packaged 或真实 provider 通过。
+- Task 5（主进程 IPC 与存储分层）仍为 partial，agent/settings/package/export 等注册组继续保留在 main.ts，后续按相同兼容策略增量拆分。
+
+## 2026-10-02 代码优化推进续记
+
+- Workbench 候选选择、候选场景解析和未解决候选恢复已抽为 `src/app/studio/candidate-controller.ts`；任务刷新/清理生命周期已抽为 `src/app/studio/task-polling.ts`。公共 props、bridge 和候选修订语义保持不变。
+- `pnpm test:focused` 已扩展到候选控制器、任务轮询和 Workbench 回归；本轮 9 files / 108 passed / 8 skipped。
+- 新鲜全量本地证据：`pnpm test:unit` 153 files / 921 passed / 8 skipped；`pnpm test:integration` 30 files / 131 passed；`pnpm lint`、`pnpm typecheck`、`pnpm build`、`git diff --check` 通过。
+- 构建后 renderer 初始 chunk 824.91 kB，ImageToolsPage 独立 chunk 28.70 kB；Vite 仍报告 500 kB 以上 warning，后续继续处理。
+- 完整 browser E2E 仍未重新形成全绿证据；此前重跑在 29 个通过后出现 18 个 `ERR_CONNECTION_REFUSED`，需稳定 preview server 后重跑。
+
+## 2026-10-05 code optimization continuation
+
+- Main-process IPC registration is now fully separated from `main.ts`: portfolio channels use `register-portfolio.ts`; agent/task/conversation/image channels use `register-agent.ts`.
+- Public typed IPC names, `libraryId` authorization, writable-library checks, provider selection, task cancellation/retry and portfolio source behavior were preserved.
+- Fresh focused verification: `pnpm test:focused` 41 files / 182 passed / 8 skipped; `pnpm test:unit` 166 files / 937 passed / 8 skipped; `pnpm test:integration` 30 files / 131 passed; `pnpm lint`, `pnpm typecheck`, and `git diff --check` passed.
+- This is not a full release gate result. Renderer initial chunk remains 824.91 kB with the Vite warning; storage/domain split, package large-file memory evidence, stable full E2E, packaged native, live provider, Windows, signing/notarization, Keychain, ZIP streaming and human visual QA remain open or blocked.
+
+补充：本轮随后完成稳定 preview server 下的完整门禁，`pnpm test:e2e` 47/47 通过；`pnpm test:native` source 2 passed / packaged 1 skipped；`pnpm release:check` 为 `passed-with-blockers`，package scan 433 files。此前 connection-refused 的 E2E 记录仅保留为历史环境失败，不再代表当前 E2E 结果。
+
+离线 provider 契约随后复核为 3/3 通过；live provider smoke 仍未执行并保持 blocked。
+
+## 2026-10-05 ImageTools preview state continuation
+
+- Extracted result preview hydration and lifecycle protection into `src/features/image-tools/use-image-tool-previews.ts` without changing bridge payloads or fallback behavior.
+- Focused verification: 42 files / 184 passed / 8 skipped; lint, typecheck and diff-check passed.
+- Remaining optimization work includes the rest of the ImageTools page/backend split and the 824.91 kB renderer chunk warning.
+
+## 2026-10-06 代码优化推进
+
+- 已完成：TaskRecord factory、任务状态机 facade、批量图像命令 facade、独立任务/批量性能门槛测试。
+- 最新聚焦证据：45 files / 191 passed / 8 skipped；性能测试 2/2；unit 170 files / 946 passed / 8 skipped；integration 30 files / 131 passed；lint/typecheck/build/diff-check 通过。
+- 仍未完成：任务 executor/recovery/candidate/runtime adapter 全量拆分，ImageTools 页面和批量后端完整职责拆分，Studio/Workbench 状态继续收口，desktop service/storage 深拆，项目包固定内存优化，renderer 初始 chunk <500 kB。
+- 外部 blocked：Windows、签名/公证、Keychain、packaged native、真实 provider 质量/费用/远端取消、ZIP 严格流式和人工视觉质量。
+
+## 2026-10-07 剩余优化状态
+
+本轮完成任务链拆分、批量页面/后端边界、Workbench 选中图层提交控制器、task service factory、项目包重复 copy 优化、共享 fixture 和独立 package/image-tools 性能命令。公共 `libraryId`、typed IPC、TaskRecord 和候选修订协议未改变。
+
+实际聚焦证据：任务链 6 files / 98 passed；image-tools 17 files / 62 passed；Workbench/controller 3 files / 60 passed；package/image-tools perf 2/2；项目包 handoff 8/8。renderer 初始 chunk、严格 ZIP 固定内存、其余 desktop service 下沉和外部发布门禁仍未关闭。
+
+## 2026-10-07 剩余优化本地关账
+
+本轮继续完成 desktop service 与 renderer 构建边界：`provider-service.ts` 负责批量 provider adapter 调用，`image-tool-service.ts` 负责批量素材导入与 provider service 组装，`project-package-service.ts` 负责项目包选择器、归档写入和导入入口；main 只保留服务装配，公共 typed IPC、preload 白名单和 `libraryId` 运行时身份不变。
+
+Vite 构建使用函数式 `manualChunks` 分离画布依赖，实际产物为入口 `index` 499.19 kB、`canvas` 325.60 kB、`ImageToolsPage` 30.15 kB，未再出现 >500 kB warning。该结果只证明 chunk 阈值与构建稳定性，不等价于首屏网络加载 profile 完成。
+
+最新 `pnpm release:check`：unit 176 files / 965 passed / 8 skipped；integration 30 files / 131 passed；E2E 47/47；native source 2 passed / packaged 1 skipped；provider offline 3/3；lint、typecheck、build、diff-check、package scan 435 files 通过。严格 ZIP streaming/fixed-memory、Windows、packaged native、签名/公证、Keychain、live provider、跨设备恢复、安装升级和人工视觉质量仍为 `blocked`。

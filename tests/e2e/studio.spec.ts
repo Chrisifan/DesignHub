@@ -166,7 +166,7 @@ for (const width of [1280, 1024]) {
               'Connections',
               'Model tasks',
               'Delivery',
-              'Workspace',
+              'Trash & backups',
             ]
           : [
               '设计师',
@@ -175,7 +175,7 @@ for (const width of [1280, 1024]) {
               '模型连接',
               '模型任务',
               '导出交付',
-              '工作区管理',
+              '废纸篓与备份',
             ]) {
           await navigateFromUserMenu(page, name);
           await expect(page.getByRole('button', { name: /打开用户菜单|Open user menu/ })).toBeVisible();
@@ -439,15 +439,17 @@ test('project list scrolls independently while creation controls remain fixed', 
   await page.screenshot({ path: testInfo.outputPath('home-1280x800.png'), fullPage: true });
 });
 
-test('persona-led creation keeps the selected designer across pages', async ({ page }, testInfo) => {
+test('designer creation opens over home and the selected home designer carries into a project', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
   await navigateFromUserMenu(page, '设计师');
-  await expect(page.getByRole('button', { name: '清晰商业', exact: true })).toBeVisible();
   const portfolioDialog = page.getByRole('dialog', { name: /导入作品集分析/ });
-  if (await portfolioDialog.isVisible().catch(() => false)) await portfolioDialog.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: '清晰商业', exact: true }).click({ force: true });
-  const inspector = page.getByRole('dialog', { name: '设计师检查器' });
+  await expect(portfolioDialog).toBeVisible();
+  await expect(page.getByRole('heading', { name: '欢迎使用 Design Hub' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '设计师', level: 1 })).toHaveCount(0);
+  await portfolioDialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: '查看设计师档案：清晰商业' }).click();
+  const inspector = page.getByRole('dialog', { name: '设计师信息' });
   const dossier = inspector.getByRole('region', { name: '清晰商业设计师档案' });
   await expect(dossier).toContainText('清晰商业');
   await expect(dossier.getByRole('region', { name: '核心指标' })).toBeVisible();
@@ -458,10 +460,8 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
   const assertInspectorLayout = async () => {
     const drawerBox = await inspector.boundingBox();
     const hostBox = await page.locator('[data-drawer-host]').boundingBox();
-    const footerBox = await inspector.locator('.ui-drawer__footer').boundingBox();
     expect(drawerBox).not.toBeNull();
     expect(hostBox).not.toBeNull();
-    expect(footerBox).not.toBeNull();
     expect(drawerBox!.width).toBeGreaterThan(0);
     expect(drawerBox!.width).toBeLessThanOrEqual(hostBox!.width);
     await expect.poll(async () => {
@@ -471,8 +471,6 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
     }).toBeLessThanOrEqual(1);
     const settledDrawer = await inspector.boundingBox();
     expect(settledDrawer!.x).toBeGreaterThanOrEqual(hostBox!.x);
-    // Browser layout can land on a fractional pixel after the drawer animation settles.
-    expect(Math.abs(footerBox!.y + footerBox!.height - (drawerBox!.y + drawerBox!.height))).toBeLessThanOrEqual(3);
     const overflow = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('body *')]
       .map((element) => {
         const rect = element.getBoundingClientRect();
@@ -495,7 +493,7 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
 
   await page.setViewportSize({ width: 1024, height: 720 });
   await assertInspectorLayout();
-  await expect(inspector.getByRole('button', { name: '用于新建', exact: true })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: '关闭', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('designer-inspector-narrow.png'), fullPage: true });
   expect(
     await page.evaluate(
@@ -504,12 +502,14 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
         document.body.scrollHeight <= window.innerHeight,
     ),
   ).toBe(true);
-  await page.getByRole('button', { name: '用于新建', exact: true }).click();
-  const projectDrawer = page.getByRole('dialog', { name: '新建项目' });
-  await expect(projectDrawer).toBeVisible();
-  await expect(page.getByRole('dialog', { name: '设计师检查器' })).toHaveCount(0);
-  await expect(projectDrawer.getByRole('button', { name: '清晰商业' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(projectDrawer.getByLabel('新建设计的当前设计师')).toHaveCount(0);
+  await inspector.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('combobox', { name: '设计师' }).click();
+  await page.getByRole('option', { name: /清晰商业/ }).click();
+  await page.getByRole('button', { name: '新建项目', exact: true }).click();
+  const canvas = page.getByRole('region', { name: '设计画布' });
+  await expect(canvas).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '设计师信息' })).toHaveCount(0);
+  await expect(canvas.getByRole('combobox', { name: '设计师' })).toHaveValue('e2e-commerce');
   expect(
     await page.evaluate(
       () =>
@@ -521,16 +521,13 @@ test('persona-led creation keeps the selected designer across pages', async ({ p
   ).toBe(true);
 });
 
-test('designer rules stay on one line with app tooltips in the inspector and editor', async ({ page }, testInfo) => {
+test('designer rules stay on one line with app tooltips in the home inspector', async ({ page }, testInfo) => {
   const longRule = '避免使用会破坏安全边距、信息层级与主体识别度的霓虹渐变、高强度装饰效果以及复杂背景纹理';
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
-  await navigateFromUserMenu(page, '设计师');
-  const designerPortfolioDialog = page.getByRole('dialog', { name: /导入作品集分析/ });
-  if (await designerPortfolioDialog.isVisible().catch(() => false)) await designerPortfolioDialog.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: '纸感排版', exact: true }).click({ force: true });
+  await page.getByRole('button', { name: '查看设计师档案：纸感排版' }).click();
 
-  const inspector = page.getByRole('dialog', { name: '设计师检查器' });
+  const inspector = page.getByRole('dialog', { name: '设计师信息' });
   const inspectorRule = inspector.locator('.designer-profile-rule__text');
   await expect(inspectorRule).toHaveText(longRule);
   await expect(inspectorRule).not.toHaveAttribute('title');
@@ -547,58 +544,39 @@ test('designer rules stay on one line with app tooltips in the inspector and edi
   expect(inspectorTooltipBox!.x).toBeGreaterThanOrEqual(0);
   expect(inspectorTooltipBox!.x + inspectorTooltipBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   await page.screenshot({ path: testInfo.outputPath('designer-inspector-rule-tooltip.png'), fullPage: true });
-
-  await inspector.getByRole('button', { name: '编辑', exact: true }).click();
-  const editor = page.getByRole('dialog', { name: '编辑设计师' });
-  const editorRule = editor.locator('.designer-draft-rule__text');
-  await expect(editorRule).toHaveText(longRule);
-  await expect(editorRule).not.toHaveAttribute('title');
-  await expect(editorRule).toHaveCSS('white-space', 'nowrap');
-  await expect(editorRule).toHaveCSS('text-overflow', 'ellipsis');
-  expect(await editorRule.evaluate((element) => element.scrollWidth >= element.clientWidth)).toBe(true);
-  await editorRule.hover();
-  const editorTooltip = page.getByRole('tooltip');
-  await expect(editorTooltip).toHaveText(longRule);
-  await expect(editorTooltip).toBeVisible();
-  expect(await editorTooltip.evaluate((element) => element.matches(':popover-open'))).toBe(true);
-  const editorTooltipBox = await editorTooltip.boundingBox();
-  expect(editorTooltipBox).not.toBeNull();
-  const editorRuleBox = await editorRule.boundingBox();
-  expect(editorRuleBox).not.toBeNull();
-  expect(editorTooltipBox!.y + editorTooltipBox!.height).toBeLessThanOrEqual(editorRuleBox!.y);
-  expect(editorTooltipBox!.x).toBeGreaterThanOrEqual(0);
-  expect(editorTooltipBox!.x + editorTooltipBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await page.screenshot({ path: testInfo.outputPath('designer-editor-rule-tooltip.png'), fullPage: true });
 });
 
-test('designer dossier cards keep a stable responsive grid', async ({ page }, testInfo) => {
+test('home designer cards stay below the conversation across viewports', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
-  await navigateFromUserMenu(page, '设计师');
-
-  const repository = page.getByLabel('设计师档案库');
-  const cards = repository.locator('.designer-profile-card--library');
+  const rail = page.getByRole('region', { name: '设计师灵感' });
+  const cards = rail.locator('.home-designer-card');
   await expect(cards).toHaveCount(2);
-  const desktopLayout = await repository.locator('.persona-repository__list').evaluate((grid) => ({
-    columns: getComputedStyle(grid).gridTemplateColumns.split(' ').length,
-    cardWidths: [...grid.querySelectorAll<HTMLElement>('.persona-repository-card-button')]
+  const desktopLayout = await rail.locator('.home-designer-rail__list').evaluate((list) => ({
+    display: getComputedStyle(list).display,
+    cardWidths: [...list.querySelectorAll<HTMLElement>('.home-designer-card')]
       .map((card) => card.getBoundingClientRect().width),
   }));
-  expect(desktopLayout.columns).toBeGreaterThanOrEqual(4);
+  expect(desktopLayout.display).toBe('flex');
   expect(desktopLayout.cardWidths.every((width) => width > 0)).toBe(true);
+  const [composerBox, railBox] = await Promise.all([
+    page.locator('.home-conversation-composer').boundingBox(),
+    rail.boundingBox(),
+  ]);
+  expect(railBox!.y).toBeGreaterThanOrEqual(composerBox!.y + composerBox!.height);
 
   const firstCard = cards.first();
-  await firstCard.locator('.designer-profile-card__identity strong').evaluate((element) => {
+  await firstCard.locator('strong').evaluate((element) => {
     element.textContent = '纸感排版与编辑网格系统设计师档案超长名称用于边界验证';
     element.setAttribute('title', element.textContent);
   });
-  await firstCard.locator('.designer-profile-card__identity > span').evaluate((element) => {
+  await firstCard.locator('small').evaluate((element) => {
     element.textContent = '一条非常长的设计师署名，不应突破档案卡片的可视边界';
     element.setAttribute('title', element.textContent);
   });
   const containment = await firstCard.evaluate((card) => {
     const bounds = card.getBoundingClientRect();
-    const textNodes = [...card.querySelectorAll<HTMLElement>('.designer-profile-card__identity strong, .designer-profile-card__identity > span')];
+    const textNodes = [...card.querySelectorAll<HTMLElement>('strong, small')];
     return {
       cardLeft: bounds.left,
       cardRight: bounds.right,
@@ -610,34 +588,27 @@ test('designer dossier cards keep a stable responsive grid', async ({ page }, te
   });
   expect(containment.textBounds.every((bounds) => bounds.left >= containment.cardLeft - 1 && bounds.right <= containment.cardRight + 1)).toBe(true);
   expect(containment.textBounds.every((bounds) => bounds.title.length > 0)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('designer-dossier-grid.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('home-designer-cards.png'), fullPage: true });
 
   await page.setViewportSize({ width: 680, height: 720 });
-  const narrowColumns = await repository.locator('.persona-repository__list').evaluate(
-    (grid) => getComputedStyle(grid).gridTemplateColumns.split(' ').length,
-  );
-  expect(narrowColumns).toBe(1);
-  const narrowContainment = await repository.evaluate((element) => {
-    const repositoryBounds = element.getBoundingClientRect();
-    const cardBounds = [...element.querySelectorAll<HTMLElement>('.persona-repository-card-button')]
+  const narrowContainment = await rail.evaluate((element) => {
+    const railBounds = element.getBoundingClientRect();
+    const cardBounds = [...element.querySelectorAll<HTMLElement>('.home-designer-card')]
       .map((card) => card.getBoundingClientRect());
     return {
-      noInternalOverflow: element.scrollWidth <= element.clientWidth,
-      cardsContained: cardBounds.every((bounds) => bounds.left >= repositoryBounds.left - 1 && bounds.right <= repositoryBounds.right + 1),
+      cardsContained: cardBounds.every((bounds) => bounds.left >= railBounds.left - 1 && bounds.right <= railBounds.right + 1),
     };
   });
-  expect(narrowContainment).toEqual({ noInternalOverflow: true, cardsContained: true });
-  await page.screenshot({ path: testInfo.outputPath('designer-dossier-grid-narrow.png'), fullPage: true });
+  expect(narrowContainment).toEqual({ cardsContained: true });
+  await page.screenshot({ path: testInfo.outputPath('home-designer-cards-narrow.png'), fullPage: true });
 });
 
 test('compact project rows keep cover, title, and metadata aligned', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
 
-  await navigateFromUserMenu(page, '新建项目');
-  const drawer = page.getByRole('dialog', { name: '新建项目' });
-  await drawer.getByRole('textbox', { name: '项目名称' }).fill('空简介项目');
-  await drawer.getByRole('button', { name: '创建项目', exact: true }).click();
+  await page.getByRole('button', { name: '新建项目', exact: true }).click();
+  await expect(page.getByTestId('project-canvas')).toBeVisible();
   await page.getByRole('button', { name: '项目操作', exact: true }).click();
   await page.getByRole('menuitem', { name: '返回首页', exact: true }).click();
 
@@ -683,68 +654,13 @@ test('project detail uses the cover-led responsive document layout', async ({ pa
   await expect(page.getByRole('region', { name: '设计画布', exact: true })).toBeVisible();
 });
 
-test('new project uses a focused drawer without the duplicate callout or designer dossier', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+test('home owns project creation and the avatar menu omits redundant entries', async ({ page }) => {
   await gotoTestWorkspace(page);
-  await expect(page.getByText('下一次创作，从这里开始')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '开始创作' })).toHaveCount(0);
-  await navigateFromUserMenu(page, '新建项目');
-
-  const drawer = page.getByRole('dialog', { name: '新建项目' });
-  await expect(drawer).toBeVisible();
-  await expect(drawer.getByRole('textbox', { name: '项目名称' })).toBeFocused();
-  await expect(drawer.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', '/project-default-cover.png');
-  await expect(drawer.getByRole('textbox', { name: '设计目标' })).toBeVisible();
-  await expect(drawer.getByRole('group', { name: '选择设计师' })).toBeVisible();
-  await expect(drawer.getByRole('combobox', { name: '文档尺寸' })).toBeVisible();
-  await expect(drawer.getByLabel('新建设计的当前设计师')).toHaveCount(0);
-  await expect(drawer.locator('.designer-profile-card--review')).toHaveCount(0);
-  await expect(drawer.getByRole('button', { name: '取消' }).locator('xpath=../..')).toHaveClass(/ui-drawer__footer/);
-  await expect(drawer.getByRole('button', { name: '创建项目' }).locator('xpath=../..')).toHaveClass(/ui-drawer__footer/);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('new-project-drawer.png'), fullPage: true });
-
-  await page.setViewportSize({ width: 1024, height: 720 });
-  await drawer.scrollIntoViewIfNeeded();
-  expect(await drawer.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('new-project-drawer-narrow.png'), fullPage: true });
-});
-
-test('new-project drawer restores focus and retains a cancelled draft', async ({
-  page,
-}) => {
-  await gotoTestWorkspace(page);
-  const menuTrigger = page.getByRole('button', { name: '打开用户菜单', exact: true });
-  await menuTrigger.click();
-  const trigger = page.getByRole('menuitem', { name: '新建项目', exact: true });
-  await trigger.click();
-  await expect(page.getByRole('textbox', { name: '项目名称' })).toBeFocused();
-  const drawer = page.getByRole('dialog', { name: '新建项目' });
-  await drawer.getByLabel('选择项目封面').setInputFiles({
-    name: 'project-cover.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xw2X7wAAAABJRU5ErkJggg==', 'base64'),
-  });
-  await expect(drawer.getByRole('img', { name: '项目封面' })).toHaveAttribute('src', /^blob:/u);
-  await page
-    .getByRole('textbox', { name: '项目名称' })
-    .fill('秋日漫游 / An unexpectedly long campaign title');
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).not.toBeVisible();
-  await expect(menuTrigger).toBeFocused();
-  await menuTrigger.click();
-  await page.getByRole('menuitem', { name: '新建项目', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: '项目名称' })).toHaveValue(
-    '秋日漫游 / An unexpectedly long campaign title',
-  );
-  await expect(page.getByRole('dialog', { name: '新建项目' }).getByRole('img', { name: '项目封面', exact: true })).toHaveAttribute('src', /^blob:/u);
-  await page.getByRole('button', { name: '创建项目', exact: true }).click();
-  await expect(page.getByTestId('project-canvas')).toBeVisible();
-  await page.getByRole('button', { name: '项目操作', exact: true }).click();
-  await page.getByRole('menuitem', { name: '返回首页', exact: true }).click();
-  const createdCard = page.getByRole('button', { name: '秋日漫游 / An unexpectedly long campaign title', exact: true });
-  await expect(createdCard.locator('img')).toHaveAttribute('src', /^(blob:|\/project-default-cover\.png)/u);
+  await expect(page.getByRole('button', { name: '新建项目', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '打开用户菜单', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: '首页', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: '新建项目', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: '导入项目包', exact: true })).toBeVisible();
 });
 
 test('preferences survive reload and empty search can be cleared', async ({

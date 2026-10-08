@@ -61,19 +61,19 @@ it('renders streamed markdown as structured analysis content', () => {
 
 it('renders the brief instead of a persisted structured response envelope', () => {
   renderPanel(JSON.stringify({
-    brief: '抠出人物并输出透明背景。',
+    brief: '将人物抠图置于真实、绚丽的极光夜空前。',
     visualContext: {
       version: 1,
       items: [
-        { assetId: 'asset-person', role: 'edit-target', confidence: 0.99 },
-        { assetId: 'asset-person', role: 'visual-reference', confidence: 0.99 },
+        { assetId: 'asset-person', roles: ['edit-target', 'visual-anchor', 'visual-reference'], confidence: 0.92 },
+        { assetId: 'asset-background', roles: ['edit-target', 'visual-reference'], confidence: 1 },
       ],
       clarificationRequired: false,
     },
     releasedAssets: [],
   }));
 
-  expect(screen.getByText('抠出人物并输出透明背景。')).toBeInTheDocument();
+  expect(screen.getByText('将人物抠图置于真实、绚丽的极光夜空前。')).toBeInTheDocument();
   expect(screen.queryByText(/visualContext/)).not.toBeInTheDocument();
   expect(screen.queryByText(/releasedAssets/)).not.toBeInTheDocument();
 });
