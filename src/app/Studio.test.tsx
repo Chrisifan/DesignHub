@@ -728,11 +728,11 @@ it('generates project candidates without requiring an open document', async () =
     visualContextPlan: { version: 1 as const, items: [], clarificationRequired: false },
     result: { text: '项目级设计简报' },
   };
-  const submitDesignGeneration = vi.fn(async () => ({
+  const submitDesignGeneration = vi.fn(async (input: unknown) => { void input; return {
     id: 'design-project', requestId: 'request-design', state: 'running' as const,
     cancelRequested: false, attempt: 1, capability: 'design-generation' as const,
     source: { kind: 'project' as const, id: 'project-1' }, analysisThreadId: 'thread-project',
-  }));
+  }; });
   window.designhub = {
     listActiveProjects: async () => [{ projectId: 'project-1', name: '无文档项目', documents: [] }],
     listProjectDesigns: async () => [],

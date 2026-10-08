@@ -89,7 +89,7 @@ export const parseVisualContextEnvelope = (text: string): ParsedVisualContextEnv
         items: Array.isArray(parsed.visualContext.items)
           ? parsed.visualContext.items.map((item) => {
               if (!isRecord(item)) return item;
-              const normalized = {
+              const normalized: Record<string, unknown> = {
                 ...item,
                 ...(item.roles === undefined && typeof item.role === 'string' ? { roles: [item.role] } : {}),
                 ...(!Object.prototype.hasOwnProperty.call(item, 'confidence') ? { confidence: 0 } : {}),
