@@ -32,8 +32,18 @@ export const createProviderService = (dependencies: ProviderServiceDependencies)
       toolParams: request.job.params,
       ...(executor.modelId ? { model: executor.modelId } : {}),
       requiresTransparency: request.job.tool === 'remove-background',
+      bytes: request.sourceBytes.byteLength,
+      ...(typeof request.job.params.width === 'number' ? { width: request.job.params.width } : {}),
+      ...(typeof request.job.params.height === 'number' ? { height: request.job.params.height } : {}),
     }, request.signal);
     if (!result.images[0]) throw new Error('IMAGE_RESULT_EMPTY');
-    return { bytes: (await dependencies.generatedImageBytes(result.images[0])).bytes };
+    const generated = await dependencies.generatedImageBytes(result.images[0]);
+    return {
+      bytes: generated.bytes,
+      ...(result.remoteRequestId ? { remoteRequestId: result.remoteRequestId } : {}),
+      supportsRemoteCancellation: result.supportsRemoteCancellation === true,
+      supportsStatusQuery: result.supportsStatusQuery === true,
+      cost: result.cost,
+    };
   },
 });

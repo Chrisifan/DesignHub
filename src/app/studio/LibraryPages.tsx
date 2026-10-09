@@ -1991,6 +1991,7 @@ export const LibraryPages = ({
       onResume={async (jobId) => { if (libraryId) { await getDesktopApi().resumeImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
       onCancel={async (jobId) => { if (libraryId) { await getDesktopApi().cancelImageToolJob?.({ libraryId, jobId }); await refreshImageToolJobs(); } }}
       onRetryItem={async (jobId, itemId) => { if (libraryId) { await getDesktopApi().retryImageToolItem?.({ libraryId, jobId, itemId }); await refreshImageToolJobs(); } }}
+      onCancelItem={async (jobId, itemId) => { if (libraryId) { await getDesktopApi().cancelImageToolItem?.({ libraryId, jobId, itemId }); await refreshImageToolJobs(); } }}
       onReadResult={async (path, jobId) => {
         if (!libraryId) return null;
         return getDesktopApi().readImageToolResult?.({ libraryId, jobId, path }) ?? null;

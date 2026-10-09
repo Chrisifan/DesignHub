@@ -29,13 +29,13 @@ import {
 import type { HomeConversationRequest, NewDesignDraft, PendingHomeConversation, Project, StudioSurface, Theme, View } from './types';
 import type { ProjectDesign, ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool, ToolParams } from '../../features/image-tools/target';
-import { resizeScene } from '../../features/image-tools/local-transform';
 import { createCompositionEntryCandidate, createMockupEntryCandidate } from '../../features/composition/studio-entry';
 import type { DesignSceneCandidate } from '../../features/composition/design-scene-candidate';
 import { builtInMockupTemplates, validateMockupRenderInput } from '../../features/mockups/template';
 import { selectConfiguredConnection } from '../../features/providers/connection';
 import { getProviderProfileStatus } from '../../features/providers/status';
 import type { ProviderConfigMap } from '../../features/providers/config';
+import { rasterizeMask } from '../../features/image-tools/mask-rasterizer';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
 import { Workbench } from './Workbench';
@@ -818,18 +818,9 @@ export const Studio = ({
     try {
       const api = getDesktopApi();
       const scene = await api.loadDocumentScene?.(workspace.libraryId, project.id, documentId);
-      if (input.tool === 'resize') {
-        if (!scene) throw new Error('SCENE_NOT_FOUND');
-        const width = typeof input.params.width === 'number' ? input.params.width : scene.width;
-        const height = typeof input.params.height === 'number' ? input.params.height : scene.height;
-        const resized = resizeScene(scene, { width, height });
-        const saved = await api.saveDocumentScene?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, scene: resized });
-        if (!saved) throw new Error('SCENE_SAVE_FAILED');
-        await api.commitDocumentRevision?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, operationId: `local-resize-${crypto.randomUUID()}`, sceneAssetId: resized.id, assetIds: resized.layers.filter((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image').map((layer) => layer.assetId), contributions: [] , scene: resized });
-        notify(t(locale, '尺寸已更新并保存版本。', 'Size updated and revision saved.'));
-        return;
-      }
-      const imageLayer = scene?.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.id === input.targetLayerId && layer.assetId !== 'placeholder');
+      const imageLayer = scene?.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image'
+        && layer.assetId !== 'placeholder'
+        && (input.tool === 'resize' ? true : layer.id === input.targetLayerId));
       if (!imageLayer) {
         notify(t(locale, '请选择一个有效的受管图片图层。', 'Select a valid managed image layer.'));
         return;
@@ -840,7 +831,16 @@ export const Studio = ({
         return;
       }
       const editingModel = requiredConnection ? providerConfigs?.[requiredConnection as keyof ProviderConfigMap]?.image.models['image-editing'] : undefined;
-      const task = await api.submitImageEdit?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: requiredConnection ?? '', ...(editingModel ? { model: editingModel } : {}), prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), sourceAssetId: imageLayer.assetId, targetLayerId: input.targetLayerId, ...(scene ? { beforeScene: scene } : {}), tool: input.tool, toolParams: input.params, ...(input.region ? { region: input.region } : {}) });
+      let maskAssetId: string | undefined;
+      if (input.region && (input.tool === 'remove-object' || input.tool === 'inpaint' || input.tool === 'remove-watermark')) {
+        if (!scene || !api.importAssets) throw new Error('MASK_PERSISTENCE_UNAVAILABLE');
+        const mask = rasterizeMask({ width: Math.round(scene.width), height: Math.round(scene.height), shapes: [{ kind: 'rectangle', region: input.region }] });
+        const imported = await api.importAssets({ libraryId: workspace.libraryId, projectId: project.id, items: [{ name: `mask-${crypto.randomUUID()}.png`, mimeType: mask.mimeType, data: mask.bytes, metadata: { purpose: 'image-tool-mask', tool: input.tool } }] });
+        const saved = imported?.find((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success');
+        if (!saved) throw new Error('MASK_PERSISTENCE_FAILED');
+        maskAssetId = saved.asset.id;
+      }
+      const task = await api.submitImageEdit?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: requiredConnection ?? '', ...(editingModel ? { model: editingModel } : {}), prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), sourceAssetId: imageLayer.assetId, targetLayerId: input.targetLayerId, ...(scene ? { beforeScene: scene } : {}), tool: input.tool, toolParams: input.params, ...(input.region ? { region: input.region } : {}), ...(maskAssetId ? { maskAssetId } : {}) });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;

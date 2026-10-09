@@ -30,6 +30,7 @@ export type ImageToolsPageProps = {
     params: ToolParams;
     sourcePath: string;
     outputRoot: string;
+    resultFolderName?: string;
     connectionId?: string;
   }) => void | Promise<void>;
   onChooseInput?: () => Promise<{ path: string; displayName?: string } | null>;
@@ -40,6 +41,7 @@ export type ImageToolsPageProps = {
     params: ToolParams;
     sourcePath: string;
     outputRoot: string;
+    resultFolderName?: string;
   }) => Promise<{
     accepted: Array<{ relativePath: string }>;
     rejected: Array<{ path: string; code: string; detail?: string }>;
@@ -48,6 +50,7 @@ export type ImageToolsPageProps = {
   onResume: (jobId: string) => void | Promise<void>;
   onCancel: (jobId: string) => void | Promise<void>;
   onRetryItem: (jobId: string, itemId: string) => void | Promise<void>;
+  onCancelItem?: (jobId: string, itemId: string) => void | Promise<void>;
   onReadResult?: (path: string, jobId: string) => Promise<string | null>;
   onOpenResult?: (path: string, jobId: string) => void | Promise<void>;
   onRevealResult?: (path: string, jobId: string) => void | Promise<void>;
@@ -68,6 +71,7 @@ export const ImageToolsPage = ({
   onResume,
   onCancel,
   onRetryItem,
+  onCancelItem,
   onOpenResult,
   onRevealResult,
   onOpenOutput,
@@ -77,7 +81,7 @@ export const ImageToolsPage = ({
   const initialTool: BatchImageTool =
     requestedTool ??
     (isBatchImageTool(jobs[0]?.job.tool) ? jobs[0].job.tool : "remove-background");
-  const [tool] = useState<BatchImageTool>(initialTool);
+  const [tool, setTool] = useState<BatchImageTool>(initialTool);
   const [composerOpen, setComposerOpen] = useState(false);
   const [width, setWidth] = useState(1200);
   const [height, setHeight] = useState(1200);
@@ -85,10 +89,12 @@ export const ImageToolsPage = ({
   const [preserveDetails, setPreserveDetails] = useState<"balanced" | "details" | "texture">("balanced");
   const [fit, setFit] = useState<"contain" | "cover" | "stretch">("contain");
   const [format, setFormat] = useState<"png" | "jpeg" | "webp">("png");
+  const [background, setBackground] = useState("#ffffff");
   const [sourcePath, setSourcePath] = useState("");
   const [outputRoot, setOutputRoot] = useState("");
   const [sourceLabel, setSourceLabel] = useState("");
   const [outputLabel, setOutputLabel] = useState("");
+  const [resultFolderName, setResultFolderName] = useState("batch-results");
   const [connectionId, setConnectionId] = useState("");
   const [connections, setConnections] = useState<string[]>([]);
   const [scan, setScan] = useState<ImageToolScanResult>(null);
@@ -107,6 +113,7 @@ export const ImageToolsPage = ({
     resume: onResume,
     cancel: onCancel,
     retryItem: onRetryItem,
+    cancelItem: onCancelItem,
     openResult: onOpenResult,
     revealResult: onRevealResult,
     openOutput: onOpenOutput,
@@ -130,17 +137,23 @@ export const ImageToolsPage = ({
     setSelectedJobId(toolJobs[0]?.job.id ?? null);
     setSelectedItemId(null);
   }, [selectedJobId, toolJobs]);
+  const changeTool = (nextTool: BatchImageTool): void => {
+    setTool(nextTool);
+    setSelectedJobId(null);
+    setSelectedItemId(null);
+    setComposerOpen(false);
+  };
   useEffect(() => { setSelectedItemId(null); }, [selectedJobId]);
-  useEffect(() => { setScan(null); }, [fit, format, height, outputRoot, preserveDetails, scale, sourcePath, tool, width]);
+  useEffect(() => { setScan(null); }, [background, fit, format, height, outputRoot, preserveDetails, resultFolderName, scale, sourcePath, tool, width]);
   const params = useMemo<ToolParams>(() => (
-    tool === "resize" ? { width, height, fit, format } :
-      tool === "format-convert" ? { format } :
+    tool === "resize" ? { width, height, fit, format, background } :
+      tool === "format-convert" ? { format, background } :
         tool === "upscale" ? { scale, preserveDetails } :
           Object.create(null) as ToolParams
-  ), [fit, format, height, preserveDetails, scale, tool, width]);
+  ), [background, fit, format, height, preserveDetails, scale, tool, width]);
   const selectedJob = toolJobs.find(({ job }) => job.id === selectedJobId) ?? null;
   const selectedItem = selectedJob?.items.find((item) => item.id === selectedItemId) ?? null;
-  const canCreate = Boolean(sourcePath && outputRoot && scan?.accepted.length && !scan.rejected.length && ((tool !== "remove-background" && tool !== "upscale") || connectionId.trim()));
+  const canCreate = Boolean(sourcePath && outputRoot && scan?.accepted.length && ((tool !== "remove-background" && tool !== "upscale") || connectionId.trim()));
   const chooseInput = async (): Promise<void> => {
     setComposerError("");
     try {
@@ -170,7 +183,7 @@ export const ImageToolsPage = ({
     if (!sourcePath || !outputRoot) return;
     setComposerError("");
     try {
-      const result = await commands.scan({ tool, params, sourcePath, outputRoot });
+      const result = await commands.scan({ tool, params, sourcePath, outputRoot, resultFolderName });
       setScan(result);
       if (!result) setComposerError(t(locale, "扫描失败，请确认来源和输出位置仍然可访问。", "Scan failed. Check that the source and output locations are available."));
     } catch (error) { setScan(null); setComposerError(composerErrorMessage(locale, error)); }
@@ -178,7 +191,7 @@ export const ImageToolsPage = ({
   const createJob = async (): Promise<void> => {
     setComposerError("");
     try {
-      await commands.create({ tool, params, sourcePath, outputRoot, ...(connectionId.trim() ? { connectionId: connectionId.trim() } : {}) });
+      await commands.create({ tool, params, sourcePath, outputRoot, resultFolderName, ...(connectionId.trim() ? { connectionId: connectionId.trim() } : {}) });
       setComposerOpen(false);
     } catch (error) { setComposerError(composerErrorMessage(locale, error)); }
   };
@@ -195,6 +208,7 @@ export const ImageToolsPage = ({
     outputRoot,
     sourceLabel,
     outputLabel,
+    resultFolderName,
     scan,
     connectionId,
     connections,
@@ -204,6 +218,7 @@ export const ImageToolsPage = ({
     preserveDetails,
     fit,
     format,
+    background,
     error: composerError,
     onOpenConnections,
     canCreate,
@@ -219,12 +234,15 @@ export const ImageToolsPage = ({
     setPreserveDetails,
     setFit,
     setFormat,
+    setBackground,
+    setResultFolderName,
     onOpen: () => setComposerOpen(true),
   };
   return (
     <ImageToolsShell
       locale={locale}
       tool={tool}
+      onToolChange={changeTool}
       jobs={toolJobs}
       selectedJob={selectedJob}
       selectedItem={selectedItem}

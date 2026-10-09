@@ -31,7 +31,7 @@ export type VisionRequest = { prompt: string; images: VisionImage[] };
 export type ImageRequest = { prompt: string; model?: string; size?: string; count?: number; referenceImages?: Blob[]; tool?: ImageTool; toolParams?: ToolParams; requiresTransparency?: boolean; width?: number; height?: number; bytes?: number };
 export type ImageEditRequest = { prompt: string; image: Blob; referenceImages?: Blob[]; mask?: Blob; model?: string; size?: string; tool?: ImageTool; toolParams?: ToolParams; region?: { x: number; y: number; width: number; height: number }; requiresTransparency?: boolean; width?: number; height?: number; bytes?: number };
 export type GeneratedImage = { url?: string; base64?: string; mimeType?: string };
-export type ImageResponse = { images: GeneratedImage[]; cost: number | null };
+export type ImageResponse = { images: GeneratedImage[]; cost: number | null; remoteRequestId?: string; supportsRemoteCancellation?: boolean; supportsStatusQuery?: boolean };
 
 export type ProviderAdapterErrorKind = 'http' | 'rate_limited' | 'invalid_response' | 'cancelled' | 'capability';
 export type ProviderAdapterError = Error & {
@@ -202,7 +202,10 @@ const imageResponse = (payload: Record<string, unknown>): ImageResponse => ({
     const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
     return { ...(typeof item.url === 'string' ? { url: item.url } : {}), ...(typeof item.b64_json === 'string' ? { base64: item.b64_json } : {}) };
   }) : [],
-  cost: null,
+  cost: typeof payload.cost === 'number' ? payload.cost : null,
+  ...(typeof payload.id === 'string' ? { remoteRequestId: payload.id } : {}),
+  ...(typeof payload.supportsRemoteCancellation === 'boolean' ? { supportsRemoteCancellation: payload.supportsRemoteCancellation } : {}),
+  ...(typeof payload.supportsStatusQuery === 'boolean' ? { supportsStatusQuery: payload.supportsStatusQuery } : {}),
 });
 
 const appendImages = (form: FormData, images: readonly Blob[]): void => {

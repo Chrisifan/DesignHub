@@ -22,7 +22,7 @@ import { exportHistoryListChannel } from './ipc/export-history';
 import { providerConfigLoadChannel, providerConfigSaveChannel } from './ipc/providers';
 import { projectLibraryChooseChannel, projectLibraryStatusChannel } from './ipc/project-library';
 import { profileLoadChannel, profileSaveChannel } from './ipc/profile';
-import { imageToolCancelChannel, imageToolChooseInputChannel, imageToolChooseOutputChannel, imageToolCreateChannel, imageToolGetChannel, imageToolImportResultChannel, imageToolListChannel, imageToolOpenOutputChannel, imageToolOpenResultChannel, imageToolPauseChannel, imageToolReadResultChannel, imageToolResumeChannel, imageToolRetryChannel, imageToolRevealResultChannel, imageToolScanChannel } from './ipc/image-tools-channels';
+import { imageToolCancelChannel, imageToolCancelItemChannel, imageToolChooseInputChannel, imageToolChooseOutputChannel, imageToolCreateChannel, imageToolGetChannel, imageToolImportResultChannel, imageToolListChannel, imageToolOpenOutputChannel, imageToolOpenResultChannel, imageToolPauseChannel, imageToolQueryChannel, imageToolReadResultChannel, imageToolResumeChannel, imageToolRetryChannel, imageToolRevealResultChannel, imageToolScanChannel } from './ipc/image-tools-channels';
 
 const api: DesktopApi = {
   loadProfile: () => ipcRenderer.invoke(profileLoadChannel),
@@ -100,6 +100,8 @@ const api: DesktopApi = {
   resumeImageToolJob: (input) => ipcRenderer.invoke(imageToolResumeChannel, input),
   cancelImageToolJob: (input) => ipcRenderer.invoke(imageToolCancelChannel, input),
   retryImageToolItem: (input) => ipcRenderer.invoke(imageToolRetryChannel, input),
+  queryImageToolItem: (input) => ipcRenderer.invoke(imageToolQueryChannel, input),
+  cancelImageToolItem: (input) => ipcRenderer.invoke(imageToolCancelItemChannel, input),
   readImageToolResult: (input) => ipcRenderer.invoke(imageToolReadResultChannel, input),
   openImageToolResult: (input) => ipcRenderer.invoke(imageToolOpenResultChannel, input),
   revealImageToolResult: (input) => ipcRenderer.invoke(imageToolRevealResultChannel, input),

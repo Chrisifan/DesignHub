@@ -47,6 +47,7 @@ export const validateToolParams = (tool: ImageTool, params: unknown): ToolParams
     if (value.source === 'asset' && (typeof value.backgroundAssetId !== 'string' || value.backgroundAssetId.trim() === '')) return { ok: false, reason: 'INVALID_PARAMS' };
     if (value.source === 'solid-color' && (typeof value.backgroundColor !== 'string' || !/^#[0-9a-f]{6}$/iu.test(value.backgroundColor))) return { ok: false, reason: 'INVALID_PARAMS' };
   }
+  if (tool === 'inpaint' && (typeof value.prompt !== 'string' || value.prompt.trim() === '')) return { ok: false, reason: 'INVALID_PARAMS' };
   if (tool === 'expand' && value.mode !== undefined && !['original-scene', 'atmospheric'].includes(String(value.mode))) return { ok: false, reason: 'INVALID_PARAMS' };
   if (fields.some((field) => field.type === 'select' && field.key in value && field.options && !field.options.includes(String(value[field.key])))) return { ok: false, reason: 'INVALID_PARAMS' };
   if (['resize', 'smart-crop'].includes(tool) && (!finitePositive(value.width) || !finitePositive(value.height))) return { ok: false, reason: 'INVALID_PARAMS' };

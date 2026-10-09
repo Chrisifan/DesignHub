@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResponse, GeneratedImage, VisionRequest } from '../providers/adapter';
+import type { ChatRequest, ChatResponse, GeneratedImage, ImageResponse, VisionRequest } from '../providers/adapter';
 import {
   createDesignGenerationSlots,
   designGenerationSlotIds,
@@ -11,7 +11,8 @@ import type { TaskRuntime } from '../tasks/runtime';
 import type { Region } from '../canvas/selection';
 import type { DesignScene } from '../canvas/scene';
 import { createScene } from '../canvas/scene';
-import type { ImageTool, ToolParams } from '../image-tools/target';
+import { getToolDefinition, type ImageTool, type ToolParams } from '../image-tools/target';
+import { defaultProviderToolCapabilities, validateProviderToolCapability, type ProviderToolCapability } from '../providers/config';
 import { analyzePortfolio, type PortfolioImageSource } from './analyze-portfolio';
 import { buildDesignContextPrompt, type DesignGenerationContext } from './context';
 import {
@@ -35,6 +36,7 @@ import { createImageTaskRecord } from './task-record-factory';
 import { createTaskCandidateService } from './task-candidate-service';
 import { createTaskRecovery } from './task-recovery';
 import { createTaskRuntimeAdapter } from './task-runtime-adapter';
+import { resizeScene } from '../image-tools/local-transform';
 
 export type ConversationInput = {
   libraryId?: string;
@@ -158,9 +160,12 @@ type ConversationAdapter = {
   chat: (request: ChatRequest, signal?: AbortSignal) => Promise<ChatResponse>;
   streamChat?: (request: ChatRequest, signal?: AbortSignal) => AsyncIterable<{ text: string; finishReason?: string | null }>;
   analyzeVision?: (request: VisionRequest, signal?: AbortSignal) => Promise<ChatResponse>;
-  generateImage?: (request: { prompt: string; model?: string; size?: string; count?: number; referenceImages?: Blob[] }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
-  editImage?: (request: { prompt: string; image: Blob; referenceImages?: Blob[]; mask?: Blob; model?: string; size?: string; tool?: ImageTool; toolParams?: ToolParams; region?: Region }, signal?: AbortSignal) => Promise<{ images: GeneratedImage[]; cost: number | null }>;
+  generateImage?: (request: { prompt: string; model?: string; size?: string; count?: number; referenceImages?: Blob[] }, signal?: AbortSignal) => Promise<ImageResponse>;
+  editImage?: (request: { prompt: string; image: Blob; referenceImages?: Blob[]; mask?: Blob; model?: string; size?: string; tool?: ImageTool; toolParams?: ToolParams; region?: Region; requiresTransparency?: boolean; width?: number; height?: number; bytes?: number }, signal?: AbortSignal) => Promise<ImageResponse>;
+  toolCapabilities?: readonly ProviderToolCapability[];
 };
+
+type LocalImageToolExecutor = (input: ImageEditInput, signal: AbortSignal) => Promise<ImageResponse>;
 
 const runConnectionTest = async <T>(
   timeoutMs: number | undefined,
@@ -177,13 +182,32 @@ const runConnectionTest = async <T>(
   });
 };
 
-const buildToolCandidateScene = (scene: DesignScene, sourceAssetId: string, resultAssetId: string, targetLayerId?: string): DesignScene => createScene({
-  ...scene,
-  id: `${scene.id}-candidate-${resultAssetId}`,
-  layers: scene.layers.map((layer) => layer.type === 'image' && (targetLayerId ? layer.id === targetLayerId : layer.assetId === sourceAssetId)
-    ? { ...layer, assetId: resultAssetId }
-    : layer),
-});
+const buildToolCandidateScene = (scene: DesignScene, sourceAssetId: string, resultAssetId: string, targetLayerId?: string, tool?: ImageTool, toolParams?: ToolParams): DesignScene => {
+  const candidate = createScene({
+    ...scene,
+    id: `${scene.id}-candidate-${resultAssetId}`,
+    layers: scene.layers.map((layer) => layer.type === 'image' && (targetLayerId ? layer.id === targetLayerId : layer.assetId === sourceAssetId)
+      ? { ...layer, assetId: resultAssetId }
+      : layer),
+  });
+  if (tool === 'resize' && typeof toolParams?.width === 'number' && typeof toolParams?.height === 'number') {
+    return resizeScene(candidate, { width: toolParams.width, height: toolParams.height });
+  }
+  if (tool === 'smart-crop' && typeof toolParams?.width === 'number' && typeof toolParams?.height === 'number') {
+    return resizeScene(candidate, { width: toolParams.width, height: toolParams.height });
+  }
+  if (tool === 'upscale' && typeof toolParams?.scale === 'number') {
+    return resizeScene(candidate, { width: Math.round(scene.width * toolParams.scale), height: Math.round(scene.height * toolParams.scale) });
+  }
+  if (tool === 'expand') {
+    const top = typeof toolParams?.top === 'number' ? toolParams.top : 0;
+    const right = typeof toolParams?.right === 'number' ? toolParams.right : 0;
+    const bottom = typeof toolParams?.bottom === 'number' ? toolParams.bottom : 0;
+    const left = typeof toolParams?.left === 'number' ? toolParams.left : 0;
+    return createScene({ ...candidate, width: scene.width + left + right, height: scene.height + top + bottom });
+  }
+  return candidate;
+};
 
 export type AgentTaskService = {
   getTask: (taskId: string) => TaskRecord | undefined;
@@ -212,6 +236,8 @@ export type AgentTaskServiceOptions = {
   persistDesignerArtwork?: (input: { designerDraftId: string; images: GeneratedImage[] }) => Promise<string[]>;
   loadSourceImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
   loadMaskImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
+  executeLocalImageTool?: LocalImageToolExecutor;
+  validateImageResult?: (input: ImageEditInput | ImageGenerationInput | DesignerArtworkGenerationInput, images: readonly GeneratedImage[]) => Promise<void>;
   resolveDesignContext?: (input: { input: ConversationInput; attachmentAssetIds: string[] }) => Promise<DesignGenerationContext>;
   persistConversationAttachments?: (input: { projectId: string; attachments: ConversationImageAttachment[] }) => Promise<string[]>;
   loadContextImage?: (input: { projectId: string; assetId: string }) => Promise<ConversationImageAttachment | null>;
@@ -475,7 +501,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     pending.add(execution);
     void execution.finally(() => pending.delete(execution));
   };
-  const createImageTask = (input: ImageGenerationInput | ImageEditInput | DesignerArtworkGenerationInput, capability: 'image-generation' | 'image-editing'): TaskRecord => {
+  const createImageTask = (input: ImageGenerationInput | ImageEditInput | DesignerArtworkGenerationInput, capability: 'image-generation' | 'image-editing' | 'local-transform'): TaskRecord => {
     const source = 'source' in input ? input.source : { kind: 'project' as const, id: input.projectId };
     const task = createImageTaskRecord({
       id: taskId(),
@@ -506,12 +532,51 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     controllers.set(task.id, controller);
     const execution = (async (): Promise<void> => {
       try {
-        const adapter = await options.resolveAdapter(input.connectionId);
-        const response = operation === 'generate'
-          ? (adapter.generateImage ? await adapter.generateImage({ prompt: input.prompt.trim(), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}) }, controller.signal) : undefined)
-          : (adapter.editImage ? await adapter.editImage({ prompt: input.prompt.trim(), image: (input as ImageEditInput).image, ...('mask' in input && input.mask ? { mask: input.mask } : {}), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('tool' in input && input.tool ? { tool: input.tool } : {}), ...('toolParams' in input && input.toolParams ? { toolParams: { ...input.toolParams } } : {}), ...('region' in input && input.region ? { region: input.region } : {}) }, controller.signal) : undefined);
+        const adapter = task.capability === 'local-transform' ? undefined : await options.resolveAdapter(input.connectionId);
+        if (adapter && operation === 'edit' && 'tool' in input && input.tool) {
+          const imageInput = input as ImageEditInput;
+          const definition = getToolDefinition(input.tool);
+          if (definition.requiresMask && !imageInput.mask && !imageInput.maskAssetId) throw new Error('MASK_REQUIRED');
+          if (input.tool === 'remove-watermark' && input.toolParams?.rightsConfirmed !== 'confirmed') throw new Error('RIGHTS_CONFIRMATION_REQUIRED');
+          const validation = validateProviderToolCapability({
+            tool: input.tool,
+            hasMask: Boolean(imageInput.mask || imageInput.maskAssetId),
+            requiresTransparency: definition.requiresTransparency,
+            bytes: imageInput.image.size,
+            width: typeof input.toolParams?.width === 'number' ? input.toolParams.width : undefined,
+            height: typeof input.toolParams?.height === 'number' ? input.toolParams.height : undefined,
+            params: input.toolParams,
+          }, adapter.toolCapabilities ?? defaultProviderToolCapabilities);
+          if (!validation.ok) throw new Error(`PROVIDER_${validation.reason}`);
+        }
+        const response = task.capability === 'local-transform'
+          ? (options.executeLocalImageTool ? await options.executeLocalImageTool(input as ImageEditInput, controller.signal) : undefined)
+          : operation === 'generate'
+          ? (adapter?.generateImage ? await adapter.generateImage({ prompt: input.prompt.trim(), ...('model' in input && input.model ? { model: input.model } : {}), ...('size' in input && input.size ? { size: input.size } : {}), ...('count' in input && input.count === undefined ? {} : 'count' in input ? { count: input.count } : {}) }, controller.signal) : undefined)
+          : (adapter?.editImage ? await adapter.editImage({
+            prompt: input.prompt.trim(),
+            image: (input as ImageEditInput).image,
+            ...('mask' in input && input.mask ? { mask: input.mask } : {}),
+            ...('model' in input && input.model ? { model: input.model } : {}),
+            ...('size' in input && input.size ? { size: input.size } : {}),
+            ...('tool' in input && input.tool ? { tool: input.tool } : {}),
+            ...('toolParams' in input && input.toolParams ? { toolParams: { ...input.toolParams } } : {}),
+            ...('region' in input && input.region ? { region: input.region } : {}),
+            ...('tool' in input && input.tool === 'remove-background' ? { requiresTransparency: true } : {}),
+            ...('tool' in input && input.toolParams?.width ? { width: Number(input.toolParams.width) } : {}),
+            ...('tool' in input && input.toolParams?.height ? { height: Number(input.toolParams.height) } : {}),
+            bytes: (input as ImageEditInput).image.size,
+          }, controller.signal) : undefined);
         if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
         if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
+        if (options.validateImageResult) await options.validateImageResult(input, response.images);
+        if (task.capability !== 'local-transform' && (response.remoteRequestId || response.supportsRemoteCancellation !== undefined || response.supportsStatusQuery !== undefined)) {
+          options.runtime.updateRemoteMetadata(task.id, {
+            ...(response.remoteRequestId ? { remoteRequestId: response.remoteRequestId } : {}),
+            ...(response.supportsRemoteCancellation !== undefined ? { remoteSupportsCancellation: response.supportsRemoteCancellation } : {}),
+            ...(response.supportsStatusQuery !== undefined ? { remoteSupportsStatusQuery: response.supportsStatusQuery } : {}),
+          });
+        }
         const projectDesign = operation === 'edit' && 'projectDesign' in input ? input.projectDesign : undefined;
         const projectId = 'projectId' in input ? input.projectId : undefined;
         const outputImages = projectDesign ? response.images.slice(0, 1) : response.images;
@@ -553,7 +618,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
                 baseRevisionId: task.baseRevisionId ?? null,
                 resultAssetId: assetIds[0],
                 beforeScene: editInput.beforeScene,
-                candidateScene: buildToolCandidateScene(editInput.beforeScene, editInput.sourceAssetId, assetIds[0], editInput.targetLayerId),
+                candidateScene: buildToolCandidateScene(editInput.beforeScene, editInput.sourceAssetId, assetIds[0], editInput.targetLayerId, editInput.tool, editInput.toolParams),
                 toolParams: editInput.toolParams,
                 providerId: task.providerId,
                 model: task.model,
@@ -871,7 +936,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       ? await options.loadMaskImage({ projectId: input.projectId, assetId: input.maskAssetId })
       : undefined);
     if (input.maskAssetId && !mask) throw new Error('MASK_ASSET_MISSING');
-    const task = createImageTask(input, 'image-editing');
+    const task = createImageTask(input, input.tool === 'resize' && !input.connectionId.trim() ? 'local-transform' : 'image-editing');
     await options.runtime.flush();
     await executeImageTask(task, mask && !input.mask ? { ...input, mask } : input, 'edit');
     return task;
@@ -908,8 +973,9 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   };
   const retry = async (taskId: string): Promise<TaskRecord | undefined> => {
     const previous = options.runtime.get(taskId);
-    if (!previous?.requestText || !previous.providerId || !previous.source?.id) return undefined;
-    if (previous.capability === 'image-editing') {
+    if (!previous?.requestText || !previous.source?.id) return undefined;
+    if (previous.capability === 'image-editing' || previous.capability === 'local-transform') {
+      if (previous.capability === 'image-editing' && !previous.providerId) return undefined;
       if (previous.source.kind !== 'project' || !previous.documentId || !previous.sourceAssetId || !options.loadSourceImage) return undefined;
       if (previous.hasMask && (!previous.maskAssetId || !options.loadMaskImage)) return undefined;
       const image = await options.loadSourceImage({ projectId: previous.source.id, assetId: previous.sourceAssetId });
@@ -927,7 +993,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         documentId: previous.documentId,
         baseRevisionId: previous.baseRevisionId ?? null,
         ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
-        connectionId: previous.providerId,
+        connectionId: previous.providerId ?? '',
         prompt: previous.requestText,
         image,
         sourceAssetId: previous.sourceAssetId,
@@ -942,6 +1008,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       return running;
     }
     if (previous.capability === 'image-generation') {
+      if (!previous.providerId) return undefined;
       if (previous.source.kind !== 'project' && previous.source.kind !== 'designer-draft') return undefined;
       if (previous.source.kind === 'project' && !previous.documentId) return undefined;
       const retried = await recovery.retryExplicitly(taskId);
@@ -981,7 +1048,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       await executeDesignGeneration(running);
       return running;
     }
-    if (previous.capability !== 'conversation') return undefined;
+    if (previous.capability !== 'conversation' || !previous.providerId) return undefined;
     const retried = await recovery.retryExplicitly(taskId);
     if (!retried) return undefined;
     const running = options.runtime.run(retried.id);
@@ -1001,6 +1068,11 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     return running;
   };
   const cancel = (taskIdValue: string): TaskRecord | undefined => {
+    const current = options.runtime.get(taskIdValue);
+    if (current?.state === 'running' && current.remoteRequestId && current.remoteSupportsCancellation !== true) {
+      runtimeAdapter.abort(taskIdValue);
+      return options.runtime.markUnknown(taskIdValue, 'REMOTE_CANCEL_UNSUPPORTED');
+    }
     return runtimeAdapter.cancel(taskIdValue);
   };
   const flush = async (): Promise<void> => {

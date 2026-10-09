@@ -197,11 +197,22 @@ export const createImageToolScheduler = (options: BatchSchedulerOptions = {}) =>
     if (!runtime) throw new Error('IMAGE_TOOL_JOB_NOT_FOUND');
     const index = runtime.items.findIndex((item) => item.id === itemId);
     if (index < 0) throw new Error('IMAGE_TOOL_ITEM_NOT_FOUND');
-    runtime.items[index] = retryImageToolItem(runtime.items[index]);
+    runtime.items[index] = retryImageToolItem(runtime.items[index], new Date().toISOString(), runtime.job.outputRoot);
     cancelled.delete(jobId);
     paused.delete(jobId);
     updateAggregate(runtime);
     schedulePump();
+    return get(jobId)!;
+  };
+  const cancelItem = (jobId: string, itemId: string): BatchJobSnapshot => {
+    const runtime = jobs.get(jobId);
+    if (!runtime) throw new Error('IMAGE_TOOL_JOB_NOT_FOUND');
+    const index = runtime.items.findIndex((item) => item.id === itemId);
+    if (index < 0) throw new Error('IMAGE_TOOL_ITEM_NOT_FOUND');
+    const item = runtime.items[index];
+    if (item.state === 'queued') runtime.items[index] = { ...item, state: 'cancelled', errorCode: 'CANCELLED', updatedAt: new Date().toISOString() };
+    else if (item.state === 'running') running.get(item.id)?.controller.abort();
+    updateAggregate(runtime);
     return get(jobId)!;
   };
   const stop = (): void => {
@@ -217,7 +228,7 @@ export const createImageToolScheduler = (options: BatchSchedulerOptions = {}) =>
     if (running.size === 0 && !hasPendingWork()) return;
     await new Promise<void>((resolve) => idleWaiters.push(resolve));
   };
-  return { enqueue, get, pauseJob, resumeJob, cancelJob, retryItem, stop, waitForIdle };
+  return { enqueue, get, pauseJob, resumeJob, cancelJob, cancelItem, retryItem, stop, waitForIdle };
 };
 
 export const recoverBatchJob = (snapshot: BatchJobSnapshot): BatchJobSnapshot => {

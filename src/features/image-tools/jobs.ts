@@ -19,6 +19,10 @@ export type ImageToolJob = {
   params: ToolParams;
   sourceRoot: string;
   outputRoot: string;
+  /** User-facing name of the isolated result folder, when supplied by the UI. */
+  resultFolderName?: string;
+  /** How the source was selected, kept for recovery and display. */
+  createdFrom?: 'file' | 'directory';
   state: ImageToolJobState;
   itemIds: string[];
   /** New jobs should persist this identity; it is optional for old snapshots. */
@@ -36,8 +40,19 @@ export type ImageToolItem = {
   state: ImageToolItemState;
   attempt: number;
   resultPath?: string;
+  /** Isolated output root for a retry; stays inside the job output root. */
+  outputRoot?: string;
+  resultBytes?: number;
+  resultWidth?: number;
+  resultHeight?: number;
+  resultFormat?: string;
+  resultHasAlpha?: boolean;
   errorCode?: string;
   remoteRequestId?: string;
+  modelTaskId?: string;
+  providerCost?: number | null;
+  supportsRemoteCancellation?: boolean;
+  supportsStatusQuery?: boolean;
   startedAt?: string;
   completedAt?: string;
   updatedAt: string;
@@ -62,7 +77,7 @@ export const createImageToolJob = (input: Omit<ImageToolJob, 'state' | 'createdA
   const outputRoot = canonical(input.outputRoot);
   if (sourceRoot === outputRoot || outputRoot.startsWith(`${sourceRoot}/`) || sourceRoot.startsWith(`${outputRoot}/`)) throw new Error('IMAGE_TOOL_JOB_ROOTS_INVALID');
   const now = new Date().toISOString();
-  return { ...input, schemaVersion: input.schemaVersion ?? 1, state: 'queued', createdAt: input.createdAt ?? now, updatedAt: input.updatedAt ?? now };
+  return { ...input, schemaVersion: input.schemaVersion ?? 2, state: 'queued', createdAt: input.createdAt ?? now, updatedAt: input.updatedAt ?? now };
 };
 
 export const isBatchImageTool = (tool: ImageToolJobTool): tool is BatchImageTool => (batchImageTools as readonly string[]).includes(tool);
@@ -89,7 +104,11 @@ export const aggregateImageToolJobState = (items: readonly ImageToolItem[]): Ima
 
 export const canRetryImageToolItem = (item: ImageToolItem): boolean => item.state === 'failed' || item.state === 'cancelled' || item.state === 'unknown';
 
-export const retryImageToolItem = (item: ImageToolItem, now = new Date().toISOString()): ImageToolItem => {
+export const retryImageToolItem = (item: ImageToolItem, now = new Date().toISOString(), retryRoot?: string): ImageToolItem => {
   if (!canRetryImageToolItem(item)) throw new Error('IMAGE_TOOL_ITEM_NOT_RETRYABLE');
-  return { ...item, state: 'queued', attempt: item.attempt + 1, errorCode: undefined, resultPath: undefined, updatedAt: now };
+  const attempt = item.attempt + 1;
+  const outputRoot = retryRoot
+    ? `${retryRoot.replace(/[\\/]+$/u, '')}/retry-${item.id}-${attempt}`
+    : item.outputRoot;
+  return { ...item, state: 'queued', attempt, errorCode: undefined, resultPath: undefined, outputRoot, updatedAt: now };
 };

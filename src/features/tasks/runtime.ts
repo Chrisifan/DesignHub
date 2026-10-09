@@ -28,6 +28,7 @@ export type TaskRuntime = {
   complete: (taskId: string, result?: TaskResult) => Promise<TaskRecord>;
   fail: (taskId: string, errorCode: string, providerFailure?: TaskProviderFailure, analysisDiagnostic?: PortfolioAnalysisDiagnostic) => Promise<TaskRecord>;
   updateProgress: (taskId: string, progressText: string) => TaskRecord | undefined;
+  updateRemoteMetadata: (taskId: string, metadata: Pick<TaskRecord, 'remoteRequestId' | 'remoteSupportsCancellation' | 'remoteSupportsStatusQuery'>) => TaskRecord | undefined;
   updateVisualContextPlan: (taskId: string, plan: VisualContextPlan) => TaskRecord | undefined;
   updateGenerationSlot: (
     taskId: string,
@@ -164,6 +165,14 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     tasks.set(taskId, updated);
     progressDirty = true;
     scheduleProgressPersistence();
+    return structuredClone(updated);
+  };
+  const updateRemoteMetadata: TaskRuntime['updateRemoteMetadata'] = (taskId, metadata) => {
+    const task = tasks.get(taskId);
+    if (!task) return undefined;
+    const updated = { ...task, ...metadata, updatedAt: new Date().toISOString() };
+    tasks.set(taskId, updated);
+    schedulePersistence();
     return structuredClone(updated);
   };
   const updateVisualContextPlan: TaskRuntime['updateVisualContextPlan'] = (taskId, plan) => {
@@ -351,5 +360,5 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     }
     await persistence;
   };
-  return { get, list, start, run, cancel, complete, fail, updateProgress, updateVisualContextPlan, updateGenerationSlot, retryGenerationSlot, settleGenerationBatch, publishCompositionCandidate, resolveCompositionCandidate, retry, markUnknown, finish, flush };
+  return { get, list, start, run, cancel, complete, fail, updateProgress, updateRemoteMetadata, updateVisualContextPlan, updateGenerationSlot, retryGenerationSlot, settleGenerationBatch, publishCompositionCandidate, resolveCompositionCandidate, retry, markUnknown, finish, flush };
 };

@@ -17,7 +17,7 @@ describe('image tool jobs', () => {
   });
 
   it('creates a queued job with independent source and output roots', () => {
-    expect(createImageToolJob({ id: 'job-1', tool: 'remove-background', params: {}, sourceRoot: '/tmp/source', outputRoot: '/tmp/output', itemIds: [] })).toMatchObject({ id: 'job-1', state: 'queued' });
+    expect(createImageToolJob({ id: 'job-1', tool: 'remove-background', params: {}, sourceRoot: '/tmp/source', outputRoot: '/tmp/output', resultFolderName: 'remove-background-20261009', createdFrom: 'directory', itemIds: [] })).toMatchObject({ id: 'job-1', state: 'queued', resultFolderName: 'remove-background-20261009', createdFrom: 'directory' });
     expect(() => createImageToolJob({ id: 'job-1', tool: 'remove-background', params: {}, sourceRoot: '/tmp/same', outputRoot: '/tmp/same', itemIds: [] })).toThrow('IMAGE_TOOL_JOB_ROOTS_INVALID');
   });
 
@@ -31,6 +31,6 @@ describe('image tool jobs', () => {
 
   it('only retries terminal or unknown items and clears stale output', () => {
     expect(canRetryImageToolItem(item('running'))).toBe(false);
-    expect(retryImageToolItem({ ...item('unknown'), resultPath: '/tmp/output/source.png', errorCode: 'RESULT_UNKNOWN_AFTER_RESTART' })).toMatchObject({ state: 'queued', attempt: 2, resultPath: undefined, errorCode: undefined });
+    expect(retryImageToolItem({ ...item('unknown'), resultPath: '/tmp/output/source.png', errorCode: 'RESULT_UNKNOWN_AFTER_RESTART' }, '2026-10-09T00:00:00.000Z', '/tmp/output')).toMatchObject({ state: 'queued', attempt: 2, resultPath: undefined, errorCode: undefined, outputRoot: '/tmp/output/retry-item-unknown-2' });
   });
 });

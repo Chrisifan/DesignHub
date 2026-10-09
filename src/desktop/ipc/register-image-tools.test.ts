@@ -12,6 +12,8 @@ import {
   imageToolReadResultChannel,
   imageToolResumeChannel,
   imageToolRetryChannel,
+  imageToolQueryChannel,
+  imageToolCancelItemChannel,
   imageToolRevealResultChannel,
   imageToolScanChannel,
 } from './image-tools-channels';
@@ -55,6 +57,8 @@ describe('registerImageToolIpcHandlers', () => {
       imageToolResumeChannel,
       imageToolCancelChannel,
       imageToolRetryChannel,
+      imageToolQueryChannel,
+      imageToolCancelItemChannel,
       imageToolReadResultChannel,
       imageToolOpenResultChannel,
       imageToolRevealResultChannel,

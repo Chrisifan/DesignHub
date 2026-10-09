@@ -389,12 +389,45 @@ test('submits background removal through the selected image connection', async (
   await page.getByRole('button', { name: '春间市集', exact: true }).click();
   await page.getByRole('button', { name: '打开主海报', exact: true }).click();
   await page.getByRole('button', { name: '图像工具', exact: true }).click();
-  await page.getByRole('button', { name: '工具', exact: true }).click();
+  await page.getByRole('button', { name: '画布图像工具', exact: true }).click();
   await page.getByRole('button', { name: '配置去除背景', exact: true }).click();
   await page.getByRole('dialog', { name: '去除背景', exact: true }).getByRole('button', { name: '执行', exact: true }).click();
 
   await expect(page.locator('.studio-toast')).toContainText('去除背景任务已排队');
 });
+
+for (const width of [1280, 1024]) {
+  test(`exposes all canvas image tools from the visible entry at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 720 });
+    await gotoTestWorkspace(page, {
+      version: 1,
+      id: `canvas-image-tools-${width}`,
+      width: 1080,
+      height: 1440,
+      layers: [],
+    });
+
+    await page.getByRole('button', { name: '春间市集', exact: true }).click();
+    await page.getByRole('button', { name: '打开主海报', exact: true }).click();
+    const trigger = page.getByRole('button', { name: '画布图像工具', exact: true });
+    await expect(trigger).toBeVisible();
+    await expect(trigger).toBeInViewport();
+    await trigger.click();
+
+    const drawer = page.getByRole('dialog', { name: '工具', exact: true });
+    await expect(drawer).toBeVisible();
+    await expect.poll(async () => (await drawer.boundingBox())?.height ?? 0).toBeGreaterThan(400);
+    await expect(drawer.getByRole('button', { name: '配置调整尺寸', exact: true })).toBeVisible();
+    for (const label of ['去除背景', '替换背景', '移除对象', '局部重绘', '扩展画布', '智能裁切', '放大图像', '调整尺寸', '移除水印']) {
+      await expect(drawer.getByRole('button', { name: `配置${label}`, exact: true })).toBeAttached();
+    }
+    const lastTool = drawer.getByRole('button', { name: '配置移除水印', exact: true });
+    await lastTool.scrollIntoViewIfNeeded();
+    await expect(lastTool).toBeVisible();
+    await expect(lastTool).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
+  });
+}
 
 test('failed automatic project creation preserves the complete home draft', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });

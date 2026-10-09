@@ -27,6 +27,15 @@ const isValidItem = (job: ImageToolJob, value: unknown): value is ImageToolItem 
     && Number.isInteger(item.attempt)
     && item.attempt > 0
     && typeof item.updatedAt === 'string'
+    && (item.resultBytes === undefined || (typeof item.resultBytes === 'number' && Number.isInteger(item.resultBytes) && item.resultBytes >= 0))
+    && (item.resultWidth === undefined || (typeof item.resultWidth === 'number' && Number.isInteger(item.resultWidth) && item.resultWidth > 0))
+    && (item.resultHeight === undefined || (typeof item.resultHeight === 'number' && Number.isInteger(item.resultHeight) && item.resultHeight > 0))
+    && (item.resultFormat === undefined || typeof item.resultFormat === 'string')
+    && (item.resultHasAlpha === undefined || typeof item.resultHasAlpha === 'boolean')
+    && (item.providerCost === undefined || item.providerCost === null || (typeof item.providerCost === 'number' && Number.isFinite(item.providerCost)))
+    && (item.supportsRemoteCancellation === undefined || typeof item.supportsRemoteCancellation === 'boolean')
+    && (item.supportsStatusQuery === undefined || typeof item.supportsStatusQuery === 'boolean')
+    && (item.outputRoot === undefined || (typeof item.outputRoot === 'string' && isAbsolute(item.outputRoot) && inside(job.outputRoot, item.outputRoot)))
     && (item.resultPath === undefined || isValidResultPath(job, item.resultPath));
 };
 const isValidJob = (value: unknown, id: string): value is ImageToolJob => {
@@ -69,7 +78,8 @@ export const createImageToolJobStore = (root: string) => {
     try {
       const parsed = JSON.parse(await readFile(pathFor(id), 'utf8')) as ImageToolJobSnapshot;
       if (!parsed || !isValidJob(parsed.job, id) || !Array.isArray(parsed.items) || parsed.items.some((item) => !isValidItem(parsed.job, item))) throw new Error('IMAGE_TOOL_JOB_INVALID');
-      return clone(parsed);
+      const migrated = { ...parsed, job: { ...parsed.job, schemaVersion: Math.max(2, parsed.job.schemaVersion ?? 1) } };
+      return clone(migrated);
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'ENOENT') return null;
       throw error;

@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import type { Locale } from "../../app/i18n";
-import { Button, EmptyState, t } from "../../app/studio/ui";
+import { Button, EmptyState, Select, t } from "../../app/studio/ui";
 import type { BatchImageTool, ImageToolJob, ImageToolItem } from "./jobs";
 import { imageToolPreviewSource } from "./view-model";
 import { ImageToolJobList } from "./ImageToolJobList";
@@ -13,6 +13,7 @@ import type { ImageToolCommands } from "./image-tool-commands";
 export type ImageToolsShellProps = {
   locale: Locale;
   tool: BatchImageTool;
+  onToolChange: (tool: BatchImageTool) => void;
   jobs: ReadonlyArray<{ job: ImageToolJob; items: ImageToolItem[] }>;
   selectedJob: { job: ImageToolJob; items: ImageToolItem[] } | null;
   selectedItem: ImageToolItem | null;
@@ -32,6 +33,7 @@ export type ImageToolsShellProps = {
 export const ImageToolsShell = ({
   locale,
   tool,
+  onToolChange,
   jobs,
   selectedJob,
   selectedItem,
@@ -61,6 +63,17 @@ export const ImageToolsShell = ({
         <p>{toolDescription(locale, tool)}</p>
       </div>
       <div className="image-tools-page__actions">
+        <Select
+          ariaLabel={t(locale, "批量工具", "Batch tool")}
+          value={tool}
+          onChange={(value) => onToolChange(value as BatchImageTool)}
+          options={[
+            ["remove-background", "去除背景", "Remove background"],
+            ["upscale", "放大图像", "Upscale image"],
+            ["resize", "尺寸转换", "Resize"],
+            ["format-convert", "格式转换", "Format conversion"],
+          ].map(([value, zh, en]) => ({ value, label: t(locale, zh, en) }))}
+        />
         <Button icon="plus" variant="primary" onClick={configurator.onOpen}>
           {t(locale, "新建作业 / 选择文件", "New job / Choose files")}
         </Button>
@@ -116,6 +129,9 @@ export const ImageToolsShell = ({
         onRetry={() => {
           if (selectedItem) void commands.retryItem(selectedJob.job.id, selectedItem.id);
         }}
+        onCancelItem={() => {
+          if (selectedItem) void commands.cancelItem(selectedJob.job.id, selectedItem.id);
+        }}
         onOpenResult={() => {
           if (selectedItem?.resultPath) void commands.openResult(selectedItem.resultPath, selectedJob.job.id);
         }}
@@ -129,4 +145,3 @@ export const ImageToolsShell = ({
     )}
   </section>
 );
-

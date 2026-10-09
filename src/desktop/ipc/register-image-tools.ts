@@ -12,6 +12,8 @@ import {
   imageToolReadResultChannel,
   imageToolResumeChannel,
   imageToolRetryChannel,
+  imageToolQueryChannel,
+  imageToolCancelItemChannel,
   imageToolRevealResultChannel,
   imageToolScanChannel,
 } from './image-tools-channels';
@@ -31,6 +33,8 @@ type ImageToolIpcHandlersLike = {
   resume: (...args: unknown[]) => unknown;
   cancel: (...args: unknown[]) => unknown;
   retry: (...args: unknown[]) => unknown;
+  queryItem?: (...args: unknown[]) => unknown;
+  cancelItem?: (...args: unknown[]) => unknown;
   readResult: (...args: unknown[]) => unknown;
   openResult: (...args: unknown[]) => unknown;
   revealResult: (...args: unknown[]) => unknown;
@@ -65,6 +69,8 @@ export const registerImageToolIpcHandlers = ({
   ipc.handle(imageToolResumeChannel, (event, input) => handlers.resume(event, input));
   ipc.handle(imageToolCancelChannel, (event, input) => handlers.cancel(event, input));
   ipc.handle(imageToolRetryChannel, (event, input) => handlers.retry(event, input));
+  ipc.handle(imageToolQueryChannel, (event, input) => handlers.queryItem?.(event, input) ?? null);
+  ipc.handle(imageToolCancelItemChannel, (event, input) => handlers.cancelItem?.(event, input) ?? null);
   ipc.handle(imageToolReadResultChannel, (event, input) => handlers.readResult(event, input));
   ipc.handle(imageToolOpenResultChannel, (event, path) => handlers.openResult(event, path));
   ipc.handle(imageToolRevealResultChannel, (event, path) => handlers.revealResult(event, path));

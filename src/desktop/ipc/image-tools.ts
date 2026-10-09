@@ -25,10 +25,11 @@ const nonEmpty = (value: unknown): value is string => typeof value === 'string' 
 const isTool = (value: unknown): value is BatchImageTool => typeof value === 'string' && (batchImageTools as readonly string[]).includes(value);
 const isParams = (value: unknown): value is ToolParams => typeof value === 'object' && value !== null && !Array.isArray(value);
 const isLibraryInput = (value: unknown): value is { libraryId: string } => typeof value === 'object' && value !== null && nonEmpty((value as Record<string, unknown>).libraryId);
-const isJobInput = (value: unknown): value is { libraryId: string; tool: BatchImageTool; params: ToolParams; sourcePath: string; outputRoot: string; connectionId?: string } => {
+const isJobInput = (value: unknown): value is { libraryId: string; tool: BatchImageTool; params: ToolParams; sourcePath: string; outputRoot: string; resultFolderName?: string; connectionId?: string } => {
   if (!isLibraryInput(value)) return false;
   const input = value as Record<string, unknown>;
   return isTool(input.tool) && isParams(input.params) && nonEmpty(input.sourcePath) && nonEmpty(input.outputRoot)
+    && (input.resultFolderName === undefined || /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u.test(input.resultFolderName as string))
     && (input.connectionId === undefined || nonEmpty(input.connectionId));
 };
 const isJobRef = (value: unknown): value is { libraryId: string; jobId: string } => isLibraryInput(value) && nonEmpty((value as Record<string, unknown>).jobId);
@@ -56,6 +57,10 @@ const active = (deps: ImageToolIpcDeps, libraryId: string): ProjectLibraryHandle
 const isWithin = (parent: string, child: string): boolean => {
   const relativePath = relative(resolve(parent), resolve(child));
   return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath));
+};
+const outputRootFor = (input: { outputRoot: string; resultFolderName?: string; tool: BatchImageTool }): { outputRoot: string; resultFolderName: string } => {
+  const resultFolderName = input.resultFolderName ?? `${input.tool}-${randomUUID().slice(0, 8)}`;
+  return { resultFolderName, outputRoot: join(resolve(input.outputRoot), resultFolderName) };
 };
 
 export const createImageToolIpcHandlers = (deps: ImageToolIpcDeps) => {
@@ -144,18 +149,20 @@ export const createImageToolIpcHandlers = (deps: ImageToolIpcDeps) => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isJobInput(input)) return null;
       const library = active(deps, input.libraryId);
       if (!library) return null;
-      return scanImageSources({ sourcePath: input.sourcePath, outputRoot: input.outputRoot, tool: input.tool, outputFormat: typeof input.params.format === 'string' ? input.params.format as 'png' | 'jpeg' | 'webp' : undefined });
+      const output = outputRootFor(input);
+      return scanImageSources({ sourcePath: input.sourcePath, outputRoot: output.outputRoot, tool: input.tool, outputFormat: typeof input.params.format === 'string' ? input.params.format as 'png' | 'jpeg' | 'webp' : undefined });
     },
     create: async (event: Request, input: unknown): Promise<ImageToolJobSnapshot | null> => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isJobInput(input)) return null;
       const library = active(deps, input.libraryId);
       if (!library) return null;
       requireWritable(library);
-      const scan = await scanImageSources({ sourcePath: input.sourcePath, outputRoot: input.outputRoot, tool: input.tool, outputFormat: typeof input.params.format === 'string' ? input.params.format as 'png' | 'jpeg' | 'webp' : undefined });
+      const output = outputRootFor(input);
+      const scan = await scanImageSources({ sourcePath: input.sourcePath, outputRoot: output.outputRoot, tool: input.tool, outputFormat: typeof input.params.format === 'string' ? input.params.format as 'png' | 'jpeg' | 'webp' : undefined });
       if (!scan.accepted.length) throw new Error('IMAGE_TOOL_NO_INPUTS');
       if ((input.tool === 'remove-background' || input.tool === 'upscale') && !input.connectionId) throw new Error('CONNECTION_REQUIRED');
-      const job = createImageToolJob({ id: id(), libraryId: input.libraryId, tool: input.tool, params: input.params, sourceRoot: scan.sourceRoot, outputRoot: input.outputRoot, itemIds: scan.accepted.map(() => itemId()), executor: input.tool === 'resize' || input.tool === 'format-convert' ? { kind: 'local', engine: 'image-codec' } : { kind: 'provider', connectionId: input.connectionId ?? '', modelId: '' } satisfies ToolExecutor });
-      const items: ImageToolItem[] = scan.accepted.map((item, index) => ({ id: job.itemIds[index], jobId: job.id, relativePath: item.relativePath, state: 'queued', attempt: 1, updatedAt: job.createdAt }));
+      const job = createImageToolJob({ id: id(), libraryId: input.libraryId, tool: input.tool, params: input.params, sourceRoot: scan.sourceRoot, outputRoot: output.outputRoot, resultFolderName: output.resultFolderName, createdFrom: scan.source, itemIds: scan.accepted.map(() => itemId()), executor: input.tool === 'resize' || input.tool === 'format-convert' ? { kind: 'local', engine: 'image-codec' } : { kind: 'provider', connectionId: input.connectionId ?? '', modelId: '' } satisfies ToolExecutor });
+      const items: ImageToolItem[] = scan.accepted.map((item, index) => ({ id: job.itemIds[index], jobId: job.id, relativePath: item.relativePath, state: 'queued', attempt: 1, ...(job.executor?.kind === 'provider' ? { modelTaskId: `model-task-${randomUUID()}` } : {}), updatedAt: job.createdAt }));
       const snapshot = { job, items };
       await saveSnapshot(library, snapshot);
       const scheduler = getScheduler(library);
@@ -194,6 +201,17 @@ export const createImageToolIpcHandlers = (deps: ImageToolIpcDeps) => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isItemRef(input)) return null;
       const library = active(deps, input.libraryId); if (!library) return null; requireWritable(library);
       await hydrateJob(library, input.jobId); const snapshot = getScheduler(library).retryItem(input.jobId, input.itemId); await saveSnapshot(library, snapshot); return snapshot;
+    },
+    queryItem: async (event: Request, input: unknown): Promise<ImageToolItem | null> => {
+      if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isItemRef(input)) return null;
+      const library = active(deps, input.libraryId); if (!library) return null;
+      const snapshot = await hydrateJob(library, input.jobId);
+      return snapshot?.items.find((item) => item.id === input.itemId) ?? null;
+    },
+    cancelItem: async (event: Request, input: unknown): Promise<ImageToolJobSnapshot | null> => {
+      if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isItemRef(input)) return null;
+      const library = active(deps, input.libraryId); if (!library) return null; requireWritable(library);
+      await hydrateJob(library, input.jobId); const snapshot = getScheduler(library).cancelItem(input.jobId, input.itemId); await saveSnapshot(library, snapshot); return snapshot;
     },
     readResult: async (event: Request, input: unknown): Promise<string | null> => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isPathRef(input)) return null;

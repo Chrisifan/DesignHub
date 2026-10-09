@@ -60,7 +60,7 @@ const items = [
   },
 ];
 
-it("renders a fixed single-tool workbench without a tool switcher", () => {
+it("offers all four batch tools from one workbench", () => {
   render(
     <ImageToolsPage
       locale="zh-CN"
@@ -76,7 +76,8 @@ it("renders a fixed single-tool workbench without a tool switcher", () => {
 
   expect(screen.getByRole("heading", { level: 1, name: "放大图像" })).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "批量工具" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /尺寸转换/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "批量工具" })).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "批量工具" })).toHaveValue("upscale");
 });
 
 it("shows only the fixed tool parameters in the new job drawer", () => {
@@ -98,6 +99,60 @@ it("shows only the fixed tool parameters in the new job drawer", () => {
   expect(screen.getByLabelText("倍率")).toBeInTheDocument();
   expect(screen.queryByLabelText("宽度")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "尺寸转换" })).not.toBeInTheDocument();
+});
+
+it("exposes a JPEG background for local conversion tools", () => {
+  render(
+    <ImageToolsPage
+      locale="zh-CN"
+      tool="format-convert"
+      jobs={[]}
+      onCreate={vi.fn()}
+      onPause={vi.fn()}
+      onResume={vi.fn()}
+      onCancel={vi.fn()}
+      onRetryItem={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "新建作业 / 选择文件" }));
+  expect(screen.getByLabelText("输出格式")).toBeInTheDocument();
+  expect(screen.getByLabelText("JPEG 背景")).toBeInTheDocument();
+});
+
+it("allows creating accepted items when the scan also reports rejected items", async () => {
+  const onScan = vi.fn(async () => ({
+    accepted: [{ relativePath: "ok.png" }],
+    rejected: [{ path: "bad.txt", code: "UNSUPPORTED_FORMAT" }],
+  }));
+  const onCreate = vi.fn();
+  render(
+    <ImageToolsPage
+      locale="zh-CN"
+      tool="resize"
+      jobs={[]}
+      onCreate={onCreate}
+      onChooseInput={vi.fn(async () => ({ path: "/images/source", displayName: "source" }))}
+      onChooseOutput={vi.fn(async () => ({ path: "/images/output", displayName: "output" }))}
+      onScan={onScan}
+      onPause={vi.fn()}
+      onResume={vi.fn()}
+      onCancel={vi.fn()}
+      onRetryItem={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "新建作业 / 选择文件" }));
+  fireEvent.click(screen.getByRole("button", { name: "选择文件 / 文件夹" }));
+  await waitFor(() => expect(screen.getByText("来源：source")).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "选择输出位置" }));
+  await waitFor(() => expect(screen.getByText("输出：output")).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "扫描来源" }));
+  await waitFor(() => expect(onScan).toHaveBeenCalledOnce());
+
+  const createButton = screen.getByRole("button", { name: "创建作业" });
+  expect(createButton).not.toBeDisabled();
+  expect(screen.getByText(/bad\.txt/)).toBeInTheDocument();
 });
 
 it("exposes native source and output pickers for a new background-removal job", () => {
@@ -199,6 +254,25 @@ it("renders a job workbench with progress and result cards", () => {
   expect(outputButton.querySelector(".ui-icon")).toHaveStyle({
     maskImage: "url(./icons/folder-open.svg)",
   });
+});
+
+it("renders persisted result metadata and accessible progress semantics", () => {
+  render(
+    <ImageToolsPage
+      locale="zh-CN"
+      jobs={[{ job, items: [{ ...items[0], resultWidth: 6, resultHeight: 4, resultFormat: "webp", resultBytes: 1234 }, items[1]] }]}
+      onCreate={vi.fn()}
+      onPause={vi.fn()}
+      onResume={vi.fn()}
+      onCancel={vi.fn()}
+      onRetryItem={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "2");
+  expect(screen.getByText("6 × 4 · 1.2 KB")).toBeInTheDocument();
+  expect(screen.getByText("WEBP")).toBeInTheDocument();
 });
 
 it("changes result-card density with an accessible two-size control", () => {

@@ -1689,6 +1689,53 @@ it('runs image editing with an explicit source image and mask', async () => {
   expect(runtime.get(task.id)).toMatchObject({ state: 'completed', capability: 'image-editing', result: { assetIds: ['asset-edited'], imageCount: 1 } });
 });
 
+it('runs local resize through the task candidate path without a provider connection', async () => {
+  const runtime = createTaskRuntime();
+  const beforeScene = createScene({ id: 'before-resize', width: 100, height: 100, layers: [{ id: 'photo', type: 'image', assetId: 'asset-source', x: 0, y: 0, width: 100, height: 100, rotation: 0, opacity: 1, visible: true, locked: false }] });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => { throw new Error('PROVIDER_MUST_NOT_BE_RESOLVED'); },
+    executeLocalImageTool: async () => ({ images: [{ base64: 'resized', mimeType: 'image/png' }], cost: null }),
+    persistGeneratedImages: async () => ['asset-resized'],
+  });
+
+  const task = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'document-1', baseRevisionId: 'revision-1',
+    connectionId: '', prompt: 'Resize locally', image: new Blob(['image']), sourceAssetId: 'asset-source',
+    beforeScene, tool: 'resize', toolParams: { width: 200, height: 150, fit: 'contain', format: 'png' },
+  });
+  await service.flush();
+  expect(runtime.get(task.id)).toMatchObject({ state: 'completed', capability: 'local-transform', result: { assetIds: ['asset-resized'] } });
+  expect(runtime.get(task.id)?.result?.toolCandidate).toMatchObject({ resultAssetId: 'asset-resized', candidateScene: { width: 200, height: 150 } });
+});
+
+it('explicitly retries a failed local resize without resolving a provider', async () => {
+  const runtime = createTaskRuntime();
+  let calls = 0;
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => { throw new Error('PROVIDER_MUST_NOT_BE_RESOLVED'); },
+    executeLocalImageTool: async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('LOCAL_CODEC_FAILED');
+      return { images: [{ base64: 'resized-again', mimeType: 'image/png' }], cost: null };
+    },
+    loadSourceImage: async () => new Blob(['managed image'], { type: 'image/png' }),
+    persistGeneratedImages: async () => ['asset-resized-again'],
+  });
+  const first = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'document-1', connectionId: '', prompt: 'Resize locally', image: new Blob(['image']), sourceAssetId: 'asset-source',
+    tool: 'resize', toolParams: { width: 200, height: 150, format: 'png' },
+  });
+  await service.flush();
+  expect(runtime.get(first.id)?.state).toBe('failed');
+  const retried = await service.retry(first.id);
+  await service.flush();
+  expect(retried).toMatchObject({ capability: 'local-transform', state: 'running', attempt: 2 });
+  expect(runtime.get(retried!.id)).toMatchObject({ state: 'completed', result: { assetIds: ['asset-resized-again'] } });
+  expect(calls).toBe(2);
+});
+
 it('retains the selected image tool and region in the task record', async () => {
   const runtime = createTaskRuntime();
   const service = createAgentTaskService({
@@ -1721,6 +1768,66 @@ it('persists and forwards image-tool parameters with an edit task', async () => 
   expect(editImage).toHaveBeenCalledWith(expect.objectContaining({
     tool: 'smart-crop', toolParams: { width: 1080, height: 1080, focus: 'subject' },
   }), expect.any(AbortSignal));
+});
+
+it('persists provider request metadata on a completed image task', async () => {
+  const runtime = createTaskRuntime();
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async () => ({ images: [{ base64: 'result' }], cost: 0.02, remoteRequestId: 'req-remote-1', supportsRemoteCancellation: true, supportsStatusQuery: true }),
+    }),
+    persistGeneratedImages: async () => ['asset-result'],
+  });
+  const task = await service.submitImageEdit({ projectId: 'project-1', documentId: 'doc-1', connectionId: 'provider-1', prompt: 'edit', image: new Blob(['image']) });
+  await service.flush();
+  expect(runtime.get(task.id)).toMatchObject({ remoteRequestId: 'req-remote-1', remoteSupportsCancellation: true, remoteSupportsStatusQuery: true });
+});
+
+it('rejects unsupported regional provider edits before sending the request', async () => {
+  const runtime = createTaskRuntime();
+  const editImage = vi.fn(async () => ({ images: [{ base64: 'result' }], cost: null }));
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      toolCapabilities: [{ tool: 'remove-object', supportsMask: false, supportsTransparency: false, supportsRemoteCancellation: false, supportsStatusQuery: false }],
+      editImage,
+    }),
+  });
+  const task = await service.submitImageEdit({
+    projectId: 'project-1', documentId: 'doc-1', connectionId: 'provider-1', prompt: 'remove object', image: new Blob(['image']), mask: new Blob(['mask']),
+    tool: 'remove-object', toolParams: { feather: 10 }, region: { x: 1, y: 1, width: 4, height: 4 },
+  });
+  await service.flush();
+  expect(runtime.get(task.id)).toMatchObject({ state: 'failed', errorCode: 'PROVIDER_MASK_UNSUPPORTED' });
+  expect(editImage).not.toHaveBeenCalled();
+});
+
+it('marks a remote task unknown when the provider cannot cancel it', async () => {
+  const runtime = createTaskRuntime();
+  let release: (() => void) | undefined;
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async (_request, signal) => await new Promise((resolve, reject) => {
+        const complete = () => resolve({ images: [{ base64: 'late' }], cost: null, remoteRequestId: 'remote-running', supportsRemoteCancellation: false });
+        const abort = () => reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+        release = complete;
+        signal?.addEventListener('abort', abort, { once: true });
+      }),
+    }),
+    persistGeneratedImages: async () => ['asset-late'],
+  });
+  const task = await service.submitImageEdit({ projectId: 'project-1', documentId: 'doc-1', connectionId: 'provider-1', prompt: 'edit', image: new Blob(['image']) });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  runtime.updateRemoteMetadata(task.id, { remoteRequestId: 'remote-running', remoteSupportsCancellation: false, remoteSupportsStatusQuery: false });
+  const cancelled = service.cancel(task.id);
+  expect(cancelled).toMatchObject({ state: 'unknown', errorCode: 'REMOTE_CANCEL_UNSUPPORTED' });
+  release?.();
+  await service.flush();
 });
 
 it('retries a failed image generation with the image adapter and preserves its capability', async () => {

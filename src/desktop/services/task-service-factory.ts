@@ -13,6 +13,8 @@ import { createProjectStore } from '../storage/project-store';
 import { loadTaskState, saveTaskState } from '../storage/task-store';
 import { loadDocumentScene } from '../storage/scene-store';
 import { saveDesignerArtwork } from '../storage/designer-store';
+import { transformImageBytes } from '../../features/image-tools/local-codec';
+import sharp from 'sharp';
 
 export type TaskServiceFactoryDependencies = {
   workspace: ProjectLibraryHandle;
@@ -78,6 +80,34 @@ export const createAgentTaskServiceForLibrary = async ({
     loadMaskImage: async ({ projectId, assetId }) => {
       const image = await loadManagedProviderImage(projectId, assetId);
       return image ? new Blob([new Uint8Array(image.bytes).buffer as ArrayBuffer], { type: image.mimeType }) : null;
+    },
+    executeLocalImageTool: async (input, signal) => {
+      if (input.tool !== 'resize') throw new Error('LOCAL_TOOL_UNSUPPORTED');
+      if (signal.aborted) throw Object.assign(new Error('cancelled'), { name: 'AbortError' });
+      const source = new Uint8Array(await input.image.arrayBuffer());
+      const format = input.toolParams?.format === 'jpeg' || input.toolParams?.format === 'webp' || input.toolParams?.format === 'png' ? input.toolParams.format : 'png';
+      const bytes = await transformImageBytes(source, 'resize', { ...input.toolParams, format });
+      if (signal.aborted) throw Object.assign(new Error('cancelled'), { name: 'AbortError' });
+      const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+      return { images: [{ base64: Buffer.from(bytes).toString('base64'), mimeType }], cost: null };
+    },
+    validateImageResult: async (input, images) => {
+      if (!('tool' in input) || !input.tool) return;
+      const sourceBytes = 'image' in input ? new Uint8Array(await input.image.arrayBuffer()) : undefined;
+      const sourceMetadata = sourceBytes ? await sharp(Buffer.from(sourceBytes), { animated: false }).metadata() : undefined;
+      const expectedSize = input.tool === 'smart-crop'
+        ? { width: Number(input.toolParams?.width), height: Number(input.toolParams?.height) }
+        : input.tool === 'expand' && sourceMetadata?.width && sourceMetadata.height
+          ? { width: sourceMetadata.width + Number(input.toolParams?.left ?? 0) + Number(input.toolParams?.right ?? 0), height: sourceMetadata.height + Number(input.toolParams?.top ?? 0) + Number(input.toolParams?.bottom ?? 0) }
+          : input.tool === 'upscale' && sourceMetadata?.width && sourceMetadata.height
+            ? { width: Math.round(sourceMetadata.width * Number(input.toolParams?.scale ?? 1)), height: Math.round(sourceMetadata.height * Number(input.toolParams?.scale ?? 1)) }
+            : undefined;
+      for (const image of images) {
+        const generated = await generatedImageBytes(image);
+        const metadata = await sharp(Buffer.from(generated.bytes), { animated: false }).metadata();
+        if (input.tool === 'remove-background' && !metadata.hasAlpha) throw new Error('TRANSPARENCY_REQUIRED');
+        if (expectedSize && (metadata.width !== expectedSize.width || metadata.height !== expectedSize.height)) throw new Error('RESULT_DIMENSIONS_INVALID');
+      }
     },
     persistConversationAttachments: async ({ projectId, attachments }) => {
       const imported = await assetStore.importAssets({

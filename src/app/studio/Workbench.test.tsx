@@ -257,8 +257,11 @@ it('bootstraps an empty document with its persisted dimensions', () => {
   };
   render(<Workbench {...makeProps({ project: sizedProject, documentId: 'square-doc' })} />);
   expect(screen.getByText('1080 × 1080 px')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '工具' }));
-  expect(screen.getByRole('spinbutton', { name: '高度' })).toHaveValue(1080);
+  fireEvent.click(screen.getByRole('button', { name: '画布图像工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置调整尺寸' }));
+  const dialog = screen.getByRole('dialog', { name: '调整尺寸' });
+  expect(within(dialog).getByRole('spinbutton', { name: '宽度' })).toHaveValue(1080);
+  expect(within(dialog).getByRole('spinbutton', { name: '高度' })).toHaveValue(1080);
 });
 
 it('makes layer visibility and text properties observable on the example preview', () => {
@@ -755,14 +758,16 @@ it('reports an empty workspace document when properties cannot inspect a layer',
   expect(notify).toHaveBeenCalledWith('当前没有可编辑图层');
 });
 
-it('applies an offline canvas resize through the tools panel', () => {
-  const notify = vi.fn();
-  render(<Workbench locale="zh-CN" project={project} onBack={() => undefined} onConnections={() => undefined} notify={notify} />);
-  fireEvent.click(screen.getByRole('button', { name: '工具' }));
-  fireEvent.change(screen.getByRole('spinbutton', { name: '宽度' }), { target: { value: '540' } });
-  fireEvent.change(screen.getByRole('spinbutton', { name: '高度' }), { target: { value: '720' } });
-  fireEvent.click(screen.getByRole('button', { name: '应用' }));
-  expect(notify).toHaveBeenCalledWith('尺寸已更新');
+it('submits an offline canvas resize through the candidate workflow', async () => {
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  render(<Workbench {...makeProps({ onSubmitImageTask })} />);
+  fireEvent.click(screen.getByRole('button', { name: '画布图像工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置调整尺寸' }));
+  const dialog = screen.getByRole('dialog', { name: '调整尺寸' });
+  fireEvent.change(within(dialog).getByRole('spinbutton', { name: '宽度' }), { target: { value: '540' } });
+  fireEvent.change(within(dialog).getByRole('spinbutton', { name: '高度' }), { target: { value: '720' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: '执行' }));
+  await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'resize', params: expect.objectContaining({ width: 540, height: 720 }) })));
 });
 
 it('exposes background editing tools with an explicit connection handoff', () => {
@@ -843,11 +848,11 @@ it('requires and applies a region before submitting a regional image tool', asyn
   })));
 });
 
-it('exposes the complete provider-backed image tool set from the tools panel', async () => {
+it('exposes a visible entry and the complete nine-tool canvas image set', async () => {
   const onSubmitImageTask = vi.fn(async () => undefined);
   render(<Workbench {...makeProps({ onSubmitImageTask })} />);
-  fireEvent.click(screen.getByRole('button', { name: '工具' }));
-  for (const label of ['移除对象', '局部重绘', '扩展画布', '放大图像']) {
+  fireEvent.click(screen.getByRole('button', { name: '画布图像工具' }));
+  for (const label of ['去除背景', '替换背景', '移除对象', '局部重绘', '扩展画布', '智能裁切', '放大图像', '调整尺寸', '移除水印']) {
     expect(screen.getByText(label)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: `配置${label}` })).toBeInTheDocument();
   }

@@ -20,6 +20,7 @@ type ParamProps = {
   preserveDetails: "balanced" | "details" | "texture";
   fit: "contain" | "cover" | "stretch";
   format: "png" | "jpeg" | "webp";
+  background: string;
   setConnectionId: (value: string) => void;
   setWidth: (value: number) => void;
   setHeight: (value: number) => void;
@@ -27,6 +28,7 @@ type ParamProps = {
   setPreserveDetails: (value: "balanced" | "details" | "texture") => void;
   setFit: (value: "contain" | "cover" | "stretch") => void;
   setFormat: (value: "png" | "jpeg" | "webp") => void;
+  setBackground: (value: string) => void;
 };
 const ParameterFields = ({
   locale,
@@ -39,6 +41,7 @@ const ParameterFields = ({
   preserveDetails,
   fit,
   format,
+  background,
   setConnectionId,
   setWidth,
   setHeight,
@@ -46,6 +49,7 @@ const ParameterFields = ({
   setPreserveDetails,
   setFit,
   setFormat,
+  setBackground,
 }: ParamProps) => (
   <div className="image-tools-composer__params">
     {(tool === "remove-background" || tool === "upscale") && (
@@ -151,6 +155,16 @@ const ParameterFields = ({
         />
       </Field>
     )}
+    {(tool === "resize" || tool === "format-convert") && (
+      <Field label={t(locale, "JPEG 背景", "JPEG background")}>
+        <input
+          aria-label={t(locale, "JPEG 背景", "JPEG background")}
+          type="color"
+          value={background}
+          onChange={(event) => setBackground(event.target.value)}
+        />
+      </Field>
+    )}
   </div>
 );
 
@@ -162,6 +176,7 @@ export const ImageToolConfigurator = ({
   outputRoot,
   sourceLabel,
   outputLabel,
+  resultFolderName,
   scan,
   connectionId,
   connections,
@@ -171,6 +186,7 @@ export const ImageToolConfigurator = ({
   preserveDetails,
   fit,
   format,
+  background,
   error,
   onOpenConnections,
   canCreate,
@@ -186,6 +202,8 @@ export const ImageToolConfigurator = ({
   setPreserveDetails,
   setFit,
   setFormat,
+  setBackground,
+  setResultFolderName,
 }: {
   locale: Locale;
   tool: BatchImageTool;
@@ -194,6 +212,7 @@ export const ImageToolConfigurator = ({
   outputRoot: string;
   sourceLabel: string;
   outputLabel: string;
+  resultFolderName: string;
   scan: ImageToolScanResult;
   connectionId: string;
   connections: string[];
@@ -203,6 +222,7 @@ export const ImageToolConfigurator = ({
   preserveDetails: "balanced" | "details" | "texture";
   fit: "contain" | "cover" | "stretch";
   format: "png" | "jpeg" | "webp";
+  background: string;
   error: string;
   onOpenConnections?: () => void;
   canCreate: boolean;
@@ -218,6 +238,8 @@ export const ImageToolConfigurator = ({
   setPreserveDetails: (value: "balanced" | "details" | "texture") => void;
   setFit: (value: "contain" | "cover" | "stretch") => void;
   setFormat: (value: "png" | "jpeg" | "webp") => void;
+  setBackground: (value: string) => void;
+  setResultFolderName: (value: string) => void;
 }) => (
   <Drawer
     open={open}
@@ -258,7 +280,7 @@ export const ImageToolConfigurator = ({
       <div className="image-tools-composer__source-actions">
         <div className="image-tools-source-picker">
           <div className="image-tools-source-picker__copy">
-            <Icon name="image-plus" size={20} />
+            <Icon name="file-image" size={20} />
             <div>
               <strong>{sourceLabel ? `${t(locale, "来源", "Source")}：${sourceLabel}` : t(locale, "还没有选择来源", "No source selected")}</strong>
               <small>{t(locale, "支持单张图片或整个文件夹", "Choose one image or an entire folder")}</small>
@@ -278,6 +300,13 @@ export const ImageToolConfigurator = ({
       </div>
       {error && <p className="image-tools-composer__error" role="alert">{error}</p>}
       <ImageToolScanPreview locale={locale} scan={scan} />
+      <Field label={t(locale, "结果文件夹名", "Result folder name")}>
+        <input
+          aria-label={t(locale, "结果文件夹名", "Result folder name")}
+          value={resultFolderName}
+          onChange={(event) => setResultFolderName(event.target.value)}
+        />
+      </Field>
       <div className="image-tools-composer__step">
         <span>02</span>
         <div>
@@ -296,6 +325,7 @@ export const ImageToolConfigurator = ({
         preserveDetails={preserveDetails}
         fit={fit}
         format={format}
+        background={background}
         setConnectionId={setConnectionId}
         setWidth={setWidth}
         setHeight={setHeight}
@@ -303,6 +333,7 @@ export const ImageToolConfigurator = ({
         setPreserveDetails={setPreserveDetails}
         setFit={setFit}
         setFormat={setFormat}
+        setBackground={setBackground}
       />
       {(tool === "remove-background" || tool === "upscale") && connections.length === 0 && (
         <div className="image-tools-composer__connection-warning" role="alert">
@@ -347,4 +378,3 @@ export const ImageToolConfigurator = ({
     </div>
   </Drawer>
 );
-

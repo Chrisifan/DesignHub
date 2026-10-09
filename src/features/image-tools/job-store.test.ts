@@ -30,6 +30,18 @@ it('rejects job items with absolute or escaping paths', async () => {
   }
 });
 
+it('migrates legacy snapshots to the current schema', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'designhub-image-jobs-migration-'));
+  try {
+    const store = createImageToolJobStore(root);
+    const job = createImageToolJob({ id: 'job-migration', tool: 'resize', params: { width: 800, height: 600 }, sourceRoot: '/input', outputRoot: '/output', itemIds: [] });
+    await store.save({ ...job, schemaVersion: undefined }, []);
+    await expect(store.load(job.id)).resolves.toMatchObject({ job: { schemaVersion: 2 } });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 it('lists jobs and persists running items as unknown during startup recovery', async () => {
   const root = await mkdtemp(join(tmpdir(), 'designhub-image-jobs-recovery-'));
   try {

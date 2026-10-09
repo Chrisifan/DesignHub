@@ -16,6 +16,13 @@ import {
 
 type ResultFilter = "all" | ImageToolItem["state"];
 
+const formatBytes = (bytes: number | undefined): string | null => {
+  if (bytes === undefined) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 export const ImageToolJobDetails = ({
   locale,
   job,
@@ -115,7 +122,15 @@ export const ImageToolJobDetails = ({
               </span>
             ))}
           </div>
-          <div className="image-tools-progress__track">
+          <div
+            className="image-tools-progress__track"
+            role="progressbar"
+            aria-label={t(locale, "作业完成进度", "Job completion progress")}
+            aria-valuemin={0}
+            aria-valuemax={progress.total}
+            aria-valuenow={progress.completed}
+            aria-valuetext={`${progress.completed} / ${progress.total}`}
+          >
             {(["completed", "running", "queued", "failed", "unknown", "cancelled"] as const).map((state) => (
               <span
                 key={state}
@@ -168,6 +183,7 @@ export const ImageToolJobDetails = ({
           ["queued", "排队", "Queued"],
           ["failed", "失败", "Failed"],
           ["unknown", "未知", "Unknown"],
+          ["cancelled", "已取消", "Cancelled"],
         ] as const).map(([value, zh, en]) => (
           <button key={value} type="button" role="tab" aria-selected={resultFilter === value} className={resultFilter === value ? "is-active" : ""} onClick={() => setResultFilter(value)}>
             {t(locale, zh, en)} <small>{resultCounts[value]}</small>
@@ -217,8 +233,12 @@ export const ImageToolJobDetails = ({
               <span className="image-tools-result-card__body">
                 <strong title={item.relativePath}>{item.relativePath}</strong>
                 <span>
-                  <small>{item.state === "completed" ? "2048 × 2048" : item.state === "running" ? "处理中" : item.state === "queued" ? "等待执行" : item.errorCode ? itemErrorMessage(locale, item.errorCode) : t(locale, `尝试 ${item.attempt}`, `Attempt ${item.attempt}`)}</small>
-                  <em>{item.state === "completed" ? "PNG" : item.state === "running" ? "INFER" : item.state === "queued" ? "WAIT" : item.state === "unknown" ? "UNK" : item.state === "cancelled" ? "VOID" : "FAIL"}</em>
+                  <small>{item.state === "completed"
+                    ? item.resultWidth && item.resultHeight
+                      ? `${item.resultWidth} × ${item.resultHeight}${formatBytes(item.resultBytes) ? ` · ${formatBytes(item.resultBytes)}` : ""}`
+                      : t(locale, "结果已生成", "Result ready")
+                    : item.state === "running" ? "处理中" : item.state === "queued" ? "等待执行" : item.errorCode ? itemErrorMessage(locale, item.errorCode) : t(locale, `尝试 ${item.attempt}`, `Attempt ${item.attempt}`)}</small>
+                  <em>{item.state === "completed" ? (item.resultFormat?.toUpperCase() ?? "RESULT") : item.state === "running" ? "INFER" : item.state === "queued" ? "WAIT" : item.state === "unknown" ? "UNK" : item.state === "cancelled" ? "VOID" : "FAIL"}</em>
                 </span>
               </span>
               {item.state === "failed" && <span className="image-tools-result-card__retry">{t(locale, "重试", "Retry")}</span>}

@@ -10,7 +10,7 @@ export type ProviderBatchRequest = {
   sourceBytes: Uint8Array;
   signal: AbortSignal;
 };
-export type ProviderBatchResponse = Uint8Array | { bytes: Uint8Array; remoteRequestId?: string; supportsRemoteCancellation?: boolean };
+export type ProviderBatchResponse = Uint8Array | { bytes: Uint8Array; remoteRequestId?: string; supportsRemoteCancellation?: boolean; supportsStatusQuery?: boolean; cost?: number | null };
 export type BatchWorkerDeps = {
   executeProvider?: (request: ProviderBatchRequest) => Promise<ProviderBatchResponse>;
   /** Aliases keep the worker usable by provider adapters and test fakes. */
@@ -45,6 +45,8 @@ export const processImageToolItem = async (job: ImageToolJob, item: ImageToolIte
   let bytes: Uint8Array;
   let remoteRequestId: string | undefined;
   let remoteCancellationSupported = false;
+  let remoteStatusQuerySupported = false;
+  let providerCost: number | null | undefined;
   const executor = executorFor(job);
   if (executor.kind === 'local') {
     if (!localTools.has(job.tool)) throw new Error('EXECUTOR_TOOL_MISMATCH');
@@ -60,7 +62,7 @@ export const processImageToolItem = async (job: ImageToolJob, item: ImageToolIte
     if (!executeProvider) throw new Error('PROVIDER_EXECUTOR_UNAVAILABLE');
     const response = await executeProvider({ job, item, sourceBytes, signal });
     if (response instanceof Uint8Array) bytes = response;
-    else { bytes = response.bytes; remoteRequestId = response.remoteRequestId; remoteCancellationSupported = response.supportsRemoteCancellation ?? executor.supportsRemoteCancellation === true; }
+    else { bytes = response.bytes; remoteRequestId = response.remoteRequestId; remoteCancellationSupported = response.supportsRemoteCancellation ?? executor.supportsRemoteCancellation === true; remoteStatusQuerySupported = response.supportsStatusQuery ?? executor.supportsStatusQuery === true; providerCost = response.cost; }
   }
   if (signal.aborted) {
     if (executor.kind === 'provider' && !remoteCancellationSupported) throw new Error('RESULT_UNKNOWN_AFTER_CANCEL');
@@ -69,14 +71,21 @@ export const processImageToolItem = async (job: ImageToolJob, item: ImageToolIte
   const metadata = await inspectImageBytes(bytes);
   if (job.tool === 'remove-background' && !metadata.hasAlpha) throw new Error('TRANSPARENCY_REQUIRED');
   const publish = deps.publish ?? ((input: { outputRoot: string; relativePath: string; bytes: Uint8Array }) => publishImageResult(input));
-  const published = await publish({ outputRoot: job.outputRoot, relativePath: outputRelativePath(item.relativePath, job), bytes });
+  const published = await publish({ outputRoot: item.outputRoot ?? job.outputRoot, relativePath: outputRelativePath(item.relativePath, job), bytes });
   return {
     published,
     item: {
       ...item,
       state: 'completed',
       resultPath: published.path,
+      resultBytes: published.bytes,
+      resultWidth: published.width,
+      resultHeight: published.height,
+      resultFormat: published.format,
+      resultHasAlpha: published.hasAlpha,
       remoteRequestId: remoteRequestId ?? item.remoteRequestId,
+      ...(providerCost !== undefined ? { providerCost } : {}),
+      ...(executor.kind === 'provider' ? { supportsRemoteCancellation: remoteCancellationSupported, supportsStatusQuery: remoteStatusQuerySupported } : {}),
       completedAt: now(),
       updatedAt: now(),
       errorCode: undefined,

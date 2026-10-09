@@ -13,7 +13,6 @@ import type { Region } from '../../features/canvas/selection';
 import { createScene, isLayerInteractive, replaceSceneLayer, type DesignScene, type TextLayer } from '../../features/canvas/scene';
 import { validateDesignSceneCandidate, type DesignSceneCandidate } from '../../features/composition/design-scene-candidate';
 import { getDesktopApi } from '../../platform/runtime';
-import { resizeScene } from '../../features/image-tools/local-transform';
 import { defaultToolParams, validateToolParams, type ImageTool, type ToolParams } from '../../features/image-tools/target';
 import { ToolInspector } from '../../features/image-tools/ToolInspector';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
@@ -217,8 +216,6 @@ export const Workbench = ({
     return valid?.ok ? valid.candidate : null;
   });
   const [candidateScene, setCandidateScene] = useState<DesignScene | null>(() => entryCandidate?.scene ?? null);
-  const [resizeWidth, setResizeWidth] = useState(() => (providedScene ?? createInitialScene(project, documentId)).width);
-  const [resizeHeight, setResizeHeight] = useState(() => (providedScene ?? createInitialScene(project, documentId)).height);
   const [revisionState, setRevisionState] = useState<RevisionState>({ revisions: [], timeline: [], finalRevisionId: null });
   const [revisionBusy, setRevisionBusy] = useState(false);
   const [revisionBaseId, setRevisionBaseId] = useState<string | null>(null);
@@ -269,7 +266,7 @@ export const Workbench = ({
     const completed = getCompletedCandidates(tasks, activeBaseRevisionId);
     setSelectedCandidateId((current) => current && completed.some(({ candidate }) => candidate.id === current) ? current : completed[0]?.candidate.id ?? null);
     if (!completed.length) {
-      const toolTask = tasks.find((task) => task.capability === 'image-editing' && task.state === 'completed' && (task.result?.toolCandidate || task.result?.candidate));
+      const toolTask = tasks.find((task) => (task.capability === 'image-editing' || task.capability === 'local-transform') && task.state === 'completed' && (task.result?.toolCandidate || task.result?.candidate));
       setToolCandidateTaskId(toolTask?.id ?? null);
     } else {
       setToolCandidateTaskId(null);
@@ -947,6 +944,16 @@ export const Workbench = ({
           role="toolbar"
           aria-label={t(locale, '预览视图', 'Preview view')}
         >
+          <Button
+            className="workbench-image-tools-trigger"
+            variant={panelOpen && panel === 'tools' ? 'secondary' : 'ghost'}
+            icon="wand-sparkles"
+            aria-label={t(locale, '画布图像工具', 'Canvas image tools')}
+            title={t(locale, '画布图像工具', 'Canvas image tools')}
+            onClick={() => showPanel('tools')}
+          >
+            {t(locale, '画布图像工具', 'Canvas image tools')}
+          </Button>
           <IconButton
             name="zoom-out"
             label={t(locale, '缩小', 'Zoom out')}
@@ -1377,19 +1384,10 @@ export const Workbench = ({
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon"><Icon name="maximize-2" /></span>
                   <div>
-                    <strong>{t(locale, '调整尺寸', 'Resize canvas')}</strong>
-                    <p>{t(locale, '本地处理，可撤销或继续编辑。', 'Local transform; continue editing after apply.')}</p>
-                    <div className="workbench-coordinate-grid">
-                      <Field label={t(locale, '宽度', 'Width')}><input type="number" min="1" value={resizeWidth} disabled={readOnly} onChange={(event) => setResizeWidth(Number(event.target.value))} /></Field>
-                      <Field label={t(locale, '高度', 'Height')}><input type="number" min="1" value={resizeHeight} disabled={readOnly} onChange={(event) => setResizeHeight(Number(event.target.value))} /></Field>
-                    </div>
+                    <strong>{t(locale, '调整尺寸', 'Resize')}</strong>
+                    <p>{t(locale, '本地转换并生成可确认的结果候选。', 'Transform locally and create a result candidate for review.')}</p>
                   </div>
-                  <Button variant="secondary" disabled={readOnly} onClick={() => {
-                    try {
-                      persistScene(resizeScene(scene, { width: resizeWidth, height: resizeHeight }));
-                      notify(t(locale, '尺寸已更新', 'Canvas resized'));
-                    } catch { notify(t(locale, '尺寸无效', 'Invalid size')); }
-                  }}>{t(locale, '应用', 'Apply')}</Button>
+                  <Button aria-label={t(locale, '配置调整尺寸', 'Configure resize')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('resize')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon">
@@ -1420,7 +1418,7 @@ export const Workbench = ({
                 </div>
                 <div className="workbench-tool-entry">
                   <span className="workbench-tool-entry__icon">
-                    <Icon name="wand-sparkles" />
+                    <Icon name="crop" />
                   </span>
                   <div>
                     <strong>{t(locale, '智能裁切', 'Smart crop')}</strong>
@@ -1443,7 +1441,7 @@ export const Workbench = ({
                   </Button>
                 </div>
                 <div className="workbench-tool-entry">
-                  <span className="workbench-tool-entry__icon"><Icon name="eraser" /></span>
+                  <span className="workbench-tool-entry__icon"><Icon name="image" /></span>
                   <div>
                     <strong>{t(locale, '去除背景', 'Remove background')}</strong>
                     <p>{t(locale, '保留主体，生成透明背景副本。', 'Keep the subject and create a transparent-background copy.')}</p>
@@ -1451,7 +1449,7 @@ export const Workbench = ({
                   <Button aria-label={t(locale, '配置去除背景', 'Configure remove background')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('remove-background')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
-                  <span className="workbench-tool-entry__icon"><Icon name="image-plus" /></span>
+                  <span className="workbench-tool-entry__icon"><Icon name="file-image" /></span>
                   <div>
                     <strong>{t(locale, '替换背景', 'Replace background')}</strong>
                     <p>{t(locale, '使用描述生成新的背景方向。', 'Generate a new background direction from a description.')}</p>
@@ -1459,7 +1457,7 @@ export const Workbench = ({
                   <Button aria-label={t(locale, '配置替换背景', 'Configure replace background')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('replace-background')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
-                  <span className="workbench-tool-entry__icon"><Icon name="eraser" /></span>
+                  <span className="workbench-tool-entry__icon"><Icon name="trash-2" /></span>
                   <div>
                     <strong>{t(locale, '移除对象', 'Remove object')}</strong>
                     <p>{t(locale, '移除选区中的对象并保留周围细节。', 'Remove an object from a selected region while preserving nearby detail.')}</p>
@@ -1467,7 +1465,7 @@ export const Workbench = ({
                   <Button aria-label={t(locale, '配置移除对象', 'Configure remove object')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('remove-object')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
-                  <span className="workbench-tool-entry__icon"><Icon name="paintbrush" /></span>
+                  <span className="workbench-tool-entry__icon"><Icon name="pencil" /></span>
                   <div>
                     <strong>{t(locale, '局部重绘', 'Inpaint')}</strong>
                     <p>{t(locale, '根据描述重绘选区内容。', 'Redraw a selected region from a description.')}</p>
@@ -1475,7 +1473,7 @@ export const Workbench = ({
                   <Button aria-label={t(locale, '配置局部重绘', 'Configure inpaint')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('inpaint')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
-                  <span className="workbench-tool-entry__icon"><Icon name="expand" /></span>
+                  <span className="workbench-tool-entry__icon"><Icon name="maximize-2" /></span>
                   <div>
                     <strong>{t(locale, '扩展画布', 'Expand canvas')}</strong>
                     <p>{t(locale, '延展画布边缘并保持主体构图。', 'Extend the canvas while preserving the primary composition.')}</p>
@@ -1483,12 +1481,20 @@ export const Workbench = ({
                   <Button aria-label={t(locale, '配置扩展画布', 'Configure expand canvas')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('expand')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
                 <div className="workbench-tool-entry">
-                  <span className="workbench-tool-entry__icon"><Icon name="scan-line" /></span>
+                  <span className="workbench-tool-entry__icon"><Icon name="zoom-in" /></span>
                   <div>
                     <strong>{t(locale, '放大图像', 'Upscale image')}</strong>
                     <p>{t(locale, '提升图像尺寸并尽量保留细节。', 'Increase image resolution while preserving detail.')}</p>
                   </div>
                   <Button aria-label={t(locale, '配置放大图像', 'Configure upscale image')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('upscale')}>{t(locale, '配置', 'Configure')}</Button>
+                </div>
+                <div className="workbench-tool-entry">
+                  <span className="workbench-tool-entry__icon"><Icon name="circle-check" /></span>
+                  <div>
+                    <strong>{t(locale, '移除水印', 'Remove watermark')}</strong>
+                    <p>{t(locale, '确认素材权利后，从所选区域移除水印。', 'Confirm your rights, then remove a watermark from the selected region.')}</p>
+                  </div>
+                  <Button aria-label={t(locale, '配置移除水印', 'Configure remove watermark')} variant="secondary" icon="sliders-horizontal" disabled={readOnly} onClick={() => configureImageTool('remove-watermark')}>{t(locale, '配置', 'Configure')}</Button>
                 </div>
               </div>
             )}

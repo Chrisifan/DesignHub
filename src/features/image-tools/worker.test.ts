@@ -14,8 +14,23 @@ describe('batch image worker', () => {
     await inputImage(join(root, 'source.png'));
     const job = createImageToolJob({ id: 'job-local', tool: 'resize', params: { width: 6, height: 4, format: 'webp' }, sourceRoot: root, outputRoot: `${root}-out`, itemIds: ['item-1'], executor: { kind: 'local', engine: 'image-codec' } });
     const result = await processImageToolItem(job, item(job.id));
-    expect(result.item).toMatchObject({ state: 'completed', resultPath: `${root}-out/source.webp` });
+    expect(result.item).toMatchObject({
+      state: 'completed',
+      resultPath: `${root}-out/source.webp`,
+      resultWidth: 6,
+      resultHeight: 4,
+      resultFormat: 'webp',
+      resultHasAlpha: false,
+      resultBytes: expect.any(Number),
+    });
     await expect(sharp(await readFile(result.item.resultPath!)).metadata()).resolves.toMatchObject({ width: 6, height: 4, format: 'webp' });
+  });
+
+  it('requires a background when converting transparent input to JPEG', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'designhub-worker-jpeg-'));
+    await inputImage(join(root, 'source.png'));
+    const job = createImageToolJob({ id: 'job-jpeg', tool: 'format-convert', params: { format: 'jpeg' }, sourceRoot: root, outputRoot: `${root}-out`, itemIds: ['item-1'], executor: { kind: 'local', engine: 'image-codec' } });
+    await expect(processImageToolItem(job, item(job.id))).rejects.toThrow('JPEG_BACKGROUND_REQUIRED');
   });
 
   it('returns a file result without creating a project or revision', async () => {

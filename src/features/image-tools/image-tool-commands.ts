@@ -5,6 +5,7 @@ export type ImageToolScanInput = {
   params: ToolParams;
   sourcePath: string;
   outputRoot: string;
+  resultFolderName?: string;
 };
 
 export type ImageToolCreateInput = ImageToolScanInput & { connectionId?: string };
@@ -22,6 +23,7 @@ export type ImageToolCommandHandlers = {
   resume?: (jobId: string) => void | Promise<void>;
   cancel?: (jobId: string) => void | Promise<void>;
   retryItem?: (jobId: string, itemId: string) => void | Promise<void>;
+  cancelItem?: (jobId: string, itemId: string) => void | Promise<void>;
   openResult?: (path: string, jobId: string) => void | Promise<void>;
   revealResult?: (path: string, jobId: string) => void | Promise<void>;
   openOutput?: (path: string, jobId: string) => void | Promise<void>;
@@ -37,6 +39,7 @@ export const createImageToolCommands = (handlers: ImageToolCommandHandlers) => (
   resume: async (jobId: string) => { await handlers.resume?.(jobId); },
   cancel: async (jobId: string) => { await handlers.cancel?.(jobId); },
   retryItem: async (jobId: string, itemId: string) => { await handlers.retryItem?.(jobId, itemId); },
+  cancelItem: async (jobId: string, itemId: string) => { await handlers.cancelItem?.(jobId, itemId); },
   openResult: async (path: string, jobId: string) => { await handlers.openResult?.(path, jobId); },
   revealResult: async (path: string, jobId: string) => { await handlers.revealResult?.(path, jobId); },
   openOutput: async (path: string, jobId: string) => { await handlers.openOutput?.(path, jobId); },

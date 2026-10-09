@@ -181,7 +181,8 @@ const isProjectDesignOutput = (value: unknown): boolean => {
 const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
+  const localResize = input.tool === 'resize' && input.connectionId === '';
+  return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId) && (localResize || isNonEmpty(input.connectionId)) && isNonEmpty(input.prompt)
     && isBlobLike(input.image)
     && (input.mask === undefined || isBlobLike(input.mask))
     && (input.maskAssetId === undefined || isNonEmpty(input.maskAssetId))
