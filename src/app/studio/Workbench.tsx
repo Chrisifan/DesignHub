@@ -115,6 +115,7 @@ export type WorkbenchProps = {
   onAssetActionHandled?: (actionId: string) => void;
   initialConversation?: PendingHomeConversation;
   onInitialConversationConsumed?: (id: string) => void;
+  openToolsRequest?: number;
 };
 
 const createInitialScene = (project: Project, documentId?: string): DesignScene => {
@@ -174,6 +175,7 @@ export const Workbench = ({
   onAssetActionHandled,
   initialConversation,
   onInitialConversationConsumed,
+  openToolsRequest = 0,
 }: WorkbenchProps) => {
   const layersTitleId = useId();
   const [selectedLayer, setSelectedLayer] = useState<LayerId>('text');
@@ -234,6 +236,14 @@ export const Workbench = ({
   const [viewportFocusRequest, setViewportFocusRequest] = useState({ id: 0, candidateId: null as string | null });
   const [canvasSelection, setCanvasSelection] = useState<{ layerId: string; type: 'text' | 'shape' | 'image' } | null>(null);
   const [toolCompareMode, setToolCompareMode] = useState<'result' | 'before'>('result');
+  const handledOpenToolsRequest = useRef(0);
+
+  useEffect(() => {
+    if (!openToolsRequest || openToolsRequest === handledOpenToolsRequest.current) return;
+    handledOpenToolsRequest.current = openToolsRequest;
+    setPanel('tools');
+    setPanelOpen(true);
+  }, [openToolsRequest]);
 
   useEffect(() => {
     if (!libraryId || !documentId) return undefined;

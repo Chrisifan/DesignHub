@@ -66,6 +66,26 @@ it('exposes one menu entry per image batch tool', () => {
   expect(onNavigate).toHaveBeenCalledWith('image-tool-upscale');
 });
 
+it('opens the canvas image tools action from the user menu', () => {
+  const onOpenCanvasImageTools = vi.fn();
+  render(
+    <StudioUserMenu
+      locale="zh-CN"
+      operatorName="本机操作者"
+      currentView="projects"
+      onNavigate={vi.fn()}
+      onImportProject={vi.fn()}
+      onOpenCanvasImageTools={onOpenCanvasImageTools}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: '打开用户菜单' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '画布图像工具' }));
+
+  expect(onOpenCanvasImageTools).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+});
+
 it('closes on Escape and exposes the project import action', () => {
   const onImportProject = vi.fn();
   render(

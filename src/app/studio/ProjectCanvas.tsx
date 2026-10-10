@@ -27,6 +27,7 @@ type ProjectCanvasProps = {
   notify: (message: string) => void;
   onBack: () => void;
   onOpenDocument?: (documentId: string) => void;
+  onOpenImageTools?: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
   onArchive?: () => void;
@@ -83,7 +84,7 @@ const getAnalysisStatus = (task: TaskRecord, locale: Locale): { icon: string; ki
   return { icon: 'clock', kind: 'running', label: t(locale, '处理中', 'Processing') };
 };
 
-export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onOpenDocument, onRename, onDuplicate, onArchive, onRemoveBackground, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
+export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onOpenDocument, onOpenImageTools, onRename, onDuplicate, onArchive, onRemoveBackground, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
   const onDesignsChangeRef = useRef(onDesignsChange);
   onDesignsChangeRef.current = onDesignsChange;
@@ -276,6 +277,12 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
             </div>}
           </div>
           <span className="project-canvas-toolbar__title">{project.name}</span>
+          {onOpenImageTools && (
+            <button type="button" className="ui-button ui-button--secondary project-canvas-image-tools-trigger" onClick={onOpenImageTools}>
+              <Icon name="wand-sparkles" size={15} />
+              {t(locale, '画布图像工具', 'Canvas image tools')}
+            </button>
+          )}
         </div>
         <div className="project-canvas-toolbar__actions">
           {onOpenDocument && project.documentEntries?.map((entry) => (

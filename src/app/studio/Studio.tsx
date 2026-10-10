@@ -163,6 +163,7 @@ export const Studio = ({
   const [selected, setSelected] = useState<Project | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
+  const [openToolsRequest, setOpenToolsRequest] = useState(0);
   const [deliveryProject] = useState<Project | null>(null);
   const [connectionsDialogOpen, setConnectionsDialogOpen] = useState(false);
   const [providerRefreshKey, setProviderRefreshKey] = useState(0);
@@ -429,6 +430,24 @@ export const Studio = ({
     setDocumentOpen(false);
     setActiveDocumentId(null);
     setView('projects');
+  };
+  const openCanvasImageTools = (): void => {
+    const project = (selected && (selected.documentEntries?.length || selected.documentId) ? selected : undefined)
+      ?? projects.find((entry) => Boolean(entry.documentEntries?.length || entry.documentId))
+      ?? selected
+      ?? projects[0];
+    const documentId = project?.documentEntries?.[0]?.id ?? project?.documentId;
+    if (!project || !documentId) {
+      notify(t(locale, '请先创建包含文档的项目', 'Create a project with a document first'));
+      return;
+    }
+    setSelected(project);
+    setActiveDocumentId(documentId);
+    setDocumentOpen(true);
+    setSurface('projects');
+    setView('projects');
+    setTransitionDirection('forward');
+    setOpenToolsRequest((current) => current + 1);
   };
   const createProjectFromHome = async (request: HomeConversationRequest, submitConversation = true): Promise<boolean> => {
     if (!workspace || workspace.openMode !== 'writable' || (submitConversation && !conversationConnected)) return false;
@@ -917,6 +936,7 @@ export const Studio = ({
             currentView={view}
             onNavigate={navigate}
             onImportProject={() => { void importProjectPackage(); }}
+            onOpenCanvasImageTools={openCanvasImageTools}
             importDisabled={workspace?.openMode !== 'writable'}
           />
         )}
@@ -1013,6 +1033,7 @@ export const Studio = ({
                   setDocumentOpen(true);
                   setTransitionDirection('forward');
                 }}
+                onOpenImageTools={openCanvasImageTools}
               onBack={() => { setTransitionDirection('backward'); setSelected(null); }}
                 onRename={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}
                 onDuplicate={() => { void duplicateSelected(); }}
@@ -1041,6 +1062,7 @@ export const Studio = ({
                 libraryId={project.libraryId}
                 documentId={project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId}
                 initialCandidate={entryCandidate?.projectId === project.id ? entryCandidate.candidate : undefined}
+                openToolsRequest={project.id === selected?.id ? openToolsRequest : 0}
                 onEntryCandidateResolved={() => setEntryCandidate((current) => current?.projectId === project.id ? null : current)}
                 onBack={() => { setTransitionDirection('backward'); setDocumentOpen(false); }}
                 onConnections={() => navigate('connections')}

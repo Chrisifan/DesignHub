@@ -11,6 +11,7 @@ type StudioUserMenuProps = {
   currentView: View;
   onNavigate: (view: View) => void;
   onImportProject: () => void;
+  onOpenCanvasImageTools?: () => void;
   importDisabled?: boolean;
 };
 
@@ -61,6 +62,7 @@ export const StudioUserMenu = ({
   currentView,
   onNavigate,
   onImportProject,
+  onOpenCanvasImageTools,
   importDisabled = false,
 }: StudioUserMenuProps) => {
   const [open, setOpen] = useState(false);
@@ -168,6 +170,16 @@ export const StudioUserMenu = ({
             </div>
           ))}
           <div className="studio-user-menu__group studio-user-menu__group--actions">
+            {onOpenCanvasImageTools && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => chooseAction(onOpenCanvasImageTools)}
+              >
+                <Icon name="wand-sparkles" size={16} />
+                <span>{t(locale, '画布图像工具', 'Canvas image tools')}</span>
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

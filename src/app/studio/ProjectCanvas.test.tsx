@@ -108,6 +108,29 @@ describe('getLatestConversationTask', () => {
 });
 
 describe('ProjectCanvas design references', () => {
+  it('exposes a direct canvas image tools entry before opening a document', () => {
+    const onOpenImageTools = vi.fn();
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onOpenImageTools={onOpenImageTools}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '画布图像工具' }));
+    expect(onOpenImageTools).toHaveBeenCalledOnce();
+  });
+
   it('disables design generation while visual clarification is required', async () => {
     const analysis: TaskRecord = {
       ...conversation({ id: 'analysis-clarification', createdAt: '2026-09-29T10:00:00.000Z' }),

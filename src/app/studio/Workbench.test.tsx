@@ -217,6 +217,15 @@ it('opens a workbench context drawer without narrowing the canvas', () => {
   expect(screen.getByRole('region', { name: '设计画布' })).toBeInTheDocument();
 });
 
+it('opens the image tools drawer for an external canvas request', async () => {
+  const { rerender } = render(<Workbench {...makeProps({ openToolsRequest: 1 })} />);
+
+  expect(await screen.findByRole('dialog', { name: '工具' })).toBeInTheDocument();
+
+  rerender(<Workbench {...makeProps({ openToolsRequest: 1 })} />);
+  expect(screen.getByRole('dialog', { name: '工具' })).toBeInTheDocument();
+});
+
 it('keeps conversation actions in the canvas command dock', () => {
   render(<Workbench {...makeProps()} />);
   fireEvent.click(screen.getByRole('button', { name: '对话' }));

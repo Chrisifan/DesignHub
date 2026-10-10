@@ -127,6 +127,12 @@
   white-space: nowrap;
 }
 
+.project-canvas-image-tools-trigger {
+  min-height: 30px;
+  padding-inline: 9px;
+  font-size: 11px;
+}
+
 .project-canvas-toolbar__group { align-self: flex-start; }
 
 .project-canvas-toolbar__selection {

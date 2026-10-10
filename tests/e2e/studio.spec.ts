@@ -397,6 +397,25 @@ test('submits background removal through the selected image connection', async (
 });
 
 for (const width of [1280, 1024]) {
+  test(`opens canvas image tools directly from the project canvas at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 720 });
+    await gotoTestWorkspace(page, {
+      version: 1,
+      id: `canvas-image-tools-direct-${width}`,
+      width: 1080,
+      height: 1440,
+      layers: [],
+    });
+
+    await page.getByRole('button', { name: '春间市集', exact: true }).click();
+    const projectCanvas = page.getByRole('region', { name: '设计画布', exact: true });
+    await expect(projectCanvas).toBeVisible();
+    const trigger = projectCanvas.getByRole('button', { name: '画布图像工具', exact: true });
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+    await expect(page.getByRole('dialog', { name: '工具', exact: true })).toBeVisible();
+  });
+
   test(`exposes all canvas image tools from the visible entry at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 720 });
     await gotoTestWorkspace(page, {
