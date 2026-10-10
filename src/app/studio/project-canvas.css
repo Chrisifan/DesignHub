@@ -24,7 +24,7 @@
   position: absolute;
   z-index: 3;
   top: 16px;
-  left: 64px;
+  left: 16px;
   right: 16px;
   bottom: 16px;
   display: flex;
@@ -137,19 +137,22 @@
 
 .project-canvas-image-tools {
   position: absolute;
-  z-index: 4;
-  top: 50%;
-  left: 16px;
-  display: grid;
-  gap: 8px;
-  width: 42px;
-  transform: translateY(-50%);
+  /* Keep the project menu and its popover above the image tool row. */
+  z-index: 2;
+  top: 64px;
+  left: 64px;
+  right: 16px;
+  display: block;
   pointer-events: none;
 }
 
 .project-canvas-image-tools > [role='toolbar'] {
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
   padding: 5px;
   border: 1px solid var(--shell-glass-border);
   border-radius: var(--radius-ui);
@@ -161,15 +164,17 @@
 }
 
 .project-canvas-image-tools .icon-button {
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
   padding: 0;
 }
 
 .project-canvas-image-tools > span {
   position: absolute;
-  left: 52px;
+  top: calc(100% + 5px);
+  left: 0;
   width: 150px;
   color: var(--on-surface-variant);
   font-size: 10px;

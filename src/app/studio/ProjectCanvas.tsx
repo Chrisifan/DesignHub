@@ -42,14 +42,14 @@ type ProjectCanvasProps = {
 
 const imageToolCopy: Record<ImageTool, { zh: string; en: string; icon: string; prompt: string }> = {
   'remove-background': { zh: '去除背景', en: 'Remove background', icon: 'wand-sparkles', prompt: 'Remove the background and preserve the subject with clean edges' },
-  'replace-background': { zh: '替换背景', en: 'Replace background', icon: 'images', prompt: 'Replace the background while preserving the original subject' },
-  'remove-object': { zh: '移除对象', en: 'Remove object', icon: 'eraser', prompt: 'Remove the selected object and reconstruct the surrounding detail' },
-  inpaint: { zh: '局部重绘', en: 'Inpaint', icon: 'paintbrush', prompt: 'Inpaint the selected region according to the requested direction' },
-  expand: { zh: '扩展图片', en: 'Expand image', icon: 'maximize-2', prompt: 'Expand the image edges while preserving the primary composition' },
+  'replace-background': { zh: '替换背景', en: 'Replace background', icon: 'image', prompt: 'Replace the background while preserving the original subject' },
+  'remove-object': { zh: '移除对象', en: 'Remove object', icon: 'trash-2', prompt: 'Remove the selected object and reconstruct the surrounding detail' },
+  inpaint: { zh: '局部重绘', en: 'Inpaint', icon: 'wand-sparkles', prompt: 'Inpaint the selected region according to the requested direction' },
+  expand: { zh: '扩展图片', en: 'Expand image', icon: 'arrow-up-right', prompt: 'Expand the image edges while preserving the primary composition' },
   'smart-crop': { zh: '智能裁切', en: 'Smart crop', icon: 'crop', prompt: 'Smart crop while preserving the primary subject' },
-  upscale: { zh: '放大图像', en: 'Upscale image', icon: 'scan-search', prompt: 'Upscale the image while preserving important details' },
-  resize: { zh: '调整尺寸', en: 'Resize', icon: 'move-diagonal-2', prompt: 'Resize the image' },
-  'remove-watermark': { zh: '移除水印', en: 'Remove watermark', icon: 'badge-x', prompt: 'Remove a watermark only from an explicitly selected region' },
+  upscale: { zh: '放大图像', en: 'Upscale image', icon: 'zoom-in', prompt: 'Upscale the image while preserving important details' },
+  resize: { zh: '调整尺寸', en: 'Resize', icon: 'maximize-2', prompt: 'Resize the image' },
+  'remove-watermark': { zh: '移除水印', en: 'Remove watermark', icon: 'x', prompt: 'Remove a watermark only from an explicitly selected region' },
 };
 
 const toAttachment = (attachment: ConversationDockAttachment): ConversationImageAttachment => ({ name: attachment.name, mimeType: attachment.mimeType, bytes: attachment.bytes });

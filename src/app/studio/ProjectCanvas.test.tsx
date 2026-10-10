@@ -140,7 +140,19 @@ describe('ProjectCanvas design references', () => {
     fireEvent.click(await screen.findByRole('button', { name: '设计稿 商品图' }));
     expect(screen.getByRole('toolbar', { name: '图片工具' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '画布图像工具' })).not.toBeInTheDocument();
-    expect(screen.getByRole('toolbar', { name: '图片工具' }).querySelectorAll('button')).toHaveLength(9);
+    const toolButtons = [...screen.getByRole('toolbar', { name: '图片工具' }).querySelectorAll('button')];
+    expect(toolButtons).toHaveLength(9);
+    expect(toolButtons.map((button) => button.querySelector('.ui-icon')?.getAttribute('style'))).toEqual([
+      expect.stringContaining('wand-sparkles.svg'),
+      expect.stringContaining('image.svg'),
+      expect.stringContaining('trash-2.svg'),
+      expect.stringContaining('wand-sparkles.svg'),
+      expect.stringContaining('arrow-up-right.svg'),
+      expect.stringContaining('crop.svg'),
+      expect.stringContaining('zoom-in.svg'),
+      expect.stringContaining('maximize-2.svg'),
+      expect.stringContaining('x.svg'),
+    ]);
     fireEvent.click(screen.getByRole('button', { name: '去除背景' }));
     fireEvent.click(screen.getByRole('button', { name: '执行' }));
 

@@ -432,6 +432,10 @@ for (const width of [1280, 1024]) {
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeVisible();
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeEnabled();
     }
+    const toolBoxes = await Promise.all(['去除背景', '替换背景', '移除对象', '局部重绘', '扩展图片', '智能裁切', '放大图像', '调整尺寸', '移除水印']
+      .map((label) => projectCanvas.getByRole('button', { name: label, exact: true }).boundingBox()));
+    const toolTopEdges = toolBoxes.filter((box): box is NonNullable<typeof box> => box !== null).map((box) => box.y);
+    expect(Math.max(...toolTopEdges) - Math.min(...toolTopEdges)).toBeLessThan(8);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   });
 }
