@@ -158,7 +158,7 @@
   left: 16px;
   display: grid;
   gap: 8px;
-  width: 42px;
+  width: 44px;
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -188,8 +188,15 @@
   position: static;
   display: grid;
   gap: 3px;
-  width: 36px;
+  width: 44px;
+  padding: 5px;
   transform: none;
+}
+
+.project-canvas-image-tools > .project-canvas-toolbar__actions .icon-button {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
 }
 
 .project-canvas-toolbar__selection {

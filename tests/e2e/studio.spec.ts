@@ -435,6 +435,13 @@ for (const width of [1280, 1024]) {
     await expect(leftToolbar.getByRole('button', { name: '导出所选设计稿', exact: true })).toBeVisible();
     await expect(leftToolbar.getByRole('toolbar', { name: '图片工具', exact: true })).toBeVisible();
     await expect(leftToolbar.locator(':scope > span')).toHaveCount(0);
+    const [downloadGroupBox, imageToolsBox] = await Promise.all([
+      leftToolbar.locator('.project-canvas-toolbar__actions').boundingBox(),
+      leftToolbar.getByRole('toolbar', { name: '图片工具', exact: true }).boundingBox(),
+    ]);
+    expect(downloadGroupBox).not.toBeNull();
+    expect(imageToolsBox).not.toBeNull();
+    expect(Math.abs(downloadGroupBox!.width - imageToolsBox!.width)).toBeLessThan(1);
     const [canvasBox, leftToolbarBox] = await Promise.all([projectCanvas.boundingBox(), leftToolbar.boundingBox()]);
     expect(canvasBox).not.toBeNull();
     expect(leftToolbarBox).not.toBeNull();
