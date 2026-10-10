@@ -36,6 +36,53 @@
 
 .project-canvas-toolbar > * { pointer-events: auto; }
 
+.project-canvas-toolbar--top {
+  top: 16px;
+  right: 16px;
+  bottom: auto;
+  left: 16px;
+  width: auto;
+  max-width: calc(100% - 32px);
+  height: 44px;
+  justify-content: flex-start;
+  overflow-x: auto;
+  padding: 4px;
+  border: 1px solid var(--shell-glass-border);
+  border-radius: var(--radius-ui);
+  background: var(--shell-glass);
+  box-shadow: var(--project-canvas-panel-shadow);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+  backdrop-filter: var(--shell-backdrop);
+  pointer-events: auto;
+}
+
+.project-canvas-toolbar--top .project-canvas-toolbar__group {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.project-canvas-toolbar--top .project-canvas-menu {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.project-canvas-toolbar--top .project-canvas-toolbar__actions {
+  position: static;
+  flex: 0 0 auto;
+  width: auto;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.project-canvas-toolbar--top .project-canvas-toolbar__actions .icon-button {
+  border-radius: 50%;
+}
+
 .project-canvas-toolbar--bottom {
   top: auto;
   bottom: 18px;
@@ -146,6 +193,14 @@
   pointer-events: none;
 }
 
+.project-canvas-toolbar--top .project-canvas-image-tools {
+  position: static;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  pointer-events: auto;
+}
+
 .project-canvas-image-tools > [role='toolbar'] {
   display: flex;
   align-items: center;
@@ -161,6 +216,18 @@
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);
   pointer-events: auto;
+}
+
+.project-canvas-toolbar--top .project-canvas-image-tools > [role='toolbar'] {
+  width: 100%;
+  max-width: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .project-canvas-image-tools .icon-button {
@@ -179,6 +246,17 @@
   color: var(--on-surface-variant);
   font-size: 10px;
   line-height: 1.35;
+}
+
+.project-canvas-toolbar--top .project-canvas-image-tools > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .project-canvas-toolbar__selection {

@@ -428,6 +428,11 @@ for (const width of [1280, 1024]) {
     await page.getByRole('button', { name: '春间市集', exact: true }).click();
     const projectCanvas = page.getByRole('region', { name: '设计画布', exact: true });
     await page.locator('.project-canvas-stage canvas').click({ position: { x: 300, y: 200 } });
+    const topToolbar = projectCanvas.locator('.project-canvas-toolbar--top');
+    await expect(topToolbar).toBeVisible();
+    await expect(topToolbar.getByRole('button', { name: '项目操作', exact: true })).toBeVisible();
+    await expect(topToolbar.getByRole('button', { name: '导出所选设计稿', exact: true })).toBeVisible();
+    await expect(topToolbar.getByRole('toolbar', { name: '图片工具', exact: true })).toBeVisible();
     for (const label of ['去除背景', '替换背景', '移除对象', '局部重绘', '扩展图片', '智能裁切', '放大图像', '调整尺寸', '移除水印']) {
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeVisible();
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeEnabled();

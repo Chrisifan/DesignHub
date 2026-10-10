@@ -310,7 +310,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   };
   return (
     <section className="project-canvas-surface" data-testid="project-canvas" aria-label={t(locale, '设计画布', 'Design canvas')}>
-      <div className="project-canvas-toolbar">
+      <div className="project-canvas-toolbar project-canvas-toolbar--top">
         <div className="project-canvas-toolbar__group">
           <div className="project-canvas-menu">
             <IconButton name="menu" label={t(locale, '项目操作', 'Project actions')} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} />
@@ -331,16 +331,16 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
           ))}
           <IconButton name="download" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
         </div>
-      </div>
-      <aside className="project-canvas-image-tools" aria-label={t(locale, '图片工具', 'Image tools')}>
-        <div role="toolbar" aria-label={t(locale, '图片工具', 'Image tools')}>
-          {imageTools.map((tool) => {
-            const copy = imageToolCopy[tool];
-            return <IconButton key={tool} name={copy.icon} label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
-          })}
+        <div className="project-canvas-image-tools" aria-label={t(locale, '图片工具', 'Image tools')}>
+          <div role="toolbar" aria-label={t(locale, '图片工具', 'Image tools')}>
+            {imageTools.map((tool) => {
+              const copy = imageToolCopy[tool];
+              return <IconButton key={tool} name={copy.icon} label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
+            })}
+          </div>
+          <span aria-live="polite">{selectedDesigns.length === 1 ? t(locale, `当前图片：${selectedDesigns[0]!.title}`, `Current image: ${selectedDesigns[0]!.title}`) : t(locale, '选择一张图片后使用工具', 'Select one image to use a tool')}</span>
         </div>
-        <span aria-live="polite">{selectedDesigns.length === 1 ? t(locale, `当前图片：${selectedDesigns[0]!.title}`, `Current image: ${selectedDesigns[0]!.title}`) : t(locale, '选择一张图片后使用工具', 'Select one image to use a tool')}</span>
-      </aside>
+      </div>
       <ProjectCanvasStage
         libraryId={libraryId}
         projectId={project.id}
