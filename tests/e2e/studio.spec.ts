@@ -434,6 +434,10 @@ for (const width of [1280, 1024]) {
     const leftToolbar = projectCanvas.locator('.project-canvas-image-tools');
     await expect(leftToolbar.getByRole('button', { name: '导出所选设计稿', exact: true })).toBeVisible();
     await expect(leftToolbar.getByRole('toolbar', { name: '图片工具', exact: true })).toBeVisible();
+    const [canvasBox, leftToolbarBox] = await Promise.all([projectCanvas.boundingBox(), leftToolbar.boundingBox()]);
+    expect(canvasBox).not.toBeNull();
+    expect(leftToolbarBox).not.toBeNull();
+    expect(Math.abs((leftToolbarBox!.y + leftToolbarBox!.height / 2) - (canvasBox!.y + canvasBox!.height / 2))).toBeLessThan(16);
     for (const label of ['去除背景', '替换背景', '移除对象', '局部重绘', '扩展图片', '智能裁切', '放大图像', '调整尺寸', '移除水印']) {
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeVisible();
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeEnabled();

@@ -154,11 +154,12 @@
 .project-canvas-image-tools {
   position: absolute;
   z-index: 4;
-  top: 72px;
+  top: 50%;
   left: 16px;
   display: grid;
   gap: 8px;
   width: 42px;
+  transform: translateY(-50%);
   pointer-events: none;
 }
 
