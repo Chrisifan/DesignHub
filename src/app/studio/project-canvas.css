@@ -41,46 +41,8 @@
   right: 16px;
   bottom: auto;
   left: 16px;
-  width: auto;
-  max-width: calc(100% - 32px);
   height: 44px;
   justify-content: flex-start;
-  overflow-x: auto;
-  padding: 4px;
-  border: 1px solid var(--shell-glass-border);
-  border-radius: var(--radius-ui);
-  background: var(--shell-glass);
-  box-shadow: var(--project-canvas-panel-shadow);
-  -webkit-backdrop-filter: var(--shell-backdrop);
-  backdrop-filter: var(--shell-backdrop);
-  pointer-events: auto;
-}
-
-.project-canvas-toolbar--top .project-canvas-toolbar__group {
-  flex: 0 0 auto;
-  align-self: center;
-}
-
-.project-canvas-toolbar--top .project-canvas-menu {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.project-canvas-toolbar--top .project-canvas-toolbar__actions {
-  position: static;
-  flex: 0 0 auto;
-  width: auto;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  transform: none;
-}
-
-.project-canvas-toolbar--top .project-canvas-toolbar__actions .icon-button {
-  border-radius: 50%;
 }
 
 .project-canvas-toolbar--bottom {
@@ -182,32 +144,27 @@
 
 .project-canvas-toolbar__group { align-self: flex-start; }
 
+.project-canvas-toolbar__documents {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
 .project-canvas-image-tools {
   position: absolute;
-  /* Keep the project menu and its popover above the image tool row. */
-  z-index: 2;
-  top: 64px;
-  left: 64px;
-  right: 16px;
-  display: block;
+  z-index: 4;
+  top: 72px;
+  left: 16px;
+  display: grid;
+  gap: 8px;
+  width: 42px;
   pointer-events: none;
 }
 
-.project-canvas-toolbar--top .project-canvas-image-tools {
-  position: static;
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  pointer-events: auto;
-}
-
 .project-canvas-image-tools > [role='toolbar'] {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: fit-content;
-  max-width: 100%;
-  overflow-x: auto;
+  display: grid;
+  gap: 3px;
   padding: 5px;
   border: 1px solid var(--shell-glass-border);
   border-radius: var(--radius-ui);
@@ -216,18 +173,6 @@
   -webkit-backdrop-filter: var(--shell-backdrop);
   backdrop-filter: var(--shell-backdrop);
   pointer-events: auto;
-}
-
-.project-canvas-toolbar--top .project-canvas-image-tools > [role='toolbar'] {
-  width: 100%;
-  max-width: none;
-  overflow: visible;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
 }
 
 .project-canvas-image-tools .icon-button {
@@ -240,23 +185,19 @@
 
 .project-canvas-image-tools > span {
   position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
+  left: 52px;
   width: 150px;
   color: var(--on-surface-variant);
   font-size: 10px;
   line-height: 1.35;
 }
 
-.project-canvas-toolbar--top .project-canvas-image-tools > span {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.project-canvas-image-tools > .project-canvas-toolbar__actions {
+  position: static;
+  display: grid;
+  gap: 3px;
+  width: 36px;
+  transform: none;
 }
 
 .project-canvas-toolbar__selection {

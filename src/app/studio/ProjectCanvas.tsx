@@ -323,24 +323,26 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
           </div>
           <span className="project-canvas-toolbar__title">{project.name}</span>
         </div>
-        <div className="project-canvas-toolbar__actions">
+        <div className="project-canvas-toolbar__documents">
           {onOpenDocument && project.documentEntries?.map((entry) => (
             <button key={entry.id} type="button" className="ui-button ui-button--text" onClick={() => onOpenDocument(entry.id)}>
               {t(locale, `打开${entry.name}`, `Open ${entry.name}`)}
             </button>
           ))}
-          <IconButton name="download" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
-        </div>
-        <div className="project-canvas-image-tools" aria-label={t(locale, '图片工具', 'Image tools')}>
-          <div role="toolbar" aria-label={t(locale, '图片工具', 'Image tools')}>
-            {imageTools.map((tool) => {
-              const copy = imageToolCopy[tool];
-              return <IconButton key={tool} name={copy.icon} label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
-            })}
-          </div>
-          <span aria-live="polite">{selectedDesigns.length === 1 ? t(locale, `当前图片：${selectedDesigns[0]!.title}`, `Current image: ${selectedDesigns[0]!.title}`) : t(locale, '选择一张图片后使用工具', 'Select one image to use a tool')}</span>
         </div>
       </div>
+      <aside className="project-canvas-image-tools" aria-label={t(locale, '图片工具', 'Image tools')}>
+        <div className="project-canvas-toolbar__actions">
+          <IconButton name="download" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
+        </div>
+        <div role="toolbar" aria-label={t(locale, '图片工具', 'Image tools')}>
+          {imageTools.map((tool) => {
+            const copy = imageToolCopy[tool];
+            return <IconButton key={tool} name={copy.icon} label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
+          })}
+        </div>
+        <span aria-live="polite">{selectedDesigns.length === 1 ? t(locale, `当前图片：${selectedDesigns[0]!.title}`, `Current image: ${selectedDesigns[0]!.title}`) : t(locale, '选择一张图片后使用工具', 'Select one image to use a tool')}</span>
+      </aside>
       <ProjectCanvasStage
         libraryId={libraryId}
         projectId={project.id}

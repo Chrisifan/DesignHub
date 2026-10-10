@@ -431,16 +431,18 @@ for (const width of [1280, 1024]) {
     const topToolbar = projectCanvas.locator('.project-canvas-toolbar--top');
     await expect(topToolbar).toBeVisible();
     await expect(topToolbar.getByRole('button', { name: '项目操作', exact: true })).toBeVisible();
-    await expect(topToolbar.getByRole('button', { name: '导出所选设计稿', exact: true })).toBeVisible();
-    await expect(topToolbar.getByRole('toolbar', { name: '图片工具', exact: true })).toBeVisible();
+    const leftToolbar = projectCanvas.locator('.project-canvas-image-tools');
+    await expect(leftToolbar.getByRole('button', { name: '导出所选设计稿', exact: true })).toBeVisible();
+    await expect(leftToolbar.getByRole('toolbar', { name: '图片工具', exact: true })).toBeVisible();
     for (const label of ['去除背景', '替换背景', '移除对象', '局部重绘', '扩展图片', '智能裁切', '放大图像', '调整尺寸', '移除水印']) {
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeVisible();
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeEnabled();
     }
-    const toolBoxes = await Promise.all(['去除背景', '替换背景', '移除对象', '局部重绘', '扩展图片', '智能裁切', '放大图像', '调整尺寸', '移除水印']
-      .map((label) => projectCanvas.getByRole('button', { name: label, exact: true }).boundingBox()));
-    const toolTopEdges = toolBoxes.filter((box): box is NonNullable<typeof box> => box !== null).map((box) => box.y);
-    expect(Math.max(...toolTopEdges) - Math.min(...toolTopEdges)).toBeLessThan(8);
+    const toolBoxes = await Promise.all(['导出所选设计稿', '去除背景', '替换背景', '移除对象', '局部重绘', '扩展图片', '智能裁切', '放大图像', '调整尺寸', '移除水印']
+      .map((label) => leftToolbar.getByRole('button', { name: label, exact: true }).boundingBox()));
+    const visibleBoxes = toolBoxes.filter((box): box is NonNullable<typeof box> => box !== null);
+    expect(Math.max(...visibleBoxes.map((box) => box.x)) - Math.min(...visibleBoxes.map((box) => box.x))).toBeLessThan(8);
+    expect(Math.max(...visibleBoxes.map((box) => box.y)) - Math.min(...visibleBoxes.map((box) => box.y))).toBeGreaterThan(100);
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   });
 }
