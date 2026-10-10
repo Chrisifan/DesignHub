@@ -387,17 +387,16 @@ test('submits background removal through the selected image connection', async (
   }, { imageConnected: true });
 
   await page.getByRole('button', { name: '春间市集', exact: true }).click();
-  await page.getByRole('button', { name: '打开主海报', exact: true }).click();
-  await page.getByRole('button', { name: '图像工具', exact: true }).click();
-  await page.getByRole('button', { name: '画布图像工具', exact: true }).click();
-  await page.getByRole('button', { name: '配置去除背景', exact: true }).click();
+  await expect(page.getByRole('region', { name: '设计画布', exact: true })).toBeVisible();
+  await page.locator('.project-canvas-stage canvas').click({ position: { x: 300, y: 200 } });
+  await page.getByRole('button', { name: '去除背景', exact: true }).click();
   await page.getByRole('dialog', { name: '去除背景', exact: true }).getByRole('button', { name: '执行', exact: true }).click();
 
   await expect(page.locator('.studio-toast')).toContainText('去除背景任务已排队');
 });
 
 for (const width of [1280, 1024]) {
-  test(`opens canvas image tools directly from the project canvas at ${width}px`, async ({ page }) => {
+  test(`keeps image tools on the project canvas at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 720 });
     await gotoTestWorkspace(page, {
       version: 1,
@@ -410,13 +409,13 @@ for (const width of [1280, 1024]) {
     await page.getByRole('button', { name: '春间市集', exact: true }).click();
     const projectCanvas = page.getByRole('region', { name: '设计画布', exact: true });
     await expect(projectCanvas).toBeVisible();
-    const trigger = projectCanvas.getByRole('button', { name: '画布图像工具', exact: true });
-    await expect(trigger).toBeVisible();
-    await trigger.click();
-    await expect(page.getByRole('dialog', { name: '工具', exact: true })).toBeVisible();
+    await expect(projectCanvas.getByRole('toolbar', { name: '图片工具', exact: true })).toBeVisible();
+    await expect(projectCanvas.getByRole('button', { name: '去除背景', exact: true })).toBeDisabled();
+    await page.locator('.project-canvas-stage canvas').click({ position: { x: 300, y: 200 } });
+    await expect(projectCanvas.getByRole('button', { name: '去除背景', exact: true })).toBeEnabled();
   });
 
-  test(`exposes all canvas image tools from the visible entry at ${width}px`, async ({ page }) => {
+  test(`exposes all image tools in the left toolbar at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 720 });
     await gotoTestWorkspace(page, {
       version: 1,
@@ -427,23 +426,12 @@ for (const width of [1280, 1024]) {
     });
 
     await page.getByRole('button', { name: '春间市集', exact: true }).click();
-    await page.getByRole('button', { name: '打开主海报', exact: true }).click();
-    const trigger = page.getByRole('button', { name: '画布图像工具', exact: true });
-    await expect(trigger).toBeVisible();
-    await expect(trigger).toBeInViewport();
-    await trigger.click();
-
-    const drawer = page.getByRole('dialog', { name: '工具', exact: true });
-    await expect(drawer).toBeVisible();
-    await expect.poll(async () => (await drawer.boundingBox())?.height ?? 0).toBeGreaterThan(400);
-    await expect(drawer.getByRole('button', { name: '配置调整尺寸', exact: true })).toBeVisible();
-    for (const label of ['去除背景', '替换背景', '移除对象', '局部重绘', '扩展画布', '智能裁切', '放大图像', '调整尺寸', '移除水印']) {
-      await expect(drawer.getByRole('button', { name: `配置${label}`, exact: true })).toBeAttached();
+    const projectCanvas = page.getByRole('region', { name: '设计画布', exact: true });
+    await page.locator('.project-canvas-stage canvas').click({ position: { x: 300, y: 200 } });
+    for (const label of ['去除背景', '替换背景', '移除对象', '局部重绘', '扩展图片', '智能裁切', '放大图像', '调整尺寸', '移除水印']) {
+      await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeVisible();
+      await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeEnabled();
     }
-    const lastTool = drawer.getByRole('button', { name: '配置移除水印', exact: true });
-    await lastTool.scrollIntoViewIfNeeded();
-    await expect(lastTool).toBeVisible();
-    await expect(lastTool).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
   });
 }

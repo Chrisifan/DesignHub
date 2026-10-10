@@ -27,7 +27,7 @@ import {
   t,
 } from './ui';
 import type { HomeConversationRequest, NewDesignDraft, PendingHomeConversation, Project, StudioSurface, Theme, View } from './types';
-import type { ProjectDesign, ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
+import type { ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool, ToolParams } from '../../features/image-tools/target';
 import { createCompositionEntryCandidate, createMockupEntryCandidate } from '../../features/composition/studio-entry';
 import type { DesignSceneCandidate } from '../../features/composition/design-scene-candidate';
@@ -163,7 +163,6 @@ export const Studio = ({
   const [selected, setSelected] = useState<Project | null>(null);
   const [documentOpen, setDocumentOpen] = useState(false);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
-  const [openToolsRequest, setOpenToolsRequest] = useState(0);
   const [deliveryProject] = useState<Project | null>(null);
   const [connectionsDialogOpen, setConnectionsDialogOpen] = useState(false);
   const [providerRefreshKey, setProviderRefreshKey] = useState(0);
@@ -430,19 +429,6 @@ export const Studio = ({
     setDocumentOpen(false);
     setActiveDocumentId(null);
     setView('projects');
-  };
-  const openCanvasImageTools = (): void => {
-    const project = selected ?? projects[0];
-    if (!project) {
-      notify(t(locale, '请先创建项目并导入图片', 'Create a project and add an image first'));
-      return;
-    }
-    setSelected(project);
-    setDocumentOpen(true);
-    setSurface('projects');
-    setView('projects');
-    setTransitionDirection('forward');
-    setOpenToolsRequest((current) => current + 1);
   };
   const createProjectFromHome = async (request: HomeConversationRequest, submitConversation = true): Promise<boolean> => {
     if (!workspace || workspace.openMode !== 'writable' || (submitConversation && !conversationConnected)) return false;
@@ -766,52 +752,6 @@ export const Studio = ({
       return null;
     }
   };
-  const submitProjectDesignBackgroundRemoval = async (project: Project, design: ProjectDesign): Promise<void> => {
-    if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
-      notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
-      return;
-    }
-    if (!imageConnectionId) {
-      notify(t(locale, '请先配置图片编辑连接。', 'Configure an image editing connection first.'));
-      return;
-    }
-    try {
-      const api = getDesktopApi();
-      const bytes = await api.readAsset?.({ libraryId: workspace.libraryId, projectId: project.id, assetId: design.assetId });
-      if (!bytes) {
-        notify(t(locale, '无法读取目标设计稿。', 'Could not read the selected design.'));
-        return;
-      }
-      const task = await api.submitImageEdit?.({
-        libraryId: workspace.libraryId,
-        projectId: project.id,
-        baseRevisionId: null,
-        designerVersionId: project.activeDesignerVersionId,
-        connectionId: imageConnectionId,
-        ...(providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image.models['image-editing'] ? { model: providerConfigs[imageConnectionId as keyof ProviderConfigMap]!.image.models['image-editing'] } : {}),
-        prompt: t(locale, '去除图片背景，保留主体并生成干净边缘。', 'Remove the image background while preserving the subject with clean edges.'),
-        image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }),
-        sourceAssetId: design.assetId,
-        tool: 'remove-background',
-        toolParams: { edgeRefinement: 50 },
-        size: `${design.width}x${design.height}`,
-        projectDesign: {
-          sourceTaskId: design.sourceTaskId,
-          ...(design.sourceConversationTaskId ? { sourceConversationTaskId: design.sourceConversationTaskId } : {}),
-          width: design.width,
-          height: design.height,
-          title: t(locale, `${design.title}（去除背景）`, `${design.title} (background removed)`),
-        },
-      });
-      if (!task) {
-        notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
-        return;
-      }
-      notify(t(locale, '去除背景任务已排队。', 'Background removal queued.'));
-    } catch {
-      notify(t(locale, '去除背景失败，请检查连接。', 'Background removal failed. Check the connection.'));
-    }
-  };
   const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: { x: number; y: number; width: number; height: number }; beforeScene?: import('../../features/canvas/scene').DesignScene }): Promise<void> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
@@ -830,9 +770,37 @@ export const Studio = ({
         && layer.assetId !== 'placeholder'
         && (input.tool === 'resize' ? true : layer.id === input.targetLayerId));
       if (!imageLayer) {
-        notify(t(locale, '请选择一个有效的受管图片图层。', 'Select a valid managed image layer.'));
+        notify(t(locale, '请选择一张有效的受管图片。', 'Select a valid managed image.'));
         return;
       }
+      const sourceDesign = project.designs?.find((design) => design.id === imageLayer.id || design.assetId === imageLayer.assetId);
+      const sourceWidth = sourceDesign?.width ?? imageLayer.width;
+      const sourceHeight = sourceDesign?.height ?? imageLayer.height;
+      const resultWidth = input.tool === 'resize' || input.tool === 'smart-crop'
+        ? Number(input.params.width)
+        : input.tool === 'expand'
+          ? sourceWidth + Number(input.params.left) + Number(input.params.right)
+          : input.tool === 'upscale'
+            ? sourceWidth * Number(input.params.scale)
+            : sourceWidth;
+      const resultHeight = input.tool === 'resize' || input.tool === 'smart-crop'
+        ? Number(input.params.height)
+        : input.tool === 'expand'
+          ? sourceHeight + Number(input.params.top) + Number(input.params.bottom)
+          : input.tool === 'upscale'
+            ? sourceHeight * Number(input.params.scale)
+            : sourceHeight;
+      const toolLabel = ({
+        'remove-background': t(locale, '去除背景', 'background removed'),
+        'replace-background': t(locale, '替换背景', 'background replaced'),
+        'remove-object': t(locale, '移除对象', 'object removed'),
+        inpaint: t(locale, '局部重绘', 'inpainted'),
+        expand: t(locale, '扩展图片', 'expanded'),
+        'smart-crop': t(locale, '智能裁切', 'smart cropped'),
+        upscale: t(locale, '放大图像', 'upscaled'),
+        resize: t(locale, '调整尺寸', 'resized'),
+        'remove-watermark': t(locale, '移除水印', 'watermark removed'),
+      } satisfies Record<ImageTool, string>)[input.tool];
       const bytes = await api.readAsset?.({ libraryId: workspace.libraryId, projectId: project.id, assetId: imageLayer.assetId });
       if (!bytes) {
         notify(t(locale, '无法读取目标图像。', 'Could not read the target image.'));
@@ -848,14 +816,37 @@ export const Studio = ({
         if (!saved) throw new Error('MASK_PERSISTENCE_FAILED');
         maskAssetId = saved.asset.id;
       }
-      const task = await api.submitImageEdit?.({ libraryId: workspace.libraryId, projectId: project.id, ...(documentId ? { documentId } : {}), baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: requiredConnection ?? '', ...(editingModel ? { model: editingModel } : {}), prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), sourceAssetId: imageLayer.assetId, targetLayerId: input.targetLayerId, ...(scene ? { beforeScene: scene } : {}), tool: input.tool, toolParams: input.params, ...(input.region ? { region: input.region } : {}), ...(maskAssetId ? { maskAssetId } : {}) });
+      const task = await api.submitImageEdit?.({
+        libraryId: workspace.libraryId,
+        projectId: project.id,
+        ...(documentId ? { documentId } : {}),
+        baseRevisionId: input.baseRevisionId,
+        designerVersionId: project.activeDesignerVersionId,
+        connectionId: requiredConnection ?? '',
+        ...(editingModel ? { model: editingModel } : {}),
+        prompt: input.prompt,
+        image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }),
+        sourceAssetId: imageLayer.assetId,
+        targetLayerId: input.targetLayerId,
+        ...(scene ? { beforeScene: scene } : {}),
+        tool: input.tool,
+        toolParams: input.params,
+        ...(input.region ? { region: input.region } : {}),
+        ...(maskAssetId ? { maskAssetId } : {}),
+        projectDesign: {
+          sourceTaskId: sourceDesign?.sourceTaskId ?? `image-tool-${imageLayer.id}`,
+          ...(sourceDesign?.sourceConversationTaskId ? { sourceConversationTaskId: sourceDesign.sourceConversationTaskId } : {}),
+          width: resultWidth,
+          height: resultHeight,
+          title: locale === 'zh-CN'
+            ? `${sourceDesign?.title ?? t(locale, '图片', 'Image')}（${toolLabel}）`
+            : `${sourceDesign?.title ?? t(locale, '图片', 'Image')} (${toolLabel})`,
+        },
+      });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;
       }
-      const toolLabel = input.tool === 'remove-background'
-        ? t(locale, '去除背景', 'Background removal')
-        : input.tool;
       notify(t(locale, `${toolLabel}任务已排队。`, `${toolLabel} task queued.`));
     } catch {
       notify(t(locale, '图像任务提交失败，请检查连接。', 'Image task submission failed. Check the connection.'));
@@ -921,7 +912,6 @@ export const Studio = ({
             currentView={view}
             onNavigate={navigate}
             onImportProject={() => { void importProjectPackage(); }}
-            onOpenCanvasImageTools={openCanvasImageTools}
             importDisabled={workspace?.openMode !== 'writable'}
           />
         )}
@@ -1018,14 +1008,13 @@ export const Studio = ({
                   setDocumentOpen(true);
                   setTransitionDirection('forward');
                 }}
-                onOpenImageTools={openCanvasImageTools}
+                onSubmitImageTask={(input) => submitProjectImageTask(selected, input)}
               onBack={() => { setTransitionDirection('backward'); setSelected(null); }}
                 onRename={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}
                 onDuplicate={() => { void duplicateSelected(); }}
               onArchive={() => { void updateProject({ archived: true }); setTransitionDirection('backward'); setSelected(null); }}
                 onConnections={() => navigate('connections')}
                 onSubmitConversation={(message, attachments, context) => submitProjectConversation(selected, message, attachments, context)}
-                onRemoveBackground={(design) => submitProjectDesignBackgroundRemoval(selected, design)}
                 onSubmitDesignGeneration={(conversationTaskId, generationRatio, count) => submitProjectDesignGeneration(selected, conversationTaskId, null, generationRatio, count)}
               />
             </div>
@@ -1047,7 +1036,6 @@ export const Studio = ({
                 libraryId={project.libraryId}
                 documentId={project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId}
                 initialCandidate={entryCandidate?.projectId === project.id ? entryCandidate.candidate : undefined}
-                openToolsRequest={project.id === selected?.id ? openToolsRequest : 0}
                 onEntryCandidateResolved={() => setEntryCandidate((current) => current?.projectId === project.id ? null : current)}
                 onBack={() => { setTransitionDirection('backward'); setDocumentOpen(false); }}
                 onConnections={() => navigate('connections')}

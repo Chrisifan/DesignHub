@@ -24,7 +24,7 @@
   position: absolute;
   z-index: 3;
   top: 16px;
-  left: 16px;
+  left: 64px;
   right: 16px;
   bottom: 16px;
   display: flex;
@@ -134,6 +134,47 @@
 }
 
 .project-canvas-toolbar__group { align-self: flex-start; }
+
+.project-canvas-image-tools {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 16px;
+  display: grid;
+  gap: 8px;
+  width: 42px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.project-canvas-image-tools > [role='toolbar'] {
+  display: grid;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid var(--shell-glass-border);
+  border-radius: var(--radius-ui);
+  background: var(--shell-glass);
+  box-shadow: var(--project-canvas-panel-shadow);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+  backdrop-filter: var(--shell-backdrop);
+  pointer-events: auto;
+}
+
+.project-canvas-image-tools .icon-button {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.project-canvas-image-tools > span {
+  position: absolute;
+  left: 52px;
+  width: 150px;
+  color: var(--on-surface-variant);
+  font-size: 10px;
+  line-height: 1.35;
+}
 
 .project-canvas-toolbar__selection {
   position: absolute;

@@ -3,6 +3,10 @@ import type { ConversationImageAttachment } from '../../features/agent/task-serv
 import type { ProjectDesign, ProjectCanvasLayout } from '../../features/projects/metadata';
 import type { ProjectGenerationRatio } from '../../features/projects/size';
 import type { TaskRecord } from '../../features/tasks/state';
+import { createScene, type DesignScene } from '../../features/canvas/scene';
+import type { Region } from '../../features/canvas/selection';
+import { defaultToolParams, imageTools, validateToolParams, type ImageTool, type ToolParams } from '../../features/image-tools/target';
+import { ToolInspector } from '../../features/image-tools/ToolInspector';
 import { getDesktopApi } from '../../platform/runtime';
 import type { Locale } from '../i18n';
 import type { PersonaProfile } from './personas';
@@ -10,7 +14,7 @@ import type { Project } from './types';
 import { ConversationDock, type ConversationDockAttachment } from './ConversationDock';
 import { AnalysisPanel, type AnalysisPanelRequest } from './AnalysisPanel';
 import { ProjectCanvasStage } from './ProjectCanvasStage';
-import { Icon, IconButton, t } from './ui';
+import { Icon, IconButton, Modal, t } from './ui';
 import './project-canvas.css';
 
 type ProjectCanvasProps = {
@@ -27,14 +31,25 @@ type ProjectCanvasProps = {
   notify: (message: string) => void;
   onBack: () => void;
   onOpenDocument?: (documentId: string) => void;
-  onOpenImageTools?: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
   onArchive?: () => void;
   onConnections: () => void;
-  onRemoveBackground?: (design: ProjectDesign) => void | Promise<void>;
+  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId: string; region?: Region; beforeScene: DesignScene }) => void | Promise<void>;
   onSubmitConversation: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => Promise<TaskRecord | null>;
   onSubmitDesignGeneration: (conversationTaskId: string, generationRatio: ProjectGenerationRatio, count: 1 | 3) => Promise<TaskRecord | null>;
+};
+
+const imageToolCopy: Record<ImageTool, { zh: string; en: string; icon: string; prompt: string }> = {
+  'remove-background': { zh: '去除背景', en: 'Remove background', icon: 'wand-sparkles', prompt: 'Remove the background and preserve the subject with clean edges' },
+  'replace-background': { zh: '替换背景', en: 'Replace background', icon: 'images', prompt: 'Replace the background while preserving the original subject' },
+  'remove-object': { zh: '移除对象', en: 'Remove object', icon: 'eraser', prompt: 'Remove the selected object and reconstruct the surrounding detail' },
+  inpaint: { zh: '局部重绘', en: 'Inpaint', icon: 'paintbrush', prompt: 'Inpaint the selected region according to the requested direction' },
+  expand: { zh: '扩展图片', en: 'Expand image', icon: 'maximize-2', prompt: 'Expand the image edges while preserving the primary composition' },
+  'smart-crop': { zh: '智能裁切', en: 'Smart crop', icon: 'crop', prompt: 'Smart crop while preserving the primary subject' },
+  upscale: { zh: '放大图像', en: 'Upscale image', icon: 'scan-search', prompt: 'Upscale the image while preserving important details' },
+  resize: { zh: '调整尺寸', en: 'Resize', icon: 'move-diagonal-2', prompt: 'Resize the image' },
+  'remove-watermark': { zh: '移除水印', en: 'Remove watermark', icon: 'badge-x', prompt: 'Remove a watermark only from an explicitly selected region' },
 };
 
 const toAttachment = (attachment: ConversationDockAttachment): ConversationImageAttachment => ({ name: attachment.name, mimeType: attachment.mimeType, bytes: attachment.bytes });
@@ -84,7 +99,7 @@ const getAnalysisStatus = (task: TaskRecord, locale: Locale): { icon: string; ki
   return { icon: 'clock', kind: 'running', label: t(locale, '处理中', 'Processing') };
 };
 
-export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onOpenDocument, onOpenImageTools, onRename, onDuplicate, onArchive, onRemoveBackground, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
+export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onOpenDocument, onRename, onDuplicate, onArchive, onConnections, onSubmitImageTask, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
   const onDesignsChangeRef = useRef(onDesignsChange);
   onDesignsChangeRef.current = onDesignsChange;
@@ -92,7 +107,10 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [conversationSubmitting, setConversationSubmitting] = useState(false);
-  const [backgroundRemovalSubmitting, setBackgroundRemovalSubmitting] = useState(false);
+  const [activeTool, setActiveTool] = useState<ImageTool | null>(null);
+  const [toolParams, setToolParams] = useState<ToolParams>({});
+  const [toolRegion, setToolRegion] = useState<Region>();
+  const [imageToolSubmitting, setImageToolSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [attachments, setAttachments] = useState<ConversationDockAttachment[]>([]);
   const [threadId, setThreadId] = useState<string>();
@@ -197,14 +215,41 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     await onSubmitDesignGeneration(analysisTask.id, project.generationRatio ?? '3:4', count);
     void refresh();
   };
-  const removeBackground = async (): Promise<void> => {
+  const configureImageTool = (tool: ImageTool): void => {
     const design = selectedDesigns.length === 1 ? selectedDesigns[0] : undefined;
-    if (!design || readOnly || !onRemoveBackground || backgroundRemovalSubmitting) return;
-    setBackgroundRemovalSubmitting(true);
+    if (!design) {
+      notify(t(locale, '请先选择一张图片。', 'Select an image first.'));
+      return;
+    }
+    setActiveTool(tool);
+    setToolParams(defaultToolParams(tool, design));
+    setToolRegion(undefined);
+  };
+  const runImageTool = async (region?: Region): Promise<void> => {
+    const design = selectedDesigns.length === 1 ? selectedDesigns[0] : undefined;
+    if (!activeTool || !design || readOnly || imageToolSubmitting) return;
+    if (!validateToolParams(activeTool, toolParams).ok) {
+      notify(t(locale, '参数无效', 'Invalid parameters'));
+      return;
+    }
+    if (!onSubmitImageTask) {
+      onConnections();
+      return;
+    }
+    const beforeScene = createScene({
+      id: `${project.id}-${design.id}-image-tool`,
+      width: design.width,
+      height: design.height,
+      layers: [{ id: design.id, type: 'image', assetId: design.assetId, x: 0, y: 0, width: design.width, height: design.height, rotation: 0, opacity: 1, visible: true, locked: false }],
+    });
+    setImageToolSubmitting(true);
     try {
-      await onRemoveBackground(design);
+      await onSubmitImageTask({ tool: activeTool, prompt: imageToolCopy[activeTool].prompt, params: toolParams, baseRevisionId: null, targetLayerId: design.id, ...(region ? { region } : {}), beforeScene });
+      setActiveTool(null);
+      setToolRegion(undefined);
+      void refresh();
     } finally {
-      setBackgroundRemovalSubmitting(false);
+      setImageToolSubmitting(false);
     }
   };
   const selectAnalysis = (taskId: string): void => {
@@ -277,12 +322,6 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
             </div>}
           </div>
           <span className="project-canvas-toolbar__title">{project.name}</span>
-          {onOpenImageTools && (
-            <button type="button" className="ui-button ui-button--secondary project-canvas-image-tools-trigger" onClick={onOpenImageTools}>
-              <Icon name="wand-sparkles" size={15} />
-              {t(locale, '画布图像工具', 'Canvas image tools')}
-            </button>
-          )}
         </div>
         <div className="project-canvas-toolbar__actions">
           {onOpenDocument && project.documentEntries?.map((entry) => (
@@ -290,10 +329,18 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
               {t(locale, `打开${entry.name}`, `Open ${entry.name}`)}
             </button>
           ))}
-          <IconButton name="wand-sparkles" label={t(locale, '去除背景', 'Remove background')} disabled={readOnly || selectedDesigns.length !== 1 || backgroundRemovalSubmitting || !onRemoveBackground} onClick={() => { void removeBackground(); }} />
           <IconButton name="download" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
         </div>
       </div>
+      <aside className="project-canvas-image-tools" aria-label={t(locale, '图片工具', 'Image tools')}>
+        <div role="toolbar" aria-label={t(locale, '图片工具', 'Image tools')}>
+          {imageTools.map((tool) => {
+            const copy = imageToolCopy[tool];
+            return <IconButton key={tool} name={copy.icon} label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
+          })}
+        </div>
+        <span aria-live="polite">{selectedDesigns.length === 1 ? t(locale, `当前图片：${selectedDesigns[0]!.title}`, `Current image: ${selectedDesigns[0]!.title}`) : t(locale, '选择一张图片后使用工具', 'Select one image to use a tool')}</span>
+      </aside>
       <ProjectCanvasStage
         libraryId={libraryId}
         projectId={project.id}
@@ -347,6 +394,24 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
           notify={notify}
         />
       </div>
+      {activeTool && selectedDesigns.length === 1 && <Modal title={t(locale, imageToolCopy[activeTool].zh, imageToolCopy[activeTool].en)} locale={locale} onClose={() => setActiveTool(null)}>
+        <ToolInspector
+          tool={activeTool}
+          tools={[activeTool]}
+          params={toolParams}
+          locale={locale}
+          readOnly={readOnly || imageToolSubmitting}
+          image={{ width: selectedDesigns[0]!.width, height: selectedDesigns[0]!.height }}
+          region={toolRegion}
+          onToolChange={configureImageTool}
+          onParamsChange={setToolParams}
+          onRegionChange={setToolRegion}
+          onApplyRegion={(region) => setToolRegion(region)}
+          onCancelRegion={() => setActiveTool(null)}
+          onClearRegion={() => setToolRegion(undefined)}
+          onRun={(region) => { void runImageTool(region); }}
+        />
+      </Modal>}
     </section>
   );
 };

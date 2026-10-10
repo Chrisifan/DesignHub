@@ -108,12 +108,22 @@ describe('getLatestConversationTask', () => {
 });
 
 describe('ProjectCanvas design references', () => {
-  it('exposes a direct canvas image tools entry before opening a document', () => {
-    const onOpenImageTools = vi.fn();
+  it('shows image tools in the left toolbar and applies the selected image', async () => {
+    const design: ProjectDesign = {
+      id: 'design-tool-target', projectId: 'project-1', assetId: 'asset-tool-target', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const onSubmitImageTask = vi.fn(async () => undefined);
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => [design]),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+    };
+
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }] }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected
@@ -121,14 +131,55 @@ describe('ProjectCanvas design references', () => {
         notify={vi.fn()}
         onBack={vi.fn()}
         onConnections={vi.fn()}
-        onOpenImageTools={onOpenImageTools}
+        onSubmitImageTask={onSubmitImageTask}
         onSubmitConversation={vi.fn(async () => null)}
         onSubmitDesignGeneration={vi.fn(async () => null)}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: '画布图像工具' }));
-    expect(onOpenImageTools).toHaveBeenCalledOnce();
+    fireEvent.click(await screen.findByRole('button', { name: '设计稿 商品图' }));
+    expect(screen.getByRole('toolbar', { name: '图片工具' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '画布图像工具' })).not.toBeInTheDocument();
+    expect(screen.getByRole('toolbar', { name: '图片工具' }).querySelectorAll('button')).toHaveLength(9);
+    fireEvent.click(screen.getByRole('button', { name: '去除背景' }));
+    fireEvent.click(screen.getByRole('button', { name: '执行' }));
+
+    await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({
+      tool: 'remove-background',
+      targetLayerId: 'design-tool-target',
+      beforeScene: expect.objectContaining({
+        layers: [expect.objectContaining({ assetId: 'asset-tool-target' })],
+      }),
+    })));
+  });
+
+  it('keeps image tools on the project canvas without opening a document', async () => {
+    const design: ProjectDesign = {
+      id: 'design-direct-tool', projectId: 'project-1', assetId: 'asset-direct-tool', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '直接图片', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const onSubmitImageTask = vi.fn(async () => undefined);
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitImageTask={onSubmitImageTask}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '设计稿 直接图片' }));
+    fireEvent.click(screen.getByRole('button', { name: '去除背景' }));
+    expect(screen.getByRole('dialog', { name: '去除背景' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '打开主海报' })).not.toBeInTheDocument();
   });
 
   it('disables design generation while visual clarification is required', async () => {
@@ -158,7 +209,7 @@ describe('ProjectCanvas design references', () => {
       id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'generation-1',
       width: 1080, height: 1440, title: '春日海报', createdAt: '2026-09-21T10:00:00.000Z',
     };
-    const onRemoveBackground = vi.fn(async () => undefined);
+    const onSubmitImageTask = vi.fn(async () => undefined);
     window.designhub = {
       listProjectDesigns: vi.fn(async () => [design]),
       loadProjectCanvasLayout: vi.fn(async () => null),
@@ -176,7 +227,7 @@ describe('ProjectCanvas design references', () => {
         notify={vi.fn()}
         onBack={vi.fn()}
         onConnections={vi.fn()}
-        onRemoveBackground={onRemoveBackground}
+        onSubmitImageTask={onSubmitImageTask}
         onSubmitConversation={vi.fn(async () => null)}
         onSubmitDesignGeneration={vi.fn(async () => null)}
       />,
@@ -188,7 +239,12 @@ describe('ProjectCanvas design references', () => {
     fireEvent.click(screen.getByRole('button', { name: '设计稿 春日海报' }));
     expect(removeButton).toBeEnabled();
     fireEvent.click(removeButton);
-    await waitFor(() => expect(onRemoveBackground).toHaveBeenCalledWith(design));
+    fireEvent.click(screen.getByRole('button', { name: '执行' }));
+    await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({
+      tool: 'remove-background',
+      targetLayerId: 'design-1',
+      beforeScene: expect.objectContaining({ layers: [expect.objectContaining({ assetId: 'asset-1' })] }),
+    })));
   });
 
   it('reports refreshed designs so the project list can update its cover', async () => {

@@ -66,8 +66,7 @@ it('exposes one menu entry per image batch tool', () => {
   expect(onNavigate).toHaveBeenCalledWith('image-tool-upscale');
 });
 
-it('opens the canvas image tools action from the user menu', () => {
-  const onOpenCanvasImageTools = vi.fn();
+it('does not expose a canvas image tools navigation action', () => {
   render(
     <StudioUserMenu
       locale="zh-CN"
@@ -75,15 +74,11 @@ it('opens the canvas image tools action from the user menu', () => {
       currentView="projects"
       onNavigate={vi.fn()}
       onImportProject={vi.fn()}
-      onOpenCanvasImageTools={onOpenCanvasImageTools}
     />,
   );
 
   fireEvent.click(screen.getByRole('button', { name: '打开用户菜单' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: '画布图像工具' }));
-
-  expect(onOpenCanvasImageTools).toHaveBeenCalledOnce();
-  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: '画布图像工具' })).not.toBeInTheDocument();
 });
 
 it('closes on Escape and exposes the project import action', () => {

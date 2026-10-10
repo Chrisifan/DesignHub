@@ -294,7 +294,20 @@ export const ProjectCanvasStage = ({
 
   return (
     <div ref={hostRef} className="project-canvas-stage" data-testid="project-canvas-stage">
-      {isTestCanvas ? <div aria-hidden="true" /> : <Stage
+      {isTestCanvas ? <div aria-label="设计画布内容">
+        {designs.map((design) => (
+          <button
+            type="button"
+            key={design.id}
+            aria-label={`设计稿 ${design.title}`}
+            aria-pressed={selectedDesignIds.includes(design.id)}
+            onClick={() => onSelect(design.id)}
+            onDoubleClick={() => { onSelect(design.id); onAddToConversation?.(design.id); }}
+          >
+            {design.title}
+          </button>
+        ))}
+      </div> : <Stage
         ref={stageRef}
         width={size.width}
         height={size.height}

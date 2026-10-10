@@ -83,7 +83,7 @@ export const gotoTestWorkspace = async (
       principle: { zh: '让商品先被看见', en: 'Let the product lead' },
       personaCode: 'E2E-B',
     };
-    const project = {
+  const project = {
       projectId: 'project-e2e',
       name: '春间市集',
       brief: '测试项目',
@@ -91,13 +91,24 @@ export const gotoTestWorkspace = async (
       contributorDesignerVersionIds: ['e2e-paper'],
       designerSnapshot: structuredClone(paper),
       documents: [{ id: 'doc-e2e', name: '主海报', width: 1080, height: 1440, updatedAt: '2026-09-12T00:00:00.000Z' }],
+      designs: [{ id: 'design-e2e-source', projectId: 'project-e2e', assetId: 'asset-source-image', sourceTaskId: 'task-source-image', width: 800, height: 600, title: '测试图片', createdAt: '2026-09-12T00:00:00.000Z' }],
       archived: false,
-    };
+  };
     let createdProjectInput: { name: string; documents?: Array<{ id: string; name: string; width: number; height: number }> } | undefined;
     let projectCoverBytes: Uint8Array | undefined;
     const projectCoverAssetId = 'asset-0123456789abcdef';
     const sourceImageAssetId = 'asset-source-image';
-    const sourceImageBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const sourceImageBytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xw2X7wAAAABJRU5ErkJggg=='), (character) => character.charCodeAt(0));
+    const projectDesign = {
+      id: 'design-e2e-source',
+      projectId: project.projectId,
+      assetId: sourceImageAssetId,
+      sourceTaskId: 'task-source-image',
+      width: 800,
+      height: 600,
+      title: '测试图片',
+      createdAt: '2026-09-12T00:00:00.000Z',
+    };
     const submittedTasks: Array<Record<string, unknown>> = [];
     let projectPackageImportAttempts = 0;
     let projectPackageImported = false;
@@ -146,6 +157,7 @@ export const gotoTestWorkspace = async (
       submitPortfolioSelection: async () => ({ id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'running', cancelRequested: false, attempt: 1 }),
       loadBrandState: async () => ({ brands: [] }),
       listAssets: async () => [],
+      listProjectDesigns: async () => [structuredClone(projectDesign)],
       readAsset: async (input: { assetId: string }) => input.assetId === projectCoverAssetId
         ? projectCoverBytes ?? null
         : input.assetId === sourceImageAssetId ? sourceImageBytes.slice() : null,

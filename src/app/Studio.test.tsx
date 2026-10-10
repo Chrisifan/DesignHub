@@ -586,15 +586,20 @@ it('runs background removal from a project image without a document field', asyn
 
   render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={vi.fn()} onThemeChange={vi.fn()} onExit={vi.fn()} />);
   fireEvent.click(await screen.findByRole('button', { name: '无文档图片项目' }));
-  fireEvent.click(screen.getByRole('button', { name: '画布图像工具' }));
-  fireEvent.click(await screen.findByRole('button', { name: '工具' }));
-  fireEvent.click(screen.getByRole('button', { name: '配置去除背景' }));
+  fireEvent.click(await screen.findByRole('button', { name: '设计稿 商品图' }));
+  fireEvent.click(screen.getByRole('button', { name: '去除背景' }));
   fireEvent.click(within(screen.getByRole('dialog', { name: '去除背景' })).getByRole('button', { name: '执行' }));
 
   await waitFor(() => expect(submitImageEdit).toHaveBeenCalledWith(expect.objectContaining({
     projectId: 'project-image-only',
     sourceAssetId: 'asset-image-only',
     tool: 'remove-background',
+    projectDesign: expect.objectContaining({
+      sourceTaskId: 'generation-image-only',
+      width: 800,
+      height: 600,
+      title: '商品图（去除背景）',
+    }),
   })));
   expect(submitImageEdit.mock.calls[0]![0]).not.toHaveProperty('documentId');
 });
