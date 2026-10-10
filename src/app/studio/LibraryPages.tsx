@@ -1214,7 +1214,7 @@ const DeliveryPage = ({
       const scene = await loadSelectedScene();
       if (!hasExportableContent(scene)) {
         setSceneStatus('empty');
-        notify?.(t(locale, '当前文档没有可导出的正式内容，请先在画布中选择候选稿并定稿。', 'This document has no formal content to export. Select a candidate on the canvas and finalize it first.'));
+        notify?.(t(locale, '当前图片没有可导出的正式结果，请先在画布中选择候选稿并确认。', 'This image has no formal result to export. Select a candidate on the canvas and confirm it first.'));
         return;
       }
       const result = await api.exportDocument?.({ libraryId: project.libraryId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
@@ -1262,13 +1262,13 @@ const DeliveryPage = ({
           project
             ? t(
                 locale,
-                persistedProject ? `为${project.name}配置输出格式。左侧显示当前文档原稿。` : `为${project.name}配置输出格式。左侧显示项目示例原稿。`,
-                persistedProject ? `Configure output for ${project.enName}. The current document source appears on the left.` : `Configure output for ${project.enName}. The project’s example source artwork appears on the left.`,
+                persistedProject ? `为${project.name}配置输出格式。左侧显示当前图片原稿。` : `为${project.name}配置输出格式。左侧显示项目示例原稿。`,
+                persistedProject ? `Configure output for ${project.enName}. The current image source appears on the left.` : `Configure output for ${project.enName}. The project’s example source artwork appears on the left.`,
               )
             : t(
                 locale,
-                '选择项目文档后配置输出格式。',
-                'Select a project document to configure its output format.',
+                '选择项目图片后配置输出格式。',
+                'Select a project image to configure its output format.',
               )
         }
       />
@@ -1287,7 +1287,7 @@ const DeliveryPage = ({
                       ? t(locale, '正在读取当前设计稿…', 'Loading the current design…')
                       : sceneStatus === 'error'
                         ? t(locale, '设计稿读取失败，请重试。', 'Could not load the design. Try again.')
-                        : t(locale, '当前文档没有可导出的正式内容，请先在画布中选择候选稿并定稿。', 'This document has no formal content to export. Select a candidate on the canvas and finalize it first.')}</span>
+                        : t(locale, '当前图片没有可导出的正式结果，请先在画布中选择候选稿并确认。', 'This image has no formal result to export. Select a candidate on the canvas and confirm it first.')}</span>
                   </div>
             ) : <ArtworkPreview kind={project.artwork} />}
             <div>
@@ -1301,7 +1301,7 @@ const DeliveryPage = ({
                 })()}
               </p>
               <small className="source-note">
-                  {t(locale, source === 'final' ? '导出将读取已定稿修订。' : '导出将读取当前文档场景。', source === 'final' ? 'Export reads the finalized revision.' : 'Export reads the current document scene.')}
+                  {t(locale, source === 'final' ? '导出将读取已确认结果。' : '导出将读取当前图片结果。', source === 'final' ? 'Export reads the confirmed result.' : 'Export reads the current image result.')}
               </small>
             </div>
           </div>
@@ -1309,11 +1309,11 @@ const DeliveryPage = ({
           <div className="delivery-preview delivery-preview--empty">
             <EmptyState
               icon="file-image"
-              title={t(locale, '选择文档', 'Select a document')}
+              title={t(locale, '选择图片', 'Select an image')}
               description={t(
                 locale,
-                '从项目中打开一份文档，再返回这里配置交付预览。',
-                'Open a document from a project, then return here to configure its delivery preview.',
+                '从项目中选择一张图片，再返回这里配置交付预览。',
+                'Select an image from a project, then return here to configure its delivery preview.',
               )}
             >
               <Button
@@ -1374,11 +1374,11 @@ const DeliveryPage = ({
             </p>
           </div>
           <div className="config-grid">
-            {project?.documentEntries && project.documentEntries.length > 1 && <Field label={t(locale, '文档', 'Document')}>
-              <Select ariaLabel={t(locale, '文档', 'Document')} value={activeDocumentId} onChange={setDocumentId} options={project.documentEntries.map((entry) => ({ value: entry.id, label: entry.name }))} />
+            {project?.documentEntries && project.documentEntries.length > 1 && <Field label={t(locale, '图片', 'Image')}>
+              <Select ariaLabel={t(locale, '图片', 'Image')} value={activeDocumentId} onChange={setDocumentId} options={project.documentEntries.map((entry) => ({ value: entry.id, label: entry.name }))} />
             </Field>}
             <Field label={t(locale, '来源', 'Source')}>
-              <Select ariaLabel={t(locale, '来源', 'Source')} value={source} onChange={(value) => setSource(value as 'current' | 'final')} options={[{ value: 'current', label: t(locale, persistedProject ? '当前文档' : '示例原稿', persistedProject ? 'Current document' : 'Example source artwork') }, ...(hasFinalizedRevision ? [{ value: 'final', label: t(locale, '已定稿', 'Finalized revision') }] : [])]} />
+              <Select ariaLabel={t(locale, '来源', 'Source')} value={source} onChange={(value) => setSource(value as 'current' | 'final')} options={[{ value: 'current', label: t(locale, persistedProject ? '当前图片' : '示例原稿', persistedProject ? 'Current image' : 'Example source artwork') }, ...(hasFinalizedRevision ? [{ value: 'final', label: t(locale, '已确认结果', 'Confirmed result') }] : [])]} />
             </Field>
             <Field label={t(locale, '颜色空间', 'Color space')}>
               <Select ariaLabel={t(locale, '颜色空间', 'Color space')} value="srgb" disabled onChange={() => undefined} options={[{ value: 'srgb', label: t(locale, 'sRGB（首版）', 'sRGB (first release)') }]} />
@@ -1397,8 +1397,8 @@ const DeliveryPage = ({
               <small>
                 {t(
                   locale,
-                  persistedProject ? (source === 'final' ? '导出会读取已定稿修订，并可选择归档副本。' : '导出会读取当前文档，并可选择归档副本。') : '仅配置选项；示例不会写入 exports 目录。',
-                  persistedProject ? (source === 'final' ? 'Export reads the finalized revision and can archive a copy.' : 'Export reads the current document and can archive a copy.') : 'Configuration only; the example does not write to the exports directory.',
+                  persistedProject ? (source === 'final' ? '导出会读取已确认结果，并可选择归档副本。' : '导出会读取当前图片，并可选择归档副本。') : '仅配置选项；示例不会写入 exports 目录。',
+                  persistedProject ? (source === 'final' ? 'Export reads the confirmed result and can archive a copy.' : 'Export reads the current image and can archive a copy.') : 'Configuration only; the example does not write to the exports directory.',
                 )}
               </small>
             </span>
@@ -1628,8 +1628,8 @@ const StoragePage = ({
           title={readOnly ? t(locale, '只读工作区', 'Read-only workspace') : t(locale, '废纸篓为空', 'Trash is empty')}
           description={t(
             locale,
-            readOnly ? '只读模式下不能修改废纸篓。' : '删除的项目、文档和素材会显示原位置、删除时间与引用限制。',
-            readOnly ? 'Trash cannot be modified in read-only mode.' : 'Deleted projects, documents and assets show their original location, deletion time and reference limits.',
+            readOnly ? '只读模式下不能修改废纸篓。' : '删除的项目、图片和素材会显示原位置、删除时间与引用限制。',
+            readOnly ? 'Trash cannot be modified in read-only mode.' : 'Deleted projects, images and assets show their original location, deletion time and reference limits.',
           )}
         /></div> : loadingTrash ? <p className="storage-loading">{t(locale, '读取中', 'Loading')}</p> : trash.length === 0 ? <div className="page-empty-state"><EmptyState
           icon="trash-2"

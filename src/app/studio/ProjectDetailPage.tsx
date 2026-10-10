@@ -133,12 +133,12 @@ export const ProjectDetailPage = ({
       </section>
 
       <div className="project-detail-layout project-detail-layout--documents-only" data-testid="project-detail-layout">
-        <section className="project-detail-documents project-detail-documents--full" aria-label={t(locale, '设计文档', 'Design documents')}>
+        <section className="project-detail-documents project-detail-documents--full" aria-label={t(locale, '项目图片', 'Project images')}>
           <div className="project-detail-section-heading">
             <div>
               <span className="project-detail-section-heading__index">01</span>
-              <h2>{t(locale, '设计文档', 'Design documents')}</h2>
-              <p>{project.documents} {t(locale, '份物料', 'deliverables')}</p>
+              <h2>{t(locale, '项目图片', 'Project images')}</h2>
+              <p>{documents.length} {t(locale, '张图片', 'images')}</p>
             </div>
           </div>
 
@@ -146,8 +146,8 @@ export const ProjectDetailPage = ({
             <div className="project-detail-empty">
               <EmptyState
                 icon="file-image"
-                title={t(locale, '暂无设计文档', 'No design documents yet')}
-                description={t(locale, '创建文档后会显示在这里。', 'Create a document to see it here.')}
+                title={t(locale, '暂无项目图片', 'No project images yet')}
+                description={t(locale, '导入图片后会显示在这里。', 'Add an image to see it here.')}
               />
             </div>
           ) : (

@@ -11,6 +11,16 @@ const scene = createScene({
 });
 
 describe('tool submit controller', () => {
+  it('accepts a managed image target without a document', () => {
+    expect(validateToolSubmission({
+      tool: 'remove-background',
+      params: { edgeRefinement: 50 },
+      scene,
+      selection: null,
+      libraryId: 'library',
+    })).toEqual({ ok: true, targetLayerId: 'image-a' });
+  });
+
   it('returns the selected layer id instead of selecting the first image', () => {
     expect(validateToolSubmission({ tool: 'remove-background', params: { edgeRefinement: 50 }, scene, selection: { layerId: 'image-a', type: 'image' }, libraryId: 'library', documentId: 'document' })).toEqual({ ok: true, targetLayerId: 'image-a' });
   });

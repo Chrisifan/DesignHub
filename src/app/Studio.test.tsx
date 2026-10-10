@@ -301,7 +301,7 @@ it('shows the cover-led project detail as a full-width design list', () => {
   expect(header).toContainElement(screen.getByRole('heading', { name: '春间市集' }));
   expect(within(header).queryByRole('button', { name: '打开画布' })).not.toBeInTheDocument();
   expect(within(header).queryByRole('button', { name: '导出交付' })).not.toBeInTheDocument();
-  expect(screen.getByText('设计文档')).toBeInTheDocument();
+  expect(screen.getByText('项目图片')).toBeInTheDocument();
   expect(screen.queryByText('项目上下文')).not.toBeInTheDocument();
   expect(screen.queryByText('设计协作')).not.toBeInTheDocument();
   expect(screen.queryByText('设计简报')).not.toBeInTheDocument();
@@ -545,6 +545,58 @@ it('generates project candidates without requiring an open document', async () =
   })));
   expect(submitDesignGeneration.mock.calls[0]![0]).not.toHaveProperty('documentId');
   expect(screen.queryByText('请先打开文档。')).not.toBeInTheDocument();
+});
+
+it('runs background removal from a project image without a document field', async () => {
+  const design = {
+    id: 'design-image-only',
+    projectId: 'project-image-only',
+    assetId: 'asset-image-only',
+    sourceTaskId: 'generation-image-only',
+    width: 800,
+    height: 600,
+    title: '商品图',
+    createdAt: '2026-10-10T00:00:00.000Z',
+  };
+  const submitImageEdit = vi.fn(async (input: Record<string, unknown>) => {
+    void input;
+    return {
+    id: 'task-remove-background',
+    requestId: 'request-remove-background',
+    state: 'queued' as const,
+    cancelRequested: false,
+    attempt: 1,
+    };
+  });
+  window.designhub = {
+    listActiveProjects: async () => [{ projectId: 'project-image-only', name: '无文档图片项目', documents: [], designs: [design] }],
+    listProjectDesigns: async () => [design],
+    loadProjectCanvasLayout: async () => null,
+    listTasks: async () => [],
+    readAsset: async () => new Uint8Array([137, 80, 78, 71]),
+    hasCredential: async (account: string) => account === 'openai-compatible:image',
+    loadProviderConfigs: async () => ({
+      'openai-compatible': {
+        conversation: { baseUrl: 'https://text.example.test/v1', models: {} },
+        image: { baseUrl: 'https://image.example.test/v1', imageTransport: 'images' as const, models: { 'image-editing': 'image-edit-model' } },
+      },
+    }),
+    submitImageEdit,
+  };
+
+  render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={vi.fn()} onThemeChange={vi.fn()} onExit={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: '无文档图片项目' }));
+  fireEvent.click(screen.getByRole('button', { name: '画布图像工具' }));
+  fireEvent.click(await screen.findByRole('button', { name: '工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置去除背景' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '去除背景' })).getByRole('button', { name: '执行' }));
+
+  await waitFor(() => expect(submitImageEdit).toHaveBeenCalledWith(expect.objectContaining({
+    projectId: 'project-image-only',
+    sourceAssetId: 'asset-image-only',
+    tool: 'remove-background',
+  })));
+  expect(submitImageEdit.mock.calls[0]![0]).not.toHaveProperty('documentId');
 });
 
 it('opens a persisted project document in the workbench', async () => {

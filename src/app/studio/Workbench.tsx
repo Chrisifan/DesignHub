@@ -105,7 +105,7 @@ export type WorkbenchProps = {
   onTasks?: () => void;
   onSubmitConversation?: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
   onSubmitDesignGeneration?: (conversationTaskId: string, baseRevisionId: string | null, generationRatio: ProjectGenerationRatio, count: 1 | 3) => void | Promise<void | TaskRecord | null> | TaskRecord | null;
-  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: Region }) => void | Promise<void>;
+  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: Region; beforeScene?: DesignScene }) => void | Promise<void>;
   onSubmitImageGeneration?: (prompt: string, baseRevisionId: string | null) => void | Promise<void>;
   operatorName?: string;
   modelConnected?: boolean;
@@ -120,9 +120,16 @@ export type WorkbenchProps = {
 
 const createInitialScene = (project: Project, documentId?: string): DesignScene => {
   const document = project.documentEntries?.find((entry) => entry.id === documentId) ?? project.documentEntries?.[0];
-  if (project.libraryId && !document) {
-    return createScene({ id: `${project.id}-scene`, width: 1, height: 1, layers: [] });
+  const sourceDesign = project.designs?.[0];
+  if (project.libraryId && !document && sourceDesign) {
+    return createScene({
+      id: `${project.id}-image-scene`,
+      width: sourceDesign.width,
+      height: sourceDesign.height,
+      layers: [{ id: sourceDesign.id, type: 'image', assetId: sourceDesign.assetId, x: 0, y: 0, width: sourceDesign.width, height: sourceDesign.height, rotation: 0, opacity: 1, visible: true, locked: false }],
+    });
   }
+  if (project.libraryId && !document) return createScene({ id: `${project.id}-scene`, width: 1, height: 1, layers: [] });
   const width = document?.width ?? 1080;
   const height = document?.height ?? 1440;
   if (project.libraryId) {
@@ -442,6 +449,13 @@ export const Workbench = ({
         ? findToolCandidate(tasks, toolCandidateTaskId)
         : undefined;
     if (!entry) return;
+    if ('candidateScene' in entry.candidate && !documentId) {
+      setCandidateScene(null);
+      setToolCandidateTaskId(null);
+      setSelectedCandidateId(null);
+      notify(t(locale, '图片处理结果已保留。', 'Image result kept.'));
+      return;
+    }
     if ('candidateScene' in entry.candidate && libraryId && documentId) {
       const candidate = entry.candidate;
       const revisionStore = {
@@ -594,6 +608,7 @@ export const Workbench = ({
     ? activeToolCandidate.beforeScene
     : candidateScene;
   const hasSceneContent = scene.layers.some((layer) => layer.type !== 'image' || layer.assetId !== 'placeholder');
+  const imageOnlyMode = Boolean(libraryId && !documentId && hasSceneContent);
   const centerDraft = useCallback((element: HTMLElement): void => {
     const container = canvasStageRef.current;
     if (!container || typeof container.scrollTo !== 'function') return;
@@ -652,7 +667,7 @@ export const Workbench = ({
     if (nextPanel === 'properties' && hasWorkspaceDocument) {
       setPanelOpen(false);
       if (!scene.layers.some(isLayerInteractive)) {
-        notify(t(locale, '当前没有可编辑图层', 'There are no editable layers in the current document'));
+        notify(t(locale, '当前图片没有可编辑内容', 'There is no editable content in the current image'));
         return;
       }
       setCanvasInspectorRequestId((current) => current + 1);
@@ -821,12 +836,10 @@ export const Workbench = ({
     if (!validation.ok) {
       notify(validation.code === 'IMAGE_LAYER_REQUIRED' || validation.code === 'IMAGE_ASSET_REQUIRED'
         ? t(locale, '请选择一个图片图层', 'Select an image layer first')
-        : validation.code === 'DOCUMENT_REQUIRED'
-          ? t(locale, '请选择一个文档', 'Select a document first')
-          : t(locale, '参数无效', 'Invalid parameters'));
+        : t(locale, '参数无效', 'Invalid parameters'));
       return;
     }
-    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, params, baseRevisionId: currentRevisionId, ...(validation.targetLayerId ? { targetLayerId: validation.targetLayerId } : {}), ...(validation.region ? { region: validation.region } : {}) })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
+    void Promise.resolve(onSubmitImageTask({ tool, prompt: taskPrompt, params, baseRevisionId: currentRevisionId, ...(validation.targetLayerId ? { targetLayerId: validation.targetLayerId } : {}), ...(validation.region ? { region: validation.region } : {}), beforeScene: scene })).catch(() => notify(t(locale, '任务提交失败', 'Task submission failed')));
   };
   const configureImageTool = (tool: ImageTool): void => {
     setActiveTool(tool);
@@ -942,7 +955,7 @@ export const Workbench = ({
             <strong>
               {locale === 'zh-CN' ? project.name : project.enName}
             </strong>
-            <span>{documentMeta?.name ?? t(locale, '主海报', 'Main poster')}</span>
+            <span>{documentMeta?.name ?? t(locale, '当前图片', 'Current image')}</span>
           </div>
           <Badge tone={libraryId ? 'success' : 'warning'}>
             {libraryId ? t(locale, '已保存', 'Saved') : t(locale, '预览未保存', 'Unsaved preview')}
@@ -999,27 +1012,28 @@ export const Workbench = ({
       <div className="workbench-body workbench-body--canvas-first">
         <aside
           className="workbench-left"
-          aria-label={t(locale, '画布工具与图层', 'Canvas tools and layers')}
+          aria-label={t(locale, imageOnlyMode ? '图片工具' : '画布工具与图层', imageOnlyMode ? 'Image tools' : 'Canvas tools and layers')}
         >
           <div
             className="workbench-toolstrip"
             role="toolbar"
-            aria-label={t(locale, '画布工具', 'Canvas tools')}
+            aria-label={t(locale, imageOnlyMode ? '图片工具' : '画布工具', imageOnlyMode ? 'Image tools' : 'Canvas tools')}
           >
-            <IconButton
-              name="mouse-pointer-2"
-              label={t(locale, '选择工具', 'Select tool')}
-              aria-pressed="true"
-              onClick={() => {
-                showPanel('properties');
-                setLayersExpanded(true);
-              }}
-            />
-            <IconButton
-              name="type"
-              label={t(locale, '文本工具', 'Text tool')}
-              onClick={() => selectWorkbenchLayer('text')}
-            />
+            {!imageOnlyMode && <>
+              <IconButton
+                name="mouse-pointer-2"
+                label={t(locale, '选择工具', 'Select tool')}
+                aria-pressed="true"
+                onClick={() => {
+                  showPanel('properties');
+                  setLayersExpanded(true);
+                }}
+              />
+              <IconButton
+                name="type"
+                label={t(locale, '文本工具', 'Text tool')}
+                onClick={() => selectWorkbenchLayer('text')}
+              />
             {hasShapeLayer && (
               <IconButton
                 name="square"
@@ -1027,28 +1041,31 @@ export const Workbench = ({
                 onClick={() => selectWorkbenchLayer('shape')}
               />
             )}
+            </>}
             <IconButton
               name="image"
               label={t(locale, '图像工具', 'Image tool')}
-              onClick={() => selectWorkbenchLayer('image')}
+              onClick={() => { if (!imageOnlyMode) selectWorkbenchLayer('image'); }}
             />
-            <span className="workbench-toolstrip__spacer" />
-            <IconButton
-              name="layers"
-              label={t(locale, '图层', 'Layers')}
-              aria-pressed={layersExpanded}
-              onClick={() => setLayersExpanded((value) => !value)}
-            />
+            {!imageOnlyMode && <>
+              <span className="workbench-toolstrip__spacer" />
+              <IconButton
+                name="layers"
+                label={t(locale, '图层', 'Layers')}
+                aria-pressed={layersExpanded}
+                onClick={() => setLayersExpanded((value) => !value)}
+              />
+            </>}
           </div>
 
-          {!hasWorkspaceDocument && <section
+          {!hasWorkspaceDocument && !imageOnlyMode && <section
             className={`workbench-layers ${layersExpanded ? 'workbench-layers--expanded' : ''}`}
             aria-labelledby={layersTitleId}
             role="complementary"
           >
             <div className="workbench-panel-heading">
               <div>
-                <p>{t(locale, '文档', 'Document')}</p>
+                <p>{t(locale, '图片', 'Image')}</p>
                 <h2 id={layersTitleId}>{t(locale, '图层', 'Layers')}</h2>
               </div>
               <span className="workbench-layers__close">
@@ -1114,7 +1131,7 @@ export const Workbench = ({
         <section
           ref={setCanvasOverlayHost}
           className="workbench-canvas"
-          aria-label={t(locale, '设计画布', 'Design canvas')}
+          aria-label={t(locale, imageOnlyMode ? '图片预览' : '设计画布', imageOnlyMode ? 'Image preview' : 'Design canvas')}
           data-grid-visible={gridVisible}
           data-text-visible={visibility.text}
           data-shape-visible={visibility.shape}
@@ -1138,7 +1155,7 @@ export const Workbench = ({
           <div ref={canvasStageRef} className="workbench-canvas__stage">
             <div className="workbench-canvas-world">
               <div className="workbench-canvas-world__row">
-                {libraryId && documentId ? (
+                {libraryId && (documentId || hasSceneContent) ? (
                   <div
                     data-testid={candidateScene ? 'canvas-candidate-scene' : undefined}
                     data-draft-role={candidateScene ? 'candidate' : 'current'}
@@ -1157,8 +1174,8 @@ export const Workbench = ({
                       readOnly={readOnly || toolCompareMode === 'before' || entryCandidate?.editable === false}
                       libraryId={libraryId}
                       projectId={project.id}
-                      documentId={documentId}
-                      persistDocumentScene={!candidateScene}
+                      documentId={documentId ?? ''}
+                      persistDocumentScene={Boolean(documentId) && !candidateScene}
                       embedded
                       layersOpen={layersExpanded}
                       onLayersClose={() => setLayersExpanded(false)}
@@ -1333,8 +1350,8 @@ export const Workbench = ({
                 <p className="workbench-section-copy">
                   {t(
                     locale,
-                    libraryId ? '当前文档的场景会保存到工作区。修订时间线将在版本提交后显示。' : '示例会话只包含初始基线。预览编辑尚未保存为版本。',
-                    libraryId ? 'The current document scene is saved to the workspace. Revision events appear after a version is committed.' : 'This example session contains only its baseline. Preview edits are not saved as a version.',
+                    libraryId ? '当前图片的处理结果会保存到工作区。修订时间线将在确认结果后显示。' : '示例会话只包含初始图片。预览编辑尚未保存为版本。',
+                    libraryId ? 'Results for the current image are saved to the workspace. Revision events appear after a result is confirmed.' : 'This example session contains only its source image. Preview edits are not saved as a version.',
                   )}
                 </p>
                 <ol className="workbench-history-list">

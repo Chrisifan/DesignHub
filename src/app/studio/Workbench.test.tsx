@@ -764,7 +764,7 @@ it('reports an empty workspace document when properties cannot inspect a layer',
 
   fireEvent.click(screen.getByRole('button', { name: '属性' }));
 
-  expect(notify).toHaveBeenCalledWith('当前没有可编辑图层');
+  expect(notify).toHaveBeenCalledWith('当前图片没有可编辑内容');
 });
 
 it('submits an offline canvas resize through the candidate workflow', async () => {
@@ -777,6 +777,19 @@ it('submits an offline canvas resize through the candidate workflow', async () =
   fireEvent.change(within(dialog).getByRole('spinbutton', { name: '高度' }), { target: { value: '720' } });
   fireEvent.click(within(dialog).getByRole('button', { name: '执行' }));
   await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'resize', params: expect.objectContaining({ width: 540, height: 720 }) })));
+});
+
+it('runs image tools directly on a project image without a document', async () => {
+  const onSubmitImageTask = vi.fn(async () => undefined);
+  render(<Workbench {...makeProps({
+    libraryId: 'library-1',
+    project: { ...project, libraryId: 'library-1', designs: [{ id: 'design-1', projectId: project.id, assetId: 'asset-1', sourceTaskId: 'task-1', width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z' }] },
+    onSubmitImageTask,
+  })} />);
+  fireEvent.click(screen.getByRole('button', { name: '工具' }));
+  fireEvent.click(screen.getByRole('button', { name: '配置去除背景' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: '去除背景' })).getByRole('button', { name: '执行' }));
+  await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledWith(expect.objectContaining({ tool: 'remove-background', targetLayerId: 'design-1' })));
 });
 
 it('exposes background editing tools with an explicit connection handoff', () => {

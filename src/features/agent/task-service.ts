@@ -80,7 +80,7 @@ export type ConversationImageAttachment = {
 
 export type ImageGenerationInput = {
   projectId: string;
-  documentId: string;
+  documentId?: string;
   baseRevisionId?: string | null;
   designerVersionId?: string;
   connectionId: string;
@@ -101,7 +101,7 @@ export type DesignerArtworkGenerationInput = {
 
 export type ImageEditInput = {
   projectId: string;
-  documentId: string;
+  documentId?: string;
   baseRevisionId?: string | null;
   designerVersionId?: string;
   connectionId: string;
@@ -976,7 +976,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     if (!previous?.requestText || !previous.source?.id) return undefined;
     if (previous.capability === 'image-editing' || previous.capability === 'local-transform') {
       if (previous.capability === 'image-editing' && !previous.providerId) return undefined;
-      if (previous.source.kind !== 'project' || !previous.documentId || !previous.sourceAssetId || !options.loadSourceImage) return undefined;
+      if (previous.source.kind !== 'project' || !previous.sourceAssetId || !options.loadSourceImage) return undefined;
       if (previous.hasMask && (!previous.maskAssetId || !options.loadMaskImage)) return undefined;
       const image = await options.loadSourceImage({ projectId: previous.source.id, assetId: previous.sourceAssetId });
       if (!image) return undefined;
@@ -1010,7 +1010,6 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     if (previous.capability === 'image-generation') {
       if (!previous.providerId) return undefined;
       if (previous.source.kind !== 'project' && previous.source.kind !== 'designer-draft') return undefined;
-      if (previous.source.kind === 'project' && !previous.documentId) return undefined;
       const retried = await recovery.retryExplicitly(taskId);
       if (!retried) return undefined;
       const running = options.runtime.run(retried.id);
@@ -1026,7 +1025,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         }
         : {
           projectId: previous.source.id,
-          documentId: previous.documentId as string,
+          ...(previous.documentId ? { documentId: previous.documentId } : {}),
           baseRevisionId: previous.baseRevisionId ?? null,
           ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
           connectionId: previous.providerId,

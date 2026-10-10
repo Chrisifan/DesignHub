@@ -22,12 +22,17 @@ export type ToolSubmitValidation =
 export const validateToolSubmission = (context: ToolSubmitContext): ToolSubmitValidation => {
   if (context.readOnly) return { ok: false, code: 'READ_ONLY' };
   if (!validateToolParams(context.tool, context.params).ok) return { ok: false, code: 'PARAMETERS_INVALID' };
-  if (context.libraryId && !context.documentId) return { ok: false, code: 'DOCUMENT_REQUIRED' };
   if (context.tool === 'resize') return { ok: true, ...(context.region ? { region: context.region } : {}) };
+  if (!context.libraryId) return { ok: true, ...(context.region ? { region: context.region } : {}) };
   // Unsaved local drafts may not have a persisted document or managed asset
   // yet. Preserve their existing preview workflow while persisted projects
   // always require an explicit image layer below.
-  if (!context.libraryId || !context.documentId) return { ok: true, ...(context.region ? { region: context.region } : {}) };
+  if (!context.selection && !context.documentId) {
+    const imageLayer = context.scene.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image' && layer.assetId !== 'placeholder');
+    return imageLayer
+      ? { ok: true, targetLayerId: imageLayer.id, ...(context.region ? { region: context.region } : {}) }
+      : { ok: false, code: 'IMAGE_LAYER_REQUIRED' };
+  }
   if (!context.selection || context.selection.type !== 'image') return { ok: false, code: 'IMAGE_LAYER_REQUIRED' };
   const imageLayer = findSelectedImageLayer(context.scene, context.selection);
   if (!imageLayer) return { ok: false, code: 'IMAGE_ASSET_REQUIRED' };

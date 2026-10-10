@@ -177,7 +177,7 @@ describe('ProjectDetailPage', () => {
     renderPage({ project: { ...project, documents: 0, documentId: undefined, documentEntries: [] } });
 
     expect(screen.queryByRole('button', { name: '打开画布' })).not.toBeInTheDocument();
-    expect(screen.getByText('暂无设计文档')).toBeInTheDocument();
+    expect(screen.getByText('暂无项目图片')).toBeInTheDocument();
   });
 
   it('uses the full page width for design documents without a project-information sidebar', () => {
@@ -186,7 +186,7 @@ describe('ProjectDetailPage', () => {
     expect(screen.getByTestId('project-detail-page')).toHaveClass('project-detail-page');
     expect(screen.getByTestId('project-detail-hero')).toHaveClass('project-detail-hero');
     expect(screen.getByTestId('project-detail-layout')).toHaveClass('project-detail-layout--documents-only');
-    expect(screen.getByRole('region', { name: '设计文档' })).toHaveClass('project-detail-documents--full');
+    expect(screen.getByRole('region', { name: '项目图片' })).toHaveClass('project-detail-documents--full');
     expect(screen.queryByRole('complementary', { name: '项目信息' })).not.toBeInTheDocument();
     expect(screen.queryByText('项目上下文')).not.toBeInTheDocument();
     expect(screen.queryByText('设计协作')).not.toBeInTheDocument();

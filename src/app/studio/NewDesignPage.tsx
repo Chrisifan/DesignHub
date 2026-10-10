@@ -90,8 +90,8 @@ export const NewProjectForm = ({
           })}
         </div>
       </Field>
-      <Field label={t(locale, '文档尺寸', 'Document size')}>
-        <Select ariaLabel={t(locale, '文档尺寸', 'Document size')} value={draft.size} onChange={(value) => onDraftChange({ ...draft, size: value as NewDesignDraft['size'] })} options={documentSizePresets.map((size) => ({ value: size, label: size }))} />
+      <Field label={t(locale, '图片尺寸', 'Image size')}>
+        <Select ariaLabel={t(locale, '图片尺寸', 'Image size')} value={draft.size} onChange={(value) => onDraftChange({ ...draft, size: value as NewDesignDraft['size'] })} options={documentSizePresets.map((size) => ({ value: size, label: size }))} />
       </Field>
       {!persisted && <p className="inline-notice"><Icon name="circle-help" size={16} />{t(locale, '此处创建预览草稿，仅本次会话可见，不写入磁盘。', 'Creates a session-only preview draft. Nothing is written to disk.')}</p>}
     </form>

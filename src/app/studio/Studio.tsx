@@ -432,17 +432,12 @@ export const Studio = ({
     setView('projects');
   };
   const openCanvasImageTools = (): void => {
-    const project = (selected && (selected.documentEntries?.length || selected.documentId) ? selected : undefined)
-      ?? projects.find((entry) => Boolean(entry.documentEntries?.length || entry.documentId))
-      ?? selected
-      ?? projects[0];
-    const documentId = project?.documentEntries?.[0]?.id ?? project?.documentId;
-    if (!project || !documentId) {
-      notify(t(locale, '请先创建包含文档的项目', 'Create a project with a document first'));
+    const project = selected ?? projects[0];
+    if (!project) {
+      notify(t(locale, '请先创建项目并导入图片', 'Create a project and add an image first'));
       return;
     }
     setSelected(project);
-    setActiveDocumentId(documentId);
     setDocumentOpen(true);
     setSurface('projects');
     setView('projects');
@@ -787,11 +782,9 @@ export const Studio = ({
         notify(t(locale, '无法读取目标设计稿。', 'Could not read the selected design.'));
         return;
       }
-      const documentId = project.documentId ?? project.documentEntries?.[0]?.id ?? design.id;
       const task = await api.submitImageEdit?.({
         libraryId: workspace.libraryId,
         projectId: project.id,
-        documentId,
         baseRevisionId: null,
         designerVersionId: project.activeDesignerVersionId,
         connectionId: imageConnectionId,
@@ -819,7 +812,7 @@ export const Studio = ({
       notify(t(locale, '去除背景失败，请检查连接。', 'Background removal failed. Check the connection.'));
     }
   };
-  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: { x: number; y: number; width: number; height: number } }): Promise<void> => {
+  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: { x: number; y: number; width: number; height: number }; beforeScene?: import('../../features/canvas/scene').DesignScene }): Promise<void> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return;
@@ -829,14 +822,10 @@ export const Studio = ({
       notify(t(locale, '请先配置图片编辑连接。', 'Configure an image editing connection first.'));
       return;
     }
-    const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
-    if (!documentId) {
-      notify(t(locale, '请先打开文档。', 'Open a document first.'));
-      return;
-    }
     try {
       const api = getDesktopApi();
-      const scene = await api.loadDocumentScene?.(workspace.libraryId, project.id, documentId);
+      const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
+      const scene = input.beforeScene ?? (documentId ? await api.loadDocumentScene?.(workspace.libraryId, project.id, documentId) : undefined);
       const imageLayer = scene?.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image'
         && layer.assetId !== 'placeholder'
         && (input.tool === 'resize' ? true : layer.id === input.targetLayerId));
@@ -859,7 +848,7 @@ export const Studio = ({
         if (!saved) throw new Error('MASK_PERSISTENCE_FAILED');
         maskAssetId = saved.asset.id;
       }
-      const task = await api.submitImageEdit?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: requiredConnection ?? '', ...(editingModel ? { model: editingModel } : {}), prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), sourceAssetId: imageLayer.assetId, targetLayerId: input.targetLayerId, ...(scene ? { beforeScene: scene } : {}), tool: input.tool, toolParams: input.params, ...(input.region ? { region: input.region } : {}), ...(maskAssetId ? { maskAssetId } : {}) });
+      const task = await api.submitImageEdit?.({ libraryId: workspace.libraryId, projectId: project.id, ...(documentId ? { documentId } : {}), baseRevisionId: input.baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: requiredConnection ?? '', ...(editingModel ? { model: editingModel } : {}), prompt: input.prompt, image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }), sourceAssetId: imageLayer.assetId, targetLayerId: input.targetLayerId, ...(scene ? { beforeScene: scene } : {}), tool: input.tool, toolParams: input.params, ...(input.region ? { region: input.region } : {}), ...(maskAssetId ? { maskAssetId } : {}) });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;
@@ -882,15 +871,11 @@ export const Studio = ({
       return;
     }
     const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
-    if (!documentId) {
-      notify(t(locale, '请先打开文档。', 'Open a document first.'));
-      return;
-    }
     try {
       const api = getDesktopApi();
       const count = providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image?.imageTransport === 'responses' ? 1 : 2;
       const generationModel = providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image.models['image-generation'];
-      const task = await api.submitImageGeneration?.({ libraryId: workspace.libraryId, projectId: project.id, documentId, baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: imageConnectionId, ...(generationModel ? { model: generationModel } : {}), prompt, size: `${project.documentEntries?.find((entry) => entry.id === documentId)?.width ?? 1080}x${project.documentEntries?.find((entry) => entry.id === documentId)?.height ?? 1440}`, count });
+      const task = await api.submitImageGeneration?.({ libraryId: workspace.libraryId, projectId: project.id, ...(documentId ? { documentId } : {}), baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: imageConnectionId, ...(generationModel ? { model: generationModel } : {}), prompt, size: `${project.documentEntries?.find((entry) => entry.id === documentId)?.width ?? 1080}x${project.documentEntries?.find((entry) => entry.id === documentId)?.height ?? 1440}`, count });
       if (!task) {
         notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
         return;

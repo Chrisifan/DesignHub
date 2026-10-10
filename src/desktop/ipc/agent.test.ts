@@ -132,6 +132,7 @@ it('accepts image generation and edit only with validated project bindings', asy
     return task;
   });
   await expect(edited(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'remove', image: new Blob(['image']) })).resolves.toEqual(task);
+  await expect(edited(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: 'remove background', image: new Blob(['image']), sourceAssetId: 'asset-1', tool: 'remove-background', toolParams: { edgeRefinement: 50 } })).resolves.toEqual(task);
 });
 
 it('accepts image generation connection tests only from the active trusted workspace', async () => {

@@ -276,7 +276,7 @@ it('shows honest unavailable states for connections and delivery', () => {
   ).not.toBeInTheDocument();
   unmount();
   render(<Harness initialView="delivery" />);
-  expect(screen.getByRole('heading', { name: '选择文档' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '选择图片' })).toBeInTheDocument();
   expect(screen.queryByRole('dialog', { name: '导出配置' })).not.toBeInTheDocument();
 });
 
@@ -453,7 +453,7 @@ it('does not offer image export for an empty formal document scene', async () =>
 
   render(<Harness initialView="delivery" deliveryProject={project} />);
 
-  expect(await screen.findByText('当前文档没有可导出的正式内容，请先在画布中选择候选稿并定稿。')).toBeInTheDocument();
+  expect(await screen.findByText('当前图片没有可导出的正式结果，请先在画布中选择候选稿并确认。')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: '导出' })).toBeDisabled();
 });
 
@@ -488,7 +488,7 @@ it('lets delivery select another document in a multi-document project', async ()
   window.designhub = {  loadDocumentScene, exportDocument };
   const project: Project = { id: 'multi-project', libraryId: 'workspace-1', documentId: 'doc-1', name: '多文档项目', enName: 'Multi document', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank', documents: 2, documentEntries: [{ id: 'doc-1', name: '主海报', width: 100, height: 100 }, { id: 'doc-2', name: '方图', width: 100, height: 100 }] };
   render(<Harness initialView="delivery" deliveryProject={project} />);
-  fireEvent.change(screen.getByRole('combobox', { name: '文档' }), { target: { value: 'doc-2' } });
+  fireEvent.change(screen.getByRole('combobox', { name: '图片' }), { target: { value: 'doc-2' } });
   fireEvent.click(screen.getByRole('button', { name: '导出' }));
   await waitFor(() => expect(exportDocument).toHaveBeenCalledWith(expect.objectContaining({ documentId: 'doc-2', scene: expect.objectContaining({ id: 'scene-doc-2' }) })));
   expect(loadDocumentScene).toHaveBeenCalledWith('workspace-1', 'multi-project', 'doc-2');
@@ -511,8 +511,8 @@ it('offers finalized export for the selected non-primary document', () => {
     ],
   };
   render(<Harness initialView="delivery" deliveryProject={project} />);
-  fireEvent.change(screen.getByRole('combobox', { name: '文档' }), { target: { value: 'doc-square' } });
-  expect(screen.getByRole('option', { name: '已定稿' })).toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox', { name: '图片' }), { target: { value: 'doc-square' } });
+  expect(screen.getByRole('option', { name: '已确认结果' })).toBeInTheDocument();
 });
 
 it('passes the archive choice to document export', async () => {
@@ -602,7 +602,7 @@ it('offers project package export for persisted projects', async () => {
 
 it('routes an empty delivery page back to project selection', () => {
   render(<Harness initialView="delivery" deliveryProject={null} />);
-  expect(screen.getByRole('heading', { name: '选择文档' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '选择图片' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '返回项目' }));
   expect(screen.getByLabelText('current-view')).toHaveTextContent('projects');
 });

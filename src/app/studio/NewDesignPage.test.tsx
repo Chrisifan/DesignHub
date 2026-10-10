@@ -43,7 +43,7 @@ it('renders only the project fields required by the drawer', () => {
   expect(screen.getByRole('group', { name: '创建方式' })).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: '设计目标' })).toBeInTheDocument();
   expect(screen.getByRole('group', { name: '选择设计师' })).toBeInTheDocument();
-  expect(screen.getByRole('combobox', { name: '文档尺寸' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: '图片尺寸' })).toBeInTheDocument();
   expect(screen.queryByText('模型已整理简报')).not.toBeInTheDocument();
   expect(screen.queryByLabelText('新建设计的当前设计师')).not.toBeInTheDocument();
   expect(screen.queryByRole('region', { name: /设计师档案/ })).not.toBeInTheDocument();
