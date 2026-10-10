@@ -143,15 +143,15 @@ describe('ProjectCanvas design references', () => {
     const toolButtons = [...screen.getByRole('toolbar', { name: '图片工具' }).querySelectorAll('button')];
     expect(toolButtons).toHaveLength(9);
     expect(toolButtons.map((button) => button.querySelector('.ui-icon')?.getAttribute('style'))).toEqual([
-      expect.stringContaining('wand-sparkles.svg'),
-      expect.stringContaining('image.svg'),
+      expect.stringContaining('eye-off.svg'),
+      expect.stringContaining('palette.svg'),
       expect.stringContaining('trash-2.svg'),
-      expect.stringContaining('wand-sparkles.svg'),
+      expect.stringContaining('pencil.svg'),
       expect.stringContaining('arrow-up-right.svg'),
       expect.stringContaining('crop.svg'),
       expect.stringContaining('zoom-in.svg'),
       expect.stringContaining('maximize-2.svg'),
-      expect.stringContaining('x.svg'),
+      expect.stringContaining('layout-grid.svg'),
     ]);
     fireEvent.click(screen.getByRole('button', { name: '去除背景' }));
     fireEvent.click(screen.getByRole('button', { name: '执行' }));
