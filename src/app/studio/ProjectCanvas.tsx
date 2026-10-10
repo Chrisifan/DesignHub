@@ -15,6 +15,7 @@ import { ConversationDock, type ConversationDockAttachment } from './Conversatio
 import { AnalysisPanel, type AnalysisPanelRequest } from './AnalysisPanel';
 import { ProjectCanvasStage } from './ProjectCanvasStage';
 import { Icon, IconButton, Modal, t } from './ui';
+import { Tooltip } from './Tooltip';
 import './project-canvas.css';
 
 type ProjectCanvasProps = {
@@ -335,13 +336,17 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
         <div className="project-canvas-toolbar__actions">
           <IconButton name="download" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
         </div>
-        <div role="toolbar" aria-label={t(locale, '图片工具', 'Image tools')}>
-          {imageTools.map((tool) => {
-            const copy = imageToolCopy[tool];
-            return <IconButton key={tool} name={copy.icon} label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
-          })}
-        </div>
-        <span aria-live="polite">{selectedDesigns.length === 1 ? t(locale, `当前图片：${selectedDesigns[0]!.title}`, `Current image: ${selectedDesigns[0]!.title}`) : t(locale, '选择一张图片后使用工具', 'Select one image to use a tool')}</span>
+        <Tooltip
+          content={selectedDesigns.length === 1 ? t(locale, `当前图片：${selectedDesigns[0]!.title}`, `Current image: ${selectedDesigns[0]!.title}`) : t(locale, '选择一张图片后使用工具', 'Select one image to use a tool')}
+          asChild
+        >
+          <div role="toolbar" aria-label={t(locale, '图片工具', 'Image tools')}>
+            {imageTools.map((tool) => {
+              const copy = imageToolCopy[tool];
+              return <IconButton key={tool} name={copy.icon} label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
+            })}
+          </div>
+        </Tooltip>
       </aside>
       <ProjectCanvasStage
         libraryId={libraryId}
