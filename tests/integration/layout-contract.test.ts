@@ -300,6 +300,21 @@ it('fills library regions and keeps sibling content aligned', () => {
   );
 });
 
+it('keeps the model task header fixed and centers the result column', () => {
+  const libraryStyles = readStyle('../../src/app/studio/library.css');
+  const taskListRule = libraryStyles.match(/\.task-list\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const taskHeaderRule = libraryStyles.match(/\.task-row--header\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const taskResultRule = libraryStyles.match(/\.task-row__result\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+
+  expect(taskListRule).toMatch(/flex:\s*1 1 auto;/u);
+  expect(taskListRule).toMatch(/min-height:\s*0;/u);
+  expect(taskListRule).toMatch(/overflow:\s*auto;/u);
+  expect(taskHeaderRule).toMatch(/position:\s*sticky;/u);
+  expect(taskHeaderRule).toMatch(/top:\s*0;/u);
+  expect(taskHeaderRule).toMatch(/z-index:\s*2;/u);
+  expect(taskResultRule).toMatch(/text-align:\s*center;/u);
+});
+
 it('fills the model connection status and keeps the capability matrix below it', () => {
   const libraryStyles = readStyle('../../src/app/studio/library.css');
 

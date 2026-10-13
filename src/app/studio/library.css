@@ -3143,27 +3143,36 @@
 }
 
 .task-list {
-  overflow-x: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   border-top: 1px solid var(--border-subtle);
 }
 
 .task-row {
   display: grid;
-  grid-template-columns: minmax(112px, 0.8fr) auto minmax(220px, 2.4fr) minmax(
-      148px,
-      1fr
-    ) auto;
+  grid-template-columns:
+    minmax(112px, 0.8fr)
+    auto
+    minmax(220px, 2.4fr)
+    minmax(116px, 0.75fr)
+    minmax(136px, 0.9fr)
+    auto;
   align-items: center;
   gap: 14px;
-  min-width: 760px;
+  min-width: 880px;
   min-height: 52px;
   padding: 0 20px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .task-row--header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   min-height: 38px;
   background: var(--surface-container-low);
+  box-shadow: 0 1px 0 var(--border-subtle);
   color: var(--on-surface-variant);
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -3187,9 +3196,14 @@
 }
 
 .task-row__summary,
-.task-row__meta {
+.task-row__result,
+.task-row__time {
   color: var(--on-surface-variant);
   font-size: 12px;
+}
+
+.task-row__result {
+  text-align: center;
 }
 
 .task-row__actions {
@@ -3199,7 +3213,7 @@
 }
 
 .task-generation-details {
-  grid-column: 1 / -1;
+  grid-column: 4 / -1;
   padding: 0 16px 12px;
 }
 

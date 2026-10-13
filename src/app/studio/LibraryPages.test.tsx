@@ -590,7 +590,36 @@ it('hydrates persisted model tasks in the task view', async () => {
   expect((await screen.findAllByText('处理中')).length).toBeGreaterThan(0);
   expect(screen.getAllByText('1')).toHaveLength(2);
   expect(listTasks).toHaveBeenCalledWith('workspace-1');
-  expect(screen.getByTitle('2 张图 · 费用 0.04')).toBeInTheDocument();
+  expect(screen.getByText('2 张图')).toHaveClass('task-row__result');
+  expect(screen.getByText('2 张图')).toHaveAttribute('title', '2 张图 · 费用 0.04');
+});
+
+it('sorts model tasks newest first and formats time for the active locale and local time zone', async () => {
+  const olderTime = '2026-10-12T06:30:00.000Z';
+  const newerTime = '2026-10-13T06:30:00.000Z';
+  const listTasks = vi.fn(async () => [
+    taskRecord({ id: 'task-old', createdAt: olderTime, updatedAt: olderTime }),
+    taskRecord({ id: 'task-new', createdAt: newerTime, updatedAt: newerTime }),
+  ]);
+  window.designhub = { listTasks };
+  render(<TaskHarness />);
+
+  const taskList = await screen.findByRole('list', { name: '任务列表' });
+  await waitFor(() => expect(within(taskList).getAllByRole('article')).toHaveLength(2));
+  expect(within(taskList).getAllByRole('article').map((row) => row.getAttribute('aria-label'))).toEqual([
+    'task-new',
+    'task-old',
+  ]);
+
+  const expectedTime = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(newerTime));
+  expect(screen.getByText(expectedTime)).toHaveClass('task-row__time');
+  expect(screen.queryByText(newerTime)).not.toBeInTheDocument();
 });
 
 it('filters model tasks from the breadcrumb toolbar and keeps rows compact', async () => {
@@ -628,7 +657,7 @@ it('filters model tasks from the breadcrumb toolbar and keeps rows compact', asy
   expect(screen.getByText(longRequest)).toHaveClass('task-row__summary');
   expect(screen.getByText(longRequest)).toHaveAttribute('title', longRequest);
   const taskList = screen.getByRole('list', { name: '任务列表' });
-  expect(within(taskList).getByRole('listitem', { name: '表头' })).toHaveTextContent('任务类型状态任务摘要时间 / 结果操作');
+  expect(within(taskList).getByRole('listitem', { name: '表头' })).toHaveTextContent('任务类型状态任务摘要结果时间操作');
   expect(taskList.lastElementChild).toHaveClass('task-row');
 });
 
@@ -711,7 +740,8 @@ it('shows generation batch progress and retries only the failed slot', async () 
   render(<TaskHarness />);
 
   const progress = await screen.findByText('候选生成 2/3');
-  fireEvent.click(progress);
+  expect(progress).toHaveClass('task-row__result');
+  fireEvent.click(screen.getByText('查看候选详情'));
   expect(screen.getByText('主方案')).toBeVisible();
   expect(screen.getByText('构图探索')).toBeVisible();
   expect(screen.getByText('视觉突破')).toBeVisible();

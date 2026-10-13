@@ -723,7 +723,35 @@ const TasksPage = ({
     counts[option.value] = tasks.filter((task) => matchesCategory(task, option.value)).length;
     return counts;
   }, { all: 0, queued: 0, running: 0, completed: 0, failed: 0 });
-  const visibleTasks = tasks.filter((task) => matchesCategory(task, category));
+  const taskTimestamp = (task: TaskRecord): number => {
+    const value = task.updatedAt ?? task.createdAt;
+    if (!value) return Number.NEGATIVE_INFINITY;
+    const timestamp = Date.parse(value);
+    return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+  };
+  const visibleTasks = tasks
+    .filter((task) => matchesCategory(task, category))
+    .sort((left, right) => taskTimestamp(right) - taskTimestamp(left) || right.id.localeCompare(left.id));
+  const taskTimeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }), [locale]);
+  const taskTimeTitleFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+    dateStyle: 'full',
+    timeStyle: 'long',
+  }), [locale]);
+  const taskTime = (task: TaskRecord): { label: string; title?: string } => {
+    const timestamp = taskTimestamp(task);
+    if (!Number.isFinite(timestamp)) return { label: '—' };
+    const date = new Date(timestamp);
+    return {
+      label: taskTimeFormatter.format(date),
+      title: taskTimeTitleFormatter.format(date),
+    };
+  };
   const stopTask = async (taskId: string): Promise<void> => {
     if (!libraryId) return;
     const stopped = await getDesktopApi().cancelTask?.(libraryId, taskId);
@@ -809,12 +837,20 @@ const TasksPage = ({
       || task.requestId
       || t(locale, '模型任务', 'Model task');
   };
-  const taskMetadata = (task: TaskRecord): string => [
-    task.updatedAt ?? task.createdAt,
-    generationProgress(task),
-    task.result?.imageCount === undefined ? undefined : t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`),
-    task.result?.cost === undefined || task.result.cost === null ? undefined : t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`),
-  ].filter(Boolean).join(' · ') || '—';
+  const taskResult = (task: TaskRecord): { label: string; title: string } => {
+    const progress = generationProgress(task);
+    const imageCount = task.result?.imageCount === undefined
+      ? undefined
+      : t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`);
+    const cost = task.result?.cost === undefined || task.result.cost === null
+      ? undefined
+      : t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`);
+    const details = [progress, imageCount, cost].filter((value): value is string => Boolean(value));
+    return {
+      label: progress ?? imageCount ?? cost ?? '—',
+      title: details.join(' · ') || '—',
+    };
+  };
   return <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型任务', 'Model tasks')}
@@ -843,25 +879,28 @@ const TasksPage = ({
         <span className="task-row__cell task-row__type">{t(locale, '任务类型', 'Task type')}</span>
         <span className="task-row__cell task-row__state">{t(locale, '状态', 'Status')}</span>
         <span className="task-row__cell task-row__summary">{t(locale, '任务摘要', 'Task summary')}</span>
-        <span className="task-row__cell task-row__meta">{t(locale, '时间 / 结果', 'Time / result')}</span>
+        <span className="task-row__cell task-row__result">{t(locale, '结果', 'Result')}</span>
+        <span className="task-row__cell task-row__time">{t(locale, '时间', 'Time')}</span>
         <span className="task-row__actions">{t(locale, '操作', 'Actions')}</span>
       </div>
       {visibleTasks.map((task) => {
         const summary = taskSummary(task);
-        const metadata = taskMetadata(task);
+        const result = taskResult(task);
+        const time = taskTime(task);
         const generationBatchActive = task.generationSlots?.some((slot) => slot.state === 'queued' || slot.state === 'running') ?? false;
         const canRetry = !task.generationSlots?.length && (task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region));
         return <article className="task-row" aria-label={task.id} key={task.id}>
           <strong className="task-row__cell task-row__type" title={task.capability ?? t(locale, '模型任务', 'Model task')}>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
           <span className="task-row__cell task-row__state"><Badge tone={taskTone(task)}>{taskStateLabel(task)}</Badge></span>
           <span className="task-row__cell task-row__summary" title={summary}>{summary}</span>
-          <span className="task-row__cell task-row__meta" title={metadata}>{metadata}</span>
+          <span className="task-row__cell task-row__result" title={result.title}>{result.label}</span>
+          <time className="task-row__cell task-row__time" dateTime={task.updatedAt ?? task.createdAt} title={time.title}>{time.label}</time>
           <span className="task-row__actions">
             {(task.state === 'queued' || task.state === 'running') && <IconButton name="x" label={t(locale, '停止', 'Stop')} onClick={() => { void stopTask(task.id); }} />}
             {canRetry && <IconButton name="rotate-ccw" label={t(locale, '重试', 'Retry')} onClick={() => { void retryTask(task.id); }} />}
           </span>
           {task.generationSlots?.length ? <details className="task-generation-details">
-            <summary>{generationProgress(task)}</summary>
+            <summary>{t(locale, '查看候选详情', 'View candidate details')}</summary>
             <ul>
               {task.generationSlots.map((slot) => <li key={slot.id}>
                 <span>{slotLabel(slot.id)}</span>

@@ -15,7 +15,7 @@
 **Files:**
 - Modify: `src/app/studio/LibraryPages.test.tsx`
 
-- [ ] **Step 1: Write a failing newest-first and localized-time test**
+- [x] **Step 1: Write a failing newest-first and localized-time test**
 
 Add a component test that returns an older task followed by a newer task, renders `TaskHarness`, and asserts that the article labels are ordered `task-new`, `task-old`. Build the expected display value with the same public platform primitive required by the design:
 
@@ -28,11 +28,11 @@ expect(screen.getByText(expectedTime)).toHaveClass('task-row__time');
 expect(screen.queryByText('2026-10-13T06:30:00.000Z')).not.toBeInTheDocument();
 ```
 
-- [ ] **Step 2: Update the structure assertions**
+- [x] **Step 2: Update the structure assertions**
 
 Change the header expectation to `任务类型状态任务摘要结果时间操作`. In the generation test, assert that `候选生成 2/3` belongs to `.task-row__result`, and in the image-result test assert that `2 张图` appears in the dedicated result cell.
 
-- [ ] **Step 3: Run the focused component test and verify RED**
+- [x] **Step 3: Run the focused component test and verify RED**
 
 Run:
 
@@ -48,23 +48,23 @@ Expected: FAIL because tasks are not sorted, ISO time is rendered directly, and 
 - Modify: `src/app/studio/LibraryPages.tsx:727-870`
 - Modify: `src/app/studio/library.css:3145-3210`
 
-- [ ] **Step 1: Add timestamp helpers and stable sorting**
+- [x] **Step 1: Add timestamp helpers and stable sorting**
 
-Add helpers local to `TaskPage` that parse `updatedAt ?? createdAt`, return zero for missing or invalid timestamps, format valid values with `Intl.DateTimeFormat(locale, { year, month, day, hour, minute })`, and format the full local value for `title`. Derive `visibleTasks` with `filter(...).toSorted(...)` or a spread plus `sort(...)`, sorting timestamp descending and then ID descending without mutating `tasks`.
+Add helpers local to `TaskPage` that parse `updatedAt ?? createdAt`, sort missing or invalid timestamps after valid timestamps, format valid values with `Intl.DateTimeFormat(locale, { year, month, day, hour, minute })`, and format the full local value for `title`. Derive `visibleTasks` with `filter(...).toSorted(...)` or a filtered copy plus `sort(...)`, sorting timestamp descending and then ID descending without mutating `tasks`.
 
-- [ ] **Step 2: Separate result and time presentation**
+- [x] **Step 2: Separate result and time presentation**
 
 Replace `taskMetadata` with a result projection. It returns generation progress or image count as primary text, an em dash when neither exists, and exposes cost as secondary result metadata. Render dedicated `.task-row__result` and `.task-row__time` cells, and change the localized headers to `结果 / Result` and `时间 / Time`.
 
-- [ ] **Step 3: Keep generation details aligned with their result**
+- [x] **Step 3: Keep generation details aligned with their result**
 
 Keep the existing native `details` interaction and retry controls, but make the result cell the visible progress entry. Position expanded slot details from the result column through the actions column so details no longer begin beneath task type.
 
-- [ ] **Step 4: Implement the six-column grid and sticky header**
+- [x] **Step 4: Implement the six-column grid and sticky header**
 
 Use a six-track grid with stable result and time tracks. Center `.task-row__result`; define `.task-row--header { position: sticky; top: 0; z-index: 2; }` with an opaque background and divider so body rows cannot bleed through.
 
-- [ ] **Step 5: Run the component test and verify GREEN**
+- [x] **Step 5: Run the component test and verify GREEN**
 
 Run:
 
@@ -81,7 +81,7 @@ Expected: all tests in the file PASS.
 - Verify: `src/app/studio/library.css`
 - Verify: `src/app/studio/LibraryPages.test.tsx`
 
-- [ ] **Step 1: Run automated gates**
+- [x] **Step 1: Run automated gates**
 
 Run:
 
@@ -99,7 +99,9 @@ Expected: every command exits successfully with no new warnings.
 
 Start the app with `pnpm start`, open Model Tasks, and verify: the newest task is first; time is localized; result text is centered in its own column; the header remains visible when the page scrolls; expanded generation details do not overlap other columns.
 
-- [ ] **Step 3: Commit the implementation**
+Blocked on 2026-10-13 because macOS was locked and automatic unlock failed. Browser rendering verified that the updated development build starts, while component and CSS contract tests cover the requested task-list behavior.
+
+- [x] **Step 3: Commit the implementation**
 
 ```bash
 git add src/app/studio/LibraryPages.tsx src/app/studio/LibraryPages.test.tsx src/app/studio/library.css docs/superpowers/plans/2026-10-13-model-task-list-display.md
