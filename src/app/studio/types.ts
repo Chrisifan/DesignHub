@@ -7,7 +7,6 @@ export type View =
   | 'projects'
   | 'designers'
   | 'assets'
-  | 'brands'
   | 'connections'
   | 'tasks'
   | 'image-tools'
@@ -39,9 +38,9 @@ export type NewDesignDraft = {
   cover?: ProjectCoverDraft;
 };
 export type Project = {
+  [key: string]: unknown;
   id: string;
   libraryId?: string;
-  documentId?: string;
   name: string;
   enName: string;
   generationRatio?: ProjectGenerationRatio;
@@ -51,14 +50,11 @@ export type Project = {
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
-  brandSnapshot?: unknown;
   coverAssetId?: string;
   coverPreviewUrl?: string;
   artwork: Artwork;
   designs?: ProjectDesign[];
   canvasLayout?: ProjectCanvasLayout;
-  documents: number;
-  documentEntries?: Array<{ id: string; name: string; width: number; height: number; sourceDocumentId?: string; sourceRevisionId?: string | null; finalizedRevisionId?: string | null }>;
   archived?: boolean;
   updatedAt?: string;
 };
@@ -67,13 +63,6 @@ export type HomeConversationRequest = {
   attachments: ConversationImageAttachment[];
   generationRatio: ProjectGenerationRatio;
   designerId?: string;
-};
-export type PendingHomeConversation = {
-  id: string;
-  projectId: string;
-  documentId?: string;
-  message: string;
-  attachments: ConversationImageAttachment[];
 };
 export type PageProps = {
   locale: Locale;

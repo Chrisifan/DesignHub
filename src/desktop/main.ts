@@ -13,9 +13,6 @@ import { registerProjectHandlers } from './ipc/register-projects';
 import { registerContentHandlers } from './ipc/register-content-handlers';
 import { createAssetStore } from './storage/asset-store';
 import { loadDesignerState, readDesignerArtwork, saveDesignerState } from './storage/designer-store';
-import { loadBrandState, saveBrandState } from './storage/brand-store';
-import { loadDocumentScene, saveDocumentScene } from './storage/scene-store';
-import { commitDocumentRevision, loadDocumentRevisions, setFinalDocumentRevision } from './storage/revision-store';
 import { runStorageSmoke } from './storage/storage-smoke';
 import { createWindowOptions } from './window-options';
 import { createCredentialBoundary, createUnavailableCredentialStore, type SystemCredentialStore, type CredentialBoundary } from './security/credentials';
@@ -277,16 +274,9 @@ app.whenReady().then(async () => {
     loadDesigner: loadDesignerState,
     saveDesigner: (workspace, state) => saveDesignerState(workspace, workspace.library.libraryId, state),
     readArtwork: readDesignerArtwork,
-    loadBrand: loadBrandState,
-    saveBrand: (workspace, state) => saveBrandState(workspace, workspace.library.libraryId, state),
     listAssets: (workspace, input) => createAssetStore(workspace).listAssets(input),
     importAssets: (workspace, input) => createAssetStore(workspace).importAssets(input),
     readAsset: (workspace, input) => createAssetStore(workspace).readAsset(input),
-    loadScene: (workspace, projectId, documentId) => loadDocumentScene(workspace, workspace.library.libraryId, projectId, documentId),
-    saveScene: (workspace, projectId, documentId, scene) => saveDocumentScene(workspace, workspace.library.libraryId, projectId, documentId, scene),
-    loadRevisions: (workspace, target) => loadDocumentRevisions(workspace, target.libraryId, target.projectId, target.documentId),
-    commitRevision: (workspace, input) => commitDocumentRevision(workspace, { ...input, workspaceId: input.libraryId }),
-    finalizeRevision: (workspace, input) => setFinalDocumentRevision(workspace, { ...input, workspaceId: input.libraryId }),
   });
   registerCredentialHandlers({
     ipc: ipcMain,
@@ -315,35 +305,6 @@ app.whenReady().then(async () => {
     getTrustedUrl: () => activeTrustedUrl,
     getLibrary: () => activeProjectLibraryHandle,
     loadTasks: loadTaskState,
-    publishComposition: async (workspace, publishInput) => {
-      const metadata = await createProjectStore(workspace).getProjectMetadata(publishInput.projectId);
-      if (!metadata || metadata.workspaceId !== publishInput.libraryId || !metadata.documents.some((document) => document.id === publishInput.documentId)) {
-        throw new Error('DOCUMENT_NOT_FOUND');
-      }
-      const storedAssets = await createAssetStore(workspace).listAssets({
-        libraryId: publishInput.libraryId,
-        projectId: publishInput.projectId,
-        includeContextAssets: true,
-      });
-      const availableAssetIds = new Set(storedAssets.map((asset) => asset.id));
-      const referencedAssetIds = new Set([
-        ...publishInput.candidate.assets.map((asset) => asset.assetId),
-        ...publishInput.candidate.scene.layers.flatMap((layer) => layer.type === 'image' ? [layer.assetId] : []),
-      ]);
-      if ([...referencedAssetIds].some((assetId) => !availableAssetIds.has(assetId))) throw new Error('CANDIDATE_ASSET_MISSING');
-      const service = await getAgentTaskService();
-      return service.publishCompositionCandidate(publishInput);
-    },
-    resolveComposition: async (workspace, taskId, resolution) => {
-      const service = await getAgentTaskService();
-      const task = service.getTask(taskId);
-      if (!task || task.source?.kind !== 'project' || !task.documentId) throw new Error('COMPOSITION_CANDIDATE_REQUIRED');
-      const metadata = await createProjectStore(workspace).getProjectMetadata(task.source.id);
-      if (!metadata || metadata.workspaceId !== workspace.library.libraryId || !metadata.documents.some((document) => document.id === task.documentId)) {
-        throw new Error('DOCUMENT_NOT_FOUND');
-      }
-      return service.resolveCompositionCandidate(taskId, resolution);
-    },
   });
   registerPortfolioHandlers({
     ipc: ipcMain,
@@ -373,7 +334,6 @@ app.whenReady().then(async () => {
         const projectStore = createProjectStore(workspace);
         const metadata = await projectStore.getProjectMetadata(conversation.projectId);
         if (!metadata || metadata.workspaceId !== conversation.libraryId) throw new Error('PROJECT_NOT_FOUND');
-        if (conversation.documentId && !metadata.documents.some((document) => document.id === conversation.documentId)) throw new Error('DOCUMENT_NOT_FOUND');
         if (conversation.referencedAssetIds?.length) {
           const assetStore = createAssetStore(workspace);
         const assets = await assetStore.listAssets({ libraryId: conversation.libraryId, projectId: conversation.projectId, includeContextAssets: true });
@@ -387,13 +347,7 @@ app.whenReady().then(async () => {
     submitDesignGeneration: async (workspace, generationInput) => {
       const projectStore = createProjectStore(workspace);
       const metadata = await projectStore.getProjectMetadata(generationInput.projectId);
-      if (!metadata || metadata.workspaceId !== generationInput.libraryId || (generationInput.documentId && !metadata.documents.some((document) => document.id === generationInput.documentId))) {
-        throw new Error('DOCUMENT_NOT_FOUND');
-      }
-      if (generationInput.baseRevisionId && generationInput.documentId) {
-        const revisions = await loadDocumentRevisions(workspace, generationInput.libraryId, generationInput.projectId, generationInput.documentId);
-        if (!revisions.revisions.some((revision) => revision.revisionId === generationInput.baseRevisionId)) throw new Error('REVISION_NOT_FOUND');
-      }
+      if (!metadata || metadata.workspaceId !== generationInput.libraryId) throw new Error('PROJECT_NOT_FOUND');
       const service = await getAgentTaskService();
       return service.submitDesignGeneration(generationInput);
     },
@@ -402,7 +356,7 @@ app.whenReady().then(async () => {
       const existing = service.getTask(retryInput.taskId);
       if (!existing || existing.source?.kind !== 'project') throw new Error('DESIGN_GENERATION_TASK_REQUIRED');
       const metadata = await createProjectStore(workspace).getProjectMetadata(existing.source.id);
-      if (!metadata || metadata.workspaceId !== retryInput.libraryId || (existing.documentId && !metadata.documents.some((document) => document.id === existing.documentId))) throw new Error('DOCUMENT_NOT_FOUND');
+      if (!metadata || metadata.workspaceId !== retryInput.libraryId) throw new Error('PROJECT_NOT_FOUND');
       return service.retryDesignGenerationSlot(retryInput);
     },
     testConversation: async (_workspace, testInput) => {
@@ -445,10 +399,10 @@ app.whenReady().then(async () => {
     getWindow: () => activeWindow,
     getTrustedUrl: () => activeTrustedUrl,
     getLibrary: () => activeProjectLibraryHandle,
-    exportDocument: async (_workspace, exportInput) => {
+    exportProjectDesign: async (_workspace, exportInput) => {
       const extension = exportInput.format === 'jpeg' ? 'jpg' : exportInput.format;
       const result = await dialog.showSaveDialog(activeWindow!, {
-        defaultPath: `designhub-${exportInput.documentId}.${extension}`,
+        defaultPath: `designhub-${exportInput.designId}.${extension}`,
         filters: [{ name: exportInput.format.toUpperCase(), extensions: [extension] }],
       });
       if (result.canceled || !result.filePath) return null;
@@ -489,7 +443,7 @@ app.whenReady().then(async () => {
         await appendWorkspaceExportHistory(_workspace, exportInput.libraryId, {
           id: `export-${randomUUID()}`,
           projectId: exportInput.projectId,
-          documentId: exportInput.documentId,
+          designId: exportInput.designId,
           revisionId: exportInput.scene.id,
           format: exportInput.format,
           targetPath: exported.path,
@@ -504,7 +458,7 @@ app.whenReady().then(async () => {
         await appendWorkspaceExportHistory(_workspace, exportInput.libraryId, {
           id: `export-${randomUUID()}`,
           projectId: exportInput.projectId,
-          documentId: exportInput.documentId,
+          designId: exportInput.designId,
           revisionId: exportInput.scene.id,
           format: exportInput.format,
           targetPath: result.filePath,

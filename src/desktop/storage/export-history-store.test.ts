@@ -12,7 +12,7 @@ import type { ExportHistoryRecord } from '../../features/delivery/export-history
 
 const directories: string[] = [];
 const record: ExportHistoryRecord = {
-  id: 'export-1', projectId: 'project-1', documentId: 'document-1', revisionId: 'revision-1', format: 'png',
+  id: 'export-1', projectId: 'project-1', designId: 'design-1', revisionId: 'revision-1', format: 'png',
   targetPath: '/tmp/poster.png', sha256: 'a'.repeat(64), status: 'success', archived: false, createdAt: '2026-09-13T00:00:00.000Z',
 };
 

@@ -6,14 +6,12 @@ import { NewProjectForm } from './NewDesignPage';
 import { Drawer } from './Drawer';
 import { PageToolbarHost, PageToolbarProvider } from './PageToolbar';
 import { ProjectCanvas } from './ProjectCanvas';
-import { ProjectDetailPage } from './ProjectDetailPage';
 import { StudioHome } from './StudioHome';
 import { StudioUserMenu } from './StudioUserMenu';
 import { DesignerLibrary } from './DesignerLibrary';
 import { createAutomaticProjectName } from './auto-project-name';
 import { localize, type PersonaProfile } from './personas';
 import { legacySeededDesignerIds } from '../../features/designers/persistence';
-import type { CanvasAssetAction } from '../../features/canvas/CanvasWorkspace';
 import type { ProjectLibraryDescriptor } from '../../features/project-library/open-project-library';
 import type { AppProfile } from '../../features/profile/model';
 import type { ActiveProject } from '../../features/workspace/project-store';
@@ -26,24 +24,19 @@ import {
   Modal,
   t,
 } from './ui';
-import type { HomeConversationRequest, NewDesignDraft, PendingHomeConversation, Project, StudioSurface, Theme, View } from './types';
+import type { HomeConversationRequest, NewDesignDraft, Project, StudioSurface, Theme, View } from './types';
 import type { ProjectMetadata, ProjectMetadataPatch } from '../../features/projects/metadata';
 import type { ImageTool, ToolParams } from '../../features/image-tools/target';
-import { createCompositionEntryCandidate, createMockupEntryCandidate } from '../../features/composition/studio-entry';
-import type { DesignSceneCandidate } from '../../features/composition/design-scene-candidate';
-import { builtInMockupTemplates, validateMockupRenderInput } from '../../features/mockups/template';
 import { selectConfiguredConnection } from '../../features/providers/connection';
 import { getProviderProfileStatus } from '../../features/providers/status';
 import type { ProviderConfigMap } from '../../features/providers/config';
 import { rasterizeMask } from '../../features/image-tools/mask-rasterizer';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
 import '../styles/studio.css';
-import { Workbench } from './Workbench';
 
 const navigation: { view: View; icon: string; zh: string; en: string }[] = [
   { view: 'projects', icon: 'layout-grid', zh: '项目库', en: 'Projects' },
   { view: 'assets', icon: 'image', zh: '素材库', en: 'Assets' },
-  { view: 'brands', icon: 'palette', zh: '品牌包', en: 'Brand kits' },
   { view: 'connections', icon: 'plug', zh: '模型连接', en: 'Connections' },
   { view: 'tasks', icon: 'clock', zh: '模型任务', en: 'Model tasks' },
   { view: 'image-tool-remove-background', icon: 'wand-sparkles', zh: '去除背景', en: 'Remove background' },
@@ -64,14 +57,6 @@ const viewOrder = destinations.map(({ view }) => view);
 const emptyProjects: Project[] = [];
 const emptyDesignerOptions: PersonaProfile[] = [];
 const emptyAssets: NonNullable<Parameters<typeof LibraryPages>[0]['initialAssets']> = [];
-const emptyBrands: NonNullable<Parameters<typeof LibraryPages>[0]['initialBrands']> = [];
-
-const fileBytes = async (file: File): Promise<Uint8Array> => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
-  reader.onerror = () => reject(new Error('FILE_READ_FAILED'));
-  reader.readAsArrayBuffer(file);
-});
 
 const readOperatorName = (): string => {
   try { return localStorage.getItem('designhub.operator.name') ?? ''; } catch { return ''; }
@@ -80,27 +65,22 @@ const readOperatorName = (): string => {
 const toStudioProject = (entry: ActiveProject, libraryId: string): Project => {
   const snapshot = entry.designerSnapshot as { name?: { zh?: string; en?: string } } | undefined;
   const primaryDesigner = snapshot?.name?.zh ?? snapshot?.name?.en;
-  const documentEntries = entry.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }));
   return {
     id: entry.projectId,
     libraryId,
-    documentId: entry.documents?.[0]?.id,
     name: entry.name,
     enName: entry.name,
-    generationRatio: entry.generationRatio ?? '3:4',
+    generationRatio: entry.generationRatio ?? 'original',
     description: entry.brief ?? '',
     enDescription: entry.brief ?? '',
     designers: primaryDesigner ? [primaryDesigner] : [],
     activeDesignerVersionId: entry.activeDesignerVersionId,
     contributorDesignerVersionIds: entry.contributorDesignerVersionIds,
     designerSnapshot: entry.designerSnapshot,
-    brandSnapshot: entry.brandSnapshot,
     coverAssetId: entry.coverAssetId,
     artwork: 'blank',
     designs: entry.designs,
     canvasLayout: entry.canvasLayout,
-    documents: documentEntries?.length ?? 0,
-    documentEntries,
     archived: entry.archived,
     updatedAt: entry.updatedAt,
   };
@@ -110,16 +90,13 @@ const mergeProjectMetadata = (current: Project, metadata: ProjectMetadata): Proj
   ...current,
   name: metadata.name,
   enName: metadata.name,
-  generationRatio: metadata.generationRatio ?? current.generationRatio ?? '3:4',
+  generationRatio: metadata.generationRatio ?? current.generationRatio ?? 'original',
   description: metadata.brief ?? current.description,
   enDescription: metadata.brief ?? current.enDescription,
-  documents: metadata.documents.length || current.documents,
-  documentEntries: metadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId })),
   archived: metadata.archived,
   activeDesignerVersionId: metadata.activeDesignerVersionId,
   contributorDesignerVersionIds: metadata.contributorDesignerVersionIds,
   designerSnapshot: metadata.designerSnapshot,
-  brandSnapshot: metadata.brandSnapshot,
   coverAssetId: metadata.coverAssetId,
   designs: metadata.designs,
   canvasLayout: metadata.canvasLayout,
@@ -136,7 +113,6 @@ type StudioProps = {
   initialProjects?: Project[];
   initialDesignerOptions?: PersonaProfile[];
   initialAssets?: Parameters<typeof LibraryPages>[0]['initialAssets'];
-  initialBrands?: Parameters<typeof LibraryPages>[0]['initialBrands'];
 };
 
 export const Studio = ({
@@ -149,7 +125,6 @@ export const Studio = ({
   initialProjects = emptyProjects,
   initialDesignerOptions = emptyDesignerOptions,
   initialAssets = emptyAssets,
-  initialBrands = emptyBrands,
 }: StudioProps) => {
   const [view, setView] = useState<View>('projects');
   const [surface, setSurface] = useState<StudioSurface>('projects');
@@ -161,15 +136,12 @@ export const Studio = ({
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'active' | 'archived' | 'all'>('active');
   const [selected, setSelected] = useState<Project | null>(null);
-  const [documentOpen, setDocumentOpen] = useState(false);
-  const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
   const [deliveryProject] = useState<Project | null>(null);
   const [connectionsDialogOpen, setConnectionsDialogOpen] = useState(false);
   const [providerRefreshKey, setProviderRefreshKey] = useState(0);
   const [designerCreateRequestId, setDesignerCreateRequestId] = useState(0);
   const [notice, setNotice] = useState('');
   const [newProjectDrawerOpen, setNewProjectDrawerOpen] = useState(false);
-  const [entryCandidate, setEntryCandidate] = useState<{ projectId: string; candidate: DesignSceneCandidate } | null>(null);
   const [draft, setDraft] = useState<NewDesignDraft>({
     name: '',
     goal: '',
@@ -188,12 +160,10 @@ export const Studio = ({
   const [conversationConnectionId, setConversationConnectionId] = useState<string | null>(null);
   const [imageConnectionId, setImageConnectionId] = useState<string | null>(null);
   const [providerConfigs, setProviderConfigs] = useState<ProviderConfigMap | null>(null);
-  const [pendingHomeConversation, setPendingHomeConversation] = useState<PendingHomeConversation | null>(null);
   const [operatorName, setOperatorName] = useState(() => profile?.displayName ?? readOperatorName());
   useEffect(() => {
     if (profile?.displayName !== undefined) setOperatorName(profile.displayName);
   }, [profile?.displayName]);
-  const [pendingAssetAction, setPendingAssetAction] = useState<(CanvasAssetAction & { projectId?: string }) | null>(null);
   useEffect(() => () => {
     previewCoverUrls.current.forEach((url) => URL.revokeObjectURL(url));
     previewCoverUrls.current.clear();
@@ -228,9 +198,6 @@ export const Studio = ({
       }).catch(() => { if (!cancelled) { setProjects([]); setProjectsLoadFailed(true); } });
     }
     setSelected(null);
-    setDocumentOpen(false);
-    setActiveDocumentId(null);
-    setPendingHomeConversation(null);
     setNewProjectDrawerOpen(false);
     setView('projects');
     setSurface('projects');
@@ -258,7 +225,7 @@ export const Studio = ({
       const normalizedConfigs = configs ?? {};
       const statusAware = Boolean(api.loadProviderConnectionStatuses);
       const conversationHealthy = !statusAware || getProviderProfileStatus(statuses, 'openai-compatible', 'conversation', normalizedConfigs) === 'connected';
-      const nextConversationId = conversationCredential && conversationHealthy
+      const nextConversationId = conversationCredential
         ? selectConfiguredConnection('conversation', normalizedConfigs, ['openai-compatible:conversation'])
         : null;
       const nextImageId = imageCredential
@@ -267,7 +234,7 @@ export const Studio = ({
       setProviderConfigs(configs);
       setConversationConnectionId(nextConversationId);
       setImageConnectionId(nextImageId);
-      setConversationConnected(Boolean(nextConversationId));
+      setConversationConnected(Boolean(nextConversationId) && conversationHealthy);
     }).catch(() => {
       if (cancelled) return;
       setProviderConfigs(null);
@@ -312,20 +279,15 @@ export const Studio = ({
     setTransitionDirection(nextIndex >= currentIndex ? 'forward' : 'backward');
     setView(next);
     setSurface(next);
-    setDocumentOpen(false);
     setSelected(null);
   };
-  const routeAssetAction = (input: { assetId: string; mode: CanvasAssetAction['mode']; projectId?: string }): void => {
+  const routeAssetAction = (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }): void => {
     const project = projects.find((entry) => entry.id === input.projectId) ?? projects[0];
-    const documentId = project?.documentEntries?.[0]?.id ?? project?.documentId;
-    if (!project || !documentId) {
+    if (!project) {
       notify(t(locale, '请先创建项目', 'Create a project first'));
       return;
     }
-    setPendingAssetAction({ id: crypto.randomUUID(), assetId: input.assetId, mode: input.mode, projectId: project.id });
     setSelected(project);
-    setActiveDocumentId(documentId);
-    setDocumentOpen(true);
     setTransitionDirection('forward');
     setSurface('projects');
     setView('projects');
@@ -386,18 +348,14 @@ export const Studio = ({
     ? 'left'
     : 'right';
   const searchRecords = projects.map((project) => {
-    const brand = project.brandSnapshot as { source?: { brandId?: string } } | undefined;
     return {
       libraryId: project.libraryId ?? 'preview',
       projectId: project.id,
-      documentId: project.documentId ?? `${project.id}-overview`,
       title: `${project.name} ${project.enName}`,
       brief: `${project.description} ${project.enDescription}`,
-      brand: brand?.source?.brandId,
-      size: `${project.documents} documents`,
+      size: `${project.designs?.length ?? 0} designs`,
       tags: project.designers,
       updatedAt: undefined,
-      finalized: false,
       contributorIds: [...new Set([
         ...(project.activeDesignerVersionId ? [project.activeDesignerVersionId] : []),
         ...(project.contributorDesignerVersionIds ?? []),
@@ -426,12 +384,14 @@ export const Studio = ({
     setSelected(project);
     setTransitionDirection('forward');
     setSurface('projects');
-    setDocumentOpen(false);
-    setActiveDocumentId(null);
     setView('projects');
   };
   const createProjectFromHome = async (request: HomeConversationRequest, submitConversation = true): Promise<boolean> => {
-    if (!workspace || workspace.openMode !== 'writable' || (submitConversation && !conversationConnected)) return false;
+    if (!workspace || workspace.openMode !== 'writable') return false;
+    if (submitConversation && !conversationConnectionId) {
+      notify(t(locale, '请先配置对话模型连接。', 'Configure a conversation model connection first.'));
+      return false;
+    }
     setHomeCreationBusy(true);
     const initiatingWorkspaceId = workspace.libraryId;
     const selectedDesigner = request.designerId
@@ -474,14 +434,11 @@ export const Studio = ({
         } : {}),
         artwork: 'blank',
         designs: [],
-        documents: 0,
-        documentEntries: [],
         updatedAt: new Date().toISOString(),
       };
       setProjects((current) => [project, ...current]);
       setSelected(project);
       setTransitionDirection('forward');
-      setDocumentOpen(false);
       setView('projects');
       setSurface('projects');
       if (submitConversation) void submitProjectConversation(project, request.message, request.attachments);
@@ -497,42 +454,9 @@ export const Studio = ({
     event.preventDefault();
     if (!draft.name.trim()) return;
     const entryMode = draft.mode;
-    if (entryMode !== 'manual' && workspace?.openMode !== 'writable') {
-      notify(t(locale, '请先打开可写工作区以导入候选素材。', 'Open a writable workspace to import candidate assets.'));
-      return;
-    }
-    const entryFiles = entryMode === 'composition'
-      ? ([['core', draft.coreFile], ['optional', draft.optionalFile], ['reference', draft.referenceFile]] as const).filter((item): item is readonly [typeof item[0], File] => Boolean(item[1]))
-      : entryMode === 'mockup' && draft.mockupFile ? [['core', draft.mockupFile] as const] : [];
-    if (entryMode !== 'manual' && (entryFiles.length === 0 || (entryMode === 'composition' && !draft.coreFile))) {
-      notify(t(locale, '请先选择核心素材。', 'Choose a core asset first.'));
-      return;
-    }
-    let sourceSize: { width: number; height: number } | null = null;
-    const template = builtInMockupTemplates.find((item) => item.id === (draft.templateId ?? builtInMockupTemplates[0]!.id));
-    const templateColor = draft.templateColor ?? template?.colors[0] ?? '';
-    if (entryMode === 'mockup') {
-      try {
-        const bitmap = await createImageBitmap(draft.mockupFile!);
-        sourceSize = { width: bitmap.width, height: bitmap.height };
-        bitmap.close();
-      } catch {
-        notify(t(locale, '无法读取源设计图尺寸。', 'Could not read source artwork dimensions.'));
-        return;
-      }
-      const valid = validateMockupRenderInput({ templateId: template?.id ?? '', sourceWidth: sourceSize.width, sourceHeight: sourceSize.height, color: templateColor });
-      if (!valid.ok) {
-        notify(valid.reason === 'SOURCE_TOO_SMALL' ? t(locale, '源设计图尺寸小于模板要求。', 'Source artwork is smaller than the template requires.') : t(locale, '样机模板或颜色无效。', 'Invalid mockup template or color.'));
-        return;
-      }
-    }
     if (workspace?.openMode === 'writable') {
       const selectedDesigner = designerOptions.find((profile) => profile.id === draft.personaId);
       const submittedCover = draft.cover;
-      const documentId = entryMode === 'manual' ? null : `document-${crypto.randomUUID()}`;
-      const [width, height] = entryMode === 'mockup' && template
-        ? [template.output.width, template.output.height]
-        : draft.size.split(' × ').map(Number);
       const created = await getDesktopApi().createProjectContainer?.({
         libraryId: workspace.libraryId,
         operationId: crypto.randomUUID(),
@@ -540,42 +464,12 @@ export const Studio = ({
         brief: draft.goal || undefined,
         ...(selectedDesigner ? { activeDesignerVersionId: selectedDesigner.id, designerSnapshot: structuredClone(selectedDesigner) } : {}),
         designs: [],
-        ...(documentId ? { documents: [{ id: documentId, name: draft.name.trim(), width, height }] } : {}),
       });
       if (!created) {
         notify(t(locale, '无法保存项目，请检查工作区。', 'Could not save the project. Check the workspace.'));
         return;
       }
-      let localCandidate: DesignSceneCandidate | null = null;
-      if (documentId && entryFiles.length) {
-        try {
-          const items = await Promise.all(entryFiles.map(async ([role, file]) => ({ name: file.name, mimeType: file.type, data: await fileBytes(file), metadata: { purpose: 'studio-entry', role } })));
-          const imported = await getDesktopApi().importAssets?.({ libraryId: workspace.libraryId, projectId: created.projectId, items });
-          if (!imported || imported.length !== entryFiles.length || imported.some((result) => result.status !== 'success')) throw new Error('ASSET_IMPORT_FAILED');
-          const assets = imported.map((result, index) => ({ assetId: result.status === 'success' ? result.asset.id : '', role: entryFiles[index]![0] }));
-          const identity = { id: `candidate-${crypto.randomUUID()}`, sourceTaskId: `local-entry-${crypto.randomUUID()}`, createdAt: new Date().toISOString() };
-          const result = entryMode === 'mockup'
-            ? createMockupEntryCandidate({ ...identity, sourceAssetId: assets[0]!.assetId, sourceWidth: sourceSize!.width, sourceHeight: sourceSize!.height, templateId: template!.id, color: templateColor })
-            : createCompositionEntryCandidate({ ...identity, width, height, assets });
-          if (!result.ok) throw new Error(result.reason);
-          localCandidate = result.candidate;
-          const publishCandidate = getDesktopApi().publishCompositionCandidate;
-          if (publishCandidate) {
-            const published = await publishCandidate({
-              libraryId: workspace.libraryId,
-              projectId: created.projectId,
-              documentId,
-              candidate: localCandidate,
-            });
-            const persistedCandidate = published?.result?.compositionCandidate;
-            if (!persistedCandidate) throw new Error('CANDIDATE_PERSIST_FAILED');
-            localCandidate = persistedCandidate;
-          }
-        } catch {
-          localCandidate = null;
-          notify(t(locale, '项目已创建，但候选素材导入失败。', 'Project created, but candidate asset import failed.'));
-        }
-      }
+      if (entryMode !== 'manual') notify(t(locale, '候选素材将在画布中作为设计稿导入。', 'Candidate assets will be imported as designs on the canvas.'));
       let coverAssetId: string | undefined;
       let coverSaveFailed = false;
       if (submittedCover) {
@@ -615,21 +509,12 @@ export const Studio = ({
         ...(coverAssetId ? { coverAssetId } : {}),
         artwork: 'blank',
         designs: [],
-        documents: 0,
-        documentEntries: documentId ? [{ id: documentId, name: draft.name.trim(), width, height }] : [],
-        ...(documentId ? { documentId } : {}),
       };
-      if (documentId) project.documents = 1;
       setProjects((previous) => [project, ...previous]);
       setNewProjectDrawerOpen(false);
       setTransitionDirection('forward');
       setSurface('projects');
       setSelected(project);
-      if (documentId && localCandidate) {
-        setEntryCandidate({ projectId: project.id, candidate: localCandidate });
-        setActiveDocumentId(documentId);
-        setDocumentOpen(true);
-      }
       setView('projects');
       setQuery('');
       setFilter('active');
@@ -656,8 +541,6 @@ export const Studio = ({
       ...(draft.cover?.previewUrl ? { coverPreviewUrl: draft.cover.previewUrl } : {}),
       artwork: 'blank',
       designs: [],
-      documents: 0,
-      documentEntries: [],
     };
     if (draft.cover?.previewUrl) previewCoverUrls.current.add(draft.cover.previewUrl);
     setProjects((previous) => [project, ...previous]);
@@ -684,11 +567,6 @@ export const Studio = ({
       ),
     );
   };
-  const documentIdForProject = (project: Project): string | undefined => (
-    project.id === selected?.id
-      ? activeDocumentId ?? project.documentId ?? project.documentEntries?.[0]?.id
-      : project.documentId ?? project.documentEntries?.[0]?.id
-  );
   const submitProjectConversation = async (project: Project, message: string, attachments: import('../../features/agent/task-service').ConversationImageAttachment[] = [], context: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] } = {}): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
@@ -702,7 +580,6 @@ export const Studio = ({
       const task = await getDesktopApi().submitConversation?.({
         libraryId: workspace.libraryId,
         projectId: project.id,
-        ...(documentIdForProject(project) ? { documentId: documentIdForProject(project) } : {}),
         connectionId: conversationConnectionId,
         ...(providerConfigs?.[conversationConnectionId as keyof ProviderConfigMap]?.conversation.models.conversation ? { model: providerConfigs[conversationConnectionId as keyof ProviderConfigMap]!.conversation.models.conversation } : {}),
         message,
@@ -720,7 +597,7 @@ export const Studio = ({
       return null;
     }
   };
-  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null, generationRatio: Project['generationRatio'] = project.generationRatio ?? '3:4', count: 1 | 3 = 3, documentId?: string): Promise<import('../../features/tasks/state').TaskRecord | null> => {
+  const submitProjectDesignGeneration = async (project: Project, conversationTaskId: string, baseRevisionId: string | null = null, generationRatio: Project['generationRatio'] = project.generationRatio ?? 'original', count: 1 | 3 = 3): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
       return null;
@@ -733,7 +610,6 @@ export const Studio = ({
       const task = await getDesktopApi().submitDesignGeneration?.({
         libraryId: workspace.libraryId,
         projectId: project.id,
-        ...(documentId ? { documentId } : {}),
         conversationTaskId,
         baseRevisionId,
         connectionId: imageConnectionId,
@@ -752,26 +628,25 @@ export const Studio = ({
       return null;
     }
   };
-  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: { x: number; y: number; width: number; height: number }; beforeScene?: import('../../features/canvas/scene').DesignScene }): Promise<void> => {
+  const submitProjectImageTask = async (project: Project, input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId?: string; region?: { x: number; y: number; width: number; height: number }; beforeScene?: import('../../features/canvas/scene').DesignScene }): Promise<import('../../features/tasks/state').TaskRecord | null> => {
     if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
       notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
-      return;
+      return null;
     }
     const requiredConnection = input.tool === 'resize' ? null : imageConnectionId;
     if (input.tool !== 'resize' && !requiredConnection) {
       notify(t(locale, '请先配置图片编辑连接。', 'Configure an image editing connection first.'));
-      return;
+      return null;
     }
     try {
       const api = getDesktopApi();
-      const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
-      const scene = input.beforeScene ?? (documentId ? await api.loadDocumentScene?.(workspace.libraryId, project.id, documentId) : undefined);
+      const scene = input.beforeScene;
       const imageLayer = scene?.layers.find((layer): layer is Extract<typeof layer, { type: 'image' }> => layer.type === 'image'
         && layer.assetId !== 'placeholder'
         && (input.tool === 'resize' ? true : layer.id === input.targetLayerId));
       if (!imageLayer) {
         notify(t(locale, '请选择一张有效的受管图片。', 'Select a valid managed image.'));
-        return;
+        return null;
       }
       const sourceDesign = project.designs?.find((design) => design.id === imageLayer.id || design.assetId === imageLayer.assetId);
       const sourceWidth = sourceDesign?.width ?? imageLayer.width;
@@ -801,11 +676,6 @@ export const Studio = ({
         resize: t(locale, '调整尺寸', 'resized'),
         'remove-watermark': t(locale, '移除水印', 'watermark removed'),
       } satisfies Record<ImageTool, string>)[input.tool];
-      const bytes = await api.readAsset?.({ libraryId: workspace.libraryId, projectId: project.id, assetId: imageLayer.assetId });
-      if (!bytes) {
-        notify(t(locale, '无法读取目标图像。', 'Could not read the target image.'));
-        return;
-      }
       const editingModel = requiredConnection ? providerConfigs?.[requiredConnection as keyof ProviderConfigMap]?.image.models['image-editing'] : undefined;
       let maskAssetId: string | undefined;
       if (input.region && (input.tool === 'remove-object' || input.tool === 'inpaint' || input.tool === 'remove-watermark')) {
@@ -819,14 +689,13 @@ export const Studio = ({
       const task = await api.submitImageEdit?.({
         libraryId: workspace.libraryId,
         projectId: project.id,
-        ...(documentId ? { documentId } : {}),
         baseRevisionId: input.baseRevisionId,
         designerVersionId: project.activeDesignerVersionId,
         connectionId: requiredConnection ?? '',
         ...(editingModel ? { model: editingModel } : {}),
         prompt: input.prompt,
-        image: new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: 'image/png' }),
         sourceAssetId: imageLayer.assetId,
+        sourceDesignId: input.targetLayerId,
         targetLayerId: input.targetLayerId,
         ...(scene ? { beforeScene: scene } : {}),
         tool: input.tool,
@@ -844,36 +713,14 @@ export const Studio = ({
         },
       });
       if (!task) {
-        notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
-        return;
+        notify(t(locale, '图像任务未能提交。', 'The image task could not be submitted.'));
+        return null;
       }
       notify(t(locale, `${toolLabel}任务已排队。`, `${toolLabel} task queued.`));
+      return task;
     } catch {
       notify(t(locale, '图像任务提交失败，请检查连接。', 'Image task submission failed. Check the connection.'));
-    }
-  };
-  const submitProjectImageGeneration = async (project: Project, prompt: string, baseRevisionId: string | null): Promise<void> => {
-    if (!workspace || workspace.openMode !== 'writable' || !project.libraryId) {
-      notify(t(locale, '请先打开可写工作区。', 'Open a writable workspace first.'));
-      return;
-    }
-    if (!imageConnectionId) {
-      notify(t(locale, '请先配置图片生成连接。', 'Configure an image generation connection first.'));
-      return;
-    }
-    const documentId = project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId;
-    try {
-      const api = getDesktopApi();
-      const count = providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image?.imageTransport === 'responses' ? 1 : 2;
-      const generationModel = providerConfigs?.[imageConnectionId as keyof ProviderConfigMap]?.image.models['image-generation'];
-      const task = await api.submitImageGeneration?.({ libraryId: workspace.libraryId, projectId: project.id, ...(documentId ? { documentId } : {}), baseRevisionId, designerVersionId: project.activeDesignerVersionId, connectionId: imageConnectionId, ...(generationModel ? { model: generationModel } : {}), prompt, size: `${project.documentEntries?.find((entry) => entry.id === documentId)?.width ?? 1080}x${project.documentEntries?.find((entry) => entry.id === documentId)?.height ?? 1440}`, count });
-      if (!task) {
-        notify(t(locale, '模型连接不可用，任务未提交。', 'Model connection unavailable; task was not submitted.'));
-        return;
-      }
-      notify(t(locale, '生成任务已排队。', 'Generation task queued.'));
-    } catch {
-      notify(t(locale, '生成任务提交失败，请检查连接。', 'Generation task submission failed. Check the connection.'));
+      return null;
     }
   };
   const openNewDesign = (personaId?: string) => {
@@ -885,7 +732,7 @@ export const Studio = ({
     setNewProjectDrawerOpen(true);
   };
   const toolbarActions =
-    surface === 'projects' && view === 'projects' && !documentOpen && selected ? (
+    surface === 'projects' && view === 'projects' && selected ? (
       <>
         {workspace?.openMode === 'writable' && selected.libraryId && <>
           <IconButton name="settings" label={t(locale, '重命名', 'Rename')} onClick={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }} />
@@ -964,26 +811,7 @@ export const Studio = ({
               notify={notify}
             />
           )}
-          {surface === 'projects' && view === 'projects' && selected && !documentOpen && !workspace && (
-            <div className={`studio-view-shell studio-view-enter studio-view-enter-${transitionDirection}`}>
-              <ProjectDetailPage
-                locale={locale}
-                project={selected}
-                profiles={designerOptions}
-                projectTitle={selected.name}
-                activeDesignerId={selected.activeDesignerVersionId ?? ''}
-                designerLabel={designerOptions.find((profile) => profile.id === selected.activeDesignerVersionId)?.name.zh ?? ''}
-                contributorIds={[...(selected.activeDesignerVersionId ? [selected.activeDesignerVersionId] : []), ...(selected.contributorDesignerVersionIds ?? [])]}
-                contributorLabel={selected.designers.join('、')}
-                onOpenDocument={(documentId, index) => {
-                  setActiveDocumentId(documentId ?? selected.documentEntries?.[index]?.id ?? selected.documentId ?? null);
-                  setDocumentOpen(true);
-                  setTransitionDirection('forward');
-                }}
-              />
-            </div>
-          )}
-          {surface === 'projects' && view === 'projects' && selected && !documentOpen && workspace && (
+          {surface === 'projects' && view === 'projects' && selected && (
             <div className={`studio-view-shell studio-view-enter studio-view-enter-${transitionDirection}`}>
               <ProjectCanvas
                 locale={locale}
@@ -1003,11 +831,6 @@ export const Studio = ({
                 }}
                 onGenerationRatioChange={(generationRatio) => { void updateProject({ generationRatio }); }}
                 notify={notify}
-                onOpenDocument={(documentId) => {
-                  setActiveDocumentId(documentId);
-                  setDocumentOpen(true);
-                  setTransitionDirection('forward');
-                }}
                 onSubmitImageTask={(input) => submitProjectImageTask(selected, input)}
               onBack={() => { setTransitionDirection('backward'); setSelected(null); }}
                 onRename={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}
@@ -1019,51 +842,6 @@ export const Studio = ({
               />
             </div>
           )}
-          {projects.map((project) => (
-            <div
-                className={`destination${surface === 'projects' && view === 'projects' && documentOpen && selected?.id === project.id ? ` destination--active studio-view-enter studio-view-enter-${transitionDirection}` : ''}`}
-              key={project.id}
-              hidden={
-                surface !== 'projects' ||
-                view !== 'projects' ||
-                !documentOpen ||
-                selected?.id !== project.id
-              }
-            >
-              <Workbench
-                locale={locale}
-                project={project}
-                libraryId={project.libraryId}
-                documentId={project.id === selected?.id ? (activeDocumentId ?? project.documentId) : project.documentId}
-                initialCandidate={entryCandidate?.projectId === project.id ? entryCandidate.candidate : undefined}
-                onEntryCandidateResolved={() => setEntryCandidate((current) => current?.projectId === project.id ? null : current)}
-                onBack={() => { setTransitionDirection('backward'); setDocumentOpen(false); }}
-                onConnections={() => navigate('connections')}
-                designerOptions={designerOptions}
-                onDesignerChange={(designerId) => {
-                  const profile = designerOptions.find((entry) => entry.id === designerId && entry.status !== 'archived');
-                  void updateProject({ activeDesignerVersionId: designerId, designerSnapshot: profile ? structuredClone(profile) : null });
-                }}
-                onGenerationRatioChange={(generationRatio) => { void updateProject({ generationRatio }); }}
-                onTasks={() => navigate('tasks')}
-                onSubmitConversation={(message, attachments, context) => submitProjectConversation(project, message, attachments, context)}
-                onSubmitDesignGeneration={(conversationTaskId, baseRevisionId, generationRatio, count) => submitProjectDesignGeneration(project, conversationTaskId, baseRevisionId, generationRatio, count, activeDocumentId ?? project.documentId)}
-                onSubmitImageTask={(input) => submitProjectImageTask(project, input)}
-                onSubmitImageGeneration={(prompt, baseRevisionId) => submitProjectImageGeneration(project, prompt, baseRevisionId)}
-                assetAction={project.id === selected?.id ? pendingAssetAction ?? undefined : undefined}
-                onAssetActionHandled={(actionId) => setPendingAssetAction((current) => current?.id === actionId ? null : current)}
-                operatorName={operatorName}
-                modelConnected={conversationConnected}
-                readOnly={workspace?.openMode === 'read-only'}
-                notify={notify}
-                initialConversation={pendingHomeConversation?.projectId === project.id ? pendingHomeConversation : undefined}
-                onInitialConversationConsumed={(id) => {
-                  setPendingHomeConversation((current) => current?.id === id ? null : current);
-                  setHomeCreationBusy(false);
-                }}
-              />
-            </div>
-          ))}
           {destinations
             .filter((item) => item.view !== 'projects')
             .map((item) => (
@@ -1089,7 +867,6 @@ export const Studio = ({
                   operatorName={operatorName}
                   onOperatorNameChange={updateOperatorName}
                   initialAssets={initialAssets}
-                  initialBrands={initialBrands}
                   initialProfiles={initialDesignerOptions}
                   preview={!workspace}
                   active={surface === item.view && view === item.view}

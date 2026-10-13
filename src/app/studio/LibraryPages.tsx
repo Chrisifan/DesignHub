@@ -24,7 +24,6 @@ import {
   Field,
   Icon,
   IconButton,
-  Modal,
   PageHeader,
   Select,
   t,
@@ -34,8 +33,6 @@ import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
 import type { DesignScene } from '../../features/canvas/scene';
 import { ProviderSettings, type ProviderSettingsActions } from '../../features/providers/ProviderSettings';
-import { BrandEditor } from '../../features/brands/BrandEditor';
-import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
 import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, type ProviderProfile } from '../../features/providers/config';
 import { getProviderProfileStatus, mergeProviderConnectionStatus, type ProviderConnectionStatusMap } from '../../features/providers/status';
@@ -44,7 +41,6 @@ import type { ExportHistoryRecord } from '../../features/delivery/export-history
 import type { TrashedProject } from '../../features/workspace/project-store';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
 import type { WorkspaceSettings } from '../../features/workspace/settings';
-import { DeliveryScenePreview } from './DeliveryScenePreview';
 import type { BatchImageTool, ImageToolJob, ImageToolItem } from '../../features/image-tools/jobs';
 import './library.css';
 
@@ -68,7 +64,6 @@ type LibraryPagesProps = PageProps & {
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
   preview?: boolean;
   initialAssets?: AssetItem[];
-  initialBrands?: Brand[];
   initialProfiles?: PersonaProfile[];
   active?: boolean;
   connectionsDialogOpen?: boolean;
@@ -89,15 +84,6 @@ type AssetItem = {
   usage: Localized;
   artwork: 'market' | 'objects' | 'type' | 'blank';
   managed?: boolean;
-};
-type BrandKit = {
-  id: string;
-  name: Localized;
-  description: Localized;
-  version: string;
-  tone: Localized;
-  font: Localized;
-  copy: Localized;
 };
 type DeliveryFormat = 'png' | 'jpeg' | 'webp' | 'pdf';
 type StorageTab = 'trash' | 'backup';
@@ -149,16 +135,6 @@ const managedAssetToItem = (asset: ManagedAsset): AssetItem => {
     managed: !asset.externalReference,
   };
 };
-
-const recordToKit = (record: Brand): BrandKit => ({
-  id: record.id,
-  name: { zh: record.name ?? record.id, en: record.name ?? record.id },
-  description: { zh: record.description ?? '工作区品牌规则', en: record.description ?? 'Workspace brand rules' },
-  version: record.version,
-  tone: { zh: record.tone, en: record.tone },
-  font: { zh: record.fonts.join(' / '), en: record.fonts.join(' / ') },
-  copy: { zh: record.fixedCopy, en: record.fixedCopy },
-});
 
 const localize = (locale: Locale, value: Localized): string =>
   t(locale, value.zh, value.en);
@@ -470,182 +446,6 @@ const AssetsPage = ({
           </p>}
         </div></Drawer>}
       </div>
-    </section>
-  );
-};
-
-const BrandsPage = ({
-  locale,
-  selectedId,
-  onSelect,
-  libraryId,
-  preview = false,
-  initialBrands = [],
-}: {
-  locale: Locale;
-  selectedId: string;
-  onSelect: (id: string) => void;
-  libraryId?: string;
-  preview?: boolean;
-  initialBrands?: Brand[];
-}) => {
-  const [records, setRecords] = useState<Brand[]>(() => libraryId || !preview ? [] : initialBrands);
-  const [editor, setEditor] = useState<Brand | null>(null);
-  const [deletePending, setDeletePending] = useState<Brand | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [loading, setLoading] = useState(Boolean(libraryId));
-  const [loadFailed, setLoadFailed] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    if (!libraryId) { setRecords(preview ? initialBrands : []); setLoading(false); setLoadFailed(false); return () => { cancelled = true; }; }
-    setRecords([]);
-    setLoading(true);
-    setLoadFailed(false);
-    const request = getDesktopApi().loadBrandState?.(libraryId);
-    if (!request) { setLoading(false); setLoadFailed(true); return () => { cancelled = true; }; }
-    void request?.then((state) => {
-      if (cancelled) return;
-      setRecords(state?.brands ?? []);
-      setLoading(false);
-    }).catch(() => { if (!cancelled) { setLoading(false); setLoadFailed(true); } });
-    return () => { cancelled = true; };
-  }, [initialBrands, preview, libraryId]);
-  const kits = records.map(recordToKit);
-  const selected = kits.find((brand) => brand.id === selectedId) ?? kits[0];
-  const selectedRecord = records.find((record) => record.id === selected?.id) ?? records[0];
-  const persist = async (next: Brand[]): Promise<void> => {
-    setRecords(next);
-    if (libraryId) {
-      const saved = await getDesktopApi().saveBrandState?.(libraryId, { brands: next });
-      if (!saved) throw new Error('BRAND_SAVE_FAILED');
-    }
-  };
-  const saveBrand = async (brand: Brand): Promise<void> => {
-    const next = records.some((record) => record.id === brand.id)
-      ? records.map((record) => record.id === brand.id ? brand : record)
-      : [brand, ...records];
-    try { await persist(next); onSelect(brand.id); setEditor(null); }
-    catch { /* keep the editor open so the user can retry */ }
-  };
-  const removeBrand = async (): Promise<void> => {
-    if (!deletePending) return;
-    try { await persist(records.filter((record) => record.id !== deletePending.id)); setDeletePending(null); }
-    catch { /* keep confirmation open so the user can retry */ }
-  };
-  if (loading) return <section className="page-content library-page"><div className="page-empty-state"><EmptyState icon="palette" title={t(locale, '正在加载', 'Loading')} description={t(locale, '正在读取品牌包。', 'Loading brand kits.')} /></div></section>;
-  if (loadFailed) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /><div className="page-empty-state"><EmptyState icon="alert-triangle" title={t(locale, '品牌读取失败', 'Could not load brand kits')} description={t(locale, '请检查工作区权限后重新进入此页面。', 'Check workspace permissions and reopen this page.')} /></div></section>;
-  if (!selected) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /><div className="page-empty-state"><EmptyState icon="palette" title={t(locale, '暂无品牌包', 'No brand kits yet')} description={t(locale, '创建品牌包后会显示在这里。', 'Create a brand kit to see it here.')} /></div></section>;
-  return (
-    <section className="page-content library-page">
-      <PageHeader
-        title={t(locale, '品牌包', 'Brand kits')}
-        eyebrow={t(locale, '工作区约束', 'Workspace constraints')}
-        description={t(
-          locale,
-          '查看品牌原件、语气与固定文案；项目继续使用创建时的快照。',
-          'Review brand originals, voice and fixed copy; projects continue using their creation-time snapshot.',
-        )}
-      />
-      <div className="library-split library-split--brand">
-        <div
-          className="brand-list"
-          aria-label={t(locale, '品牌包列表', 'Brand kit list')}
-        >
-        {kits.map((brand, index) => (
-            <button
-              type="button"
-              key={brand.id}
-              onClick={() => { onSelect(brand.id); setDrawerOpen(true); }}
-              aria-pressed={brand.id === selected.id}
-              className={`brand-row ${brand.id === selected.id ? 'is-selected' : ''}`}
-            >
-              <span className={`brand-monogram brand-monogram--${index + 1}`}>
-                {localize(locale, brand.name).slice(0, 1)}
-              </span>
-              <span>
-                <strong>{localize(locale, brand.name)}</strong>
-                <small>{localize(locale, brand.description)}</small>
-              </span>
-              <Badge>{brand.version}</Badge>
-              <Icon name="chevron-right" size={17} />
-            </button>
-          ))}
-          <div className="list-footnote">
-            <Icon name="circle-help" size={16} />
-            <p>
-              {t(
-                locale,
-                '品牌包与设计师偏好分别管理，冲突时会显示具体字段。',
-                'Brand rules and designer preferences remain separate; conflicts identify the affected field.',
-              )}
-            </p>
-          </div>
-        </div>
-        <Drawer
-          open={drawerOpen}
-          title={t(locale, '品牌详情', 'Brand details')}
-          locale={locale}
-          onClose={() => setDrawerOpen(false)}
-          footer={libraryId ? (
-            <div className="dialog-actions brand-actions">
-              <Button icon="pencil" onClick={() => { if (selectedRecord) setEditor(selectedRecord); }}>{t(locale, '编辑', 'Edit')}</Button>
-              <Button icon="trash-2" onClick={() => { if (selectedRecord) setDeletePending(selectedRecord); }}>{t(locale, '删除', 'Delete')}</Button>
-            </div>
-          ) : undefined}
-        ><div
-          className="details-panel brand-details"
-        >
-          <div className="brand-lockup">
-            <span className="brand-wordmark">
-              {localize(locale, selected.name)}
-            </span>
-            <small>
-              {selected.version} ·{' '}
-              {t(locale, '当前品牌原件', 'Current brand original')}
-            </small>
-          </div>
-          <h2>{localize(locale, selected.name)}</h2>
-          <p className="details-lede">
-            {localize(locale, selected.description)}
-          </p>
-          <div
-            className="color-row"
-            aria-label={t(locale, '品牌色', 'Brand colors')}
-          >
-            <span className="brand-color brand-color--primary" />
-            <span className="brand-color brand-color--secondary" />
-            <span className="brand-color brand-color--tertiary" />
-            <span className="brand-color brand-color--surface" />
-          </div>
-          <dl className="details-list">
-            <DetailRow label={t(locale, '字体', 'Typography')}>
-              {localize(locale, selected.font)}
-            </DetailRow>
-            <DetailRow label={t(locale, '语气', 'Voice')}>
-              {localize(locale, selected.tone)}
-            </DetailRow>
-            <DetailRow label={t(locale, '固定文案', 'Fixed copy')}>
-              <q>{localize(locale, selected.copy)}</q>
-            </DetailRow>
-            <DetailRow label={t(locale, '项目使用', 'Project usage')}>
-              {selected.id === 'spring'
-                ? t(locale, '1 个项目 · 快照 v2', '1 project · snapshot v2')
-                : t(locale, '1 个项目 · 快照 v1', '1 project · snapshot v1')}
-            </DetailRow>
-          </dl>
-          {!libraryId && preview && <p className="panel-note">
-            <Icon name="history" size={15} />
-            {t(
-              locale,
-              libraryId ? '项目继续使用创建时保存的品牌快照。' : '示例项目不会自动升级到当前品牌版本。',
-              libraryId ? 'Projects continue using their creation-time brand snapshot.' : 'Example projects are not automatically upgraded to the current brand version.',
-            )}
-          </p>}
-        </div></Drawer>
-      </div>
-      {libraryId && <div className="brand-create-row"><Button variant="secondary" icon="plus" onClick={() => setEditor({ id: `brand-${crypto.randomUUID()}`, name: '', version: 'v1', logo: '', colorPalette: [], fonts: [], tone: '', fixedCopy: '', sizes: [] })}>{t(locale, '新建', 'New')}</Button></div>}
-      {editor && <Modal title={editor.name ? t(locale, '编辑品牌', 'Edit brand') : t(locale, '新建品牌', 'New brand')} locale={locale} onClose={() => setEditor(null)}><BrandEditor brand={editor} locale={locale} onSave={(brand) => { void saveBrand(brand); }} /></Modal>}
-      {deletePending && <Modal title={t(locale, '删除品牌', 'Delete brand')} locale={locale} onClose={() => setDeletePending(null)}><p className="muted">{t(locale, `确认删除 ${deletePending.name ?? deletePending.id}？`, `Delete ${deletePending.name ?? deletePending.id}?`)}</p><div className="dialog-actions"><Button onClick={() => setDeletePending(null)}>{t(locale, '取消', 'Cancel')}</Button><Button variant="primary" icon="trash-2" onClick={() => { void removeBrand(); }}>{t(locale, '删除', 'Delete')}</Button></div></Modal>}
     </section>
   );
 };
@@ -1123,11 +923,11 @@ const DeliveryPage = ({
 }) => {
   const [exporting, setExporting] = useState(false);
   const [exportHistory, setExportHistory] = useState<ExportHistoryRecord[]>([]);
-  const [source, setSource] = useState<'current' | 'final'>('current');
-  const [documentId, setDocumentId] = useState(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
+  const [source] = useState<'current'>('current');
   const [drawerOpen, setDrawerOpen] = useState(Boolean(project));
-  const [deliveryScene, setDeliveryScene] = useState<DesignScene | null>(null);
-  const [sceneStatus, setSceneStatus] = useState<'idle' | 'loading' | 'ready' | 'empty' | 'error'>('idle');
+  const selectedDesign = project?.designs?.[0];
+  const deliveryScene: DesignScene | null = selectedDesign ? { version: 1, id: selectedDesign.id, width: selectedDesign.width, height: selectedDesign.height, layers: [{ id: selectedDesign.id, type: 'image', assetId: selectedDesign.assetId, x: 0, y: 0, width: selectedDesign.width, height: selectedDesign.height, rotation: 0, opacity: 1, visible: true, locked: false }] } : null;
+  const sceneStatus: 'ready' | 'empty' = deliveryScene ? 'ready' : 'empty';
   const formatDescription =
     format === 'jpeg'
       ? t(
@@ -1150,8 +950,6 @@ const DeliveryPage = ({
   const persistedProject = Boolean(project?.libraryId);
   useEffect(() => {
     setDrawerOpen(Boolean(project));
-    setDocumentId(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
-    setSource('current');
     setExportHistory([]);
     if (!project?.libraryId) return;
     let cancelled = false;
@@ -1163,61 +961,24 @@ const DeliveryPage = ({
       if (!cancelled) setExportHistory([]);
     });
     return () => { cancelled = true; };
-  }, [project?.documentId, project?.id]);
-  const activeDocumentId = documentId || project?.documentId || project?.documentEntries?.[0]?.id || '';
-  const currentDocument = project?.documentEntries?.find((entry) => entry.id === activeDocumentId) ?? project?.documentEntries?.[0];
-  const finalizedRevisionId = currentDocument?.finalizedRevisionId ?? null;
-  const hasFinalizedRevision = Boolean(project?.libraryId && activeDocumentId && finalizedRevisionId);
-  useEffect(() => {
-    if (!hasFinalizedRevision && source === 'final') setSource('current');
-  }, [hasFinalizedRevision, source]);
-  const loadSelectedScene = useCallback(async (): Promise<DesignScene | null> => {
-    if (!project?.libraryId || !activeDocumentId) return null;
-    const api = getDesktopApi();
-    if (source === 'final' && finalizedRevisionId) {
-      const revisions = await api.loadDocumentRevisions?.(project.libraryId, project.id, activeDocumentId);
-      return revisions?.revisions.find((revision) => revision.revisionId === finalizedRevisionId)?.scene
-        ?? (revisions?.finalRevisionId ? revisions.revisions.find((revision) => revision.revisionId === revisions.finalRevisionId)?.scene : null)
-        ?? null;
-    }
-    return await api.loadDocumentScene?.(project.libraryId, project.id, activeDocumentId) ?? null;
-  }, [activeDocumentId, finalizedRevisionId, project?.id, project?.libraryId, source]);
+  }, [project?.id, project?.libraryId]);
   const hasExportableContent = useCallback((scene: DesignScene | null): scene is DesignScene => Boolean(scene?.layers.some((layer) => (
     layer.visible && !(layer.type === 'image' && (layer.role === 'reference' || layer.assetId === 'placeholder'))
   ))), []);
   useEffect(() => {
-    if (!project?.libraryId || !activeDocumentId) {
-      setDeliveryScene(null);
-      setSceneStatus('idle');
-      return;
-    }
-    let cancelled = false;
-    setDeliveryScene(null);
-    setSceneStatus('loading');
-    void loadSelectedScene().then((scene) => {
-      if (cancelled) return;
-      setDeliveryScene(scene);
-      setSceneStatus(hasExportableContent(scene) ? 'ready' : 'empty');
-    }).catch(() => {
-      if (!cancelled) {
-        setDeliveryScene(null);
-        setSceneStatus('error');
-      }
-    });
-    return () => { cancelled = true; };
-  }, [activeDocumentId, hasExportableContent, loadSelectedScene, project?.libraryId]);
+    return undefined;
+  }, []);
   const exportCurrent = async (): Promise<void> => {
-    if (!project?.libraryId || !activeDocumentId) return;
+    if (!project?.libraryId || !selectedDesign || !deliveryScene) return;
     setExporting(true);
     try {
       const api = getDesktopApi();
-      const scene = await loadSelectedScene();
+      const scene = deliveryScene;
       if (!hasExportableContent(scene)) {
-        setSceneStatus('empty');
         notify?.(t(locale, '当前图片没有可导出的正式结果，请先在画布中选择候选稿并确认。', 'This image has no formal result to export. Select a candidate on the canvas and confirm it first.'));
         return;
       }
-      const result = await api.exportDocument?.({ libraryId: project.libraryId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
+      const result = await api.exportProjectDesign?.({ libraryId: project.libraryId, projectId: project.id, designId: selectedDesign.id, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
       if (result) {
         if (result.archiveError) {
           notify?.(t(locale, `已导出到 ${result.path}，归档副本失败（${result.archiveError}），可重试。`, `Exported to ${result.path}; the archive copy failed (${result.archiveError}). Retry when ready.`));
@@ -1228,7 +989,7 @@ const DeliveryPage = ({
         }
       }
     } catch {
-      notify?.(t(locale, source === 'final' ? '定稿读取失败，请重试。' : '导出失败，请重试。', source === 'final' ? 'Could not read the finalized revision. Try again.' : 'Export failed. Try again.'));
+      notify?.(t(locale, '导出失败，请重试。', 'Export failed. Try again.'));
     } finally { setExporting(false); }
   };
   const exportPackage = async (): Promise<void> => {
@@ -1243,12 +1004,10 @@ const DeliveryPage = ({
   const reexport = async (record: ExportHistoryRecord): Promise<void> => {
     if (!project?.libraryId) return;
     try {
-      const api = getDesktopApi();
-      const revisions = await api.loadDocumentRevisions?.(project.libraryId, project.id, record.documentId);
-      const revision = revisions?.revisions.find((item) => item.revisionId === record.revisionId);
-      if (!revision?.scene) throw new Error('HISTORY_SCENE_UNAVAILABLE');
-      const result = await api.exportDocument?.({ libraryId: project.libraryId, projectId: project.id, documentId: record.documentId, format: record.format, scene: revision.scene });
-      if (result) notify?.(t(locale, `已重新导出到 ${result.path}`, `Re-exported to ${result.path}`));
+      if (deliveryScene) {
+        const result = await getDesktopApi().exportProjectDesign?.({ libraryId: project.libraryId, projectId: project.id, designId: selectedDesign?.id ?? project.id, format: record.format, scene: deliveryScene });
+        if (result) notify?.(t(locale, `已重新导出到 ${result.path}`, `Re-exported to ${result.path}`));
+      }
     } catch {
       notify?.(t(locale, '历史修订不可用，请重新导出当前版本。', 'The historical revision is unavailable; export the current version instead.'));
     }
@@ -1278,30 +1037,18 @@ const DeliveryPage = ({
       <div className="delivery-layout">
         {project ? (
           <div className="delivery-preview">
-            {persistedProject ? (
-              sceneStatus === 'ready' && deliveryScene
-                ? <DeliveryScenePreview libraryId={project.libraryId!} projectId={project.id} scene={deliveryScene} alt={t(locale, `${currentDocument?.name ?? project.name}导出预览`, `${currentDocument?.name ?? project.enName} export preview`)} />
-                : <div className={`delivery-scene-state delivery-scene-state--${sceneStatus}`}>
-                    <Icon name={sceneStatus === 'error' ? 'circle-alert' : 'file-image'} size={36} />
-                    <span>{sceneStatus === 'loading'
-                      ? t(locale, '正在读取当前设计稿…', 'Loading the current design…')
-                      : sceneStatus === 'error'
-                        ? t(locale, '设计稿读取失败，请重试。', 'Could not load the design. Try again.')
-                        : t(locale, '当前图片没有可导出的正式结果，请先在画布中选择候选稿并确认。', 'This image has no formal result to export. Select a candidate on the canvas and confirm it first.')}</span>
-                  </div>
-            ) : <ArtworkPreview kind={project.artwork} />}
+            <ArtworkPreview kind={project.artwork} />
             <div>
               <Badge>{t(locale, '原稿', 'Source')}</Badge>
               <h2>{projectName}</h2>
               <p>
                 {(() => {
-                  if (!currentDocument && persistedProject) return t(locale, '未设置尺寸', 'Size not set');
-                  const dimensions = `${currentDocument?.width ?? 1080} × ${currentDocument?.height ?? 1440}`;
+                  const dimensions = `${selectedDesign?.width ?? 1080} × ${selectedDesign?.height ?? 1440}`;
                   return t(locale, `${dimensions} 像素 · sRGB`, `${dimensions} px · sRGB`);
                 })()}
               </p>
               <small className="source-note">
-                  {t(locale, source === 'final' ? '导出将读取已确认结果。' : '导出将读取当前图片结果。', source === 'final' ? 'Export reads the confirmed result.' : 'Export reads the current image result.')}
+                  {t(locale, '导出将读取当前设计稿结果。', 'Export reads the current design result.')}
               </small>
             </div>
           </div>
@@ -1337,7 +1084,7 @@ const DeliveryPage = ({
                 <strong>{t(locale, '尚未选择目标目录', 'No destination selected')}</strong>
                 <span>{t(locale, persistedProject ? '使用桌面保存对话框写出并校验文件。' : '桌面导出能力接入后才可执行。', persistedProject ? 'Use the desktop save dialog to write and validate the file.' : 'Available after desktop export support is connected.')}</span>
               </div>
-              <Button variant="primary" icon="download" disabled={!project?.libraryId || !activeDocumentId || exporting || sceneStatus === 'empty' || sceneStatus === 'error'} onClick={() => { void exportCurrent(); }}>
+              <Button variant="primary" icon="download" disabled={!project?.libraryId || !selectedDesign || exporting || sceneStatus === 'empty'} onClick={() => { void exportCurrent(); }}>
                 {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
               </Button>
             </div>
@@ -1374,11 +1121,8 @@ const DeliveryPage = ({
             </p>
           </div>
           <div className="config-grid">
-            {project?.documentEntries && project.documentEntries.length > 1 && <Field label={t(locale, '图片', 'Image')}>
-              <Select ariaLabel={t(locale, '图片', 'Image')} value={activeDocumentId} onChange={setDocumentId} options={project.documentEntries.map((entry) => ({ value: entry.id, label: entry.name }))} />
-            </Field>}
             <Field label={t(locale, '来源', 'Source')}>
-              <Select ariaLabel={t(locale, '来源', 'Source')} value={source} onChange={(value) => setSource(value as 'current' | 'final')} options={[{ value: 'current', label: t(locale, persistedProject ? '当前图片' : '示例原稿', persistedProject ? 'Current image' : 'Example source artwork') }, ...(hasFinalizedRevision ? [{ value: 'final', label: t(locale, '已确认结果', 'Confirmed result') }] : [])]} />
+              <Select ariaLabel={t(locale, '来源', 'Source')} value={source} disabled onChange={() => undefined} options={[{ value: 'current', label: t(locale, persistedProject ? '当前设计稿' : '示例原稿', persistedProject ? 'Current design' : 'Example source artwork') }]} />
             </Field>
             <Field label={t(locale, '颜色空间', 'Color space')}>
               <Select ariaLabel={t(locale, '颜色空间', 'Color space')} value="srgb" disabled onChange={() => undefined} options={[{ value: 'srgb', label: t(locale, 'sRGB（首版）', 'sRGB (first release)') }]} />
@@ -1397,8 +1141,8 @@ const DeliveryPage = ({
               <small>
                 {t(
                   locale,
-                  persistedProject ? (source === 'final' ? '导出会读取已确认结果，并可选择归档副本。' : '导出会读取当前图片，并可选择归档副本。') : '仅配置选项；示例不会写入 exports 目录。',
-                  persistedProject ? (source === 'final' ? 'Export reads the confirmed result and can archive a copy.' : 'Export reads the current image and can archive a copy.') : 'Configuration only; the example does not write to the exports directory.',
+                  persistedProject ? '导出会读取当前设计稿，并可选择归档副本。' : '仅配置选项；示例不会写入 exports 目录。',
+                  persistedProject ? 'Export reads the current design and can archive a copy.' : 'Configuration only; the example does not write to the exports directory.',
                 )}
               </small>
             </span>
@@ -1938,7 +1682,6 @@ export const LibraryPages = ({
   onOperatorNameChange,
   onAssetAction,
   initialAssets = [],
-  initialBrands = [],
   initialProfiles = [],
   active = true,
   connectionsDialogOpen,
@@ -1963,7 +1706,6 @@ export const LibraryPages = ({
   const [assetType, setAssetType] = useState<AssetType>('all');
   const [assetLayout, setAssetLayout] = useState<'grid' | 'list'>('grid');
   const [selectedAsset, setSelectedAsset] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('');
   const [deliveryFormat, setDeliveryFormat] = useState<DeliveryFormat>('png');
   const [archiveCopy, setArchiveCopy] = useState(false);
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
@@ -2037,16 +1779,6 @@ export const LibraryPages = ({
         notify={notify}
         onAssetAction={onAssetAction}
         active={active}
-      />
-    ),
-    brands: (
-      <BrandsPage
-        locale={locale}
-        selectedId={selectedBrand}
-        onSelect={setSelectedBrand}
-        libraryId={libraryId}
-        preview={preview}
-        initialBrands={initialBrands}
       />
     ),
     connections: <ConnectionsPage

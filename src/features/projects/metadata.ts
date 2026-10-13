@@ -1,16 +1,5 @@
 import { isProjectGenerationRatio, type ProjectGenerationRatio } from './size';
 
-export type ProjectDocumentMetadata = {
-  id: string;
-  name: string;
-  width: number;
-  height: number;
-  sourceDocumentId?: string;
-  sourceRevisionId?: string | null;
-  finalizedRevisionId?: string | null;
-  updatedAt: string;
-};
-
 export type ProjectDesign = {
   id: string;
   projectId?: string;
@@ -29,6 +18,7 @@ export type ProjectCanvasLayout = {
 };
 
 export type ProjectMetadata = {
+  [key: string]: unknown;
   projectId: string;
   workspaceId?: string;
   libraryId?: string;
@@ -38,17 +28,16 @@ export type ProjectMetadata = {
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
-  brandSnapshot?: unknown;
   coverAssetId?: string;
   designs?: ProjectDesign[];
   canvasLayout?: ProjectCanvasLayout;
-  documents: ProjectDocumentMetadata[];
   archived: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
 export type ProjectMetadataInput = {
+  [key: string]: unknown;
   projectId: string;
   workspaceId?: string;
   libraryId?: string;
@@ -58,47 +47,50 @@ export type ProjectMetadataInput = {
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
-  brandSnapshot?: unknown;
   coverAssetId?: string;
   designs?: ProjectDesign[];
   canvasLayout?: ProjectCanvasLayout;
-  documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
   archived?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
 
-export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'generationRatio' | 'activeDesignerVersionId' | 'contributorDesignerVersionIds' | 'designerSnapshot' | 'brandSnapshot' | 'coverAssetId' | 'archived'>> & {
+export type ProjectMetadataPatch = Partial<Pick<ProjectMetadata, 'name' | 'brief' | 'generationRatio' | 'activeDesignerVersionId' | 'contributorDesignerVersionIds' | 'designerSnapshot' | 'coverAssetId' | 'archived'>> & {
+  [key: string]: unknown;
   designs?: ProjectDesign[];
   canvasLayout?: ProjectCanvasLayout;
-  documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
 };
 
 const clone = <T>(value: T): T => structuredClone(value);
-const documentIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u;
 const designIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u;
+
+const removedLegacyKeys = new Set([
+  'documentId',
+  'documentEntries',
+  'documents',
+  'sourceDocumentId',
+  'sourceRevisionId',
+  'finalizedRevisionId',
+  'finalRevisionId',
+  'brandSnapshot',
+]);
+
+const rejectRemovedDocumentSchema = (input: unknown): void => {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return;
+  if (Object.keys(input).some((key) => removedLegacyKeys.has(key))) throw new Error('DOCUMENT_SCHEMA_REMOVED');
+};
+
+export const migrateLegacyProjectMetadata = <T extends Record<string, unknown>>(input: T): T => {
+  const migrated = { ...input };
+  removedLegacyKeys.forEach((key) => { delete migrated[key]; });
+  return migrated;
+};
 
 const normalizeContributorIds = (activeDesignerVersionId: string | undefined, contributorDesignerVersionIds: string[] | undefined): string[] | undefined => {
   const contributors = [...new Set((contributorDesignerVersionIds ?? []).map((id) => id.trim()).filter(Boolean))];
   if (!activeDesignerVersionId?.trim()) return contributors.length > 0 ? contributors : undefined;
   const activeId = activeDesignerVersionId.trim();
   return [activeId, ...contributors.filter((id) => id !== activeId)];
-};
-
-const validateDocument = (document: Omit<ProjectDocumentMetadata, 'updatedAt'>): void => {
-  if (!documentIdPattern.test(document.id) || !document.name.trim() || !Number.isFinite(document.width) || !Number.isFinite(document.height) || document.width <= 0 || document.height <= 0) {
-    throw new Error('INVALID_DOCUMENT');
-  }
-};
-
-const validateDocumentList = (documents: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>): void => {
-  const ids = documents.map((document) => document.id);
-  if (new Set(ids).size !== ids.length) throw new Error('INVALID_DOCUMENT');
-};
-
-const normalizeDocument = (document: Omit<ProjectDocumentMetadata, 'updatedAt'>, updatedAt: string): ProjectDocumentMetadata => {
-  validateDocument(document);
-  return { ...clone(document), name: document.name.trim(), updatedAt };
 };
 
 const validateDesign = (design: ProjectDesign): void => {
@@ -133,6 +125,7 @@ const normalizeCanvasLayout = (layout: ProjectCanvasLayout | undefined, designs:
 };
 
 export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetadata => {
+  rejectRemovedDocumentSchema(input);
   const workspaceId = input.workspaceId ?? input.libraryId;
   if (!input.projectId || !workspaceId || !input.name.trim()) throw new Error('INVALID_PROJECT_METADATA');
   if (input.generationRatio !== undefined && !isProjectGenerationRatio(input.generationRatio)) throw new Error('INVALID_PROJECT_METADATA');
@@ -143,20 +136,14 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
     projectId: input.projectId,
     workspaceId,
     name: input.name.trim(),
-    generationRatio: input.generationRatio ?? '3:4',
+    generationRatio: input.generationRatio ?? 'original',
     ...(input.brief === undefined ? {} : { brief: input.brief }),
     ...(input.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: input.activeDesignerVersionId }),
     ...(normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) ? { contributorDesignerVersionIds: normalizeContributorIds(input.activeDesignerVersionId, input.contributorDesignerVersionIds) } : {}),
     ...(input.designerSnapshot === undefined ? {} : { designerSnapshot: clone(input.designerSnapshot) }),
-    ...(input.brandSnapshot === undefined ? {} : { brandSnapshot: clone(input.brandSnapshot) }),
     ...(input.coverAssetId === undefined ? {} : { coverAssetId: input.coverAssetId }),
     designs: normalizeDesigns(input.designs, input.projectId),
     ...(input.canvasLayout ? { canvasLayout: normalizeCanvasLayout(input.canvasLayout, normalizeDesigns(input.designs, input.projectId)) } : {}),
-    documents: (() => {
-      const documents = input.documents ?? [];
-      validateDocumentList(documents);
-      return documents.map((document) => normalizeDocument(document, updatedAt));
-    })(),
     archived: input.archived ?? false,
     createdAt,
     updatedAt,
@@ -164,17 +151,13 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
 };
 
 export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectMetadataPatch): ProjectMetadata => {
+  rejectRemovedDocumentSchema(metadata);
+  rejectRemovedDocumentSchema(patch);
   if (patch.name !== undefined && !patch.name.trim()) throw new Error('INVALID_PROJECT_METADATA');
   if (patch.generationRatio !== undefined && !isProjectGenerationRatio(patch.generationRatio)) throw new Error('INVALID_PROJECT_METADATA');
   const now = Date.now();
   const previous = Date.parse(metadata.updatedAt);
   const updatedAt = new Date(Math.max(now, Number.isNaN(previous) ? now : previous + 1)).toISOString();
-  const nextDocuments = patch.documents === undefined
-    ? metadata.documents
-    : (() => {
-      validateDocumentList(patch.documents!);
-      return patch.documents!.map((document) => normalizeDocument(document, updatedAt));
-    })();
   const nextDesigns = patch.designs === undefined ? (metadata.designs ?? []) : normalizeDesigns(patch.designs, metadata.projectId);
   return {
     ...clone(metadata),
@@ -189,11 +172,9 @@ export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectM
       return normalized ? { contributorDesignerVersionIds: normalized } : { contributorDesignerVersionIds: undefined };
     })(),
     ...(patch.designerSnapshot === undefined ? {} : { designerSnapshot: clone(patch.designerSnapshot) }),
-    ...(patch.brandSnapshot === undefined ? {} : { brandSnapshot: clone(patch.brandSnapshot) }),
     ...(patch.coverAssetId === undefined ? {} : { coverAssetId: patch.coverAssetId }),
     designs: clone(nextDesigns),
     ...(patch.canvasLayout === undefined ? (metadata.canvasLayout ? { canvasLayout: normalizeCanvasLayout(metadata.canvasLayout, nextDesigns) } : {}) : { canvasLayout: normalizeCanvasLayout(patch.canvasLayout, nextDesigns) }),
-    documents: clone(nextDocuments),
     ...(patch.archived === undefined ? {} : { archived: patch.archived }),
     updatedAt,
   };

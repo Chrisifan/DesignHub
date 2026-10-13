@@ -20,7 +20,7 @@ import './styles/window.css';
 const splashDurationMs = 2200;
 const splashCompletionHoldMs = 320;
 const providerCheckTimeoutMs = 15_000;
-const startupCheckIds = ['profile', 'library', 'conversation', 'image', 'workspace'] as const;
+const startupCheckIds = ['profile', 'library', 'conversation', 'workspace'] as const;
 type AppPhase = 'splash' | 'profile' | 'model' | 'library' | 'studio';
 
 const createStartupChecks = (): StartupCheck[] => startupCheckIds.map((id, index) => ({
@@ -32,7 +32,6 @@ const getStartupCheckLabels = (copy: Messages): Record<string, string> => ({
   profile: copy.splashCheckProfile,
   library: copy.splashCheckLibrary,
   conversation: copy.splashCheckConversation,
-  image: copy.splashCheckImage,
   workspace: copy.splashCheckWorkspace,
 });
 
@@ -99,7 +98,7 @@ export const App = () => {
         const providerConfigs = await (api.loadProviderConfigs?.() ?? Promise.resolve(null)).catch(() => null);
         let providerStatuses = await (api.loadProviderConnectionStatuses?.() ?? Promise.resolve({})).catch(() => ({}));
         const providerConfig = providerConfigs?.['openai-compatible'];
-        const runProviderCheck = async (profile: 'conversation' | 'image'): Promise<void> => {
+        const runProviderCheck = async (profile: 'conversation'): Promise<void> => {
           if (isProviderProfileStatusCacheValid(providerStatuses, 'openai-compatible', profile, providerConfig)) {
             updateStartupCheck(profile, 'complete');
             return;
@@ -107,24 +106,10 @@ export const App = () => {
           updateStartupCheck(profile, 'active');
           try {
             if (status?.state !== 'ready') throw new Error('PROJECT_LIBRARY_NOT_OPEN');
-            if (profile === 'conversation') {
-              const model = providerConfig?.conversation.models.conversation;
-              if (!api.testConversation) throw new Error('CONVERSATION_TEST_UNAVAILABLE');
-              const result = await withTimeout(api.testConversation({ libraryId: status.library.libraryId, connectionId: 'openai-compatible', ...(model ? { model } : {}), timeoutMs: providerCheckTimeoutMs }));
-              if (!result) throw new Error('CONVERSATION_TEST_FAILED');
-            } else {
-              const model = providerConfig?.image.models['image-generation'];
-              if (!api.testImageGeneration) throw new Error('IMAGE_TEST_UNAVAILABLE');
-              const result = await withTimeout(api.testImageGeneration({
-                libraryId: status.library.libraryId,
-                connectionId: 'openai-compatible',
-                prompt: 'A clean editorial poster with a single orange chair on a pale blue background',
-                ...(model ? { model } : {}),
-                size: '1024x1024',
-                timeoutMs: providerCheckTimeoutMs,
-              }));
-              if (!result?.image) throw new Error('IMAGE_TEST_FAILED');
-            }
+            const model = providerConfig?.conversation.models.conversation;
+            if (!api.testConversation) throw new Error('CONVERSATION_TEST_UNAVAILABLE');
+            const result = await withTimeout(api.testConversation({ libraryId: status.library.libraryId, connectionId: 'openai-compatible', ...(model ? { model } : {}), timeoutMs: providerCheckTimeoutMs }));
+            if (!result) throw new Error('CONVERSATION_TEST_FAILED');
             providerStatuses = mergeProviderConnectionStatus(providerStatuses ?? {}, 'openai-compatible', profile, 'connected', providerConfig);
             updateStartupCheck(profile, 'complete');
           } catch {
@@ -132,7 +117,7 @@ export const App = () => {
             updateStartupCheck(profile, 'error');
           }
         };
-        await Promise.all([runProviderCheck('conversation'), runProviderCheck('image')]);
+        await runProviderCheck('conversation');
         if (api.saveProviderConnectionStatuses && providerStatuses) await api.saveProviderConnectionStatuses(providerStatuses).catch(() => undefined);
         activeCheckId = 'workspace';
         updateStartupCheck(activeCheckId, 'active');

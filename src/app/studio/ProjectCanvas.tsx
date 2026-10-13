@@ -6,7 +6,7 @@ import type { TaskRecord } from '../../features/tasks/state';
 import { createScene, type DesignScene } from '../../features/canvas/scene';
 import type { Region } from '../../features/canvas/selection';
 import { defaultToolParams, imageTools, validateToolParams, type ImageTool, type ToolParams } from '../../features/image-tools/target';
-import { ToolInspector } from '../../features/image-tools/ToolInspector';
+import { ToolInspector, ToolInspectorActions } from '../../features/image-tools/ToolInspector';
 import { getDesktopApi } from '../../platform/runtime';
 import type { Locale } from '../i18n';
 import type { PersonaProfile } from './personas';
@@ -16,7 +16,10 @@ import { AnalysisPanel, type AnalysisPanelRequest } from './AnalysisPanel';
 import { ProjectCanvasStage } from './ProjectCanvasStage';
 import { Icon, IconButton, Modal, t } from './ui';
 import { Tooltip } from './Tooltip';
+import './workbench.css';
 import './project-canvas.css';
+import { readImageFile } from '../../features/assets/image-input';
+import { itemErrorMessage } from '../../features/image-tools/image-tools-copy';
 
 type ProjectCanvasProps = {
   locale: Locale;
@@ -31,12 +34,11 @@ type ProjectCanvasProps = {
   onGenerationRatioChange?: (ratio: ProjectGenerationRatio) => void;
   notify: (message: string) => void;
   onBack: () => void;
-  onOpenDocument?: (documentId: string) => void;
   onRename?: () => void;
   onDuplicate?: () => void;
   onArchive?: () => void;
   onConnections: () => void;
-  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId: string; region?: Region; beforeScene: DesignScene }) => void | Promise<void>;
+  onSubmitImageTask?: (input: { tool: ImageTool; prompt: string; params: ToolParams; baseRevisionId: string | null; targetLayerId: string; region?: Region; beforeScene: DesignScene }) => TaskRecord | null | void | Promise<TaskRecord | null | void>;
   onSubmitConversation: (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => Promise<TaskRecord | null>;
   onSubmitDesignGeneration: (conversationTaskId: string, generationRatio: ProjectGenerationRatio, count: 1 | 3) => Promise<TaskRecord | null>;
 };
@@ -51,6 +53,77 @@ const imageToolCopy: Record<ImageTool, { zh: string; en: string; icon: string; p
   upscale: { zh: '放大图像', en: 'Upscale image', icon: 'zoom-in', prompt: 'Upscale the image while preserving important details' },
   resize: { zh: '调整尺寸', en: 'Resize', icon: 'maximize-2', prompt: 'Resize the image' },
   'remove-watermark': { zh: '移除水印', en: 'Remove watermark', icon: 'layout-grid', prompt: 'Remove a watermark only from an explicitly selected region' },
+};
+
+const imageToolResultSize = (task: TaskRecord, source: ProjectDesign): { width: number; height: number } => {
+  const params = task.toolParams ?? {};
+  if (task.tool === 'resize' || task.tool === 'smart-crop') {
+    return { width: Number(params.width), height: Number(params.height) };
+  }
+  if (task.tool === 'expand') {
+    return {
+      width: source.width + Number(params.left) + Number(params.right),
+      height: source.height + Number(params.top) + Number(params.bottom),
+    };
+  }
+  if (task.tool === 'upscale') {
+    const scale = Number(params.scale);
+    return { width: source.width * scale, height: source.height * scale };
+  }
+  return { width: source.width, height: source.height };
+};
+
+export const getPendingCanvasDesigns = (tasks: readonly TaskRecord[], designs: readonly ProjectDesign[]) => tasks.flatMap((task) => {
+  if ((task.capability !== 'image-editing' && task.capability !== 'local-transform')
+    || !['queued', 'running', 'unknown'].includes(task.state)
+    || !task.tool
+    || !task.sourceAssetId
+    || designs.some((design) => design.sourceTaskId === task.id
+      || (task.result?.assetIds ?? []).includes(design.assetId)
+      || task.result?.toolCandidate?.resultAssetId === design.assetId)) return [];
+  const source = (task.sourceDesignId ? designs.find((design) => design.id === task.sourceDesignId) : undefined)
+    ?? designs.find((design) => design.assetId === task.sourceAssetId);
+  if (!source) return [];
+  const size = imageToolResultSize(task, source);
+  if (!Number.isFinite(size.width) || !Number.isFinite(size.height) || size.width <= 0 || size.height <= 0) return [];
+  return [{ id: task.id, rowKey: source.sourceTaskId, anchorId: source.id, width: size.width, height: size.height, status: task.state, ...(task.errorCode ? { errorCode: task.errorCode } : {}) }];
+});
+
+const isImageToolTask = (task: TaskRecord): boolean => task.capability === 'image-editing' || task.capability === 'local-transform';
+
+const taskProducesDesign = (task: TaskRecord, design: ProjectDesign): boolean => (
+  isImageToolTask(task)
+  && (task.id === design.sourceTaskId
+    || (task.result?.assetIds ?? []).includes(design.assetId)
+    || task.result?.toolCandidate?.resultAssetId === design.assetId)
+);
+
+const imageToolTaskForDesign = (tasks: readonly TaskRecord[], design: ProjectDesign): TaskRecord | undefined => tasks.find((task) => taskProducesDesign(task, design));
+
+export const imageToolDesignRowKeys = (tasks: readonly TaskRecord[], designs: readonly ProjectDesign[]): Record<string, string> => {
+  const byAsset = new Map(designs.map((design) => [design.assetId, design]));
+  const rowKeys: Record<string, string> = {};
+  designs.forEach((design) => {
+    const task = imageToolTaskForDesign(tasks, design);
+    if (!task?.sourceAssetId) return;
+    const source = (task.sourceDesignId ? designs.find((candidate) => candidate.id === task.sourceDesignId) : undefined)
+      ?? byAsset.get(task.sourceAssetId);
+    if (source) rowKeys[design.id] = source.sourceTaskId;
+  });
+  return rowKeys;
+};
+
+export const imageToolDesignAnchors = (tasks: readonly TaskRecord[], designs: readonly ProjectDesign[]): Record<string, string> => {
+  const byAsset = new Map(designs.map((design) => [design.assetId, design]));
+  const anchors: Record<string, string> = {};
+  designs.forEach((design) => {
+    const task = imageToolTaskForDesign(tasks, design);
+    const source = task?.sourceDesignId
+      ? designs.find((candidate) => candidate.id === task.sourceDesignId)
+      : task?.sourceAssetId ? byAsset.get(task.sourceAssetId) : undefined;
+    if (source) anchors[design.id] = source.id;
+  });
+  return anchors;
 };
 
 const toAttachment = (attachment: ConversationDockAttachment): ConversationImageAttachment => ({ name: attachment.name, mimeType: attachment.mimeType, bytes: attachment.bytes });
@@ -100,7 +173,7 @@ const getAnalysisStatus = (task: TaskRecord, locale: Locale): { icon: string; ki
   return { icon: 'clock', kind: 'running', label: t(locale, '处理中', 'Processing') };
 };
 
-export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onOpenDocument, onRename, onDuplicate, onArchive, onConnections, onSubmitImageTask, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
+export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onRename, onDuplicate, onArchive, onConnections, onSubmitImageTask, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
   const onDesignsChangeRef = useRef(onDesignsChange);
   onDesignsChangeRef.current = onDesignsChange;
@@ -123,6 +196,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const [analysisHistoryOpen, setAnalysisHistoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
+  const imageTaskStatesRef = useRef<Map<string, TaskRecord['state']>>(new Map());
 
   const refresh = useCallback(async () => {
     if (!libraryId) return;
@@ -153,6 +227,18 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setSelectedDesignIds([]);
     setAnalysisCollapsed(false);
   }, [project.id]);
+  useEffect(() => {
+    const previous = imageTaskStatesRef.current;
+    tasks.forEach((task) => {
+      if (task.capability !== 'image-editing' && task.capability !== 'local-transform') return;
+      const priorState = previous.get(task.id);
+      if (priorState !== task.state && (task.state === 'failed' || task.state === 'cancelled' || task.state === 'unknown')) {
+        const reason = task.errorCode ? itemErrorMessage(locale, task.errorCode) : itemErrorMessage(locale, '');
+        notify(reason);
+      }
+      previous.set(task.id, task.state);
+    });
+  }, [locale, notify, tasks]);
 
   const latestAnalysisTask = (latestConversation ? tasks.find((task) => task.id === latestConversation.id) ?? latestConversation : undefined)
     ?? (threadId ? tasks.filter((task) => task.capability === 'conversation' && task.analysisThreadId === threadId).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))[0] : undefined);
@@ -165,8 +251,13 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     && analysisTask.visualContextPlan?.clarificationRequired !== true
     && !tasks.some((task) => task.capability === 'design-generation' && (task.state === 'queued' || task.state === 'running'));
   const designTasks = tasks.filter((task) => task.capability === 'design-generation' && task.analysisThreadId === threadId);
-  const pendingDesigns = designTasks.flatMap((task) => task.generationSlots?.filter((slot) => slot.state === 'queued' || slot.state === 'running').map((slot) => ({ id: `${task.id}-${slot.id}`, rowKey: task.id, width: analysisTask?.designContext?.document.width ?? 1080, height: analysisTask?.designContext?.document.height ?? 1440 })) ?? []);
+  const pendingDesigns = [
+    ...designTasks.flatMap((task) => task.generationSlots?.filter((slot) => slot.state === 'queued' || slot.state === 'running').map((slot) => ({ id: `${task.id}-${slot.id}`, rowKey: task.id, width: task.designContext?.canvas.width ?? 1080, height: task.designContext?.canvas.height ?? 1440 })) ?? []),
+    ...getPendingCanvasDesigns(tasks, designs),
+  ];
   const selectedDesigns = designs.filter((design) => selectedDesignIds.includes(design.id));
+  const designRowKeys = imageToolDesignRowKeys(tasks, designs);
+  const designAnchors = imageToolDesignAnchors(tasks, designs);
   const analysisHistory = getAnalysisHistory(tasks, threadId, analysisTask);
   useEffect(() => {
     let cancelled = false;
@@ -213,7 +304,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   };
   const generate = async (count: 1 | 3): Promise<void> => {
     if (!analysisTask || !canGenerate) return;
-    await onSubmitDesignGeneration(analysisTask.id, project.generationRatio ?? '3:4', count);
+    await onSubmitDesignGeneration(analysisTask.id, project.generationRatio ?? 'original', count);
     void refresh();
   };
   const configureImageTool = (tool: ImageTool): void => {
@@ -245,7 +336,8 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     });
     setImageToolSubmitting(true);
     try {
-      await onSubmitImageTask({ tool: activeTool, prompt: imageToolCopy[activeTool].prompt, params: toolParams, baseRevisionId: null, targetLayerId: design.id, ...(region ? { region } : {}), beforeScene });
+      const task = await onSubmitImageTask({ tool: activeTool, prompt: imageToolCopy[activeTool].prompt, params: toolParams, baseRevisionId: null, targetLayerId: design.id, ...(region ? { region } : {}), beforeScene });
+      if (task) setTasks((current) => [...current.filter((candidate) => candidate.id !== task.id), task]);
       setActiveTool(null);
       setToolRegion(undefined);
       void refresh();
@@ -262,14 +354,61 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setLayout(next);
     if (libraryId && !readOnly) await getDesktopApi().saveProjectCanvasLayout?.({ libraryId, projectId: project.id, layout: next });
   };
+  const importImages = async (files: readonly File[]): Promise<void> => {
+    if (readOnly || !libraryId || !getDesktopApi().importAssets || !getDesktopApi().addProjectDesigns) return;
+    const images = files.filter((file) => file.type.startsWith('image/'));
+    if (!images.length) return;
+    try {
+      const api = getDesktopApi();
+      if (!api.importAssets || !api.addProjectDesigns) return;
+      const prepared = await Promise.all(images.map(async (file) => {
+        const image = await readImageFile(file);
+        let width = 1080;
+        let height = 1440;
+        if (typeof createImageBitmap === 'function') {
+          const bitmap = await createImageBitmap(file);
+          width = bitmap.width;
+          height = bitmap.height;
+          bitmap.close();
+        }
+        return { image, width, height };
+      }));
+      const imported = await api.importAssets({
+        libraryId,
+        projectId: project.id,
+        items: prepared.map(({ image }) => ({ name: image.name, mimeType: image.mimeType, data: image.bytes, metadata: { purpose: 'project-design', origin: 'canvas-import' } })),
+      });
+      const successful = imported?.filter((result): result is Extract<typeof result, { status: 'success' }> => result.status === 'success') ?? [];
+      if (successful.length !== prepared.length) throw new Error('IMAGE_IMPORT_FAILED');
+      const now = new Date().toISOString();
+      const next = await api.addProjectDesigns({
+        libraryId,
+        projectId: project.id,
+        designs: successful.map((result, index) => ({
+          id: `design-${crypto.randomUUID()}`,
+          projectId: project.id,
+          assetId: result.asset.id,
+          sourceTaskId: `canvas-import-${crypto.randomUUID()}`,
+          width: prepared[index]!.width,
+          height: prepared[index]!.height,
+          title: prepared[index]!.image.name,
+          createdAt: now,
+        })),
+      });
+      setDesigns(next ?? []);
+      onDesignsChangeRef.current?.(next ?? []);
+    } catch {
+      notify(t(locale, '图片导入失败。', 'Image import failed.'));
+    }
+  };
   const exportSelected = async (): Promise<void> => {
     if (selectedDesigns.length === 0 || !libraryId) return;
     let exported = 0;
     for (const design of selectedDesigns) {
-      const result = await getDesktopApi().exportDocument?.({
+      const result = await getDesktopApi().exportProjectDesign?.({
         libraryId,
         projectId: project.id,
-        documentId: design.id,
+        designId: design.id,
         format: 'png',
         scene: { version: 1, id: design.id, width: design.width, height: design.height, layers: [{ id: design.id, type: 'image', assetId: design.assetId, x: 0, y: 0, width: design.width, height: design.height, rotation: 0, opacity: 1, visible: true, locked: false }] },
       });
@@ -311,7 +450,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   };
   return (
     <section className="project-canvas-surface" data-testid="project-canvas" aria-label={t(locale, '设计画布', 'Design canvas')}>
-      <div className="project-canvas-toolbar project-canvas-toolbar--top">
+      <div className={`project-canvas-toolbar project-canvas-toolbar--top${menuOpen ? ' project-canvas-toolbar--menu-open' : ''}`}>
         <div className="project-canvas-toolbar__group">
           <div className="project-canvas-menu">
             <IconButton name="menu" label={t(locale, '项目操作', 'Project actions')} aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} />
@@ -324,17 +463,10 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
           </div>
           <span className="project-canvas-toolbar__title">{project.name}</span>
         </div>
-        <div className="project-canvas-toolbar__documents">
-          {onOpenDocument && project.documentEntries?.map((entry) => (
-            <button key={entry.id} type="button" className="ui-button ui-button--text" onClick={() => onOpenDocument(entry.id)}>
-              {t(locale, `打开${entry.name}`, `Open ${entry.name}`)}
-            </button>
-          ))}
-        </div>
       </div>
       <aside className="project-canvas-image-tools" aria-label={t(locale, '图片工具', 'Image tools')}>
         <div className="project-canvas-toolbar__actions">
-          <IconButton name="download" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
+          <IconButton name="download" tooltipPlacement="right" label={t(locale, '导出所选设计稿', 'Export selected design')} disabled={selectedDesigns.length === 0} onClick={() => { void exportSelected(); }} />
         </div>
         <Tooltip
           content={selectedDesigns.length === 1 ? t(locale, `当前图片：${selectedDesigns[0]!.title}`, `Current image: ${selectedDesigns[0]!.title}`) : t(locale, '选择一张图片后使用工具', 'Select one image to use a tool')}
@@ -343,7 +475,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
           <div role="toolbar" aria-label={t(locale, '图片工具', 'Image tools')}>
             {imageTools.map((tool) => {
               const copy = imageToolCopy[tool];
-              return <IconButton key={tool} name={copy.icon} label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
+              return <IconButton key={tool} name={copy.icon} tooltipPlacement="right" label={t(locale, copy.zh, copy.en)} aria-pressed={activeTool === tool} disabled={readOnly || selectedDesigns.length !== 1 || imageToolSubmitting} onClick={() => configureImageTool(tool)} />;
             })}
           </div>
         </Tooltip>
@@ -355,12 +487,15 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
         viewport={layout?.viewport}
         initialNodes={layout?.nodes}
         selectedDesignIds={selectedDesignIds}
+        designRowKeys={designRowKeys}
+        designAnchors={designAnchors}
         pendingDesigns={pendingDesigns}
         readOnly={readOnly}
         onSelect={(designId) => setSelectedDesignIds(designId ? [designId] : [])}
         onAddToConversation={(designId) => { void addDesignToConversation(designId); }}
         onCanvasBackground={() => setAnalysisCollapsed(true)}
         onLayoutChange={saveLayout}
+        onImportImages={importImages}
       />
       {analysisOpen && analysisTask && <div className={`project-canvas-analysis-panel ${analysisCollapsed ? 'is-collapsed project-canvas-analysis-panel--collapsed' : 'project-canvas-analysis-panel--expanded'}`}>
         <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} collapsed={analysisCollapsed} onGenerate={(count) => { void generate(count); }} onCopyRequest={copyAnalysisRequest} onExpand={() => setAnalysisCollapsed(false)} />
@@ -386,7 +521,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
           designer={designer}
           designerOptions={designerOptions}
           onDesignerChange={onDesignerChange}
-          generationRatio={project.generationRatio ?? '3:4'}
+          generationRatio={project.generationRatio ?? 'original'}
           onGenerationRatioChange={onGenerationRatioChange}
           textareaLabel={t(locale, '设计需求', 'Design request')}
           placeholder={t(locale, '描述你想生成的设计…', 'Describe the design you want…')}
@@ -401,13 +536,14 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
           notify={notify}
         />
       </div>
-      {activeTool && selectedDesigns.length === 1 && <Modal title={t(locale, imageToolCopy[activeTool].zh, imageToolCopy[activeTool].en)} locale={locale} onClose={() => setActiveTool(null)}>
+      {activeTool && selectedDesigns.length === 1 && <Modal title={t(locale, imageToolCopy[activeTool].zh, imageToolCopy[activeTool].en)} locale={locale} onClose={() => setActiveTool(null)} footer={<ToolInspectorActions tool={activeTool} locale={locale} readOnly={readOnly || imageToolSubmitting} region={toolRegion} onApplyRegion={setToolRegion} onCancelRegion={() => setActiveTool(null)} onClearRegion={() => setToolRegion(undefined)} onRun={(region) => { void runImageTool(region); }} />}>
         <ToolInspector
           tool={activeTool}
           tools={[activeTool]}
           params={toolParams}
           locale={locale}
           readOnly={readOnly || imageToolSubmitting}
+          hideActions
           image={{ width: selectedDesigns[0]!.width, height: selectedDesigns[0]!.height }}
           region={toolRegion}
           onToolChange={configureImageTool}

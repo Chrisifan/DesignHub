@@ -26,7 +26,7 @@ it('classifies project files so read-only delivery excludes private content', ()
   expect(classifyPackageEntry('conversation/history.json')).toBe('conversation');
   expect(classifyPackageEntry('fonts/brand.ttf')).toBe('font');
   expect(classifyPackageEntry('credentials.json')).toBe('credential');
-  expect(classifyPackageEntry('documents/doc-1.scene.json')).toBe('manifest');
+  expect(classifyPackageEntry('projects/project.json')).toBe('manifest');
 });
 
 it('classifies unarchived reference materials so they stay outside project packages', () => {

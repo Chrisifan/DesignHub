@@ -33,3 +33,12 @@ it('supports keyboard focus and Escape dismissal', () => {
   fireEvent.blur(trigger);
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 });
+
+it('marks side tooltips for toolbar positioning', () => {
+  render(<Tooltip content="工具说明" placement="right">工具</Tooltip>);
+  const trigger = screen.getByText('工具');
+
+  fireEvent.mouseEnter(trigger);
+
+  expect(screen.getByRole('tooltip', { hidden: true })).toHaveClass('ui-tooltip--right');
+});

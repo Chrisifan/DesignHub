@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { getToolDefinition, needsRegion, validateToolParams } from './target';
+import { defaultToolParams, getToolDefinition, needsRegion, validateToolParams } from './target';
 
 it('local and regional target rules are explicit', () => {
   expect(needsRegion('remove-object')).toBe(true);
@@ -31,5 +31,14 @@ it('validates tool-specific parameters instead of accepting generic JSON', () =>
   expect(validateToolParams('remove-watermark', { rightsConfirmed: 'confirmed', feather: 10 })).toEqual({ ok: true });
   expect(validateToolParams('remove-watermark', { rightsConfirmed: 'pending', feather: 10 })).toEqual({ ok: false, reason: 'INVALID_PARAMS' });
   expect(validateToolParams('expand', { top: 10, right: 10, bottom: 10, left: 10 })).toEqual({ ok: true });
+  expect(validateToolParams('expand', { mode: 'original-scene', top: 0, right: 0, bottom: 0, left: 0 })).toEqual({ ok: false, reason: 'INVALID_PARAMS' });
+  expect(validateToolParams('expand', { mode: 'original-scene', top: 0, right: 120, bottom: 0, left: 0 })).toEqual({ ok: true });
+  expect(validateToolParams('expand', { mode: 'original-scene', top: 0, right: 120.5, bottom: 0, left: 0 })).toEqual({ ok: false, reason: 'INVALID_PARAMS' });
   expect(validateToolParams('resize', { width: 100, height: 100, format: 'gif' })).toEqual({ ok: false, reason: 'INVALID_PARAMS' });
+});
+
+it('uses a visible non-zero expansion as the default', () => {
+  const params = defaultToolParams('expand', { width: 800, height: 600 });
+
+  expect(params).toEqual({ mode: 'original-scene', top: 75, right: 75, bottom: 75, left: 75 });
 });

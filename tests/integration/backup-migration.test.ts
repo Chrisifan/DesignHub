@@ -73,7 +73,6 @@ it('backs up committed WAL data and the complete current M02 managed workspace, 
   await searchStore.replace([{
     libraryId: workspace.library.libraryId,
     projectId: 'project-indexed',
-    documentId: 'doc-indexed',
     title: 'Indexed project',
     contributorIds: ['designer-a'],
   }]);

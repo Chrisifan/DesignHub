@@ -1,12 +1,36 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image as KonvaImage, Layer, Rect, Stage } from 'react-konva';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { ProjectDesign, ProjectCanvasLayout } from '../../features/projects/metadata';
+import type { TaskState } from '../../features/tasks/state';
 import { getDesktopApi } from '../../platform/runtime';
+import { imageFilesFromTransfer } from '../../features/assets/image-input';
 
 export type CanvasViewport = ProjectCanvasLayout['viewport'];
 export type CanvasSize = { width: number; height: number };
 export type DesignDimensions = Pick<ProjectDesign, 'id' | 'width' | 'height'> & {
+  sourceTaskId?: string;
   rowKey?: string;
+  anchorId?: string;
+  status?: Exclude<TaskState, 'completed'>;
+  errorCode?: string;
+};
+
+const orderAnchoredDesigns = (designs: readonly DesignDimensions[]): DesignDimensions[] => {
+  const anchored = new Map<string, DesignDimensions[]>();
+  designs.forEach((design) => {
+    if (!design.anchorId) return;
+    anchored.set(design.anchorId, [...(anchored.get(design.anchorId) ?? []), design]);
+  });
+  return designs.flatMap((design) => design.anchorId && designs.some((candidate) => candidate.id === design.anchorId)
+    ? []
+    : [design, ...(anchored.get(design.id) ?? [])]);
+};
+
+const pendingStatusLabel = (design: DesignDimensions): string => {
+  if (design.status === 'failed') return '处理失败';
+  if (design.status === 'cancelled') return '已取消';
+  if (design.status === 'unknown') return '状态未知';
+  return design.status === 'queued' ? '排队中' : '处理中';
 };
 
 export const layoutProjectDesigns = (
@@ -20,7 +44,7 @@ export const layoutProjectDesigns = (
   let y = 0;
   let rowHeight = 0;
   let rowKey: string | undefined;
-  designs.forEach((design) => {
+  orderAnchoredDesigns(designs).forEach((design) => {
     const width = Math.max(1, design.width);
     const height = Math.max(1, design.height);
     const startsExplicitRow = design.rowKey !== undefined && design.rowKey !== rowKey;
@@ -41,7 +65,7 @@ export const layoutProjectDesigns = (
   });
   if (options.centerRows) {
     const rows = new Map<number, { minX: number; maxX: number; ids: string[] }>();
-    designs.forEach((design) => {
+    orderAnchoredDesigns(designs).forEach((design) => {
       const position = positions[design.id];
       if (!position) return;
       const row = rows.get(position.y) ?? { minX: position.x, maxX: position.x, ids: [] };
@@ -57,6 +81,90 @@ export const layoutProjectDesigns = (
   }
   return positions;
 };
+
+const canvasGap = 24;
+
+const sameCanvasRow = (left: DesignDimensions, right: DesignDimensions, positions: Record<string, Point>): boolean => {
+  const leftPosition = positions[left.id];
+  const rightPosition = positions[right.id];
+  if (!leftPosition || !rightPosition) return false;
+  return Math.abs(leftPosition.y - rightPosition.y) <= Math.max(canvasGap, Math.min(left.height, right.height) * 0.1);
+};
+
+/** Keep existing/manual positions and insert new results beside their source. */
+export const layoutAnchoredCanvasNodes = (
+  designs: readonly DesignDimensions[],
+  pendingDesigns: readonly DesignDimensions[],
+  currentNodes: Record<string, Point>,
+): Record<string, Point> => {
+  const fallback = layoutProjectDesigns(designs, { centerRows: true });
+  const combinedFallback = layoutProjectDesigns([...designs, ...pendingDesigns], { centerRows: true });
+  const positions: Record<string, Point> = {};
+  const items = new Map<string, DesignDimensions>();
+  const pendingIds = new Set(pendingDesigns.map((design) => design.id));
+  designs.forEach((design) => {
+    items.set(design.id, design);
+    const current = currentNodes[design.id] ?? (design.sourceTaskId ? currentNodes[design.sourceTaskId] : undefined);
+    const fallbackPosition = fallback[design.id];
+    positions[design.id] = current
+      ? { x: current.x, y: current.y }
+      : fallbackPosition
+        ? { x: fallbackPosition.x, y: fallbackPosition.y }
+        : { x: 0, y: 0 };
+  });
+  pendingDesigns.forEach((design) => {
+    items.set(design.id, design);
+    const current = currentNodes[design.id];
+    if (current) positions[design.id] = { x: current.x, y: current.y };
+  });
+
+  const ordered = orderAnchoredDesigns([...designs, ...pendingDesigns]);
+  const insertedByAnchor = new Map<string, number>();
+  ordered.forEach((item) => {
+    const anchor = item.anchorId ? items.get(item.anchorId) : undefined;
+    const directCurrent = currentNodes[item.id];
+    const current = directCurrent ?? (item.sourceTaskId ? currentNodes[item.sourceTaskId] : undefined);
+    const shouldRepairAnchoredRow = Boolean(anchor && directCurrent && !pendingIds.has(item.id) && !sameCanvasRow(item, anchor, positions));
+    if (current && !shouldRepairAnchoredRow) return;
+    delete positions[item.id];
+
+    const anchorPosition = anchor ? positions[anchor.id] : undefined;
+    if (!anchor || !anchorPosition) {
+      const rowItems = item.rowKey === undefined
+        ? []
+        : Array.from(items.entries()).filter(([id, candidate]) => id !== item.id && candidate.rowKey === item.rowKey && positions[id]);
+      if (rowItems.length > 0) {
+        const rowY = positions[rowItems[0]![0]]!.y;
+        const rowRight = Math.max(...rowItems.map(([id, candidate]) => positions[id]!.x + candidate.width));
+        positions[item.id] = { x: rowRight + canvasGap, y: rowY };
+      } else {
+        positions[item.id] = combinedFallback[item.id] ?? fallback[item.id] ?? { x: 0, y: 0 };
+      }
+      return;
+    }
+
+    const previousWidth = insertedByAnchor.get(anchor.id) ?? 0;
+    const insertionX = anchorPosition.x + anchor.width + canvasGap + previousWidth;
+    const shift = item.width + canvasGap;
+    Object.entries(positions).forEach(([id, position]) => {
+      const candidate = items.get(id);
+      if (!candidate || id === anchor.id || !sameCanvasRow(candidate, anchor, positions)) return;
+      if (position.x >= insertionX) position.x += shift;
+    });
+    positions[item.id] = { x: insertionX, y: anchorPosition.y };
+    insertedByAnchor.set(anchor.id, previousWidth + shift);
+  });
+
+  return positions;
+};
+
+export const persistedCanvasNodes = (
+  designs: readonly DesignDimensions[],
+  nodes: Record<string, Point>,
+): Record<string, Point> => Object.fromEntries(designs.flatMap((design) => {
+  const position = nodes[design.id];
+  return position ? [[design.id, { x: position.x, y: position.y }]] : [];
+}));
 
 export const zoomAroundPointer = (viewport: CanvasViewport, pointer: { x: number; y: number }, nextZoom: number): CanvasViewport => {
   const zoom = Math.min(3, Math.max(0.2, nextZoom));
@@ -87,6 +195,8 @@ type ProjectCanvasStageProps = {
   designs: readonly ProjectDesign[];
   viewport?: CanvasViewport;
   initialNodes?: Record<string, { x: number; y: number }>;
+  designRowKeys?: Record<string, string>;
+  designAnchors?: Record<string, string>;
   selectedDesignIds?: readonly string[];
   pendingDesigns?: readonly DesignDimensions[];
   readOnly?: boolean;
@@ -96,6 +206,7 @@ type ProjectCanvasStageProps = {
   onLayoutChange?: (layout: { viewport: CanvasViewport; nodes: Record<string, { x: number; y: number }> }) => void;
   onViewportChange?: (viewport: CanvasViewport) => void;
   onReady?: (size: CanvasSize) => void;
+  onImportImages?: (files: readonly File[]) => void | Promise<void>;
 };
 
 type Point = { x: number; y: number };
@@ -112,7 +223,7 @@ const useAssetImages = (libraryId: string | undefined, projectId: string, design
         if (!libraryId) return;
         const bytes = await getDesktopApi().readAsset?.({ libraryId, projectId, assetId: design.assetId });
         if (!bytes || cancelled) return;
-        const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
+        const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
         created.push(url);
         await new Promise<void>((resolve) => {
           const image = new Image();
@@ -139,6 +250,8 @@ export const ProjectCanvasStage = ({
   designs,
   viewport: initialViewport,
   initialNodes,
+  designRowKeys,
+  designAnchors,
   selectedDesignIds = [],
   pendingDesigns = [],
   readOnly = false,
@@ -148,6 +261,7 @@ export const ProjectCanvasStage = ({
   onLayoutChange,
   onViewportChange,
   onReady,
+  onImportImages,
 }: ProjectCanvasStageProps) => {
   const hostRef = useRef<HTMLDivElement>(null);
   // Konva's Stage instance is not exported as a stable React ref type.
@@ -155,17 +269,22 @@ export const ProjectCanvasStage = ({
   const stageRef = useRef<any>(null);
   const [size, setSize] = useState<CanvasSize>({ width: 1200, height: 760 });
   const [viewport, setViewport] = useState<CanvasViewport>(initialViewport ?? { zoom: 0.65, offsetX: 40, offsetY: 40 });
-  const initialLayoutDesigns = designs.map((design) => ({ ...design, rowKey: design.sourceTaskId }));
-  const [nodes, setNodes] = useState<Record<string, Point>>(() => initialNodes ?? layoutProjectDesigns(initialLayoutDesigns, { centerRows: true }));
+  const initialLayoutDesigns = designs.map((design) => ({ ...design, rowKey: designRowKeys?.[design.id] ?? design.sourceTaskId, anchorId: designAnchors?.[design.id] }));
+  const [nodes, setNodes] = useState<Record<string, Point>>(() => layoutAnchoredCanvasNodes(
+    initialLayoutDesigns,
+    pendingDesigns,
+    initialNodes ?? layoutProjectDesigns(initialLayoutDesigns, { centerRows: true }),
+  ));
   const [skeletonPhase, setSkeletonPhase] = useState(0);
   const dragRef = useRef<{ start: Point; viewport: CanvasViewport } | null>(null);
+  const appliedInitialNodesKey = useRef<string | undefined>(undefined);
   const previousDesignCount = useRef(designs.length);
   const images = useAssetImages(libraryId, projectId, designs);
-  const layoutDesigns = useMemo(() => designs.map((design) => ({ ...design, rowKey: design.sourceTaskId })), [designs]);
+  const layoutDesigns = useMemo(() => designs.map((design) => ({ ...design, rowKey: designRowKeys?.[design.id] ?? design.sourceTaskId, anchorId: designAnchors?.[design.id] })), [designAnchors, designRowKeys, designs]);
   const notifyLayout = useCallback((nextViewport: CanvasViewport, nextNodes: Record<string, Point>): void => {
     onViewportChange?.(nextViewport);
-    onLayoutChange?.({ viewport: nextViewport, nodes: nextNodes });
-  }, [onLayoutChange, onViewportChange]);
+    onLayoutChange?.({ viewport: nextViewport, nodes: persistedCanvasNodes(layoutDesigns, nextNodes) });
+  }, [layoutDesigns, onLayoutChange, onViewportChange]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -188,35 +307,12 @@ export const ProjectCanvasStage = ({
 
   useEffect(() => {
     setNodes((current) => {
-      const legacyFallback = layoutProjectDesigns(layoutDesigns);
-      const fallback = layoutProjectDesigns(layoutDesigns, { centerRows: true });
-      const isLegacyAutoLayout = Boolean(initialNodes)
-        && designs.length > 0
-        && designs.every((design) => {
-          const currentPosition = current[design.id];
-          const legacyPosition = legacyFallback[design.id];
-          return currentPosition?.x === legacyPosition?.x && currentPosition?.y === legacyPosition?.y;
-        });
-      const next: Record<string, Point> = {};
-      designs.forEach((design) => {
-        next[design.id] = isLegacyAutoLayout
-          ? fallback[design.id] ?? { x: 0, y: 0 }
-          : current[design.id] ?? fallback[design.id] ?? { x: 0, y: 0 };
-      });
-      const rows = new Map<string, string[]>();
-      layoutDesigns.forEach((design) => {
-        if (!design.rowKey) return;
-        rows.set(design.rowKey, [...(rows.get(design.rowKey) ?? []), design.id]);
-      });
-      rows.forEach((ids) => {
-        if (ids.length < 2) return;
-        const yValues = ids.map((id) => next[id]?.y).filter((value): value is number => value !== undefined);
-        if (new Set(yValues).size < 2) return;
-        ids.forEach((id) => { next[id] = fallback[id] ?? next[id]!; });
-      });
+      const next = layoutAnchoredCanvasNodes(layoutDesigns, pendingDesigns, current);
+      const ids = Object.keys(next);
+      if (ids.length === Object.keys(current).length && ids.every((id) => current[id]?.x === next[id]?.x && current[id]?.y === next[id]?.y)) return current;
       return next;
     });
-  }, [designs, layoutDesigns]);
+  }, [layoutDesigns, pendingDesigns]);
 
   useEffect(() => {
     if (pendingDesigns.length === 0) {
@@ -227,28 +323,40 @@ export const ProjectCanvasStage = ({
     return () => window.clearInterval(timer);
   }, [pendingDesigns.length]);
 
+  const displayNodes = useMemo(() => layoutAnchoredCanvasNodes(layoutDesigns, pendingDesigns, nodes), [layoutDesigns, nodes, pendingDesigns]);
+
   useEffect(() => {
     if (designs.length <= previousDesignCount.current || designs.length === 0) {
       previousDesignCount.current = designs.length;
       return;
     }
     const newest = designs.at(-1)!;
-    const position = nodes[newest.id] ?? layoutProjectDesigns([{ ...newest, rowKey: newest.sourceTaskId }], { centerRows: true })[newest.id] ?? { x: 0, y: 0 };
+    const position = displayNodes[newest.id] ?? { x: 0, y: 0 };
     const host = hostRef.current;
     if (host) {
       const next = centerNodeInViewport({ ...position, width: newest.width, height: newest.height }, { width: host.clientWidth || size.width, height: host.clientHeight || size.height }, viewport.zoom);
       setViewport(next);
-      notifyLayout(next, nodes);
+      notifyLayout(next, displayNodes);
     }
     previousDesignCount.current = designs.length;
-  }, [designs, nodes, notifyLayout, size.height, size.width, viewport.zoom]);
+  }, [designAnchors, designRowKeys, designs, displayNodes, notifyLayout, size.height, size.width, viewport.zoom]);
 
   useEffect(() => {
-    if (initialNodes) setNodes((current) => ({ ...current, ...initialNodes }));
-  }, [initialNodes]);
+    if (!initialNodes) return;
+    const key = Object.entries(initialNodes).sort(([left], [right]) => left.localeCompare(right)).map(([id, point]) => `${id}:${point.x},${point.y}`).join('|');
+    if (key === appliedInitialNodesKey.current) return;
+    appliedInitialNodesKey.current = key;
+    setNodes((current) => layoutAnchoredCanvasNodes(layoutDesigns, pendingDesigns, { ...current, ...initialNodes }));
+  }, [initialNodes, layoutDesigns, pendingDesigns]);
 
-  const pendingPositions = useMemo(() => layoutProjectDesigns([...layoutDesigns, ...pendingDesigns], { centerRows: true }), [layoutDesigns, pendingDesigns]);
   const skeletonOpacity = 0.14 + ((Math.sin((skeletonPhase / 24) * Math.PI * 2) + 1) / 2) * 0.16;
+
+  const pendingStatus = (design: DesignDimensions): { fill: string; stroke: string; label: string } => {
+    if (design.status === 'failed') return { fill: 'rgba(180,83,79,.10)', stroke: '#b4534f', label: '处理失败' };
+    if (design.status === 'cancelled') return { fill: 'rgba(148,163,184,.18)', stroke: '#64748b', label: '已取消' };
+    if (design.status === 'unknown') return { fill: 'rgba(251,191,36,.2)', stroke: '#d97706', label: '状态未知' };
+    return { fill: `rgba(148,163,184,${skeletonOpacity.toFixed(3)})`, stroke: 'rgba(148,163,184,.65)', label: design.status === 'queued' ? '排队中' : '处理中' };
+  };
 
   const handleWheel = (rawEvent: unknown): void => {
     const event = rawEvent as StageEvent;
@@ -291,10 +399,15 @@ export const ProjectCanvasStage = ({
     notifyLayout(viewport, nextNodes);
   };
   const isTestCanvas = typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent);
+  const handleDrop = (event: DragEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    if (!readOnly) void onImportImages?.(imageFilesFromTransfer(event.dataTransfer));
+  };
 
   return (
-    <div ref={hostRef} className="project-canvas-stage" data-testid="project-canvas-stage">
+    <div ref={hostRef} className="project-canvas-stage" data-testid="project-canvas-stage" data-pending-design-count={pendingDesigns.length} onDragOver={(event) => event.preventDefault()} onDrop={handleDrop}>
       {isTestCanvas ? <div aria-label="设计画布内容">
+        {pendingDesigns.map((design) => <span key={`pending-${design.id}`} role="status" aria-label={`${pendingStatusLabel(design)} ${design.id}`} />)}
         {designs.map((design) => (
           <button
             type="button"
@@ -325,11 +438,26 @@ export const ProjectCanvasStage = ({
       >
         <Layer>
           {pendingDesigns.map((design) => {
-            const position = nodes[design.id] ?? pendingPositions[design.id] ?? { x: 0, y: 0 };
-            return <Rect key={`pending-${design.id}`} x={position.x} y={position.y} width={design.width} height={design.height} fill={`rgba(148,163,184,${skeletonOpacity.toFixed(3)})`} stroke="rgba(148,163,184,.65)" dash={[12, 10]} dashOffset={-skeletonPhase * 8} strokeWidth={2 / viewport.zoom} cornerRadius={8} />;
+            const position = displayNodes[design.id] ?? { x: 0, y: 0 };
+            const status = pendingStatus(design);
+            const settled = design.status === 'failed' || design.status === 'cancelled' || design.status === 'unknown';
+            return <Fragment key={`pending-${design.id}`}>
+              <Rect x={position.x} y={position.y} width={design.width} height={design.height} fill={status.fill} stroke={status.stroke} {...(settled ? {} : { dash: [12, 10], dashOffset: -skeletonPhase * 8 })} strokeWidth={2 / viewport.zoom} cornerRadius={8} />
+              {settled && <Text
+                x={position.x + 16}
+                y={position.y + 16}
+                width={Math.max(120, design.width - 32)}
+                height={Math.max(56, design.height - 32)}
+                text={status.label}
+                fill={status.stroke}
+                fontSize={11 / viewport.zoom}
+                align="center"
+                verticalAlign="middle"
+              />}
+            </Fragment>;
           })}
           {designs.map((design) => {
-            const position = nodes[design.id] ?? { x: 0, y: 0 };
+            const position = displayNodes[design.id] ?? { x: 0, y: 0 };
             const selected = selectedDesignIds.includes(design.id);
             return (
               <KonvaImage

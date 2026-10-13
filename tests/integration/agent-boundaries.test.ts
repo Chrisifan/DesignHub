@@ -32,7 +32,7 @@ it('requires a project target and object parameters for an allowed tool', () => 
 it('rejects target identifiers that attempt to escape the project boundary', () => {
   expect(validateAgentToolRequest({
     tool: 'execute-image-tool',
-    target: { projectId: 'p1', documentId: '../other-project' },
+    target: { projectId: 'p1', layerId: '../other-project' },
     params: { operation: 'resize' },
   })).toEqual({ ok: false, reason: 'INVALID_TARGET' });
 });

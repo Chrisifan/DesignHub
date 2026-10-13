@@ -62,7 +62,7 @@ const isMetadataInput = (value: unknown): value is UpdateProjectMetadataInput =>
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
   if (!isWorkspaceId(input.libraryId) || !isWorkspaceId(input.projectId) || typeof input.patch !== 'object' || input.patch === null || Array.isArray(input.patch)) return false;
-  return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'generationRatio', 'activeDesignerVersionId', 'contributorDesignerVersionIds', 'designerSnapshot', 'brandSnapshot', 'coverAssetId', 'documents', 'archived'].includes(key))
+  return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'generationRatio', 'activeDesignerVersionId', 'contributorDesignerVersionIds', 'designerSnapshot', 'coverAssetId', 'designs', 'canvasLayout', 'archived'].includes(key))
     && ((input.patch as Record<string, unknown>).generationRatio === undefined || isProjectGenerationRatio((input.patch as Record<string, unknown>).generationRatio));
 };
 

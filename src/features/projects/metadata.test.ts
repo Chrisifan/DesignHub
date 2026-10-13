@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata } from './metadata';
+import { createProjectMetadata, migrateLegacyProjectMetadata, updateProjectMetadata, type ProjectMetadata } from './metadata';
 
 it('creates a project design collection and canvas layout snapshot', () => {
   const metadata = createProjectMetadata({
@@ -30,18 +30,14 @@ it('rejects invalid or duplicate project designs', () => {
   })).toThrow('INVALID_PROJECT_DESIGN');
 });
 
-it('creates a project metadata snapshot with an independent document list', () => {
-  const documents = [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }];
-  const metadata = createProjectMetadata({
+it('rejects the removed document metadata contract', () => {
+  expect(() => createProjectMetadata({
     projectId: 'project-1',
     name: '春间市集',
     workspaceId: 'workspace-1',
     brief: '春日活动视觉',
-    documents,
-  });
-  documents[0].name = '被修改';
-  expect(metadata).toMatchObject({ projectId: 'project-1', name: '春间市集', workspaceId: 'workspace-1', brief: '春日活动视觉' });
-  expect(metadata.documents[0].name).toBe('主海报');
+    documents: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }],
+  } as never)).toThrow('DOCUMENT_SCHEMA_REMOVED');
 });
 
 it('updates metadata without changing the previous snapshot', () => {
@@ -52,33 +48,24 @@ it('updates metadata without changing the previous snapshot', () => {
   expect(updated.updatedAt).not.toBe(initial.updatedAt);
 });
 
-it('defaults project generation ratio to portrait', () => {
-  expect(createProjectMetadata({ projectId: 'project-1', name: '项目', workspaceId: 'workspace-1' }).generationRatio).toBe('3:4');
+it('defaults project generation ratio to the original image', () => {
+  expect(createProjectMetadata({ projectId: 'project-1', name: '项目', workspaceId: 'workspace-1' }).generationRatio).toBe('original');
 });
 
-it('rejects an empty project name and invalid document dimensions', () => {
+it('rejects an empty project name and removed document fields', () => {
   expect(() => createProjectMetadata({ projectId: 'project-1', name: ' ', workspaceId: 'workspace-1' })).toThrow('INVALID_PROJECT_METADATA');
-  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documents: [{ id: 'doc-1', name: 'Poster', width: 0, height: 100 }] })).toThrow('INVALID_DOCUMENT');
+  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documentId: 'doc-1' } as never)).toThrow('DOCUMENT_SCHEMA_REMOVED');
 });
 
-it('rejects duplicate or path-like document identities', () => {
-  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documents: [
-    { id: 'doc-1', name: 'Poster', width: 100, height: 100 },
-    { id: 'doc-1', name: 'Square', width: 100, height: 100 },
-  ] })).toThrow('INVALID_DOCUMENT');
-  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documents: [
-    { id: '../outside', name: 'Poster', width: 100, height: 100 },
-  ] })).toThrow('INVALID_DOCUMENT');
-});
-
-it('keeps designer and brand snapshots immutable when updated', () => {
+it('keeps designer snapshots immutable when updated', () => {
   const designer = { versionId: 'v1', name: '纸感排版', rules: ['保留留白'] };
-  const brand = { version: 'v2', colors: ['#fff'] };
-  const metadata = createProjectMetadata({ projectId: 'project-1', name: '项目', workspaceId: 'workspace-1', designerSnapshot: designer, brandSnapshot: brand });
+  const metadata = createProjectMetadata({ projectId: 'project-1', name: '项目', workspaceId: 'workspace-1', designerSnapshot: designer });
   designer.rules.push('暖色');
-  brand.colors[0] = '#000';
   expect(metadata.designerSnapshot).toEqual({ versionId: 'v1', name: '纸感排版', rules: ['保留留白'] });
-  expect(metadata.brandSnapshot).toEqual({ version: 'v2', colors: ['#fff'] });
+});
+
+it('removes legacy brand snapshots while migrating project metadata', () => {
+  expect(migrateLegacyProjectMetadata({ projectId: 'project-1', brandSnapshot: { version: 'v2' } })).toEqual({ projectId: 'project-1' });
 });
 
 it('always includes the active designer as the first contributor', () => {

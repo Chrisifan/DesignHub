@@ -32,7 +32,7 @@ export const HomeConversationComposer = ({
 }: HomeConversationComposerProps) => {
   const [message, setMessage] = useState('');
   const [attachments, setAttachments] = useState<ConversationDockAttachment[]>([]);
-  const [generationRatio, setGenerationRatio] = useState<ProjectGenerationRatio>('3:4');
+  const [generationRatio, setGenerationRatio] = useState<ProjectGenerationRatio>('original');
   const [busy, setBusy] = useState(false);
   const submit = async (): Promise<void> => {
     const trimmed = message.trim();
@@ -42,10 +42,6 @@ export const HomeConversationComposer = ({
     }
     if (readOnly) {
       notify(t(locale, '当前工作区为只读模式。', 'The current workspace is read-only.'));
-      return;
-    }
-    if (!conversationConnected) {
-      notify(t(locale, '请先连接对话模型。', 'Connect a conversation model first.'));
       return;
     }
     if (busy) return;

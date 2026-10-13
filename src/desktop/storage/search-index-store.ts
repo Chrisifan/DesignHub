@@ -35,14 +35,13 @@ const getInternalDirectory = (handle: ProjectLibraryHandle): string => {
 const configure = (database: Database.Database): void => {
   database.pragma('journal_mode = DELETE');
   database.exec(`
-    CREATE TABLE IF NOT EXISTS search_documents (
+    CREATE TABLE IF NOT EXISTS search_projects (
       workspace_id TEXT NOT NULL,
       project_id TEXT NOT NULL,
-      document_id TEXT NOT NULL,
       payload TEXT NOT NULL,
-      PRIMARY KEY (workspace_id, project_id, document_id)
+      PRIMARY KEY (workspace_id, project_id)
     );
-    CREATE INDEX IF NOT EXISTS search_documents_workspace ON search_documents (workspace_id);
+    CREATE INDEX IF NOT EXISTS search_projects_workspace ON search_projects (workspace_id);
   `);
 };
 
@@ -109,7 +108,7 @@ const openDatabase = (databasePath: string, writable: boolean): Database.Databas
 };
 
 const parsePayload = (value: unknown): SearchIndexItem | null => {
-  if (!isRecord(value) || typeof value.projectId !== 'string' || typeof value.documentId !== 'string') return null;
+  if (!isRecord(value) || typeof value.projectId !== 'string') return null;
   const libraryId = typeof value.libraryId === 'string' ? value.libraryId : typeof value.workspaceId === 'string' ? value.workspaceId : null;
   if (!libraryId) return null;
   if (typeof value.title !== 'undefined' && typeof value.title !== 'string') return null;
@@ -142,15 +141,15 @@ export const createSearchIndexStore = (handle: ProjectLibraryHandle): SearchInde
     if (handle.library.openMode !== 'writable' || !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
     const items = buildSearchIndex(records);
     const transaction = database.transaction((next: readonly SearchIndexItem[]): void => {
-      database.prepare('DELETE FROM search_documents').run();
-      const insert = database.prepare('INSERT INTO search_documents (workspace_id, project_id, document_id, payload) VALUES (?, ?, ?, ?)');
-      next.forEach((item) => insert.run(item.libraryId, item.projectId, item.documentId, JSON.stringify({ ...item, workspaceId: item.libraryId })));
+      database.prepare('DELETE FROM search_projects').run();
+      const insert = database.prepare('INSERT INTO search_projects (workspace_id, project_id, payload) VALUES (?, ?, ?)');
+      next.forEach((item) => insert.run(item.libraryId, item.projectId, JSON.stringify({ ...item, workspaceId: item.libraryId })));
     });
     transaction(items);
   };
   const search = async (options: SearchQuery): Promise<SearchIndexItem[]> => {
     if (!options.libraryId.trim()) return [];
-    const rows = database.prepare('SELECT payload FROM search_documents WHERE workspace_id = ?').all(options.libraryId) as Array<{ payload: string }>;
+    const rows = database.prepare('SELECT payload FROM search_projects WHERE workspace_id = ?').all(options.libraryId) as Array<{ payload: string }>;
     return rows.flatMap((row) => {
       try {
         const parsed = parsePayload(JSON.parse(row.payload) as unknown);

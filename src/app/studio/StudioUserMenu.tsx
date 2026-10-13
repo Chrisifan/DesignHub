@@ -28,7 +28,6 @@ const groups: Array<{ zh: string; en: string; items: MenuItem[] }> = [
     items: [
       { view: 'designers', icon: 'users', zh: '设计师', en: 'Designers' },
       { view: 'assets', icon: 'image', zh: '素材库', en: 'Assets' },
-      { view: 'brands', icon: 'palette', zh: '品牌包', en: 'Brand kits' },
     ],
   },
   {
@@ -37,6 +36,12 @@ const groups: Array<{ zh: string; en: string; items: MenuItem[] }> = [
     items: [
       { view: 'connections', icon: 'plug', zh: '模型连接', en: 'Connections' },
       { view: 'tasks', icon: 'clock', zh: '模型任务', en: 'Model tasks' },
+    ],
+  },
+  {
+    zh: '批量工具',
+    en: 'Batch tools',
+    items: [
       { view: 'image-tool-remove-background', icon: 'wand-sparkles', zh: '去除背景', en: 'Remove background' },
       { view: 'image-tool-upscale', icon: 'image', zh: '放大图像', en: 'Upscale image' },
       { view: 'image-tool-resize', icon: 'maximize-2', zh: '尺寸转换', en: 'Resize' },

@@ -45,6 +45,10 @@
   justify-content: flex-start;
 }
 
+.project-canvas-toolbar--top.project-canvas-toolbar--menu-open {
+  z-index: 5;
+}
+
 .project-canvas-toolbar--bottom {
   top: auto;
   bottom: 18px;
@@ -143,13 +147,6 @@
 }
 
 .project-canvas-toolbar__group { align-self: flex-start; }
-
-.project-canvas-toolbar__documents {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 8px;
-}
 
 .project-canvas-image-tools {
   position: absolute;

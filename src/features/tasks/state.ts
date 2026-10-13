@@ -1,7 +1,6 @@
 import type { Region } from '../canvas/selection';
 import type { DesignScene } from '../canvas/scene';
 import type { ImageTool, ToolParams } from '../image-tools/target';
-import type { DesignSceneCandidate } from '../composition/design-scene-candidate';
 import type { VisualContextPlan } from '../agent/visual-context';
 
 export type TaskState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
@@ -114,13 +113,13 @@ const safeProviderCodes = new Set([
 export const isSafeProviderCode = (value: unknown): value is string => typeof value === 'string' && safeProviderCodes.has(value);
 
 export const taskRecordKeys = new Set<keyof TaskRecord>([
-  'id', 'requestId', 'requestText', 'state', 'cancelRequested', 'attempt', 'source', 'documentId',
+  'id', 'requestId', 'requestText', 'state', 'cancelRequested', 'attempt', 'source',
   'sourceAssetId', 'maskAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
+  'sourceDesignId',
   'portfolio', 'model', 'size', 'count', 'tool', 'toolParams', 'region', 'createdAt', 'updatedAt',
   'errorCode', 'providerFailure', 'analysisDiagnostic', 'result', 'parentConversationTaskId', 'contextAssetIds', 'contextVersion', 'designContext',
   'analysisThreadId', 'conversationParentTaskId', 'progressText', 'generationSlots', 'visualContextPlan',
   'remoteRequestId', 'remoteSupportsCancellation', 'remoteSupportsStatusQuery',
-  'candidateResolution',
 ]);
 
 export type TaskRecord = {
@@ -131,8 +130,9 @@ export type TaskRecord = {
   cancelRequested: boolean;
   attempt: number;
   source?: TaskSource;
-  documentId?: string;
   sourceAssetId?: string;
+  /** Exact source design selected for an image edit; asset ids may be shared by legacy records. */
+  sourceDesignId?: string;
   /** Managed PNG mask used by a regional image task. */
   maskAssetId?: string;
   hasMask?: boolean;
@@ -151,8 +151,6 @@ export type TaskRecord = {
   remoteRequestId?: string;
   remoteSupportsCancellation?: boolean;
   remoteSupportsStatusQuery?: boolean;
-  /** Audit state for a persisted local composition or mockup candidate. */
-  candidateResolution?: 'confirmed' | 'discarded';
   generationSlots?: DesignGenerationSlot[];
   contextAssetIds?: string[];
   contextVersion?: number;
@@ -179,7 +177,6 @@ export type TaskRecord = {
     candidate?: TaskCandidate;
     candidates?: TaskCandidate[];
     toolCandidate?: ToolCandidate;
-    compositionCandidate?: DesignSceneCandidate;
   };
 };
 

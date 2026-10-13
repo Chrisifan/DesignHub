@@ -14,7 +14,6 @@ export const exampleProjects: Project[] = [
     contributorDesignerVersionIds: ['paper-type', 'natural-story'],
     designerSnapshot: snapshot('paper-type'),
     artwork: 'market',
-    documents: 3,
   },
   {
     id: 'objects',
@@ -27,7 +26,6 @@ export const exampleProjects: Project[] = [
     contributorDesignerVersionIds: ['minimal-form'],
     designerSnapshot: snapshot('minimal-form'),
     artwork: 'objects',
-    documents: 2,
   },
   {
     id: 'type',
@@ -40,6 +38,5 @@ export const exampleProjects: Project[] = [
     contributorDesignerVersionIds: ['paper-type'],
     designerSnapshot: snapshot('paper-type'),
     artwork: 'type',
-    documents: 4,
   },
 ];

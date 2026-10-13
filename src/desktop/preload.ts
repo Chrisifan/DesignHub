@@ -5,17 +5,14 @@ import type { DesktopApi } from '../platform/contracts';
 import { credentialDeleteChannel, credentialStatusChannel, credentialStoreChannel } from './ipc/credentials';
 import { designerArtworkReadChannel, designerLoadChannel, designerSaveChannel } from './ipc/designers';
 import { assetImportChannel, assetListChannel, assetReadChannel } from './ipc/assets';
-import { sceneLoadChannel, sceneSaveChannel } from './ipc/scenes';
-import { taskCompositionPublishChannel, taskCompositionResolveChannel, taskListChannel } from './ipc/tasks';
+import { taskListChannel } from './ipc/tasks';
 import { conversationSubmitChannel, conversationTestChannel, designGenerationSlotRetryChannel, designGenerationSubmitChannel, designerArtworkGenerationSubmitChannel, imageEditSubmitChannel, imageGenerationSubmitChannel, imageGenerationTestChannel, taskCancelChannel, taskRetryChannel } from './ipc/agent';
 import { portfolioDiscardChannel, portfolioInspectChannel, portfolioSelectChannel } from './ipc/portfolio';
-import { exportDocumentChannel } from './ipc/export';
+import { exportProjectDesignChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
 import { backupChooseDirectoryChannel, backupCreateChannel, backupRestoreChannel } from './ipc/backup';
 import { projectCanvasLayoutLoadChannel, projectCanvasLayoutSaveChannel, projectDesignsAddChannel, projectDesignsListChannel, projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
 import { projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
-import { revisionCommitChannel, revisionFinalizeChannel, revisionLoadChannel } from './ipc/revisions';
-import { brandLoadChannel, brandSaveChannel } from './ipc/brands';
 import { settingsLoadChannel, settingsSaveChannel } from './ipc/settings';
 import { searchQueryChannel, searchRebuildChannel } from './ipc/search';
 import { exportHistoryListChannel } from './ipc/export-history';
@@ -54,16 +51,9 @@ const api: DesktopApi = {
   loadDesignerState: (libraryId) => ipcRenderer.invoke(designerLoadChannel, libraryId),
   saveDesignerState: (libraryId, state) => ipcRenderer.invoke(designerSaveChannel, { libraryId, state }),
   readDesignerArtwork: (input) => ipcRenderer.invoke(designerArtworkReadChannel, input),
-  loadBrandState: (libraryId) => ipcRenderer.invoke(brandLoadChannel, libraryId),
-  saveBrandState: (libraryId, state) => ipcRenderer.invoke(brandSaveChannel, { libraryId, state }),
   listAssets: (input) => ipcRenderer.invoke(assetListChannel, input),
   importAssets: (input) => ipcRenderer.invoke(assetImportChannel, input),
   readAsset: (input) => ipcRenderer.invoke(assetReadChannel, input),
-  loadDocumentScene: (libraryId, projectId, documentId) => ipcRenderer.invoke(sceneLoadChannel, { libraryId, projectId, documentId }),
-  saveDocumentScene: (input) => ipcRenderer.invoke(sceneSaveChannel, input),
-  loadDocumentRevisions: (libraryId, projectId, documentId) => ipcRenderer.invoke(revisionLoadChannel, { libraryId, projectId, documentId }),
-  commitDocumentRevision: (input) => ipcRenderer.invoke(revisionCommitChannel, input),
-  setFinalDocumentRevision: (input) => ipcRenderer.invoke(revisionFinalizeChannel, input),
   storeCredential: (connectionId, secret) => ipcRenderer.invoke(credentialStoreChannel, connectionId, secret),
   deleteCredential: (connectionId) => ipcRenderer.invoke(credentialDeleteChannel, connectionId),
   hasCredential: (connectionId) => ipcRenderer.invoke(credentialStatusChannel, connectionId),
@@ -72,8 +62,6 @@ const api: DesktopApi = {
   loadProviderConnectionStatuses: () => ipcRenderer.invoke(providerStatusLoadChannel),
   saveProviderConnectionStatuses: (statuses) => ipcRenderer.invoke(providerStatusSaveChannel, statuses),
   listTasks: (libraryId) => ipcRenderer.invoke(taskListChannel, libraryId),
-  publishCompositionCandidate: (input) => ipcRenderer.invoke(taskCompositionPublishChannel, input),
-  resolveCompositionCandidate: (input) => ipcRenderer.invoke(taskCompositionResolveChannel, input),
   submitConversation: (input) => ipcRenderer.invoke(conversationSubmitChannel, input),
   submitDesignGeneration: (input) => ipcRenderer.invoke(designGenerationSubmitChannel, input),
   retryDesignGenerationSlot: (input) => ipcRenderer.invoke(designGenerationSlotRetryChannel, input),
@@ -87,7 +75,7 @@ const api: DesktopApi = {
   submitImageEdit: (input) => ipcRenderer.invoke(imageEditSubmitChannel, input),
   cancelTask: (libraryId, taskId) => ipcRenderer.invoke(taskCancelChannel, { libraryId, taskId }),
   retryTask: (libraryId, taskId) => ipcRenderer.invoke(taskRetryChannel, { libraryId, taskId }),
-  exportDocument: (input) => ipcRenderer.invoke(exportDocumentChannel, input),
+  exportProjectDesign: (input) => ipcRenderer.invoke(exportProjectDesignChannel, input),
   listExportHistory: (libraryId, projectId) => ipcRenderer.invoke(exportHistoryListChannel, { libraryId, projectId }),
   exportDiagnostics: (input) => ipcRenderer.invoke(diagnosticsExportChannel, input),
   chooseImageToolInput: () => ipcRenderer.invoke(imageToolChooseInputChannel),

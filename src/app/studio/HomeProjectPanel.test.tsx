@@ -15,7 +15,6 @@ it('keeps existing project categories and opens a compact project row', () => {
     enDescription: '',
     designers: [],
     artwork: 'blank',
-    documents: 3,
     updatedAt: '2026-09-20T00:00:00.000Z',
   }];
   render(

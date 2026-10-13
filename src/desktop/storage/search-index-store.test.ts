@@ -10,7 +10,7 @@ import { createSearchIndexStore, type SearchIndexStore } from './search-index-st
 import type { SearchRecord } from '../../features/library/indexer';
 
 const record = (libraryId: string, projectId: string, title: string, contributorIds: string[]): SearchRecord => ({
-  libraryId, projectId, documentId: `${projectId}-doc`, title, brief: '',
+  libraryId, projectId, title, brief: '',
   tags: [], contributorIds,
 });
 
@@ -47,7 +47,7 @@ it('persists a rebuildable index and supports Chinese, English and contributor q
   }
 });
 
-it('rebuild replaces stale entries, deduplicates documents and keeps workspace scope', async () => {
+it('rebuild replaces stale entries, deduplicates projects and keeps workspace scope', async () => {
   const fixture = await openStore();
   try {
     const libraryId = fixture.libraryId;

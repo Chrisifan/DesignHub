@@ -29,11 +29,9 @@ import {
   type VisualContextRole,
 } from './visual-context';
 import type { ProjectDesign } from '../projects/metadata';
-import type { ProjectGenerationRatio } from '../projects/size';
-import type { DesignSceneCandidate } from '../composition/design-scene-candidate';
+import { resolveGenerationRatioSize, type ProjectGenerationRatio } from '../projects/size';
 import { classifyTaskErrorCode, failTask, providerFailure } from './task-policy';
 import { createImageTaskRecord } from './task-record-factory';
-import { createTaskCandidateService } from './task-candidate-service';
 import { createTaskRecovery } from './task-recovery';
 import { createTaskRuntimeAdapter } from './task-runtime-adapter';
 import { resizeScene } from '../image-tools/local-transform';
@@ -45,7 +43,6 @@ export type ConversationInput = {
   conversationParentTaskId?: string;
   referencedAssetIds?: string[];
   source?: TaskSource;
-  documentId?: string;
   designerVersionId?: string;
   baseRevisionId?: string | null;
   connectionId: string;
@@ -57,7 +54,6 @@ export type ConversationInput = {
 export type DesignGenerationInput = {
   libraryId: string;
   projectId: string;
-  documentId?: string;
   conversationTaskId: string;
   baseRevisionId?: string | null;
   connectionId: string;
@@ -80,7 +76,6 @@ export type ConversationImageAttachment = {
 
 export type ImageGenerationInput = {
   projectId: string;
-  documentId?: string;
   baseRevisionId?: string | null;
   designerVersionId?: string;
   connectionId: string;
@@ -101,13 +96,13 @@ export type DesignerArtworkGenerationInput = {
 
 export type ImageEditInput = {
   projectId: string;
-  documentId?: string;
   baseRevisionId?: string | null;
   designerVersionId?: string;
   connectionId: string;
   prompt: string;
   image: Blob;
   sourceAssetId?: string;
+  sourceDesignId?: string;
   maskAssetId?: string;
   mask?: Blob;
   model?: string;
@@ -124,6 +119,11 @@ export type ImageEditInput = {
     height: number;
     title: string;
   };
+};
+
+export type ImageEditSubmissionInput = Omit<ImageEditInput, 'image' | 'mask'> & {
+  image?: Blob;
+  mask?: Blob;
 };
 
 export type PortfolioAnalysisInput = {
@@ -182,7 +182,7 @@ const runConnectionTest = async <T>(
   });
 };
 
-const buildToolCandidateScene = (scene: DesignScene, sourceAssetId: string, resultAssetId: string, targetLayerId?: string, tool?: ImageTool, toolParams?: ToolParams): DesignScene => {
+const buildToolCandidateScene = (scene: DesignScene, sourceAssetId: string, resultAssetId: string, targetLayerId?: string, tool?: ImageTool, toolParams?: ToolParams, resultSize?: { width: number; height: number }): DesignScene => {
   const candidate = createScene({
     ...scene,
     id: `${scene.id}-candidate-${resultAssetId}`,
@@ -204,22 +204,32 @@ const buildToolCandidateScene = (scene: DesignScene, sourceAssetId: string, resu
     const right = typeof toolParams?.right === 'number' ? toolParams.right : 0;
     const bottom = typeof toolParams?.bottom === 'number' ? toolParams.bottom : 0;
     const left = typeof toolParams?.left === 'number' ? toolParams.left : 0;
-    return createScene({ ...candidate, width: scene.width + left + right, height: scene.height + top + bottom });
+    const width = resultSize?.width ?? scene.width + left + right;
+    const height = resultSize?.height ?? scene.height + top + bottom;
+    return createScene({
+      ...candidate,
+      width,
+      height,
+      layers: candidate.layers.map((layer) => {
+        const isTarget = layer.type === 'image' && (targetLayerId ? layer.id === targetLayerId : layer.assetId === resultAssetId);
+        return isTarget
+          ? { ...layer, x: 0, y: 0, width, height }
+          : { ...layer, x: layer.x + left, y: layer.y + top };
+      }),
+    });
   }
   return candidate;
 };
 
 export type AgentTaskService = {
   getTask: (taskId: string) => TaskRecord | undefined;
-  publishCompositionCandidate: (input: { projectId: string; documentId: string; candidate: DesignSceneCandidate }) => Promise<TaskRecord>;
-  resolveCompositionCandidate: (taskId: string, resolution: 'confirmed' | 'discarded') => Promise<TaskRecord>;
   submitConversation: (input: ConversationInput) => Promise<TaskRecord>;
   submitDesignGeneration: (input: DesignGenerationInput) => Promise<TaskRecord>;
   retryDesignGenerationSlot: (input: DesignGenerationSlotRetryInput) => Promise<TaskRecord>;
   submitPortfolioAnalysis: (input: PortfolioAnalysisInput) => Promise<TaskRecord>;
   submitImageGeneration: (input: ImageGenerationInput) => Promise<TaskRecord>;
   submitDesignerArtworkGeneration: (input: DesignerArtworkGenerationInput) => Promise<TaskRecord>;
-  submitImageEdit: (input: ImageEditInput) => Promise<TaskRecord>;
+  submitImageEdit: (input: ImageEditSubmissionInput) => Promise<TaskRecord>;
   testConversation: (input: ConversationTestInput) => Promise<ConversationTestResult>;
   testImageGeneration: (input: ImageGenerationTestInput) => Promise<ImageGenerationTestResult>;
   retry: (taskId: string) => Promise<TaskRecord | undefined>;
@@ -237,6 +247,8 @@ export type AgentTaskServiceOptions = {
   loadSourceImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
   loadMaskImage?: (input: { projectId: string; assetId: string }) => Promise<Blob | null>;
   executeLocalImageTool?: LocalImageToolExecutor;
+  prepareImageEdit?: (input: ImageEditInput) => Promise<ImageEditInput>;
+  normalizeImageResult?: (input: ImageEditInput | ImageGenerationInput | DesignerArtworkGenerationInput, images: readonly GeneratedImage[]) => Promise<GeneratedImage[]>;
   validateImageResult?: (input: ImageEditInput | ImageGenerationInput | DesignerArtworkGenerationInput, images: readonly GeneratedImage[]) => Promise<void>;
   resolveDesignContext?: (input: { input: ConversationInput; attachmentAssetIds: string[] }) => Promise<DesignGenerationContext>;
   persistConversationAttachments?: (input: { projectId: string; attachments: ConversationImageAttachment[] }) => Promise<string[]>;
@@ -299,7 +311,7 @@ const latestGeneratedAssetIds = (tasks: readonly TaskRecord[], input: Conversati
       && candidate.analysisThreadId === analysisThreadId
       && candidate.source?.kind === 'project'
       && candidate.source.id === input.projectId
-      && (input.documentId === undefined || candidate.documentId === input.documentId))
+      )
     .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || b.id.localeCompare(a.id))[0];
   if (!latest) return [];
   const candidateAssetIds = latest.result?.candidates?.flatMap((candidate) => candidate.assetIds) ?? [];
@@ -319,7 +331,6 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   const pending = new Set<Promise<unknown>>();
   const runtimeAdapter = createTaskRuntimeAdapter({ runtime: options.runtime, controllers, generationControllers });
   const recovery = createTaskRecovery({ runtime: options.runtime });
-  const candidateService = createTaskCandidateService({ runtime: options.runtime });
   const loadVisualBlob = async (projectId: string, item: VisualContextItem): Promise<Blob | null> => {
     const attachment = await options.loadContextImage?.({ projectId, assetId: item.assetId });
     if (attachment) {
@@ -358,21 +369,21 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           imagePart(attachment),
         ];
         const threadTasks = task.analysisThreadId
-          ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === task.analysisThreadId && candidate.source?.id === task.source?.id && candidate.documentId === task.documentId && candidate.id !== task.id).sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id))
+          ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === task.analysisThreadId && candidate.source?.id === task.source?.id && candidate.id !== task.id).sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id))
           : [];
         const currentAssetIds = [...new Set(
           task.contextAssetIds?.length
             ? task.contextAssetIds
             : task.conversationParentTaskId
               ? []
-              : task.designContext?.document.currentImageAssetIds ?? [],
+              : task.designContext?.canvas.currentImageAssetIds ?? [],
         )];
         const parent = task.conversationParentTaskId
           ? options.runtime.get(task.conversationParentTaskId)
           : undefined;
         const knownAssetIds = [...new Set([
           ...(task.designContext?.attachmentAssetIds ?? []),
-          ...(task.designContext?.document.currentImageAssetIds ?? []),
+          ...(task.designContext?.canvas.currentImageAssetIds ?? []),
           ...threadTasks.flatMap((historicalTask) => historicalTask.contextAssetIds ?? []),
           ...threadTasks.flatMap((historicalTask) => historicalTask.visualContextPlan?.items.map((item) => item.assetId) ?? []),
           ...(parent?.visualContextPlan?.items.map((item) => item.assetId) ?? []),
@@ -444,7 +455,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           previous: parent?.visualContextPlan,
           initialAttachmentAssetIds: task.designContext?.attachmentAssetIds ?? [],
           currentAssetIds,
-          canvasAssetIds: task.designContext?.document.currentImageAssetIds ?? [],
+          canvasAssetIds: task.designContext?.canvas.currentImageAssetIds ?? [],
         });
         const visualContextPlan: VisualContextPlan = parsed
           ? mergeVisualContextPlan({
@@ -503,12 +514,14 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   };
   const createImageTask = (input: ImageGenerationInput | ImageEditInput | DesignerArtworkGenerationInput, capability: 'image-generation' | 'image-editing' | 'local-transform'): TaskRecord => {
     const source = 'source' in input ? input.source : { kind: 'project' as const, id: input.projectId };
+    const sourceDesignId = 'sourceDesignId' in input && input.sourceDesignId
+      ? input.sourceDesignId
+      : 'targetLayerId' in input ? input.targetLayerId : undefined;
     const task = createImageTaskRecord({
       id: taskId(),
       requestId: requestId(),
       requestText: input.prompt,
       source,
-      ...('documentId' in input ? { documentId: input.documentId } : {}),
       ...('baseRevisionId' in input ? { baseRevisionId: input.baseRevisionId } : {}),
       ...('designerVersionId' in input ? { designerVersionId: input.designerVersionId } : {}),
       connectionId: input.connectionId,
@@ -519,6 +532,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       ...('toolParams' in input ? { toolParams: input.toolParams } : {}),
       ...('region' in input ? { region: input.region } : {}),
       ...('sourceAssetId' in input ? { sourceAssetId: input.sourceAssetId } : {}),
+      ...(sourceDesignId ? { sourceDesignId } : {}),
       ...('maskAssetId' in input ? { maskAssetId: input.maskAssetId } : {}),
       ...(capability === 'image-editing' ? {
         hasMask: 'mask' in input ? Boolean(input.mask) || Boolean(input.maskAssetId) : Boolean('maskAssetId' in input && input.maskAssetId),
@@ -543,8 +557,8 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
             hasMask: Boolean(imageInput.mask || imageInput.maskAssetId),
             requiresTransparency: definition.requiresTransparency,
             bytes: imageInput.image.size,
-            width: typeof input.toolParams?.width === 'number' ? input.toolParams.width : undefined,
-            height: typeof input.toolParams?.height === 'number' ? input.toolParams.height : undefined,
+            width: input.tool === 'expand' ? input.projectDesign?.width : typeof input.toolParams?.width === 'number' ? input.toolParams.width : undefined,
+            height: input.tool === 'expand' ? input.projectDesign?.height : typeof input.toolParams?.height === 'number' ? input.toolParams.height : undefined,
             params: input.toolParams,
           }, adapter.toolCapabilities ?? defaultProviderToolCapabilities);
           if (!validation.ok) throw new Error(`PROVIDER_${validation.reason}`);
@@ -568,8 +582,6 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
             bytes: (input as ImageEditInput).image.size,
           }, controller.signal) : undefined);
         if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
-        if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
-        if (options.validateImageResult) await options.validateImageResult(input, response.images);
         if (task.capability !== 'local-transform' && (response.remoteRequestId || response.supportsRemoteCancellation !== undefined || response.supportsStatusQuery !== undefined)) {
           options.runtime.updateRemoteMetadata(task.id, {
             ...(response.remoteRequestId ? { remoteRequestId: response.remoteRequestId } : {}),
@@ -577,9 +589,15 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
             ...(response.supportsStatusQuery !== undefined ? { remoteSupportsStatusQuery: response.supportsStatusQuery } : {}),
           });
         }
+        if (response.images.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
+        const normalizedImages = options.normalizeImageResult
+          ? await options.normalizeImageResult(input, response.images)
+          : response.images;
+        if (normalizedImages.length === 0) throw new Error('IMAGE_RESULT_EMPTY');
+        if (options.validateImageResult) await options.validateImageResult(input, normalizedImages);
         const projectDesign = operation === 'edit' && 'projectDesign' in input ? input.projectDesign : undefined;
         const projectId = 'projectId' in input ? input.projectId : undefined;
-        const outputImages = projectDesign ? response.images.slice(0, 1) : response.images;
+        const outputImages = projectDesign ? normalizedImages.slice(0, 1) : normalizedImages;
         const assetIds = task.source?.kind === 'designer-draft'
           ? (options.persistDesignerArtwork
             ? await options.persistDesignerArtwork({ designerDraftId: task.source.id, images: outputImages })
@@ -595,7 +613,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
               id: `design-${crypto.randomUUID()}`,
               projectId,
               assetId,
-              sourceTaskId: projectDesign.sourceTaskId,
+              sourceTaskId: task.id,
               ...(projectDesign.sourceConversationTaskId ? { sourceConversationTaskId: projectDesign.sourceConversationTaskId } : {}),
               width: projectDesign.width,
               height: projectDesign.height,
@@ -605,6 +623,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           });
         }
         const editInput = operation === 'edit' ? input as ImageEditInput : undefined;
+        const currentTask = options.runtime.get(task.id) ?? task;
         await options.runtime.complete(task.id, {
           assetIds,
           imageCount: outputImages.length,
@@ -618,18 +637,18 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
                 baseRevisionId: task.baseRevisionId ?? null,
                 resultAssetId: assetIds[0],
                 beforeScene: editInput.beforeScene,
-                candidateScene: buildToolCandidateScene(editInput.beforeScene, editInput.sourceAssetId, assetIds[0], editInput.targetLayerId, editInput.tool, editInput.toolParams),
+                candidateScene: buildToolCandidateScene(editInput.beforeScene, editInput.sourceAssetId, assetIds[0], editInput.targetLayerId, editInput.tool, editInput.toolParams, editInput.projectDesign),
                 toolParams: editInput.toolParams,
-                providerId: task.providerId,
-                model: task.model,
-                remoteRequestId: task.remoteRequestId,
+                providerId: currentTask.providerId,
+                model: currentTask.model,
+                remoteRequestId: currentTask.remoteRequestId,
               },
             }
             : {}),
           ...(task.source?.kind === 'project' ? {
             candidate: {
               id: `candidate-${task.id}`,
-              baseRevisionId: task.baseRevisionId ?? null,
+              baseRevisionId: currentTask.baseRevisionId ?? null,
               assetIds: [...assetIds],
               ...(assetIds[0] ? { sceneAssetId: assetIds[0] } : {}),
               ...(task.parentConversationTaskId ? { parentConversationTaskId: task.parentConversationTaskId } : {}),
@@ -655,7 +674,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     const parent = input.conversationParentTaskId
       ? options.runtime.get(input.conversationParentTaskId)
       : latestConversationTask(existingThreadTasks.filter((candidate) => candidate.state === 'completed'));
-    if (parent && (parent.source?.kind !== source.kind || parent.source.id !== source.id || (input.documentId && parent.documentId !== input.documentId))) throw new Error('CONVERSATION_CONTEXT_MISMATCH');
+    if (parent && (parent.source?.kind !== source.kind || parent.source.id !== source.id)) throw new Error('CONVERSATION_CONTEXT_MISMATCH');
     if (parent?.analysisThreadId && input.analysisThreadId && parent.analysisThreadId !== input.analysisThreadId) throw new Error('CONVERSATION_CONTEXT_MISMATCH');
     const analysisThreadId = input.analysisThreadId ?? parent?.analysisThreadId ?? `analysis-${crypto.randomUUID()}`;
     if (options.runtime.list().some((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === analysisThreadId && (candidate.state === 'queued' || candidate.state === 'running'))) throw new Error('CONVERSATION_THREAD_BUSY');
@@ -682,7 +701,6 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       requestId: requestId(),
       requestText: input.message.trim(),
       source,
-      ...(input.documentId ? { documentId: input.documentId } : {}),
       ...(input.baseRevisionId === undefined ? {} : { baseRevisionId: input.baseRevisionId }),
       ...(input.model?.trim() ? { model: input.model.trim() } : {}),
       analysisThreadId,
@@ -706,7 +724,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       previous: undefined,
       initialAttachmentAssetIds: context.attachmentAssetIds,
       currentAssetIds: task.contextAssetIds ?? [],
-      canvasAssetIds: context.document.currentImageAssetIds,
+      canvasAssetIds: context.canvas.currentImageAssetIds,
     });
     if (plan.clarificationRequired) throw new Error('VISUAL_CONTEXT_CLARIFICATION_REQUIRED');
     const items = orderedVisualContextItems(plan);
@@ -761,7 +779,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         controllersForTask.set(slotId, controller);
         try {
           const prompt = `${task.requestText ?? generationPrompt(prepared.context, prepared.context.assistantBrief)}\n\n${prepared.visualManifest}\n\nCandidate direction\n${slot.direction}`;
-          const size = `${prepared.context.document.width}x${prepared.context.document.height}`;
+          const size = `${prepared.context.canvas.width}x${prepared.context.canvas.height}`;
           const response = await requestWithGatewayTimeoutRetry(async () => prepared.editTarget && prepared.adapter.editImage
             ? prepared.adapter.editImage({ prompt, image: prepared.editTarget.image, ...(task.model ? { model: task.model } : {}), ...(prepared.referenceImages.length ? { referenceImages: prepared.referenceImages } : {}), size }, controller.signal)
             : prepared.adapter.generateImage
@@ -784,8 +802,8 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
                 assetId,
                 sourceTaskId: task.id,
                 ...(task.parentConversationTaskId ? { sourceConversationTaskId: task.parentConversationTaskId } : {}),
-                width: prepared.context.document.width,
-                height: prepared.context.document.height,
+                width: prepared.context.canvas.width,
+                height: prepared.context.canvas.height,
                 title: `Design ${new Date().toLocaleString()}`,
                 createdAt: new Date().toISOString(),
               }],
@@ -825,9 +843,9 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
   const submitDesignGeneration = async (input: DesignGenerationInput): Promise<TaskRecord> => {
     if (!input.projectId.trim() || !input.conversationTaskId.trim() || !input.connectionId.trim()) throw new Error('DESIGN_GENERATION_BINDING_REQUIRED');
     const parent = options.runtime.get(input.conversationTaskId);
-    if (!parent || parent.state !== 'completed' || parent.capability !== 'conversation' || parent.source?.kind !== 'project' || parent.source.id !== input.projectId || (input.documentId && parent.documentId && parent.documentId !== input.documentId)) throw new Error('CONVERSATION_CONTEXT_REQUIRED');
+    if (!parent || parent.state !== 'completed' || parent.capability !== 'conversation' || parent.source?.kind !== 'project' || parent.source.id !== input.projectId) throw new Error('CONVERSATION_CONTEXT_REQUIRED');
     if (parent.analysisThreadId) {
-      const latest = latestConversationTask(options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && (!input.documentId || candidate.documentId === input.documentId) && candidate.state === 'completed'));
+      const latest = latestConversationTask(options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && candidate.state === 'completed'));
       if (!latest || latest.id !== parent.id) throw new Error('CONVERSATION_CONTEXT_STALE');
     }
     if (!parent.designContext) throw new Error('DESIGN_CONTEXT_UNAVAILABLE');
@@ -836,14 +854,14 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       previous: undefined,
       initialAttachmentAssetIds: parent.designContext.attachmentAssetIds,
       currentAssetIds: parent.contextAssetIds ?? [],
-      canvasAssetIds: parent.designContext.document.currentImageAssetIds,
+      canvasAssetIds: parent.designContext.canvas.currentImageAssetIds,
     });
     if (visualContextPlan.clarificationRequired) throw new Error('VISUAL_CONTEXT_CLARIFICATION_REQUIRED');
     const orderedItems = orderedVisualContextItems(visualContextPlan);
     const plannedAssets = await Promise.all(orderedItems.map((item) => loadVisualBlob(input.projectId, item)));
     if (plannedAssets.some((asset) => !asset)) throw new Error('CONTEXT_ASSET_MISSING');
     const threadCandidates = parent.analysisThreadId
-      ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId && (!input.documentId || candidate.documentId === input.documentId))
+      ? options.runtime.list().filter((candidate) => candidate.capability === 'conversation' && candidate.analysisThreadId === parent.analysisThreadId && candidate.source?.id === input.projectId)
       : [parent];
     const threadAssetIds = orderedItems.map((item) => item.assetId);
     const threadUserMessage = threadCandidates
@@ -851,12 +869,18 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       .map((candidate) => candidate.requestText?.trim())
       .filter((message): message is string => Boolean(message))
       .join('\n');
+    const generationSize = resolveGenerationRatioSize(input.generationRatio ?? 'original', parent.designContext.canvas);
+    const generationContext: DesignGenerationContext = {
+      ...parent.designContext,
+      canvas: { ...parent.designContext.canvas, ...generationSize },
+      ...(threadUserMessage ? { userMessage: threadUserMessage } : {}),
+      ...(parent.result?.text ? { assistantBrief: parent.result.text } : {}),
+    };
     const task = options.runtime.start({
       id: designTaskId(),
       requestId: requestId(),
-      requestText: generationPrompt({ ...parent.designContext, ...(threadUserMessage ? { userMessage: threadUserMessage } : {}) }, parent.result?.text),
+      requestText: generationPrompt(generationContext, parent.result?.text),
       source: { kind: 'project', id: input.projectId },
-      ...(input.documentId ? { documentId: input.documentId } : {}),
       baseRevisionId: input.baseRevisionId ?? parent.baseRevisionId ?? null,
       generationSlots: createDesignGenerationSlots(input.count ?? 3),
       count: input.count ?? 3,
@@ -865,11 +889,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       visualContextPlan: structuredClone(visualContextPlan),
       ...(parent.analysisThreadId ? { analysisThreadId: parent.analysisThreadId } : {}),
       ...(parent.contextVersion ? { contextVersion: parent.contextVersion } : {}),
-      designContext: {
-        ...parent.designContext,
-        ...(threadUserMessage ? { userMessage: threadUserMessage } : {}),
-        ...(parent.result?.text ? { assistantBrief: parent.result.text } : {}),
-      },
+      designContext: generationContext,
       parentConversationTaskId: input.conversationTaskId,
       ...(input.model?.trim() ? { model: input.model.trim() } : {}),
       providerId: input.connectionId,
@@ -890,7 +910,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       previous: undefined,
       initialAttachmentAssetIds: task.designContext?.attachmentAssetIds ?? [],
       currentAssetIds: task.contextAssetIds ?? [],
-      canvasAssetIds: task.designContext?.document.currentImageAssetIds ?? [],
+      canvasAssetIds: task.designContext?.canvas.currentImageAssetIds ?? [],
     });
     if (retryPlan.clarificationRequired) throw new Error('VISUAL_CONTEXT_CLARIFICATION_REQUIRED');
     const retryAssets = await Promise.all(orderedVisualContextItems(retryPlan).map((item) => loadVisualBlob(task.source!.id, item)));
@@ -931,14 +951,20 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await executeImageTask(task, input, 'generate');
     return task;
   };
-  const submitImageEdit = async (input: ImageEditInput): Promise<TaskRecord> => {
+  const submitImageEdit = async (input: ImageEditSubmissionInput): Promise<TaskRecord> => {
+    const image = input.image ?? (input.sourceAssetId && options.loadSourceImage
+      ? await options.loadSourceImage({ projectId: input.projectId, assetId: input.sourceAssetId })
+      : undefined);
+    if (!image) throw new Error('SOURCE_ASSET_MISSING');
     const mask = input.mask ?? (input.maskAssetId && options.loadMaskImage
       ? await options.loadMaskImage({ projectId: input.projectId, assetId: input.maskAssetId })
       : undefined);
     if (input.maskAssetId && !mask) throw new Error('MASK_ASSET_MISSING');
-    const task = createImageTask(input, input.tool === 'resize' && !input.connectionId.trim() ? 'local-transform' : 'image-editing');
+    const loadedInput: ImageEditInput = { ...input, image, ...(mask ? { mask } : {}) };
+    const resolvedInput = options.prepareImageEdit ? await options.prepareImageEdit(loadedInput) : loadedInput;
+    const task = createImageTask(resolvedInput, resolvedInput.tool === 'resize' && !resolvedInput.connectionId.trim() ? 'local-transform' : 'image-editing');
     await options.runtime.flush();
-    await executeImageTask(task, mask && !input.mask ? { ...input, mask } : input, 'edit');
+    await executeImageTask(task, resolvedInput, 'edit');
     return task;
   };
   const testConversation = async (input: ConversationTestInput): Promise<ConversationTestResult> => {
@@ -977,26 +1003,26 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     if (previous.capability === 'image-editing' || previous.capability === 'local-transform') {
       if (previous.capability === 'image-editing' && !previous.providerId) return undefined;
       if (previous.source.kind !== 'project' || !previous.sourceAssetId || !options.loadSourceImage) return undefined;
-      if (previous.hasMask && (!previous.maskAssetId || !options.loadMaskImage)) return undefined;
+      if (previous.hasMask && previous.tool !== 'expand' && (!previous.maskAssetId || !options.loadMaskImage)) return undefined;
       const image = await options.loadSourceImage({ projectId: previous.source.id, assetId: previous.sourceAssetId });
       if (!image) return undefined;
       const mask = previous.maskAssetId && options.loadMaskImage
         ? await options.loadMaskImage({ projectId: previous.source.id, assetId: previous.maskAssetId })
         : undefined;
-      if (previous.hasMask && !mask) return undefined;
+      if (previous.hasMask && previous.tool !== 'expand' && !mask) return undefined;
       const retried = await recovery.retryExplicitly(taskId);
       if (!retried) return undefined;
       const running = options.runtime.run(retried.id);
       if (!running) return undefined;
-      await executeImageTask(running, {
+      const retryInput: ImageEditInput = {
         projectId: previous.source.id,
-        documentId: previous.documentId,
         baseRevisionId: previous.baseRevisionId ?? null,
         ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
         connectionId: previous.providerId ?? '',
         prompt: previous.requestText,
         image,
         sourceAssetId: previous.sourceAssetId,
+        ...(previous.sourceDesignId ? { sourceDesignId: previous.sourceDesignId } : {}),
         ...(previous.maskAssetId ? { maskAssetId: previous.maskAssetId } : {}),
         ...(mask ? { mask } : {}),
         ...(previous.model ? { model: previous.model } : {}),
@@ -1004,7 +1030,8 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         ...(previous.tool ? { tool: previous.tool } : {}),
         ...(previous.toolParams ? { toolParams: { ...previous.toolParams } } : {}),
         ...(previous.region ? { region: { ...previous.region } } : {}),
-      }, 'edit');
+      };
+      await executeImageTask(running, options.prepareImageEdit ? await options.prepareImageEdit(retryInput) : retryInput, 'edit');
       return running;
     }
     if (previous.capability === 'image-generation') {
@@ -1025,7 +1052,6 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         }
         : {
           projectId: previous.source.id,
-          ...(previous.documentId ? { documentId: previous.documentId } : {}),
           baseRevisionId: previous.baseRevisionId ?? null,
           ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
           connectionId: previous.providerId,
@@ -1055,7 +1081,6 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await executeTask(running, {
       libraryId: previous.designContext?.libraryId ?? '',
       source: previous.source,
-      ...(previous.documentId ? { documentId: previous.documentId } : {}),
       ...(previous.baseRevisionId === undefined ? {} : { baseRevisionId: previous.baseRevisionId }),
       ...(previous.designerVersionId ? { designerVersionId: previous.designerVersionId } : {}),
       connectionId: previous.providerId,
@@ -1079,7 +1104,5 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
     await options.runtime.flush();
   };
   const getTask = (taskIdValue: string): TaskRecord | undefined => options.runtime.get(taskIdValue);
-  const publishCompositionCandidate: AgentTaskService['publishCompositionCandidate'] = (input) => candidateService.publishCompositionCandidate(input);
-  const resolveCompositionCandidate: AgentTaskService['resolveCompositionCandidate'] = (taskIdValue, resolution) => candidateService.resolveCompositionCandidate(taskIdValue, resolution);
-  return { getTask, publishCompositionCandidate, resolveCompositionCandidate, submitConversation, submitDesignGeneration, retryDesignGenerationSlot, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testConversation, testImageGeneration, retry, cancel, flush };
+  return { getTask, submitConversation, submitDesignGeneration, retryDesignGenerationSlot, submitPortfolioAnalysis, submitImageGeneration, submitDesignerArtworkGeneration, submitImageEdit, testConversation, testImageGeneration, retry, cancel, flush };
 };

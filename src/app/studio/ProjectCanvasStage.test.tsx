@@ -1,7 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ProjectCanvasStage, centerNodeInViewport, layoutProjectDesigns, panViewport, zoomAroundPointer } from './ProjectCanvasStage';
+import { ProjectCanvasStage, centerNodeInViewport, layoutAnchoredCanvasNodes, layoutProjectDesigns, panViewport, persistedCanvasNodes, zoomAroundPointer } from './ProjectCanvasStage';
 
 type KonvaMockProps = {
   children?: ReactNode;
@@ -9,16 +9,31 @@ type KonvaMockProps = {
   onDblClick?: (event: { cancelBubble: boolean }) => void;
   onMouseDown?: (event: { target: { getClassName: () => string } }) => void;
   stroke?: string;
+  x?: number;
+  y?: number;
+  fontSize?: number;
+  fontStyle?: string;
+  image?: unknown;
+  id?: string;
+  width?: number;
+  height?: number;
+  draggable?: boolean;
 };
 
 vi.mock('react-konva', () => ({
   Stage: ({ children, onMouseDown }: KonvaMockProps) => <div data-testid="konva-stage" onMouseDown={() => onMouseDown?.({ target: { getClassName: () => 'Stage' } })}>{children}</div>,
   Layer: ({ children }: KonvaMockProps) => <div>{children}</div>,
-  Rect: () => <div />,
-  Image: ({ onClick, onDblClick, stroke }: KonvaMockProps) => (
+  Rect: ({ x, y, id, width, height }: KonvaMockProps) => <div data-testid="pending-rect" data-id={id} data-x={x} data-y={y} data-width={width} data-height={height} />,
+  Text: ({ x, y, fontSize, fontStyle }: KonvaMockProps) => <div data-testid="settled-label" data-x={x} data-y={y} data-font-size={fontSize} data-font-style={fontStyle} />,
+  Image: ({ onClick, onDblClick, stroke, id, x, y, width, height }: KonvaMockProps) => (
     <button
       type="button"
       data-testid="design-image"
+      data-id={id}
+      data-x={x}
+      data-y={y}
+      data-width={width}
+      data-height={height}
       data-stroke={stroke}
       onClick={() => onClick?.({ cancelBubble: false })}
       onDoubleClick={() => onDblClick?.({ cancelBubble: false })}
@@ -55,6 +70,175 @@ describe('project canvas math', () => {
     });
   });
 
+  it('places an anchored pending result immediately to the right of its source', () => {
+    const positions = layoutProjectDesigns([
+      { id: 'source', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'sibling', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'pending', width: 400, height: 300, rowKey: 'source-row', anchorId: 'source' },
+    ], { maxWidth: 1280, gap: 24 });
+
+    expect(positions.source).toEqual({ x: 0, y: 0 });
+    expect(positions.pending).toEqual({ x: 424, y: 0 });
+    expect(positions.sibling).toEqual({ x: 848, y: 0 });
+  });
+
+  it('inserts pending results into the current row and pushes siblings without creating a phantom row', () => {
+    const designs = [
+      { id: 'source', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'sibling', width: 400, height: 300, rowKey: 'different-task' },
+      { id: 'other-row', width: 400, height: 300, rowKey: 'other-row' },
+    ];
+    const currentNodes = {
+      source: { x: 100, y: 20 },
+      sibling: { x: 524, y: 20 },
+      'other-row': { x: 100, y: 420 },
+    };
+    const pending = [{ id: 'pending', width: 400, height: 300, rowKey: 'source-row', anchorId: 'source', status: 'running' as const }];
+
+    expect(layoutAnchoredCanvasNodes(designs, pending, currentNodes)).toEqual({
+      source: { x: 100, y: 20 },
+      pending: { x: 524, y: 20 },
+      sibling: { x: 948, y: 20 },
+      'other-row': { x: 100, y: 420 },
+    });
+    expect(layoutAnchoredCanvasNodes(designs, [], currentNodes)).toEqual(currentNodes);
+  });
+
+  it('does not mutate persisted node points while calculating a temporary insertion', () => {
+    const currentNodes = {
+      source: { x: 100, y: 20 },
+      sibling: { x: 524, y: 20 },
+    };
+    const snapshot = structuredClone(currentNodes);
+
+    expect(layoutAnchoredCanvasNodes([
+      { id: 'source', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'sibling', width: 400, height: 300, rowKey: 'source-row' },
+    ], [{ id: 'pending', width: 400, height: 300, rowKey: 'source-row', anchorId: 'source', status: 'running' as const }], currentNodes)).toEqual({
+      source: { x: 100, y: 20 },
+      pending: { x: 524, y: 20 },
+      sibling: { x: 948, y: 20 },
+    });
+    expect(currentNodes).toEqual(snapshot);
+  });
+
+  it('keeps an inserted placeholder and its siblings fixed when the source moves', () => {
+    const currentNodes = {
+      source: { x: 300, y: 420 },
+      pending: { x: 524, y: 20 },
+      sibling: { x: 948, y: 20 },
+    };
+
+    expect(layoutAnchoredCanvasNodes([
+      { id: 'source', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'sibling', width: 400, height: 300, rowKey: 'source-row' },
+    ], [{ id: 'pending', width: 400, height: 300, rowKey: 'source-row', anchorId: 'source', status: 'running' as const }], currentNodes)).toEqual(currentNodes);
+  });
+
+  it('replaces a placeholder with its completed design without shifting siblings again', () => {
+    const currentNodes = {
+      source: { x: 100, y: 20 },
+      'task-edit': { x: 524, y: 20 },
+      sibling: { x: 948, y: 20 },
+    };
+
+    expect(layoutAnchoredCanvasNodes([
+      { id: 'source', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'result', sourceTaskId: 'task-edit', width: 400, height: 300, rowKey: 'source-row', anchorId: 'source' },
+      { id: 'sibling', width: 400, height: 300, rowKey: 'source-row' },
+    ], [], currentNodes)).toEqual({
+      source: { x: 100, y: 20 },
+      result: { x: 524, y: 20 },
+      sibling: { x: 948, y: 20 },
+    });
+  });
+
+  it('excludes temporary placeholder nodes from persisted canvas layout', () => {
+    expect(persistedCanvasNodes(
+      [{ id: 'source', width: 400, height: 300 }, { id: 'sibling', width: 400, height: 300 }],
+      {
+        source: { x: 100, y: 20 },
+        'task-edit': { x: 524, y: 20 },
+        sibling: { x: 948, y: 20 },
+      },
+    )).toEqual({
+      source: { x: 100, y: 20 },
+      sibling: { x: 948, y: 20 },
+    });
+  });
+
+  it('repairs an anchored result that was persisted on a different row', () => {
+    const designs = [
+      { id: 'source', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'sibling', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'result', width: 400, height: 300, rowKey: 'source-row', anchorId: 'source' },
+    ];
+    const currentNodes = {
+      source: { x: 100, y: 20 },
+      sibling: { x: 524, y: 20 },
+      result: { x: 100, y: 420 },
+    };
+
+    expect(layoutAnchoredCanvasNodes(designs, [], currentNodes)).toEqual({
+      source: { x: 100, y: 20 },
+      result: { x: 524, y: 20 },
+      sibling: { x: 948, y: 20 },
+    });
+  });
+
+  it('appends unanchored pending items in their existing task row', () => {
+    const designs = [{ id: 'source', width: 400, height: 300, rowKey: 'generation' }];
+    const pending = [
+      { id: 'pending-1', width: 400, height: 300, rowKey: 'generation', status: 'running' as const },
+      { id: 'pending-2', width: 400, height: 300, rowKey: 'generation', status: 'running' as const },
+    ];
+
+    expect(layoutAnchoredCanvasNodes(designs, pending, { source: { x: 100, y: 20 } })).toEqual({
+      source: { x: 100, y: 20 },
+      'pending-1': { x: 524, y: 20 },
+      'pending-2': { x: 948, y: 20 },
+    });
+  });
+
+  it('persists the inserted result position together with shifted siblings', async () => {
+    const onLayoutChange = vi.fn();
+    const source = { id: 'source', width: 400, height: 300, sourceTaskId: 'generation-1', title: 'Source', assetId: 'asset-source', createdAt: '2026-10-10T00:00:00.000Z' };
+    const sibling = { id: 'sibling', width: 400, height: 300, sourceTaskId: 'generation-1', title: 'Sibling', assetId: 'asset-sibling', createdAt: '2026-10-10T00:01:00.000Z' };
+    const result = { id: 'result', width: 400, height: 300, sourceTaskId: 'task-edit', title: 'Result', assetId: 'asset-result', createdAt: '2026-10-10T00:02:00.000Z' };
+    const initialNodes = { source: { x: 100, y: 20 }, sibling: { x: 524, y: 20 } };
+    const { rerender } = render(
+      <ProjectCanvasStage
+        projectId="project-1"
+        designs={[source, sibling]}
+        initialNodes={initialNodes}
+        onSelect={vi.fn()}
+        onLayoutChange={onLayoutChange}
+      />,
+    );
+    onLayoutChange.mockClear();
+
+    await act(async () => {
+      rerender(
+        <ProjectCanvasStage
+          projectId="project-1"
+          designs={[source, result, sibling]}
+          initialNodes={initialNodes}
+          designAnchors={{ result: 'source' }}
+          onSelect={vi.fn()}
+          onLayoutChange={onLayoutChange}
+        />,
+      );
+    });
+
+    await vi.waitFor(() => expect(onLayoutChange).toHaveBeenCalledWith(expect.objectContaining({
+      nodes: {
+        source: { x: 100, y: 20 },
+        result: { x: 524, y: 20 },
+        sibling: { x: 948, y: 20 },
+      },
+    })));
+  });
+
   it('centers each automatic row within the layout width', () => {
     const positions = layoutProjectDesigns([
       { id: 'a', width: 400, height: 300, rowKey: 'task-1' },
@@ -80,6 +264,47 @@ describe('project canvas math', () => {
 });
 
 describe('project canvas design interactions', () => {
+  it('keeps a pending placeholder fixed after the source receives a new persisted position', async () => {
+    const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Chrome');
+    const interval = vi.spyOn(window, 'setInterval').mockReturnValue({} as ReturnType<typeof window.setInterval>);
+    const source = { id: 'source', assetId: 'asset-source', sourceTaskId: 'generation-1', width: 400, height: 300, title: 'Source', createdAt: '2026-10-10T00:00:00.000Z' };
+    const sibling = { id: 'sibling', assetId: 'asset-sibling', sourceTaskId: 'generation-1', width: 400, height: 300, title: 'Sibling', createdAt: '2026-10-10T00:01:00.000Z' };
+    const pending = [{ id: 'task-edit', width: 400, height: 300, rowKey: 'generation-1', anchorId: 'source', status: 'running' as const }];
+    const { rerender } = render(
+      <ProjectCanvasStage
+        projectId="project-1"
+        designs={[source, sibling]}
+        initialNodes={{ source: { x: 100, y: 20 }, sibling: { x: 524, y: 20 } }}
+        pendingDesigns={pending}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    await vi.waitFor(() => expect(screen.getByTestId('pending-rect')).toHaveAttribute('data-x', '524'));
+
+    await act(async () => {
+      rerender(
+        <ProjectCanvasStage
+          projectId="project-1"
+          designs={[source, sibling]}
+          initialNodes={{ source: { x: 300, y: 420 }, sibling: { x: 948, y: 20 } }}
+          pendingDesigns={pending}
+          onSelect={vi.fn()}
+        />,
+      );
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId('pending-rect')).toHaveAttribute('data-x', '524');
+      expect(screen.getByTestId('pending-rect')).toHaveAttribute('data-y', '20');
+      const siblingNode = screen.getAllByTestId('design-image')[1];
+      expect(siblingNode).toHaveAttribute('data-x', '948');
+      expect(siblingNode).toHaveAttribute('data-y', '20');
+    });
+    interval.mockRestore();
+    userAgent.mockRestore();
+  });
+
   it('selects on a single click and adds to conversation only on a double click', () => {
     const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Chrome');
     const onSelect = vi.fn();
@@ -149,6 +374,48 @@ describe('project canvas design interactions', () => {
     fireEvent.click(screen.getByTestId('design-image'));
 
     expect(onCanvasBackground).not.toHaveBeenCalled();
+    userAgent.mockRestore();
+  });
+
+  it('forwards dragged image files to the canvas importer', () => {
+    const onImportImages = vi.fn();
+    render(<ProjectCanvasStage projectId="project-1" designs={[]} onSelect={vi.fn()} onImportImages={onImportImages} />);
+    const file = new File(['image'], 'canvas.png', { type: 'image/png' });
+
+    fireEvent.drop(screen.getByTestId('project-canvas-stage'), { dataTransfer: { files: [file] } });
+
+    expect(onImportImages).toHaveBeenCalledWith([file]);
+  });
+
+  it('keeps a failed pending result visible with an accessible error status', () => {
+    const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('jsdom');
+    render(
+      <ProjectCanvasStage
+        projectId="project-1"
+        designs={[]}
+        pendingDesigns={[{ id: 'task-failed', width: 400, height: 300, status: 'failed', errorCode: 'RESULT_DIMENSIONS_INVALID' }]}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: '处理失败 task-failed' })).toBeInTheDocument();
+    userAgent.mockRestore();
+  });
+
+  it('uses a compact non-bold label for settled pending results', () => {
+    const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Chrome');
+    render(
+      <ProjectCanvasStage
+        projectId="project-1"
+        designs={[]}
+        pendingDesigns={[{ id: 'task-failed', width: 400, height: 300, status: 'failed' }]}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const label = screen.getByTestId('settled-label');
+    expect(Number(label.dataset.fontSize)).toBeLessThan(18);
+    expect(label.dataset.fontStyle).not.toBe('bold');
     userAgent.mockRestore();
   });
 });

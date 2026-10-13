@@ -83,32 +83,6 @@
   background: var(--border-subtle);
 }
 
-.workbench-document-name {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.workbench-document-name strong,
-.workbench-document-name span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.workbench-document-name strong {
-  max-width: 148px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.workbench-document-name span {
-  color: var(--on-surface-variant);
-  font-size: 11px;
-}
-
 .workbench-zoom {
   width: 44px;
   color: var(--on-surface-variant);
@@ -839,10 +813,6 @@
 @media (max-width: 1080px) {
   .workbench-toolbar {
     grid-template-columns: minmax(160px, 1fr) auto auto;
-  }
-
-  .workbench-document-name span {
-    display: none;
   }
 
   .workbench-image-tools-trigger {

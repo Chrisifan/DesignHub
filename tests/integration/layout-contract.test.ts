@@ -70,7 +70,6 @@ it('defines shared layout tokens for compact toolbar controls and unframed main 
 it('uses one responsive page-content spacing contract across regular pages', () => {
   const tokens = readStyle('../../src/app/styles/tokens.css');
   const studioStyles = readStyle('../../src/app/styles/studio.css');
-  const detailStyles = readStyle('../../src/app/studio/project-detail.css');
   const personaStyles = readStyle('../../src/app/studio/persona.css');
 
   expect(tokens).toMatch(/--page-content-padding-block-start:\s*24px/);
@@ -87,18 +86,13 @@ it('uses one responsive page-content spacing contract across regular pages', () 
   );
 
   const pageContentRule = studioStyles.match(/\.page-content\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
-  const projectDetailRule = detailStyles.match(
-    /\.page-content\.project-detail-page\s*\{([\s\S]*?)\n\}/u,
-  )?.[1] ?? '';
   const designerLibraryRule = personaStyles.match(
     /\.page-content\.designer-library-page\s*\{([\s\S]*?)\n\}/u,
   )?.[1] ?? '';
   expect(pageContentRule).toMatch(
     /padding:\s*var\(--page-content-padding-block-start\)\s+var\(--page-content-padding-inline\)\s+var\(--page-content-padding-block-end\)/,
   );
-  expect(projectDetailRule).not.toMatch(/padding:/u);
   expect(designerLibraryRule).not.toMatch(/padding:/u);
-  expect(detailStyles).not.toMatch(/\.page-content\.project-detail-page\s*\{[^}]*padding:/u);
   expect(personaStyles).not.toMatch(/\.designer-library-page\s*\{[^}]*padding:/u);
 });
 
@@ -123,28 +117,6 @@ it('keeps resource cards at one shared fixed width without stretching the last r
   expect(personaStyles.match(/\.persona-repository__list\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(/justify-content:\s*start/);
   expect(studioStyles).toMatch(/\.project-collection--list\s*\{[\s\S]*grid-template-columns:\s*1fr/);
   expect(libraryStyles).toMatch(/\.asset-collection--list\s*\{[\s\S]*display:\s*flex/);
-});
-
-it('keeps the project detail page responsive without horizontal overflow', () => {
-  const styles = readStyle('../../src/app/studio/project-detail.css');
-
-  expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?grid-auto-rows:\s*max-content/);
-  expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?align-content:\s*start/);
-  expect(styles).toMatch(/\.project-detail-header\s*\{[\s\S]*?overflow:\s*hidden/);
-  expect(styles).toMatch(/\.project-detail-hero\s*\{[\s\S]*?min-height:\s*168px/);
-  expect(styles).toMatch(/\.project-detail-summary__description\s*\{[\s\S]*?-webkit-line-clamp:\s*1/);
-  expect(styles).toMatch(/\.project-detail-layout\s*\{[\s\S]*?display:\s*block/);
-  expect(styles).toMatch(/\.project-detail-documents--full\s*\{[\s\S]*?width:\s*100%/);
-  expect(styles).toMatch(
-    /\.project-detail-document-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(100%,\s*360px\),\s*360px\)\)/,
-  );
-  expect(styles).toMatch(
-    /\.project-detail-document-grid\s*\{[\s\S]*?justify-content:\s*start/,
-  );
-  expect(styles).not.toMatch(/\.project-detail-sidebar/);
-  expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-hero,[\s\S]*?\.project-detail-hero__overlay\s*\{[\s\S]*?min-height:\s*168px/);
-  expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-document-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?overflow-x:\s*clip/);
 });
 
 it('reserves two lines for every project description and clamps overflow', () => {

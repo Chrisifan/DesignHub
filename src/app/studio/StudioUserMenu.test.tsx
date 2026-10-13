@@ -18,6 +18,7 @@ it('omits redundant home and new-project entries from the user menu', () => {
 
   expect(screen.queryByRole('menuitem', { name: '首页' })).not.toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: '新建项目' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: '品牌包' })).not.toBeInTheDocument();
   expect(screen.getByRole('menuitem', { name: '废纸篓与备份' })).toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: '工作区管理' })).not.toBeInTheDocument();
   expect(screen.getByRole('menuitem', { name: '导入项目包' })).toBeInTheDocument();
@@ -64,6 +65,30 @@ it('exposes one menu entry per image batch tool', () => {
 
   fireEvent.click(screen.getByRole('menuitem', { name: '放大图像' }));
   expect(onNavigate).toHaveBeenCalledWith('image-tool-upscale');
+});
+
+it('separates model entries from batch image tools', () => {
+  render(
+    <StudioUserMenu
+      locale="zh-CN"
+      operatorName="本机操作者"
+      currentView="projects"
+      onNavigate={vi.fn()}
+      onImportProject={vi.fn()}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: '打开用户菜单' }));
+  const modelGroup = screen.getByText('模型').parentElement;
+  const batchGroup = screen.getByText('批量工具').parentElement;
+
+  expect(modelGroup).toHaveClass('studio-user-menu__group');
+  expect(batchGroup).toHaveClass('studio-user-menu__group');
+  expect(modelGroup).toContainElement(screen.getByRole('menuitem', { name: '模型连接' }));
+  expect(modelGroup).toContainElement(screen.getByRole('menuitem', { name: '模型任务' }));
+  expect(modelGroup).not.toContainElement(screen.getByRole('menuitem', { name: '去除背景' }));
+  expect(batchGroup).toContainElement(screen.getByRole('menuitem', { name: '去除背景' }));
+  expect(batchGroup).toContainElement(screen.getByRole('menuitem', { name: '格式转换' }));
 });
 
 it('does not expose a canvas image tools navigation action', () => {

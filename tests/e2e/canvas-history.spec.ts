@@ -5,7 +5,6 @@ test('canvas history entry point remains available without changing the saved ex
   await page.setViewportSize({ width: 1280, height: 800 });
   await gotoTestWorkspace(page);
   await page.getByRole('button', { name: /春间市集|Spring in bloom/ }).click();
-  await page.getByRole('button', { name: '打开主海报', exact: true }).click();
 
   const canvas = page.getByRole('region', { name: '设计画布', exact: true });
   await expect(canvas).toBeVisible();

@@ -22,7 +22,6 @@ import { imageTools, validateToolParams } from '../../features/image-tools/targe
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 import { getWritableProjectLibraryLease } from './project-library-store';
 import { isScene } from '../../features/canvas/scene';
-import { validateDesignSceneCandidate } from '../../features/composition/design-scene-candidate';
 
 export const tasksFileName = 'tasks.json';
 
@@ -60,6 +59,13 @@ const isTaskCandidate = (value: unknown): value is TaskCandidate => isRecord(val
   && (value.parentConversationTaskId === undefined || typeof value.parentConversationTaskId === 'string')
   && (value.designerVersionId === undefined || typeof value.designerVersionId === 'string')
   && typeof value.createdAt === 'string';
+const isLegacyNoopExpandParams = (tool: unknown, value: unknown): boolean => tool === 'expand'
+  && isRecord(value)
+  && Object.keys(value).every((key) => ['mode', 'top', 'right', 'bottom', 'left'].includes(key))
+  && (value.mode === undefined || value.mode === 'original-scene' || value.mode === 'atmospheric')
+  && ['top', 'right', 'bottom', 'left'].every((key) => Object.hasOwn(value, key) && value[key] === 0);
+const hasValidPersistedToolParams = (tool: unknown, value: unknown): boolean => imageTools.includes(tool as typeof imageTools[number])
+  && (validateToolParams(tool as typeof imageTools[number], value).ok || isLegacyNoopExpandParams(tool, value));
 const isToolCandidate = (value: unknown): value is ToolCandidate => isRecord(value)
   && Object.keys(value).every((key) => ['taskId', 'tool', 'sourceAssetId', 'baseRevisionId', 'resultAssetId', 'beforeScene', 'candidateScene', 'toolParams', 'providerId', 'model', 'remoteRequestId'].includes(key))
   && typeof value.taskId === 'string' && value.taskId.trim().length > 0
@@ -68,7 +74,7 @@ const isToolCandidate = (value: unknown): value is ToolCandidate => isRecord(val
   && (value.baseRevisionId === null || typeof value.baseRevisionId === 'string')
   && typeof value.resultAssetId === 'string' && value.resultAssetId.trim().length > 0
   && isScene(value.beforeScene) && isScene(value.candidateScene)
-  && (value.toolParams === undefined || validateToolParams(value.tool as typeof imageTools[number], value.toolParams).ok)
+  && (value.toolParams === undefined || hasValidPersistedToolParams(value.tool, value.toolParams))
   && (value.providerId === undefined || typeof value.providerId === 'string')
   && (value.model === undefined || typeof value.model === 'string')
   && (value.remoteRequestId === undefined || typeof value.remoteRequestId === 'string');
@@ -98,24 +104,22 @@ const isDesignContext = (value: unknown): boolean => isRecord(value)
   && value.version === 1
   && ((typeof value.libraryId === 'string' && value.libraryId.trim().length > 0) || (typeof value.workspaceId === 'string' && value.workspaceId.trim().length > 0))
   && typeof value.projectId === 'string' && value.projectId.trim().length > 0
-  && typeof value.documentId === 'string' && value.documentId.trim().length > 0
   && typeof value.brief === 'string'
-  && isRecord(value.document)
-  && Number.isInteger(value.document.width) && Number(value.document.width) > 0
-  && Number.isInteger(value.document.height) && Number(value.document.height) > 0
-  && Array.isArray(value.document.currentImageAssetIds) && value.document.currentImageAssetIds.every((id) => typeof id === 'string')
+  && isRecord(value.canvas)
+  && Number.isInteger(value.canvas.width) && Number(value.canvas.width) > 0
+  && Number.isInteger(value.canvas.height) && Number(value.canvas.height) > 0
+  && Array.isArray(value.canvas.currentImageAssetIds) && value.canvas.currentImageAssetIds.every((id) => typeof id === 'string')
   && Array.isArray(value.attachmentAssetIds) && value.attachmentAssetIds.every((id) => typeof id === 'string')
   && typeof value.userMessage === 'string'
   && (value.assistantBrief === undefined || typeof value.assistantBrief === 'string')
   && (value.designerSnapshot === undefined || isRecord(value.designerSnapshot))
-  && (value.brandSnapshot === undefined || isRecord(value.brandSnapshot))
   && (value.baseRevisionId === null || typeof value.baseRevisionId === 'string');
 const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> => {
   if (!isRecord(value)) return false;
   const candidatesValid = value.candidates === undefined || (Array.isArray(value.candidates)
     && value.candidates.every(isTaskCandidate)
     && new Set(value.candidates.map((candidate) => candidate.id)).size === value.candidates.length);
-  return Object.keys(value).every((key) => ['text', 'sceneAssetId', 'assetIds', 'imageCount', 'cost', 'candidate', 'candidates', 'toolCandidate', 'compositionCandidate'].includes(key))
+  return Object.keys(value).every((key) => ['text', 'sceneAssetId', 'assetIds', 'imageCount', 'cost', 'candidate', 'candidates', 'toolCandidate'].includes(key))
     && (value.text === undefined || typeof value.text === 'string')
     && (value.sceneAssetId === undefined || typeof value.sceneAssetId === 'string')
     && (value.assetIds === undefined || (Array.isArray(value.assetIds) && value.assetIds.every((id) => typeof id === 'string')))
@@ -123,7 +127,6 @@ const isResult = (value: unknown): value is NonNullable<TaskRecord['result']> =>
     && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0))
     && (value.candidate === undefined || isTaskCandidate(value.candidate))
     && (value.toolCandidate === undefined || isToolCandidate(value.toolCandidate))
-    && (value.compositionCandidate === undefined || validateDesignSceneCandidate(value.compositionCandidate).ok)
     && candidatesValid;
 };
 const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
@@ -135,7 +138,6 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && typeof value.cancelRequested === 'boolean'
   && Number.isInteger(value.attempt) && Number(value.attempt) > 0
   && (value.source === undefined || isTaskSource(value.source))
-  && (value.documentId === undefined || typeof value.documentId === 'string')
   && (value.parentConversationTaskId === undefined || typeof value.parentConversationTaskId === 'string')
   && (value.analysisThreadId === undefined || typeof value.analysisThreadId === 'string')
   && (value.conversationParentTaskId === undefined || typeof value.conversationParentTaskId === 'string')
@@ -146,6 +148,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.designContext === undefined || isDesignContext(value.designContext))
   && (value.visualContextPlan === undefined || isVisualContextPlan(value.visualContextPlan))
   && (value.sourceAssetId === undefined || typeof value.sourceAssetId === 'string')
+  && (value.sourceDesignId === undefined || typeof value.sourceDesignId === 'string')
   && (value.maskAssetId === undefined || typeof value.maskAssetId === 'string')
   && (value.hasMask === undefined || typeof value.hasMask === 'boolean')
   && (value.baseRevisionId === undefined || value.baseRevisionId === null || typeof value.baseRevisionId === 'string')
@@ -155,7 +158,6 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.remoteRequestId === undefined || (typeof value.remoteRequestId === 'string' && value.remoteRequestId.trim().length > 0))
   && (value.remoteSupportsCancellation === undefined || typeof value.remoteSupportsCancellation === 'boolean')
   && (value.remoteSupportsStatusQuery === undefined || typeof value.remoteSupportsStatusQuery === 'boolean')
-  && (value.candidateResolution === undefined || value.candidateResolution === 'confirmed' || value.candidateResolution === 'discarded')
   && (value.portfolio === undefined || isPortfolioMetadata(value.portfolio))
   && (value.model === undefined || typeof value.model === 'string')
   && (value.size === undefined || typeof value.size === 'string')
@@ -163,15 +165,45 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.tool === undefined || imageTools.includes(value.tool as typeof imageTools[number]))
   && (value.tool === undefined
     ? value.toolParams === undefined
-    : validateToolParams(value.tool as typeof imageTools[number], value.toolParams).ok)
+    : hasValidPersistedToolParams(value.tool, value.toolParams))
   && (value.region === undefined || isRegion(value.region))
   && (value.createdAt === undefined || typeof value.createdAt === 'string')
   && (value.updatedAt === undefined || typeof value.updatedAt === 'string')
   && (value.errorCode === undefined || typeof value.errorCode === 'string')
   && (value.providerFailure === undefined || isProviderFailure(value.providerFailure))
   && (value.analysisDiagnostic === undefined || isPortfolioAnalysisDiagnostic(value.analysisDiagnostic))
-  && (value.result === undefined || isResult(value.result))
-  && (value.candidateResolution === undefined || (isRecord(value.result) && value.result.compositionCandidate !== undefined));
+  && (value.result === undefined || isResult(value.result));
+
+const migrateLegacyTaskRecord = (value: unknown): unknown => {
+  if (!isRecord(value)) return value;
+
+  const { designContext, ...task } = value;
+  delete task.documentId;
+  if (!isRecord(designContext)) return task;
+
+  const context = { ...designContext };
+  const workspaceId = context.workspaceId;
+  const document = context.document;
+  const canvas = context.canvas;
+  delete context.workspaceId;
+  delete context.documentId;
+  delete context.document;
+  delete context.canvas;
+  const legacyCanvas = isRecord(canvas) ? canvas : isRecord(document) ? document : undefined;
+
+  return {
+    ...task,
+    designContext: {
+      ...context,
+      ...(typeof context.libraryId === 'string' && context.libraryId.trim().length > 0
+        ? { libraryId: context.libraryId }
+        : typeof workspaceId === 'string' && workspaceId.trim().length > 0
+          ? { libraryId: workspaceId }
+          : {}),
+      ...(legacyCanvas ? { canvas: legacyCanvas } : {}),
+    },
+  };
+};
 
 const validateWorkspace = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
   if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
@@ -210,10 +242,9 @@ export const loadTaskState = async (handle: ProjectLibraryHandle, workspaceId: s
   } catch {
     throw new Error('INVALID_TASK_STATE');
   }
-  if (!Array.isArray(parsed) || !parsed.every(isTaskRecord)) throw new Error('INVALID_TASK_STATE');
-  return structuredClone(parsed).map((task) => task.designContext && !task.designContext.libraryId
-    ? { ...task, designContext: { ...task.designContext, libraryId: (task.designContext as unknown as { workspaceId: string }).workspaceId } }
-    : task);
+  const migrated = Array.isArray(parsed) ? parsed.map(migrateLegacyTaskRecord) : parsed;
+  if (!Array.isArray(migrated) || !migrated.every(isTaskRecord)) throw new Error('INVALID_TASK_STATE');
+  return structuredClone(migrated);
 };
 
 export const saveTaskState = async (handle: ProjectLibraryHandle, workspaceId: string, tasks: readonly TaskRecord[]): Promise<boolean> => {

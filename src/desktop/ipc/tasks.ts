@@ -1,12 +1,8 @@
 import { isPortfolioAnalysisDiagnostic, isSafeProviderCode, taskRecordKeys, type TaskRecord } from '../../features/tasks/state';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
-import { validateDesignSceneCandidate, type DesignSceneCandidate } from '../../features/composition/design-scene-candidate';
 import { isTrustedProjectLibraryRequest } from './workspace';
-
 export const taskListChannel = 'task:list';
 export const taskSaveChannel = 'task:save';
-export const taskCompositionPublishChannel = 'task:composition-publish';
-export const taskCompositionResolveChannel = 'task:composition-resolve';
 
 type TaskSender = { mainFrame: { url: string }; getURL: () => string };
 type TaskRequest = { sender: TaskSender; senderFrame: { url: string } | null };
@@ -51,7 +47,6 @@ export const listTasksHandler = (
   if (!workspace || workspace.library.libraryId !== libraryId) return null;
   return load(workspace, libraryId);
 };
-
 export const saveTasksHandler = (
   window: TaskWindow,
   trustedUrl: string,
@@ -64,46 +59,4 @@ export const saveTasksHandler = (
   const workspace = getLibrary();
   if (!workspace || workspace.library.libraryId !== value.libraryId) return false;
   return save(workspace, value.libraryId, value.tasks);
-};
-
-type PublishCompositionCandidateInput = {
-  libraryId: string;
-  projectId: string;
-  documentId: string;
-  candidate: DesignSceneCandidate;
-};
-
-export const publishCompositionCandidateHandler = (
-  window: TaskWindow,
-  trustedUrl: string,
-  getLibrary: () => ProjectLibraryHandle | null,
-  publish: (workspace: ProjectLibraryHandle, input: PublishCompositionCandidateInput) => Promise<TaskRecord>,
-) => async (event: TaskRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !input || typeof input !== 'object') return null;
-  const value = input as Record<string, unknown>;
-  if (!isWorkspaceId(value.libraryId) || !isWorkspaceId(value.projectId) || !isWorkspaceId(value.documentId)) return null;
-  const candidate = validateDesignSceneCandidate(value.candidate);
-  if (!candidate.ok) return null;
-  const workspace = getLibrary();
-  if (!workspace || workspace.library.libraryId !== value.libraryId || workspace.library.openMode !== 'writable') return null;
-  return publish(workspace, {
-    libraryId: value.libraryId,
-    projectId: value.projectId,
-    documentId: value.documentId,
-    candidate: candidate.candidate,
-  });
-};
-
-export const resolveCompositionCandidateHandler = (
-  window: TaskWindow,
-  trustedUrl: string,
-  getLibrary: () => ProjectLibraryHandle | null,
-  resolve: (workspace: ProjectLibraryHandle, taskId: string, resolution: 'confirmed' | 'discarded') => Promise<TaskRecord>,
-) => async (event: TaskRequest, input: unknown): Promise<TaskRecord | null> => {
-  if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !input || typeof input !== 'object') return null;
-  const value = input as Record<string, unknown>;
-  if (!isWorkspaceId(value.libraryId) || !isWorkspaceId(value.taskId) || (value.resolution !== 'confirmed' && value.resolution !== 'discarded')) return null;
-  const workspace = getLibrary();
-  if (!workspace || workspace.library.libraryId !== value.libraryId || workspace.library.openMode !== 'writable') return null;
-  return resolve(workspace, value.taskId, value.resolution);
 };

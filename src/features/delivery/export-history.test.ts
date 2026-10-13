@@ -5,7 +5,7 @@ import { appendExportHistory, type ExportHistoryRecord } from './export-history'
 const record: ExportHistoryRecord = {
   id: 'export-1',
   projectId: 'project-1',
-  documentId: 'document-1',
+  designId: 'design-1',
   revisionId: 'revision-1',
   format: 'png',
   targetPath: '/exports/poster.png',

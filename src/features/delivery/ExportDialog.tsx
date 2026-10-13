@@ -15,7 +15,7 @@ export const ExportDialog = ({ revisionId, onExport }: ExportDialogProps) => {
     try { await onExport(format, revisionId); } finally { setBusy(false); }
   };
   return (
-    <section className="export-dialog" aria-label="Export document">
+    <section className="export-dialog" aria-label="Export design">
       <label>Format<Select ariaLabel="Format" value={format} onChange={(value) => setFormat(value as ExportFormat)} options={[{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }, { value: 'webp', label: 'WebP' }, { value: 'pdf', label: 'PDF' }]} /></label>
       <button type="button" onClick={submit} disabled={busy}>{busy ? 'Working' : 'Export'}</button>
     </section>

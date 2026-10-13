@@ -8,7 +8,7 @@ it('submits trimmed text once and clears only after success', async () => {
   render(<HomeConversationComposer locale="zh-CN" readOnly={false} conversationConnected designer={null} onSubmit={onSubmit} notify={vi.fn()} />);
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '  设计一张海报  ' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
-  await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ message: '设计一张海报', attachments: [], generationRatio: '3:4' }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ message: '设计一张海报', attachments: [], generationRatio: 'original' }));
   expect(screen.getByRole('textbox', { name: '设计需求' })).toHaveValue('');
 });
 
@@ -21,7 +21,7 @@ it('retains the draft when project creation fails', async () => {
   expect(screen.getByRole('textbox', { name: '设计需求' })).toHaveValue('保留我');
 });
 
-it('keeps the disconnected submit actionable so it can explain the missing model', () => {
+it('submits even when the displayed connection status is disconnected', async () => {
   const notify = vi.fn();
   const onSubmit = vi.fn(async () => true);
   render(<HomeConversationComposer locale="zh-CN" readOnly={false} conversationConnected={false} designer={null} onSubmit={onSubmit} notify={notify} />);
@@ -29,8 +29,8 @@ it('keeps the disconnected submit actionable so it can explain the missing model
   const submit = screen.getByRole('button', { name: '发送并创建项目' });
   expect(submit).not.toBeDisabled();
   fireEvent.click(submit);
-  expect(notify).toHaveBeenCalledWith('请先连接对话模型。');
-  expect(onSubmit).not.toHaveBeenCalled();
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ message: '设计海报', attachments: [], generationRatio: 'original' }));
+  expect(notify).not.toHaveBeenCalled();
 });
 
 it('reads an image attachment, submits bytes, and clears its preview after success', async () => {
@@ -47,7 +47,7 @@ it('reads an image attachment, submits bytes, and clears its preview after succe
   await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
     message: '参考图片设计',
     attachments: [expect.objectContaining({ name: 'reference.png', mimeType: 'image/png', bytes: expect.any(Uint8Array) })],
-    generationRatio: '3:4',
+    generationRatio: 'original',
   }));
   expect(screen.queryByRole('button', { name: '预览 reference.png' })).toBeNull();
 });

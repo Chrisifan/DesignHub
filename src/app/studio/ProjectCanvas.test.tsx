@@ -2,14 +2,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ProjectCanvas, getAnalysisHistory, getLatestConversationTask } from './ProjectCanvas';
+import { ProjectCanvas, getAnalysisHistory, getLatestConversationTask, getPendingCanvasDesigns, imageToolDesignAnchors } from './ProjectCanvas';
 import type { ProjectDesign } from '../../features/projects/metadata';
 import type { TaskRecord } from '../../features/tasks/state';
-import type { ExportDocumentInput } from '../../platform/contracts';
+import type { ExportProjectDesignInput } from '../../platform/contracts';
 
 type StageMockProps = {
   designs: readonly ProjectDesign[];
   selectedDesignIds?: readonly string[];
+  pendingDesigns?: ReadonlyArray<{ id: string; width: number; height: number }>;
   onSelect: (designId: string | null) => void;
   onAddToConversation?: (designId: string) => void;
   onCanvasBackground?: () => void;
@@ -17,9 +18,10 @@ type StageMockProps = {
 };
 
 vi.mock('./ProjectCanvasStage', () => ({
-  ProjectCanvasStage: ({ designs, selectedDesignIds = [], onSelect, onAddToConversation, onCanvasBackground }: StageMockProps) => (
+  ProjectCanvasStage: ({ designs, selectedDesignIds = [], pendingDesigns = [], onSelect, onAddToConversation, onCanvasBackground }: StageMockProps) => (
     <div aria-label="设计画布内容">
       <button type="button" aria-label="画布空白" onClick={onCanvasBackground}>画布空白</button>
+      {pendingDesigns.map((design) => <span key={design.id} aria-label={`正在处理图片 ${design.id}`}>{design.width} × {design.height}</span>)}
       {designs.map((design) => (
         <button
           type="button"
@@ -63,7 +65,7 @@ const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[]) => {
   return render(
     <ProjectCanvas
       locale="zh-CN"
-      project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
+      project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
       libraryId="workspace-1"
       readOnly={false}
       conversationConnected
@@ -107,7 +109,194 @@ describe('getLatestConversationTask', () => {
   });
 });
 
+describe('getPendingCanvasDesigns', () => {
+  it('creates a result-sized placeholder for a running image tool task', () => {
+    const source: ProjectDesign = {
+      id: 'design-source', projectId: 'project-1', assetId: 'asset-source', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const task: TaskRecord = {
+      id: 'task-upscale', requestId: 'request-upscale', state: 'running', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-source',
+      tool: 'upscale', toolParams: { scale: 2, detail: 'balanced' },
+    };
+
+    expect(getPendingCanvasDesigns([task], [source])).toEqual([{
+      id: 'task-upscale', rowKey: 'generation-1', anchorId: 'design-source', width: 1600, height: 1200, status: 'running',
+    }]);
+  });
+
+  it('removes failed and cancelled image tool placeholders from the canvas layout', () => {
+    const source: ProjectDesign = {
+      id: 'design-source', projectId: 'project-1', assetId: 'asset-source', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const task: TaskRecord = {
+      id: 'task-expand', requestId: 'request-expand', state: 'failed', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-source',
+      tool: 'expand', toolParams: { mode: 'original-scene', top: 100, right: 100, bottom: 100, left: 100 }, errorCode: 'RESULT_DIMENSIONS_INVALID',
+    };
+
+    expect(getPendingCanvasDesigns([
+      task,
+      { ...task, id: 'task-cancelled', state: 'cancelled' },
+    ], [source])).toEqual([]);
+  });
+
+  it('keeps an unknown image tool placeholder visible because the remote result is unresolved', () => {
+    const source: ProjectDesign = {
+      id: 'design-source', projectId: 'project-1', assetId: 'asset-source', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const task: TaskRecord = {
+      id: 'task-expand', requestId: 'request-expand', state: 'unknown', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-source',
+      tool: 'expand', toolParams: { mode: 'original-scene', top: 100, right: 100, bottom: 100, left: 100 },
+    };
+
+    expect(getPendingCanvasDesigns([task], [source])).toEqual([{
+      id: 'task-expand', rowKey: 'generation-1', anchorId: 'design-source', width: 1000, height: 800, status: 'unknown',
+    }]);
+  });
+
+  it('uses the selected source design id instead of an ambiguous asset match', () => {
+    const first: ProjectDesign = {
+      id: 'design-first', projectId: 'project-1', assetId: 'asset-shared', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '第一张', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const selected: ProjectDesign = { ...first, id: 'design-selected', title: '选中图片' };
+    const task: TaskRecord = {
+      id: 'task-selected', requestId: 'request-selected', state: 'running', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-shared', sourceDesignId: 'design-selected',
+      tool: 'remove-background', toolParams: { edgeRefinement: 50 },
+    };
+
+    expect(getPendingCanvasDesigns([task], [first, selected])).toEqual([{
+      id: 'task-selected', rowKey: 'generation-1', anchorId: 'design-selected', width: 800, height: 600, status: 'running',
+    }]);
+  });
+
+  it('ignores settled image tool tasks and unrelated tasks', () => {
+    const source: ProjectDesign = {
+      id: 'design-source', projectId: 'project-1', assetId: 'asset-source', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const base: TaskRecord = {
+      id: 'task-edit', requestId: 'request-edit', state: 'completed', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-source',
+      tool: 'remove-background', toolParams: { edgeRefinement: 50 },
+    };
+
+    expect(getPendingCanvasDesigns([
+      base,
+      { ...base, id: 'conversation', capability: 'conversation', state: 'running' },
+    ], [source])).toEqual([]);
+  });
+
+  it('removes the placeholder as soon as its persisted result is available', () => {
+    const source: ProjectDesign = {
+      id: 'design-source', projectId: 'project-1', assetId: 'asset-source', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const result: ProjectDesign = {
+      id: 'design-result', projectId: 'project-1', assetId: 'asset-result', sourceTaskId: 'task-edit',
+      width: 800, height: 600, title: '商品图（去除背景）', createdAt: '2026-10-10T00:01:00.000Z',
+    };
+    const task: TaskRecord = {
+      id: 'task-edit', requestId: 'request-edit', state: 'running', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-source',
+      tool: 'remove-background', toolParams: { edgeRefinement: 50 },
+    };
+
+    expect(getPendingCanvasDesigns([task], [source, result])).toEqual([]);
+  });
+
+  it('does not duplicate a placeholder when the result asset is persisted before its task linkage is repaired', () => {
+    const source: ProjectDesign = {
+      id: 'design-source', projectId: 'project-1', assetId: 'asset-source', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const result: ProjectDesign = {
+      id: 'design-result', projectId: 'project-1', assetId: 'asset-result', sourceTaskId: 'legacy-source-task',
+      width: 800, height: 600, title: '商品图（去除背景）', createdAt: '2026-10-10T00:01:00.000Z',
+    };
+    const task: TaskRecord = {
+      id: 'task-edit', requestId: 'request-edit', state: 'running', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-source',
+      tool: 'remove-background', toolParams: { edgeRefinement: 50 }, result: { assetIds: ['asset-result'] },
+    };
+
+    expect(getPendingCanvasDesigns([task], [source, result])).toEqual([]);
+  });
+});
+
+describe('image tool layout references', () => {
+  it('anchors a legacy result through the task output asset when sourceTaskId is stale', () => {
+    const source: ProjectDesign = {
+      id: 'design-source', projectId: 'project-1', assetId: 'asset-source', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '商品图', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const result: ProjectDesign = {
+      id: 'design-result', projectId: 'project-1', assetId: 'asset-result', sourceTaskId: 'legacy-source-task',
+      width: 800, height: 600, title: '商品图（去除背景）', createdAt: '2026-10-10T00:01:00.000Z',
+    };
+    const task: TaskRecord = {
+      id: 'task-edit', requestId: 'request-edit', state: 'completed', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-source', sourceDesignId: 'design-source',
+      tool: 'remove-background', toolParams: { edgeRefinement: 50 }, result: { assetIds: ['asset-result'] },
+    };
+
+    expect(imageToolDesignAnchors([task], [source, result])).toEqual({ 'design-result': 'design-source' });
+  });
+});
+
 describe('ProjectCanvas design references', () => {
+  it('shows an image tool placeholder as soon as the task is queued', async () => {
+    const design: ProjectDesign = {
+      id: 'design-tool-placeholder', projectId: 'project-1', assetId: 'asset-tool-placeholder', sourceTaskId: 'generation-1',
+      width: 800, height: 600, title: '待处理图片', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const queuedTask: TaskRecord = {
+      id: 'task-tool-placeholder', requestId: 'request-tool-placeholder', state: 'queued', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: design.assetId,
+      tool: 'remove-background', toolParams: { edgeRefinement: 50 },
+    };
+    let tasks: TaskRecord[] = [];
+    const onSubmitImageTask = vi.fn(async () => {
+      tasks = [queuedTask];
+      return queuedTask;
+    });
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => [design]),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => tasks),
+    };
+
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitImageTask={onSubmitImageTask}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '设计稿 待处理图片' }));
+    fireEvent.click(screen.getByRole('button', { name: '去除背景' }));
+    fireEvent.click(screen.getByRole('button', { name: '执行' }));
+
+    expect(await screen.findByLabelText('正在处理图片 task-tool-placeholder')).toHaveTextContent('800 × 600');
+    expect(screen.queryByRole('dialog', { name: '去除背景' })).not.toBeInTheDocument();
+  });
+
   it('shows image tools in the left toolbar and applies the selected image', async () => {
     const design: ProjectDesign = {
       id: 'design-tool-target', projectId: 'project-1', assetId: 'asset-tool-target', sourceTaskId: 'generation-1',
@@ -123,7 +312,7 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design] }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected
@@ -174,7 +363,7 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 1, documentEntries: [{ id: 'doc-1', name: '主海报', width: 1080, height: 1440 }] }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design] }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected
@@ -231,7 +420,7 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design] }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected
@@ -279,7 +468,7 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected
@@ -318,7 +507,7 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], documents: 0 }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design] }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected
@@ -362,7 +551,7 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, documents: 0 }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected
@@ -390,17 +579,17 @@ describe('ProjectCanvas design references', () => {
       { id: 'design-2', projectId: 'project-1', assetId: 'asset-2', sourceTaskId: 'generation-1', sourceConversationTaskId: 'analysis-1', width: 1080, height: 1440, title: '方案二', createdAt: '2026-09-21T10:01:00.000Z' },
     ];
     const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } };
-    const exportDocument = vi.fn(async (input: ExportDocumentInput) => ({ path: `/tmp/${input.documentId}.png`, sha256: 'a'.repeat(64) }));
+    const exportProjectDesign = vi.fn(async (input: ExportProjectDesignInput) => ({ path: `/tmp/${input.designId}.png`, sha256: 'a'.repeat(64) }));
     window.designhub = {
       listProjectDesigns: vi.fn(async () => designs),
       loadProjectCanvasLayout: vi.fn(async () => null),
       listTasks: vi.fn(async () => [analysis]),
-      exportDocument,
+      exportProjectDesign,
     };
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, documents: 0 }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected
@@ -417,8 +606,8 @@ describe('ProjectCanvas design references', () => {
     fireEvent.click(screen.getByRole('button', { name: /第一轮分析/u }));
     fireEvent.click(screen.getByRole('button', { name: '导出所选设计稿' }));
 
-    await waitFor(() => expect(exportDocument).toHaveBeenCalledTimes(2));
-    expect(exportDocument.mock.calls.map(([input]) => input.documentId)).toEqual(['design-1', 'design-2']);
+    await waitFor(() => expect(exportProjectDesign).toHaveBeenCalledTimes(2));
+    expect(exportProjectDesign.mock.calls.map(([input]) => input.designId)).toEqual(['design-1', 'design-2']);
   });
 
   it('loads an analysis image and appends its request to the conversation draft once', async () => {
@@ -438,7 +627,7 @@ describe('ProjectCanvas design references', () => {
     render(
       <ProjectCanvas
         locale="zh-CN"
-        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [], documents: 0 }}
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
         libraryId="workspace-1"
         readOnly={false}
         conversationConnected

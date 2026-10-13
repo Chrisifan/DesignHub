@@ -1,4 +1,4 @@
-import { useRef, useState, type ClipboardEvent, type FormEvent, type RefObject } from 'react';
+import { useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type RefObject } from 'react';
 
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import { isProjectGenerationRatio, projectGenerationRatios, type ProjectGenerationRatio } from '../../features/projects/size';
@@ -7,6 +7,7 @@ import { PersonaArtwork } from './PersonaArtwork';
 import { localize, type PersonaProfile } from './personas';
 import { Icon, IconButton, Modal, Select, t } from './ui';
 import './conversation-dock.css';
+import { readImageFile as readSharedImageFile } from '../../features/assets/image-input';
 
 export type ConversationDockVariant = 'compact' | 'expanded';
 
@@ -50,38 +51,6 @@ type ConversationDockProps = {
 const maxAttachmentCount = 8;
 const maxAttachmentBytes = 8 * 1024 * 1024;
 
-const bytesToDataUrl = (mimeType: string, bytes: Uint8Array): string => {
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + chunkSize, bytes.length)));
-  }
-  return `data:${mimeType};base64,${btoa(binary)}`;
-};
-
-const readFileBytes = (file: File): Promise<ArrayBuffer> => {
-  if (typeof file.arrayBuffer === 'function') return file.arrayBuffer();
-  return new Promise<ArrayBuffer>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => reader.result instanceof ArrayBuffer
-      ? resolve(reader.result)
-      : reject(new Error('IMAGE_READ_FAILED'));
-    reader.onerror = () => reject(new Error('IMAGE_READ_FAILED'));
-    reader.readAsArrayBuffer(file);
-  });
-};
-
-const readImageFile = async (file: File): Promise<ConversationDockAttachment> => {
-  const mimeType = file.type || 'image/png';
-  const bytes = new Uint8Array(await readFileBytes(file));
-  return {
-    name: file.name || `image-${Date.now()}.png`,
-    mimeType,
-    bytes,
-    previewUrl: bytesToDataUrl(mimeType, bytes),
-  };
-};
-
 export const ConversationDock = ({
   variant,
   locale,
@@ -97,7 +66,7 @@ export const ConversationDock = ({
   submitLabel,
   busyLabel,
   textareaRef,
-  generationRatio = '3:4',
+  generationRatio = 'original',
   onGenerationRatioChange,
   showGenerate = false,
   generateDisabled = false,
@@ -129,7 +98,10 @@ export const ConversationDock = ({
       });
     if (!accepted.length) return;
     try {
-      const next = await Promise.all(accepted.map(readImageFile));
+      const next = await Promise.all(accepted.map(async (file) => {
+        const image = await readSharedImageFile(file);
+        return { name: image.name, mimeType: image.mimeType, bytes: image.bytes, previewUrl: image.previewUrl } satisfies ConversationDockAttachment;
+      }));
       onAttachmentsChange([...attachments, ...next]);
     } catch {
       notify(t(locale, '无法读取图片。', 'The image could not be read.'));
@@ -146,6 +118,10 @@ export const ConversationDock = ({
     if (!files.length) return;
     event.preventDefault();
     void addFiles(files);
+  };
+  const drop = (event: DragEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    if (!readOnly) void addFiles(Array.from(event.dataTransfer.files));
   };
   const availableDesigners = [
     ...(designer && !designerOptions.some((profile) => profile.id === designer.id) ? [designer] : []),
@@ -172,6 +148,8 @@ export const ConversationDock = ({
         aria-label={t(locale, 'AI 操作坞', 'AI command dock')}
         aria-busy={busy}
         onSubmit={submit}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={drop}
       >
         {attachments.length > 0 && (
           <div className="conversation-dock__attachments" aria-label={t(locale, '已添加图片', 'Attached images')}>
@@ -247,7 +225,10 @@ export const ConversationDock = ({
               className="conversation-dock__ratio-select"
               ariaLabel={t(locale, '设计稿比例', 'Design ratio')}
               value={generationRatio}
-              options={projectGenerationRatios.map((ratio) => ({ value: ratio, label: ratio.replace(':', ' : ') }))}
+              options={projectGenerationRatios.map((ratio) => ({
+                value: ratio,
+                label: ratio === 'original' ? t(locale, '原图', 'Original') : ratio.replace(':', ' : '),
+              }))}
               disabled={readOnly}
               onChange={(value) => {
                 if (isProjectGenerationRatio(value)) onGenerationRatioChange?.(value);

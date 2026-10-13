@@ -1,7 +1,7 @@
 import { designGenerationSlotIds, type DesignGenerationSlotId, type TaskRecord } from '../../features/tasks/state';
 import type { TaskSource } from '../../features/tasks/state';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
-import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, DesignGenerationInput, DesignGenerationSlotRetryInput, ImageEditInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
+import type { AgentTaskService, ConversationImageAttachment, ConversationTestInput, ConversationTestResult, DesignerArtworkGenerationInput, DesignGenerationInput, DesignGenerationSlotRetryInput, ImageEditSubmissionInput, ImageGenerationInput, ImageGenerationTestInput, ImageGenerationTestResult, PortfolioAnalysisInput } from '../../features/agent/task-service';
 import type { PortfolioImageSource } from '../../features/agent/analyze-portfolio';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import { isProjectGenerationRatio } from '../../features/projects/size';
@@ -27,7 +27,6 @@ type AgentWindow = { webContents: AgentSender };
 export type ConversationInput = {
   projectId?: string;
   source?: TaskSource;
-  documentId?: string;
   analysisThreadId?: string;
   conversationParentTaskId?: string;
   referencedAssetIds?: string[];
@@ -44,7 +43,7 @@ export type ConversationTestBridgeInput = ConversationTestInput & { libraryId: s
 export type ImageGenerationBridgeInput = ImageGenerationInput & { libraryId: string };
 export type ImageGenerationTestBridgeInput = ImageGenerationTestInput & { libraryId: string };
 export type DesignerArtworkGenerationBridgeInput = DesignerArtworkGenerationInput & { libraryId: string };
-export type ImageEditBridgeInput = ImageEditInput & { libraryId: string };
+export type ImageEditBridgeInput = Omit<ImageEditSubmissionInput, 'image' | 'mask'> & { libraryId: string; sourceAssetId: string };
 export type PortfolioAnalysisBridgeInput = PortfolioAnalysisInput & { libraryId: string };
 
 const isNonEmpty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
@@ -69,7 +68,6 @@ const isConversationInput = (value: unknown): value is ConversationBridgeInput =
   const projectValid = input.projectId === undefined || isNonEmpty(input.projectId);
   const hasBinding = isNonEmpty(input.projectId) || isTaskSource(input.source);
   return isNonEmpty(input.libraryId) && hasBinding && sourceValid && projectValid && isNonEmpty(input.connectionId) && isNonEmpty(input.message)
-    && (input.documentId === undefined || isNonEmpty(input.documentId))
     && (input.analysisThreadId === undefined || isNonEmpty(input.analysisThreadId))
     && (input.conversationParentTaskId === undefined || isNonEmpty(input.conversationParentTaskId))
     && (input.referencedAssetIds === undefined || (Array.isArray(input.referencedAssetIds) && input.referencedAssetIds.length <= 32 && input.referencedAssetIds.every(isNonEmpty)))
@@ -90,7 +88,6 @@ const isDesignGenerationInput = (value: unknown): value is DesignGenerationBridg
   const input = value as Record<string, unknown>;
   return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId)
     && isNonEmpty(input.conversationTaskId) && isNonEmpty(input.connectionId)
-    && (input.documentId === undefined || isNonEmpty(input.documentId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
     && (input.model === undefined || isNonEmpty(input.model))
     && (input.generationRatio === undefined || isProjectGenerationRatio(input.generationRatio))
@@ -134,7 +131,7 @@ const isDesignGenerationSlotRetryInput = (value: unknown): value is DesignGenera
 const isImageGenerationInput = (value: unknown): value is ImageGenerationBridgeInput => {
   if (!value || typeof value !== 'object') return false;
   const input = value as Record<string, unknown>;
-  return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId) && isNonEmpty(input.documentId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
+  return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId) && isNonEmpty(input.connectionId) && isNonEmpty(input.prompt)
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
     && (input.model === undefined || isNonEmpty(input.model))
@@ -164,7 +161,6 @@ const isDesignerArtworkGenerationInput = (value: unknown): value is DesignerArtw
     && (input.size === undefined || isNonEmpty(input.size))
     && (input.count === undefined || (Number.isInteger(input.count) && Number(input.count) >= 1 && Number(input.count) <= 4));
 };
-const isBlobLike = (value: unknown): value is Blob => Boolean(value && typeof value === 'object' && typeof (value as Blob).size === 'number' && (typeof (value as Blob).arrayBuffer === 'function' || typeof (value as Blob).stream === 'function' || typeof (value as Blob).slice === 'function'));
 const isRegion = (value: unknown): boolean => value !== null && typeof value === 'object'
   && ['x', 'y', 'width', 'height'].every((key) => typeof (value as Record<string, unknown>)[key] === 'number' && Number.isFinite((value as Record<string, unknown>)[key]))
   && Number((value as Record<string, unknown>).x) >= 0 && Number((value as Record<string, unknown>).y) >= 0
@@ -183,8 +179,7 @@ const isImageEditInput = (value: unknown): value is ImageEditBridgeInput => {
   const input = value as Record<string, unknown>;
   const localResize = input.tool === 'resize' && input.connectionId === '';
   return isNonEmpty(input.libraryId) && isNonEmpty(input.projectId) && (localResize || isNonEmpty(input.connectionId)) && isNonEmpty(input.prompt)
-    && isBlobLike(input.image)
-    && (input.mask === undefined || isBlobLike(input.mask))
+    && isNonEmpty(input.sourceAssetId)
     && (input.maskAssetId === undefined || isNonEmpty(input.maskAssetId))
     && (input.baseRevisionId === undefined || input.baseRevisionId === null || isNonEmpty(input.baseRevisionId))
     && (input.designerVersionId === undefined || isNonEmpty(input.designerVersionId))
@@ -292,7 +287,7 @@ export const createImageEditHandler = (
 ) => async (event: AgentRequest, input: unknown): Promise<TaskRecord | null> => {
   if (!isTrustedProjectLibraryRequest(event, window, trustedUrl) || !isImageEditInput(input)) return null;
   const workspace = getLibrary();
-  if (!workspace || workspace.library.libraryId !== input.libraryId) return null;
+  if (!workspace || workspace.library.libraryId !== input.libraryId || workspace.library.openMode !== 'writable') return null;
   return submit(workspace, input);
 };
 

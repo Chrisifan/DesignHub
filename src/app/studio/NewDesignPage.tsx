@@ -5,7 +5,7 @@ import { localize, type PersonaProfile } from './personas';
 import { ProjectCoverPicker } from './ProjectCoverPicker';
 import { Field, Icon, Select, t } from './ui';
 import type { NewDesignDraft } from './types';
-import { documentSizePresets } from '../../features/projects/size';
+import { projectDesignSizePresets } from '../../features/projects/size';
 import { builtInMockupTemplates } from '../../features/mockups/template';
 
 type NewProjectFormProps = {
@@ -91,7 +91,7 @@ export const NewProjectForm = ({
         </div>
       </Field>
       <Field label={t(locale, '图片尺寸', 'Image size')}>
-        <Select ariaLabel={t(locale, '图片尺寸', 'Image size')} value={draft.size} onChange={(value) => onDraftChange({ ...draft, size: value as NewDesignDraft['size'] })} options={documentSizePresets.map((size) => ({ value: size, label: size }))} />
+        <Select ariaLabel={t(locale, '图片尺寸', 'Image size')} value={draft.size} onChange={(value) => onDraftChange({ ...draft, size: value as NewDesignDraft['size'] })} options={projectDesignSizePresets.map((size) => ({ value: size, label: size }))} />
       </Field>
       {!persisted && <p className="inline-notice"><Icon name="circle-help" size={16} />{t(locale, '此处创建预览草稿，仅本次会话可见，不写入磁盘。', 'Creates a session-only preview draft. Nothing is written to disk.')}</p>}
     </form>

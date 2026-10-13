@@ -9,7 +9,7 @@ import {
 } from 'react';
 import type { Locale } from '../i18n';
 import type { Artwork } from './types';
-import { Tooltip } from './Tooltip';
+import { Tooltip, type TooltipPlacement } from './Tooltip';
 
 export const t = (locale: Locale, zh: string, en: string): string =>
   locale === 'zh-CN' ? zh : en;
@@ -49,13 +49,15 @@ export const IconButton = ({
   label,
   className = '',
   iconSize = 18,
+  tooltipPlacement = 'auto',
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   name: string;
   label: string;
   iconSize?: number;
+  tooltipPlacement?: TooltipPlacement;
 }) => (
-  <Tooltip content={label} asChild>
+  <Tooltip content={label} asChild placement={tooltipPlacement}>
     <button
       type="button"
       className={`icon-button ${className}`.trim()}
@@ -82,13 +84,25 @@ export const Field = ({
   label,
   children,
   hint,
+  required = false,
+  help,
+  requiredLabel = 'Required',
+  helpLabel = 'Show help',
 }: {
   label: ReactNode;
   children: ReactNode;
   hint?: string;
+  required?: boolean;
+  help?: ReactNode;
+  requiredLabel?: string;
+  helpLabel?: string;
 }) => (
-  <label className="ui-field">
-    <span>{label}</span>
+  <label className="ui-field" data-required={required ? 'true' : undefined}>
+    <span className="ui-field__label">
+      <span>{label}</span>
+      {required && <span className="ui-field__required" title={requiredLabel} aria-label={requiredLabel}>*</span>}
+      {help && <Tooltip content={help}><span className="ui-field__help" role="img" aria-label={helpLabel}><Icon name="circle-help" size={14} /></span></Tooltip>}
+    </span>
     {children}
     {hint && <small>{hint}</small>}
   </label>
@@ -254,12 +268,14 @@ export const Modal = ({
   onClose,
   locale,
   wide = false,
+  footer,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   locale: Locale;
   wide?: boolean;
+  footer?: ReactNode;
 }) => {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -272,12 +288,17 @@ export const Modal = ({
         : null;
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
-    dialog
-      .querySelector<HTMLElement>(
-        'input:not([type=hidden]):not(:disabled), textarea:not(:disabled)',
-      )
-      ?.focus({ preventScroll: true });
+    const content = dialog.querySelector<HTMLElement>('.dialog-content');
+    const resetDialogFocus = (): void => {
+      if (content) content.scrollTop = 0;
+      dialog.focus({ preventScroll: true });
+    };
+    resetDialogFocus();
+    const focusFrame = window.requestAnimationFrame(resetDialogFocus);
+    const focusTimer = window.setTimeout(resetDialogFocus, 50);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.clearTimeout(focusTimer);
       if (typeof dialog.close === 'function') dialog.close();
       if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
     };
@@ -285,8 +306,18 @@ export const Modal = ({
   return (
     <dialog
       ref={ref}
-      className={`ui-dialog ${wide ? 'ui-dialog--wide' : ''}`}
+      tabIndex={-1}
+      autoFocus
+      className={`ui-dialog ${wide ? 'ui-dialog--wide' : ''} ${footer ? 'ui-dialog--with-footer' : ''}`.trim()}
       aria-labelledby={titleId}
+      onFocusCapture={() => {
+        const content = ref.current?.querySelector<HTMLElement>('.dialog-content');
+        if (!content) return;
+        content.scrollTop = 0;
+        window.requestAnimationFrame(() => {
+          content.scrollTop = 0;
+        });
+      }}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
@@ -313,6 +344,7 @@ export const Modal = ({
         />
       </div>
       <div className="dialog-content">{children}</div>
+      {footer && <div className="dialog-footer">{footer}</div>}
     </dialog>
   );
 };

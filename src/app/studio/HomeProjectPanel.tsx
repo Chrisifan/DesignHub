@@ -116,7 +116,7 @@ export const HomeProjectPanel = ({
             <span className="studio-home-project-row__copy">
               <strong>{projectName(project)}</strong>
               <small>
-                {t(locale, `${project.documents} 份设计稿`, `${project.documents} design${project.documents === 1 ? '' : 's'}`)}
+                {t(locale, `${project.designs?.length ?? 0} 份设计稿`, `${project.designs?.length ?? 0} design${project.designs?.length === 1 ? '' : 's'}`)}
                 {project.updatedAt ? <span>· {formatDate(project.updatedAt)}</span> : null}
               </small>
             </span>
