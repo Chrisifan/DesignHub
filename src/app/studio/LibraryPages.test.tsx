@@ -622,6 +622,69 @@ it('sorts model tasks newest first and formats time for the active locale and lo
   expect(screen.queryByText(newerTime)).not.toBeInTheDocument();
 });
 
+it('localizes known model task types and preserves unknown capability labels', async () => {
+  const capabilities = [
+    ['task-conversation', 'conversation'],
+    ['task-design', 'design-generation'],
+    ['task-image-generation', 'image-generation'],
+    ['task-image-editing', 'image-editing'],
+    ['task-local-transform', 'local-transform'],
+    ['task-vision', 'vision-analysis'],
+    ['task-future', 'future-capability'],
+  ] as const;
+  const listTasks = vi.fn(async () => capabilities.map(([id, capability]) => taskRecord({ id, capability })));
+  window.designhub = { listTasks };
+  render(<TaskHarness />);
+
+  await screen.findByText('对话');
+  for (const label of ['设计生成', '图片生成', '图片编辑', '本地转换', '作品集分析', 'future-capability']) {
+    expect(screen.getByText(label)).toHaveClass('task-row__type');
+  }
+  expect(screen.queryByText('design-generation')).not.toBeInTheDocument();
+});
+
+it('shows candidate progress as one result button without inline details', async () => {
+  const listTasks = vi.fn(async () => [taskRecord({
+    id: 'design-result',
+    capability: 'design-generation',
+    source: { kind: 'project', id: 'project-1' },
+    generationSlots: [
+      { id: 'primary', direction: 'primary', state: 'completed', attempt: 1, assetId: 'asset-primary', candidateId: 'candidate-primary' },
+    ],
+    result: {
+      imageCount: 1,
+      candidates: [{
+        id: 'candidate-primary',
+        baseRevisionId: null,
+        assetIds: ['asset-primary'],
+        createdAt: '2026-10-13T06:30:00.000Z',
+      }],
+    },
+  })]);
+  window.designhub = { listTasks };
+  render(<TaskHarness />);
+
+  const resultButton = await screen.findByRole('button', { name: '候选 1/1' });
+  expect(resultButton).toHaveClass('task-result-button');
+  expect(screen.queryByText('查看候选详情')).not.toBeInTheDocument();
+  expect(document.querySelector('.task-generation-details')).toBeNull();
+  fireEvent.click(resultButton);
+  expect(screen.getByRole('dialog', { name: '任务结果' })).toBeInTheDocument();
+});
+
+it('derives an inspectable image result count from persisted asset ids', async () => {
+  const listTasks = vi.fn(async () => [taskRecord({
+    id: 'image-result',
+    capability: 'image-generation',
+    source: { kind: 'project', id: 'project-1' },
+    result: { assetIds: ['asset-1', 'asset-2'] },
+  })]);
+  window.designhub = { listTasks };
+  render(<TaskHarness />);
+
+  expect(await screen.findByRole('button', { name: '2 张图' })).toHaveClass('task-result-button');
+});
+
 it('filters model tasks from the breadcrumb toolbar and keeps rows compact', async () => {
   const longRequest = '这是一段很长的模型任务请求，用于验证任务列表不会因为内容过长而换行显示';
   const listTasks = vi.fn(async () => [
@@ -704,7 +767,7 @@ it('lets a failed task create a new retry attempt through the desktop bridge', a
   expect(screen.getByText('2')).toBeInTheDocument();
 });
 
-it('shows generation batch progress and retries only the failed slot', async () => {
+it('shows generation batch progress in one compact result control', async () => {
   const batch = taskRecord({
     id: 'design-1',
     capability: 'design-generation',
@@ -716,41 +779,14 @@ it('shows generation batch progress and retries only the failed slot', async () 
     ],
     result: { imageCount: 2, candidates: [] },
   });
-  const completedBatch = {
-    ...batch,
-    state: 'completed' as const,
-    generationSlots: batch.generationSlots?.map((slot) => slot.id === 'composition'
-      ? { ...slot, state: 'completed' as const, attempt: 2, errorCode: undefined, assetId: 'asset-composition', candidateId: 'candidate-composition' }
-      : slot),
-  };
-  let retryStarted = false;
-  const listTasks = vi.fn(async () => [retryStarted ? completedBatch : batch]);
+  const listTasks = vi.fn(async () => [batch]);
   const retryTask = vi.fn(async () => null);
-  const retryDesignGenerationSlot = vi.fn(async () => {
-    retryStarted = true;
-    return {
-    ...batch,
-    state: 'running' as const,
-    generationSlots: batch.generationSlots?.map((slot) => slot.id === 'composition'
-      ? { ...slot, state: 'queued' as const, attempt: 2, errorCode: undefined }
-      : slot),
-    };
-  });
-  window.designhub = {  listTasks, retryTask, retryDesignGenerationSlot };
+  window.designhub = { listTasks, retryTask };
   render(<TaskHarness />);
 
-  const progress = await screen.findByText('候选生成 2/3');
-  expect(progress).toHaveClass('task-row__result');
-  fireEvent.click(screen.getByText('查看候选详情'));
-  expect(screen.getByText('主方案')).toBeVisible();
-  expect(screen.getByText('构图探索')).toBeVisible();
-  expect(screen.getByText('视觉突破')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: '重试构图探索' }));
-
-  await waitFor(() => expect(retryDesignGenerationSlot).toHaveBeenCalledWith({ libraryId: 'workspace-1', taskId: 'design-1', slotId: 'composition' }));
-  await waitFor(() => expect(screen.getAllByText('候选生成 3/3').length).toBeGreaterThan(0), { timeout: 2_000 });
-  expect(within(screen.getByRole('article', { name: 'design-1' })).queryByText('排队')).not.toBeInTheDocument();
-  expect(listTasks.mock.calls.length).toBeGreaterThan(1);
+  expect(await screen.findByRole('button', { name: '候选 2/3' })).toHaveClass('task-result-button');
+  expect(screen.queryByText('查看候选详情')).not.toBeInTheDocument();
+  expect(document.querySelector('.task-generation-details')).toBeNull();
   expect(retryTask).not.toHaveBeenCalled();
 });
 

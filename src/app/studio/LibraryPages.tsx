@@ -36,12 +36,13 @@ import { ProviderSettings, type ProviderSettingsActions } from '../../features/p
 import type { ProviderConnection } from '../../features/providers/connection';
 import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, type ProviderProfile } from '../../features/providers/config';
 import { getProviderProfileStatus, mergeProviderConnectionStatus, type ProviderConnectionStatusMap } from '../../features/providers/status';
-import type { DesignGenerationSlotId, DesignGenerationSlotState, TaskRecord } from '../../features/tasks/state';
+import type { DesignGenerationSlotId, TaskRecord } from '../../features/tasks/state';
 import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
 import type { WorkspaceSettings } from '../../features/workspace/settings';
 import type { BatchImageTool, ImageToolJob, ImageToolItem } from '../../features/image-tools/jobs';
+import { TaskResultDrawer } from './TaskResultDrawer';
 import './library.css';
 
 const ImageToolsPage = lazy(async () => {
@@ -674,6 +675,7 @@ const TasksPage = ({
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
   const [category, setCategory] = useState<TaskCategory>('all');
+  const [selectedResultTaskId, setSelectedResultTaskId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     let loading = false;
@@ -775,20 +777,16 @@ const TasksPage = ({
   const generationProgress = (task: TaskRecord): string | undefined => {
     if (!task.generationSlots?.length) return undefined;
     const completed = task.generationSlots.filter((slot) => slot.state === 'completed').length;
-    return t(locale, `候选生成 ${completed}/${task.generationSlots.length}`, `Candidates ${completed}/${task.generationSlots.length}`);
+    return t(locale, `候选 ${completed}/${task.generationSlots.length}`, `Candidates ${completed}/${task.generationSlots.length}`);
   };
-  const slotLabel = (slotId: DesignGenerationSlotId): string => ({
-    primary: t(locale, '主方案', 'Primary'),
-    composition: t(locale, '构图探索', 'Composition'),
-    expressive: t(locale, '视觉突破', 'Expressive'),
-  })[slotId];
-  const slotStateLabel = (state: DesignGenerationSlotState): string => ({
-    queued: t(locale, '排队', 'Queued'),
-    running: t(locale, '处理中', 'Running'),
-    completed: t(locale, '已完成', 'Completed'),
-    failed: t(locale, '失败', 'Failed'),
-    cancelled: t(locale, '已取消', 'Cancelled'),
-  })[state];
+  const taskCapabilityLabel = (task: TaskRecord): string => ({
+    conversation: t(locale, '对话', 'Conversation'),
+    'design-generation': t(locale, '设计生成', 'Design generation'),
+    'image-generation': t(locale, '图片生成', 'Image generation'),
+    'image-editing': t(locale, '图片编辑', 'Image editing'),
+    'local-transform': t(locale, '本地转换', 'Local transform'),
+    'vision-analysis': t(locale, '作品集分析', 'Portfolio analysis'),
+  })[task.capability ?? ''] ?? task.capability ?? t(locale, '模型任务', 'Model task');
   const failureDescription = (task: TaskRecord): string | undefined => {
     const failure = task.providerFailure;
     if (!failure) return undefined;
@@ -837,20 +835,41 @@ const TasksPage = ({
       || task.requestId
       || t(locale, '模型任务', 'Model task');
   };
-  const taskResult = (task: TaskRecord): { label: string; title: string } => {
+  const taskResult = (task: TaskRecord): { label: string; title: string; inspectable: boolean } => {
     const progress = generationProgress(task);
-    const imageCount = task.result?.imageCount === undefined
+    const candidateCount = task.result?.candidates?.length ?? (task.result?.candidate ? 1 : 0);
+    const candidateSummary = progress || candidateCount === 0
       ? undefined
-      : t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`);
+      : t(locale, `候选 ${candidateCount}`, `${candidateCount} ${candidateCount === 1 ? 'candidate' : 'candidates'}`);
+    const resultAssetCount = new Set([
+      ...(task.result?.assetIds ?? []),
+      task.result?.sceneAssetId,
+      task.result?.toolCandidate?.resultAssetId,
+    ].filter((assetId): assetId is string => Boolean(assetId))).size;
+    const resolvedImageCount = task.result?.imageCount ?? (candidateCount === 0 && resultAssetCount > 0 ? resultAssetCount : undefined);
+    const imageCount = resolvedImageCount === undefined
+      ? undefined
+      : t(locale, `${resolvedImageCount} 张图`, `${resolvedImageCount} images`);
     const cost = task.result?.cost === undefined || task.result.cost === null
       ? undefined
       : t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`);
-    const details = [progress, imageCount, cost].filter((value): value is string => Boolean(value));
+    const details = [progress, candidateSummary, imageCount, cost].filter((value): value is string => Boolean(value));
     return {
-      label: progress ?? imageCount ?? cost ?? '—',
+      label: progress ?? candidateSummary ?? imageCount ?? cost ?? '—',
       title: details.join(' · ') || '—',
+      inspectable: Boolean(
+        task.generationSlots?.length
+        || task.result?.candidate
+        || task.result?.candidates?.length
+        || task.result?.assetIds?.length
+        || task.result?.sceneAssetId
+        || task.result?.toolCandidate?.resultAssetId
+      ),
     };
   };
+  const selectedResultTask = selectedResultTaskId
+    ? tasks.find((task) => task.id === selectedResultTaskId) ?? null
+    : null;
   return <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型任务', 'Model tasks')}
@@ -887,32 +906,26 @@ const TasksPage = ({
         const summary = taskSummary(task);
         const result = taskResult(task);
         const time = taskTime(task);
-        const generationBatchActive = task.generationSlots?.some((slot) => slot.state === 'queued' || slot.state === 'running') ?? false;
         const canRetry = !task.generationSlots?.length && (task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region));
+        const capabilityLabel = taskCapabilityLabel(task);
         return <article className="task-row" aria-label={task.id} key={task.id}>
-          <strong className="task-row__cell task-row__type" title={task.capability ?? t(locale, '模型任务', 'Model task')}>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
+          <strong className="task-row__cell task-row__type" title={capabilityLabel}>{capabilityLabel}</strong>
           <span className="task-row__cell task-row__state"><Badge tone={taskTone(task)}>{taskStateLabel(task)}</Badge></span>
           <span className="task-row__cell task-row__summary" title={summary}>{summary}</span>
-          <span className="task-row__cell task-row__result" title={result.title}>{result.label}</span>
+          <span className="task-row__cell task-row__result" title={result.title}>{result.inspectable
+            ? <button
+                type="button"
+                className="task-result-button"
+                aria-haspopup="dialog"
+                data-selected={selectedResultTaskId === task.id || undefined}
+                onClick={() => setSelectedResultTaskId(task.id)}
+              >{result.label}</button>
+            : result.label}</span>
           <time className="task-row__cell task-row__time" dateTime={task.updatedAt ?? task.createdAt} title={time.title}>{time.label}</time>
           <span className="task-row__actions">
             {(task.state === 'queued' || task.state === 'running') && <IconButton name="x" label={t(locale, '停止', 'Stop')} onClick={() => { void stopTask(task.id); }} />}
             {canRetry && <IconButton name="rotate-ccw" label={t(locale, '重试', 'Retry')} onClick={() => { void retryTask(task.id); }} />}
           </span>
-          {task.generationSlots?.length ? <details className="task-generation-details">
-            <summary>{t(locale, '查看候选详情', 'View candidate details')}</summary>
-            <ul>
-              {task.generationSlots.map((slot) => <li key={slot.id}>
-                <span>{slotLabel(slot.id)}</span>
-                <Badge tone={slot.state === 'completed' ? 'success' : slot.state === 'failed' ? 'error' : slot.state === 'cancelled' ? 'warning' : ''}>{slotStateLabel(slot.state)}</Badge>
-                {!generationBatchActive && (slot.state === 'failed' || slot.state === 'cancelled') && <IconButton
-                  name="rotate-ccw"
-                  label={t(locale, `重试${slotLabel(slot.id)}`, `Retry ${slotLabel(slot.id)}`)}
-                  onClick={() => { void retryGenerationSlot(task.id, slot.id); }}
-                />}
-              </li>)}
-            </ul>
-          </details> : null}
         </article>;
       })}
     </div> : tasks.length > 0 ? <div className="page-empty-state"><EmptyState
@@ -936,6 +949,13 @@ const TasksPage = ({
         {t(locale, '连接模型', 'Connect models')}
       </Button>
     </EmptyState></div>}
+    <TaskResultDrawer
+      locale={locale}
+      libraryId={libraryId}
+      task={selectedResultTask}
+      onClose={() => setSelectedResultTaskId(null)}
+      onRetrySlot={(taskId, slotId) => { void retryGenerationSlot(taskId, slotId); }}
+    />
   </section>;
 };
 
