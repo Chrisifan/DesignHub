@@ -9,6 +9,9 @@ import {
 describe('release check orchestration', () => {
   it('keeps local gates serial and puts the diff check last', () => {
     expect(getReleaseCommands(false).map(([name]) => name)).toEqual([
+      'test:focused',
+      'test:contracts',
+      'docs:check',
       'test:unit',
       'test:integration',
       'test:e2e',
@@ -22,6 +25,9 @@ describe('release check orchestration', () => {
 
   it('adds packaging before the final diff check when requested', () => {
     expect(getReleaseCommands(true).map(([name]) => name)).toEqual([
+      'test:focused',
+      'test:contracts',
+      'docs:check',
       'test:unit',
       'test:integration',
       'test:e2e',

@@ -7,6 +7,9 @@ import { pathToFileURL } from 'node:url';
 /** @typedef {{ status: 'passed'|'failed'|'passed-with-blockers', platform: string, node: string, commands: ReleaseCheckEntry[], packageScan: object, externalGates: ReleaseCheckEntry[] }} ReleaseCheckResult */
 
 const localCommands = [
+  ['test:focused', ['test:focused']],
+  ['test:contracts', ['test:contracts']],
+  ['docs:check', ['docs:check']],
   ['test:unit', ['test:unit']],
   ['test:integration', ['test:integration']],
   ['test:e2e', ['test:e2e']],
