@@ -243,8 +243,7 @@ button:disabled {
 }
 /* Main content containers stay unframed; child panels own their dividers. */
 .library-split,
-.connection-layout,
-.delivery-layout {
+.connection-layout {
   background: var(--content-card-background);
   border: 0;
   border-radius: 0;
@@ -790,11 +789,10 @@ button:disabled {
 .ui-drawer__footer .asset-detail-actions,
 .ui-drawer__footer .persona-inspector__actions,
 .ui-drawer__footer .provider-profile-actions-row,
-.ui-drawer__footer .workbench-compose__actions,
-.ui-drawer__footer .export-bar {
+.ui-drawer__footer .workbench-compose__actions {
   margin: 0;
 }
-.ui-drawer__footer > :where(.dialog-actions, .asset-detail-actions, .persona-inspector__actions, .provider-profile-actions-row, .workbench-compose__actions, .export-bar) {
+.ui-drawer__footer > :where(.dialog-actions, .asset-detail-actions, .persona-inspector__actions, .provider-profile-actions-row, .workbench-compose__actions) {
   width: 100%;
 }
 .ui-tooltip-trigger {

@@ -4,8 +4,7 @@ import { expect, it, vi } from 'vitest';
 
 import type { Locale } from '../i18n';
 import { LibraryPages } from './LibraryPages';
-import type { Project, Theme, View } from './types';
-import type { ExportHistoryRecord } from '../../features/delivery/export-history';
+import type { Theme, View } from './types';
 import type { TaskRecord } from '../../features/tasks/state';
 import { previewAssets } from '../../../tests/fixtures/libraries';
 import { personaProfiles } from '../../../tests/fixtures/personas';
@@ -13,14 +12,12 @@ import { PageToolbarHost, PageToolbarProvider } from './PageToolbar';
 
 const Harness = ({
   initialView = 'designers',
-  deliveryProject,
   libraryId,
   projectId,
   onAssetAction,
   onDesignerProfilesChange,
 }: {
   initialView?: Exclude<View, 'projects'>;
-  deliveryProject?: Project | null;
   libraryId?: string;
   projectId?: string;
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
@@ -47,7 +44,6 @@ const Harness = ({
           navigate={setView}
           onThemeChange={setTheme}
           onLocaleChange={setLocale}
-          deliveryProject={deliveryProject}
           libraryId={libraryId}
           projectId={projectId}
           onAssetAction={onAssetAction}
@@ -249,8 +245,8 @@ it('imports an image pasted from the clipboard for a workspace project', async (
   await waitFor(() => expect(importAssets).toHaveBeenCalledWith(expect.objectContaining({ items: [expect.objectContaining({ name: 'clipboard.png', mimeType: 'image/png' })] })));
 });
 
-it('shows honest unavailable states for connections and delivery', () => {
-  const { unmount } = render(<Harness initialView="connections" />);
+it('shows an honest unavailable state for connections', () => {
+  render(<Harness initialView="connections" />);
   expect(screen.getByText('尚未连接模型')).toBeInTheDocument();
   expect(screen.queryByLabelText('对话与视觉 API 密钥')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '对话与视觉' }));
@@ -261,10 +257,6 @@ it('shows honest unavailable states for connections and delivery', () => {
   expect(
     screen.queryByRole('button', { name: /检测/ }),
   ).not.toBeInTheDocument();
-  unmount();
-  render(<Harness initialView="delivery" />);
-  expect(screen.getByRole('heading', { name: '选择图片' })).toBeInTheDocument();
-  expect(screen.queryByRole('dialog', { name: '导出配置' })).not.toBeInTheDocument();
 });
 
 it('shows a connected state and lets the model groups switch profile configuration', async () => {
@@ -341,104 +333,6 @@ it('hydrates and saves the non-secret provider connection configuration', async 
       image: { baseUrl: 'https://image.example.test/v1', imageTransport: 'images', models: {} },
     },
   }));
-});
-
-it('derives the delivery preview from the selected project', () => {
-  const project: Project = {
-    id: 'objects',
-    name: '日常之物',
-    enName: 'Everyday objects',
-    description: '生活方式品牌',
-    enDescription: 'Lifestyle brand',
-    designers: ['清晰商业'],
-    artwork: 'objects',
-  };
-  const { container } = render(
-    <Harness initialView="delivery" deliveryProject={project} />,
-  );
-  expect(screen.getByRole('heading', { name: '日常之物' })).toBeInTheDocument();
-  expect(screen.getByText('1080 × 1440 像素 · sRGB')).toBeInTheDocument();
-  expect(
-    container.querySelector('.delivery-preview .artwork--objects'),
-  ).toBeInTheDocument();
-  const dialog = screen.getByRole('dialog', { name: '导出配置' });
-  expect(dialog).toBeInTheDocument();
-  expect(within(dialog).getByRole('button', { name: '导出' }).closest('.ui-drawer__footer')).toBeInTheDocument();
-  expect(screen.queryByText('定稿')).not.toBeInTheDocument();
-});
-
-it('exposes WebP alongside the supported delivery formats', () => {
-  const project: Project = { id: 'webp-project', libraryId: 'workspace-1', name: 'WebP 项目', enName: 'WebP project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank' };
-  render(<Harness initialView="delivery" deliveryProject={project} />);
-  expect(screen.getByRole('button', { name: 'WEBP' })).toBeInTheDocument();
-});
-
-it('uses the page toolbar export control to open image export settings', () => {
-  const project: Project = { id: 'toolbar-project', libraryId: 'workspace-1', name: '工具栏项目', enName: 'Toolbar project', description: 'desc', enDescription: 'desc', designers: [], artwork: 'blank' };
-  render(<Harness initialView="delivery" deliveryProject={project} />);
-  fireEvent.click(screen.getByRole('button', { name: '关闭' }));
-
-  fireEvent.click(screen.getByRole('button', { name: '导出当前设计稿' }));
-
-  expect(screen.getByRole('dialog', { name: '导出配置' })).toBeInTheDocument();
-});
-
-it('shows persisted export history for a project', async () => {
-  window.designhub = {
-
-    listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{
-      id: 'export-1', projectId: 'history-project', revisionId: 'revision-1', format: 'png',
-      targetPath: '/tmp/poster.png', sha256: 'a'.repeat(64), status: 'success', archived: false, createdAt: '2026-09-13T00:00:00.000Z',
-    }]),
-  };
-  const project: Project = { id: 'history-project', libraryId: 'workspace-1', name: '历史项目', enName: 'History project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank' };
-  render(<Harness initialView="delivery" deliveryProject={project} />);
-  await waitFor(() => expect(screen.getByText('PNG · revision-1')).toBeInTheDocument());
-  expect(screen.getByText('成功')).toBeInTheDocument();
-});
-
-it('uses the error tone for failed export history', async () => {
-  window.designhub = {
-
-    listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{
-      id: 'export-failed', projectId: 'failed-history-project', revisionId: 'revision-1', format: 'png',
-      targetPath: '/tmp/poster.png', status: 'failed', archived: false, errorCode: 'WRITE_FAILED', createdAt: '2026-09-13T00:00:00.000Z',
-    }]),
-  };
-  const project: Project = { id: 'failed-history-project', libraryId: 'workspace-1', name: '失败历史', enName: 'Failed history', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank' };
-  render(<Harness initialView="delivery" deliveryProject={project} />);
-
-  expect(await screen.findByText('失败')).toHaveClass('badge--error');
-});
-
-it('keeps history when its external target has moved', async () => {
-  window.designhub = {
-
-    listExportHistory: vi.fn(async (): Promise<ExportHistoryRecord[]> => [{
-      id: 'export-moved', projectId: 'moved-project', revisionId: 'revision-1', format: 'png',
-      targetPath: '/tmp/missing.png', status: 'success', archived: false, targetAvailable: false, createdAt: '2026-09-13T00:00:00.000Z',
-    }]),
-  };
-  const project: Project = { id: 'moved-project', libraryId: 'workspace-1', name: '移动项目', enName: 'Moved project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank' };
-  render(<Harness initialView="delivery" deliveryProject={project} />);
-  await waitFor(() => expect(screen.getByText(/目标已移动/)).toBeInTheDocument());
-  expect(screen.getByText('成功')).toBeInTheDocument();
-});
-
-it('offers project package export for persisted projects', async () => {
-  const exportProjectPackage = vi.fn(async () => ({ path: '/tmp/project.zip', sha256: 'a'.repeat(64) }));
-  window.designhub = {  exportProjectPackage };
-  const project: Project = { id: 'project-1', libraryId: 'workspace-1', name: '项目', enName: 'Project', description: 'desc', enDescription: 'desc', designers: ['纸感排版'], artwork: 'blank' };
-  render(<Harness initialView="delivery" deliveryProject={project} />);
-  fireEvent.click(screen.getByRole('button', { name: '导出项目包' }));
-  await waitFor(() => expect(exportProjectPackage).toHaveBeenCalledWith({ libraryId: 'workspace-1', projectId: 'project-1' }));
-});
-
-it('routes an empty delivery page back to project selection', () => {
-  render(<Harness initialView="delivery" deliveryProject={null} />);
-  expect(screen.getByRole('heading', { name: '选择图片' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '返回项目' }));
-  expect(screen.getByLabelText('current-view')).toHaveTextContent('projects');
 });
 
 it('changes theme and locale through the settings controls', () => {

@@ -14,7 +14,6 @@ export type View =
   | 'image-tool-upscale'
   | 'image-tool-resize'
   | 'image-tool-format-convert'
-  | 'delivery'
   | 'storage'
   | 'settings';
 export type Theme = 'system' | 'dark' | 'light';

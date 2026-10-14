@@ -158,7 +158,6 @@ for (const width of [1280, 1024]) {
               'Assets',
               'Connections',
               'Model tasks',
-              'Delivery',
               'Trash & backups',
             ]
           : [
@@ -166,7 +165,6 @@ for (const width of [1280, 1024]) {
               '素材库',
               '模型连接',
               '模型任务',
-              '导出交付',
               '废纸篓与备份',
             ]) {
           await navigateFromUserMenu(page, name);

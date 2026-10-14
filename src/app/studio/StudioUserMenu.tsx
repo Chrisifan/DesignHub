@@ -52,7 +52,6 @@ const groups: Array<{ zh: string; en: string; items: MenuItem[] }> = [
     zh: '管理',
     en: 'Manage',
     items: [
-      { view: 'delivery', icon: 'download', zh: '导出交付', en: 'Delivery' },
       { view: 'storage', icon: 'hard-drive', zh: '废纸篓与备份', en: 'Trash & backups' },
       { view: 'settings', icon: 'settings', zh: '设置', en: 'Settings' },
     ],

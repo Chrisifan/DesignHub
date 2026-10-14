@@ -11,7 +11,7 @@ import {
 } from 'react';
 
 import type { Locale } from '../i18n';
-import type { PageProps, Project, Theme, View } from './types';
+import type { PageProps, Theme, View } from './types';
 import { DesignerLibrary } from './DesignerLibrary';
 import { Drawer } from './Drawer';
 import { PageToolbarSlot } from './PageToolbar';
@@ -31,13 +31,11 @@ import {
 } from './ui';
 import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
-import type { DesignScene } from '../../features/canvas/scene';
 import { ProviderSettings, type ProviderSettingsActions } from '../../features/providers/ProviderSettings';
 import type { ProviderConnection } from '../../features/providers/connection';
 import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, type ProviderProfile } from '../../features/providers/config';
 import { getProviderProfileStatus, mergeProviderConnectionStatus, type ProviderConnectionStatusMap } from '../../features/providers/status';
 import type { DesignGenerationSlotId, TaskRecord } from '../../features/tasks/state';
-import type { ExportHistoryRecord } from '../../features/delivery/export-history';
 import type { TrashedProject } from '../../features/workspace/project-store';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
 import type { WorkspaceSettings } from '../../features/workspace/settings';
@@ -55,7 +53,6 @@ type LibraryPagesProps = PageProps & {
   theme: Theme;
   onThemeChange: (value: Theme) => void;
   onLocaleChange: (value: Locale) => void;
-  deliveryProject?: Project | null;
   onUseForNew?: (personaId: string) => void;
   libraryId?: string;
   readOnly?: boolean;
@@ -86,7 +83,6 @@ type AssetItem = {
   artwork: 'market' | 'objects' | 'type' | 'blank';
   managed?: boolean;
 };
-type DeliveryFormat = 'png' | 'jpeg' | 'webp' | 'pdf';
 type StorageTab = 'trash' | 'backup';
 type TaskCategory = 'all' | 'queued' | 'running' | 'completed' | 'failed';
 type BackupPreferences = { destinationParentDirectory: string | null; schedule: BackupSchedule; lastRunAt: string | null; lastArtifactPath: string | null };
@@ -540,8 +536,8 @@ const ConnectionsPage = ({
               ? t(locale, '最近一次连接测试失败，请检查地址、密钥和模型。', 'The latest connection test failed. Check the URL, key and model.')
             : !libraryId ? t(
               locale,
-              '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
-              'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
+              '当前仍可浏览示例和编辑画布。连接模型后即可提交真实任务。',
+              'You can still browse the example and edit the canvas. Connect a model to submit real tasks.',
             ) : ''}
         />
       </div>
@@ -957,274 +953,6 @@ const TasksPage = ({
       onRetrySlot={(taskId, slotId) => { void retryGenerationSlot(taskId, slotId); }}
     />
   </section>;
-};
-
-const DeliveryPage = ({
-  locale,
-  project,
-  format,
-  archiveCopy,
-  navigate,
-  onFormatChange,
-  onArchiveCopyChange,
-  notify,
-  active,
-}: {
-  locale: Locale;
-  project?: Project | null;
-  format: DeliveryFormat;
-  archiveCopy: boolean;
-  navigate: PageProps['navigate'];
-  onFormatChange: (format: DeliveryFormat) => void;
-  onArchiveCopyChange: (value: boolean) => void;
-  notify?: (message: string) => void;
-  active: boolean;
-}) => {
-  const [exporting, setExporting] = useState(false);
-  const [exportHistory, setExportHistory] = useState<ExportHistoryRecord[]>([]);
-  const [source] = useState<'current'>('current');
-  const [drawerOpen, setDrawerOpen] = useState(Boolean(project));
-  const selectedDesign = project?.designs?.[0];
-  const deliveryScene: DesignScene | null = selectedDesign ? { version: 1, id: selectedDesign.id, width: selectedDesign.width, height: selectedDesign.height, layers: [{ id: selectedDesign.id, type: 'image', assetId: selectedDesign.assetId, x: 0, y: 0, width: selectedDesign.width, height: selectedDesign.height, rotation: 0, opacity: 1, visible: true, locked: false }] } : null;
-  const sceneStatus: 'ready' | 'empty' = deliveryScene ? 'ready' : 'empty';
-  const formatDescription =
-    format === 'jpeg'
-      ? t(
-          locale,
-          'JPEG 不支持透明背景，将使用当前背景色。',
-          'JPEG does not support transparency; the current background color will be used.',
-        )
-      : format === 'pdf'
-        ? t(
-            locale,
-            '普通 PDF 不是 PDF/X，文字外观可能需要栅格化。',
-            'Standard PDF is not PDF/X; type may need rasterization to preserve appearance.',
-          )
-        : t(
-            locale,
-            'PNG 使用 sRGB，并保持当前画布像素尺寸。',
-            'PNG uses sRGB and keeps the current canvas pixel dimensions.',
-          );
-  const projectName = project ? t(locale, project.name, project.enName) : '';
-  const persistedProject = Boolean(project?.libraryId);
-  useEffect(() => {
-    setDrawerOpen(Boolean(project));
-    setExportHistory([]);
-    if (!project?.libraryId) return;
-    let cancelled = false;
-    const request = getDesktopApi().listExportHistory?.(project.libraryId, project.id);
-    if (!request) return () => { cancelled = true; };
-    void request.then((records) => {
-      if (!cancelled && records) setExportHistory(records);
-    }).catch(() => {
-      if (!cancelled) setExportHistory([]);
-    });
-    return () => { cancelled = true; };
-  }, [project?.id, project?.libraryId]);
-  const hasExportableContent = useCallback((scene: DesignScene | null): scene is DesignScene => Boolean(scene?.layers.some((layer) => (
-    layer.visible && !(layer.type === 'image' && (layer.role === 'reference' || layer.assetId === 'placeholder'))
-  ))), []);
-  useEffect(() => {
-    return undefined;
-  }, []);
-  const exportCurrent = async (): Promise<void> => {
-    if (!project?.libraryId || !selectedDesign || !deliveryScene) return;
-    setExporting(true);
-    try {
-      const api = getDesktopApi();
-      const scene = deliveryScene;
-      if (!hasExportableContent(scene)) {
-        notify?.(t(locale, '当前图片没有可导出的正式结果，请先在画布中选择候选稿并确认。', 'This image has no formal result to export. Select a candidate on the canvas and confirm it first.'));
-        return;
-      }
-      const result = await api.exportProjectDesign?.({ libraryId: project.libraryId, projectId: project.id, designId: selectedDesign.id, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
-      if (result) {
-        if (result.archiveError) {
-          notify?.(t(locale, `已导出到 ${result.path}，归档副本失败（${result.archiveError}），可重试。`, `Exported to ${result.path}; the archive copy failed (${result.archiveError}). Retry when ready.`));
-        } else if (result.archived) {
-          notify?.(t(locale, `已导出并归档到 ${result.path}`, `Exported and archived from ${result.path}`));
-        } else {
-          notify?.(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
-        }
-      }
-    } catch {
-      notify?.(t(locale, '导出失败，请重试。', 'Export failed. Try again.'));
-    } finally { setExporting(false); }
-  };
-  const exportPackage = async (): Promise<void> => {
-    if (!project?.libraryId) return;
-    try {
-      const result = await getDesktopApi().exportProjectPackage?.({ libraryId: project.libraryId, projectId: project.id });
-      if (result) notify?.(t(locale, `项目包已导出到 ${result.path}`, `Project package exported to ${result.path}`));
-    } catch {
-      notify?.(t(locale, '项目包导出失败', 'Project package export failed'));
-    }
-  };
-  const reexport = async (record: ExportHistoryRecord): Promise<void> => {
-    if (!project?.libraryId) return;
-    try {
-      if (deliveryScene) {
-        const result = await getDesktopApi().exportProjectDesign?.({ libraryId: project.libraryId, projectId: project.id, designId: selectedDesign?.id ?? project.id, format: record.format, scene: deliveryScene });
-        if (result) notify?.(t(locale, `已重新导出到 ${result.path}`, `Re-exported to ${result.path}`));
-      }
-    } catch {
-      notify?.(t(locale, '历史修订不可用，请重新导出当前版本。', 'The historical revision is unavailable; export the current version instead.'));
-    }
-  };
-  return (
-    <section className="page-content library-page">
-      <PageHeader
-        title={t(locale, '导出交付', 'Delivery')}
-        eyebrow={t(locale, persistedProject ? '当前原稿' : '示例原稿', persistedProject ? 'Current source artwork' : 'Example source artwork')}
-        description={
-          project
-            ? t(
-                locale,
-                persistedProject ? `为${project.name}配置输出格式。左侧显示当前图片原稿。` : `为${project.name}配置输出格式。左侧显示项目示例原稿。`,
-                persistedProject ? `Configure output for ${project.enName}. The current image source appears on the left.` : `Configure output for ${project.enName}. The project’s example source artwork appears on the left.`,
-              )
-            : t(
-                locale,
-                '选择项目图片后配置输出格式。',
-                'Select a project image to configure its output format.',
-              )
-        }
-      />
-      {project?.libraryId && <PageToolbarSlot active={active}>
-        <IconButton name="download" label={t(locale, '导出当前设计稿', 'Export current design')} onClick={() => setDrawerOpen(true)} />
-      </PageToolbarSlot>}
-      <div className="delivery-layout">
-        {project ? (
-          <div className="delivery-preview">
-            <ArtworkPreview kind={project.artwork} />
-            <div>
-              <Badge>{t(locale, '原稿', 'Source')}</Badge>
-              <h2>{projectName}</h2>
-              <p>
-                {(() => {
-                  const dimensions = `${selectedDesign?.width ?? 1080} × ${selectedDesign?.height ?? 1440}`;
-                  return t(locale, `${dimensions} 像素 · sRGB`, `${dimensions} px · sRGB`);
-                })()}
-              </p>
-              <small className="source-note">
-                  {t(locale, '导出将读取当前设计稿结果。', 'Export reads the current design result.')}
-              </small>
-            </div>
-          </div>
-        ) : (
-          <div className="delivery-preview delivery-preview--empty">
-            <EmptyState
-              icon="file-image"
-              title={t(locale, '选择图片', 'Select an image')}
-              description={t(
-                locale,
-                '从项目中选择一张图片，再返回这里配置交付预览。',
-                'Select an image from a project, then return here to configure its delivery preview.',
-              )}
-            >
-              <Button
-                variant="secondary"
-                icon="arrow-left"
-                onClick={() => navigate('projects')}
-              >
-                {t(locale, '返回项目', 'View projects')}
-              </Button>
-            </EmptyState>
-          </div>
-        )}
-        {project && <Drawer
-          open={drawerOpen}
-          title={t(locale, '导出配置', 'Delivery configuration')}
-          locale={locale}
-          onClose={() => setDrawerOpen(false)}
-          footer={(
-            <div className="export-bar">
-              <div>
-                <strong>{t(locale, '尚未选择目标目录', 'No destination selected')}</strong>
-                <span>{t(locale, persistedProject ? '使用桌面保存对话框写出并校验文件。' : '桌面导出能力接入后才可执行。', persistedProject ? 'Use the desktop save dialog to write and validate the file.' : 'Available after desktop export support is connected.')}</span>
-              </div>
-              <Button variant="primary" icon="download" disabled={!project?.libraryId || !selectedDesign || exporting || sceneStatus === 'empty'} onClick={() => { void exportCurrent(); }}>
-                {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
-              </Button>
-            </div>
-          )}
-        ><div className="delivery-config">
-          <div className="config-section">
-            <p className="panel-label">
-              {t(locale, '输出格式', 'Output format')}
-            </p>
-            <div
-              className="format-picker"
-              role="group"
-              aria-label={t(locale, '输出格式', 'Output format')}
-            >
-              {(['png', 'jpeg', 'webp', 'pdf'] as DeliveryFormat[]).map((option) => (
-                <button
-                  type="button"
-                  key={option}
-                  className={format === option ? 'is-selected' : ''}
-                  aria-pressed={format === option}
-                  onClick={() => onFormatChange(option)}
-                >
-                  <Icon
-                    name={option === 'pdf' ? 'file-image' : 'image'}
-                    size={17}
-                  />
-                  {t(locale, option.toUpperCase(), option.toUpperCase())}
-                </button>
-              ))}
-            </div>
-            <p className="format-note">
-              <Icon name="circle-alert" size={15} />
-              {formatDescription}
-            </p>
-          </div>
-          <div className="config-grid">
-            <Field label={t(locale, '来源', 'Source')}>
-              <Select ariaLabel={t(locale, '来源', 'Source')} value={source} disabled onChange={() => undefined} options={[{ value: 'current', label: t(locale, persistedProject ? '当前设计稿' : '示例原稿', persistedProject ? 'Current design' : 'Example source artwork') }]} />
-            </Field>
-            <Field label={t(locale, '颜色空间', 'Color space')}>
-              <Select ariaLabel={t(locale, '颜色空间', 'Color space')} value="srgb" disabled onChange={() => undefined} options={[{ value: 'srgb', label: t(locale, 'sRGB（首版）', 'sRGB (first release)') }]} />
-            </Field>
-          </div>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={archiveCopy}
-              onChange={(event) => onArchiveCopyChange(event.target.checked)}
-            />
-            <span>
-              <strong>
-                {t(locale, '同时归档到项目', 'Also archive in project')}
-              </strong>
-              <small>
-                {t(
-                  locale,
-                  persistedProject ? '导出会读取当前设计稿，并可选择归档副本。' : '仅配置选项；示例不会写入 exports 目录。',
-                  persistedProject ? 'Export reads the current design and can archive a copy.' : 'Configuration only; the example does not write to the exports directory.',
-                )}
-              </small>
-            </span>
-          </label>
-          {persistedProject && <div className="export-history" aria-label={t(locale, '导出历史', 'Export history')}>
-            <p className="panel-label">{t(locale, '导出历史', 'Export history')}</p>
-            {exportHistory.length === 0 ? <small>{t(locale, '暂无导出记录。', 'No export records yet.')}</small> : exportHistory.slice(0, 5).map((record) => (
-              <div className="export-history-row" key={record.id}>
-                <span>{record.format.toUpperCase()} · {record.revisionId}{record.targetAvailable === false ? ` · ${t(locale, '目标已移动', 'Target moved')}` : ''}</span>
-                <span className="export-history-row__actions">
-                  <Badge tone={record.status === 'success' ? 'success' : 'error'}>
-                    {record.status === 'success' ? t(locale, '成功', 'Success') : t(locale, '失败', 'Failed')}
-                  </Badge>
-                  {record.status === 'success' && <IconButton name="rotate-ccw" label={t(locale, '重新导出', 'Re-export')} onClick={() => { void reexport(record); }} />}
-                </span>
-              </div>
-            ))}
-          </div>}
-          {persistedProject && <Button variant="secondary" icon="download" onClick={() => { void exportPackage(); }}>{t(locale, '导出项目包', 'Export project package')}</Button>}
-        </div></Drawer>}
-      </div>
-    </section>
-  );
 };
 
 const StoragePage = ({
@@ -1731,7 +1459,6 @@ export const LibraryPages = ({
   theme,
   onThemeChange,
   onLocaleChange,
-  deliveryProject,
   onUseForNew,
   libraryId,
   preview = false,
@@ -1765,8 +1492,6 @@ export const LibraryPages = ({
   const [assetType, setAssetType] = useState<AssetType>('all');
   const [assetLayout, setAssetLayout] = useState<'grid' | 'list'>('grid');
   const [selectedAsset, setSelectedAsset] = useState('');
-  const [deliveryFormat, setDeliveryFormat] = useState<DeliveryFormat>('png');
-  const [archiveCopy, setArchiveCopy] = useState(false);
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
   const renderImageToolsPage = (tool?: BatchImageTool): ReactNode => !active ? null : (
     <Suspense fallback={<EmptyState icon="loader-circle" title={t(locale, '正在加载图像工具', 'Loading image tools')} description={t(locale, '正在准备批量处理工作台。', 'Preparing the batch image workbench.')} />}>
@@ -1852,19 +1577,6 @@ export const LibraryPages = ({
     'image-tool-upscale': renderImageToolsPage('upscale'),
     'image-tool-resize': renderImageToolsPage('resize'),
     'image-tool-format-convert': renderImageToolsPage('format-convert'),
-    delivery: (
-      <DeliveryPage
-        locale={locale}
-        project={deliveryProject}
-        format={deliveryFormat}
-        archiveCopy={archiveCopy}
-        navigate={navigate}
-        onFormatChange={setDeliveryFormat}
-        onArchiveCopyChange={setArchiveCopy}
-        notify={notify}
-        active={active}
-      />
-    ),
     storage: (
       <StoragePage
         locale={locale}

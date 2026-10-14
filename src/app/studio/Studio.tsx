@@ -43,7 +43,6 @@ const navigation: { view: View; icon: string; zh: string; en: string }[] = [
   { view: 'image-tool-upscale', icon: 'image', zh: '放大图像', en: 'Upscale image' },
   { view: 'image-tool-resize', icon: 'maximize-2', zh: '尺寸转换', en: 'Resize' },
   { view: 'image-tool-format-convert', icon: 'file-image', zh: '格式转换', en: 'Format conversion' },
-  { view: 'delivery', icon: 'download', zh: '导出交付', en: 'Delivery' },
   { view: 'storage', icon: 'hard-drive', zh: '废纸篓与备份', en: 'Trash & backups' },
 ];
 
@@ -136,7 +135,6 @@ export const Studio = ({
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'active' | 'archived' | 'all'>('active');
   const [selected, setSelected] = useState<Project | null>(null);
-  const [deliveryProject] = useState<Project | null>(null);
   const [connectionsDialogOpen, setConnectionsDialogOpen] = useState(false);
   const [providerRefreshKey, setProviderRefreshKey] = useState(0);
   const [designerCreateRequestId, setDesignerCreateRequestId] = useState(0);
@@ -853,7 +851,6 @@ export const Studio = ({
                 <LibraryPages
                   locale={locale}
                   view={item.view as Exclude<View, 'projects'>}
-                  deliveryProject={deliveryProject}
                   libraryId={workspace?.libraryId}
                   projectId={selected?.id ?? projects[0]?.id}
                   readOnly={workspace?.openMode === 'read-only'}

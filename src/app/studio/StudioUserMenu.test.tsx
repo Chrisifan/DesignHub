@@ -19,6 +19,7 @@ it('omits redundant home and new-project entries from the user menu', () => {
   expect(screen.queryByRole('menuitem', { name: '首页' })).not.toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: '新建项目' })).not.toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: '品牌包' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: '导出交付' })).not.toBeInTheDocument();
   expect(screen.getByRole('menuitem', { name: '废纸篓与备份' })).toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: '工作区管理' })).not.toBeInTheDocument();
   expect(screen.getByRole('menuitem', { name: '导入项目包' })).toBeInTheDocument();

@@ -155,22 +155,16 @@ it('keeps regular studio pages on one scroll owner and styles compact toolbar ac
     /\.toolbar-actions \.ui-button\s*\{[\s\S]*min-height:\s*var\(--toolbar-control-height\)/,
   );
   expect(styles).toMatch(
-    /\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*background:\s*var\(--content-card-background\)/,
+    /\.library-split,[\s\S]*\.connection-layout\s*\{[\s\S]*background:\s*var\(--content-card-background\)/,
   );
   expect(styles).toMatch(
-    /\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*border:\s*0;[\s\S]*border-radius:\s*0;[\s\S]*box-shadow:\s*var\(--content-card-shadow\)/,
+    /\.library-split,[\s\S]*\.connection-layout\s*\{[\s\S]*border:\s*0;[\s\S]*border-radius:\s*0;[\s\S]*box-shadow:\s*var\(--content-card-shadow\)/,
   );
   expect(styles).toMatch(
     /\.project-card\s*\{[\s\S]*background:\s*var\(--surface-container-lowest\)/,
   );
   expect(libraryStyles).toMatch(
     /\.capability-matrix\s*\{[\s\S]*background:\s*transparent/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-preview\s*\{[\s\S]*background:\s*transparent/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-config\s*\{[\s\S]*background:\s*transparent/,
   );
 });
 
@@ -275,22 +269,13 @@ it('fills library regions and keeps sibling content aligned', () => {
     /\.library-page\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*100%;/,
   );
   expect(libraryStyles).toMatch(
-    /\.library-page\s*>\s*\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;/,
+    /\.library-page\s*>\s*\.library-split,[\s\S]*\.connection-layout\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;/,
   );
   expect(libraryStyles).toMatch(
     /\.asset-collection\s*\{[\s\S]*padding:\s*0 16px 16px 0;/,
   );
   expect(libraryStyles).toMatch(
     /\.brand-list\s*\{\s*padding:\s*0 12px 12px;/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-preview:not\(\.delivery-preview--empty\)\s*>\s*div:last-child/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-preview:not\(\.delivery-preview--empty\)\s+p\s*\{/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-preview--empty\s*>\s*\.empty-state\s*\{[\s\S]*width:\s*100%;/,
   );
   expect(libraryStyles).toMatch(
     /\.settings-layout\s*\{[\s\S]*border-top:\s*0;/,
