@@ -4,6 +4,8 @@ Date: 2026-10-14. Status: active. Specification: [V1 release baseline](../specs/
 
 Each numbered task uses TDD where behavior changes, lands as an independently reviewable commit, and must pass its stage gate before the next stage begins.
 
+When this plan conflicts with a capability that the current product has intentionally removed, stop and confirm the intended scope before changing code. Project package export is explicitly out of scope; package import remains supported.
+
 ## Stage 0: freeze the current baseline
 
 1. Publish the canonical V1 specification and supersede the old multi-document plan.
@@ -24,14 +26,14 @@ Each numbered task uses TDD where behavior changes, lands as an independently re
 
 ## Stage 2: close product workflows
 
-1. Add Export project package to project actions, including read-only and cancel/error behavior.
-2. Use streaming archive export and streaming validated import in production.
+1. Remove the project package export bridge, IPC handler, service, UI assumptions, and release requirements while preserving package import.
+2. Use streaming validated package import in production.
 3. Prove every image input and output appends the same durable `ProjectDesign`.
 4. Close all nine canvas image tools.
 5. Close all four batch tools, including recovery and result import.
 6. Close designer portfolio, analysis, review, publish/default/archive, portrait generation, and rights confirmation.
-7. Close assets, search, trash, backup/restore, diagnostics, settings, and cross-library package handoff.
-8. Gate: offline success/error E2E journeys pass and an isolated library can import, edit, and re-export a package.
+7. Close assets, search, trash, backup/restore, diagnostics, settings, and project package import.
+8. Gate: offline success/error E2E journeys pass and an isolated library can import and edit a supported package.
 
 ## Stage 3: close a real provider
 
@@ -39,13 +41,13 @@ Each numbered task uses TDD where behavior changes, lands as an independently re
 2. Verify conversation, vision, generation, and editing with authorized fixed samples.
 3. Verify queueing, streaming, cancellation, timeout, rate limiting, partial results, explicit retry, and restart-to-unknown behavior.
 4. Record cost and remote cancellation as unavailable when the provider omits them.
-5. Confirm tasks, logs, diagnostics, and packages contain no key, image bytes, or unredacted provider errors.
+5. Confirm tasks, logs, and diagnostics contain no key, image bytes, or unredacted provider errors.
 6. Gate: all four capabilities have redacted result, duration, cost availability, and human quality evidence.
 
 ## Stage 4: performance, security, and UX
 
-Meet the agreed history, batch, search, package-memory, large-image, responsiveness, and memory targets. Regress traversal, ZIP bombs, links/reparse points, overwrite, disk-full, interrupted writes, CSP, IPC sender checks, and the single-writer lock. Verify themes, languages, target viewports/scales, keyboard, screen reader, reduced motion, and reduced transparency. Remove controls without backend behavior.
+Meet the agreed history, batch, search, package-import memory, large-image, responsiveness, and memory targets. Regress traversal, ZIP bombs, links/reparse points, overwrite, disk-full, interrupted writes, CSP, IPC sender checks, and the single-writer lock. Verify themes, languages, target viewports/scales, keyboard, screen reader, reduced motion, and reduced transparency. Remove controls without backend behavior.
 
 ## Stage 5: dual-platform release
 
-Build and sign macOS arm64, macOS x64, and Windows x64 with architecture-specific native module checks. Produce three platform reports and SHA-256 manifests before release aggregation. Verify install, launch, keyring CRUD, upgrade, uninstall with library retention, package interchange, and the packaged core journey on real devices. Set version `1.0.0` and publish manual-update release notes only after M01-M08 are all verified.
+Build and sign macOS arm64, macOS x64, and Windows x64 with architecture-specific native module checks. Produce three platform reports and SHA-256 manifests before release aggregation. Verify install, launch, keyring CRUD, upgrade, uninstall with library retention, package import, and the packaged core journey on real devices. Set version `1.0.0` and publish manual-update release notes only after M01-M08 are all verified.

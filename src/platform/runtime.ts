@@ -22,7 +22,6 @@ const unavailableDesktopApi: DesktopApi = {
   saveWorkspaceSettings: async () => false,
   rebuildSearchIndex: async () => false,
   searchProjects: async () => null,
-  exportProjectPackage: async () => null,
   loadDesignerState: async () => null,
   saveDesignerState: async () => false,
   listAssets: async () => null,

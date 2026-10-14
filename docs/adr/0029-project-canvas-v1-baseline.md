@@ -10,7 +10,7 @@ DesignHub V1 uses one project-level image canvas. Imported images, model generat
 
 Legacy document/revision data is rejected with `DOCUMENT_SCHEMA_REMOVED`. Detection is read-only: the original project or task file is not rewritten. The UI explains that the data belongs to an unsupported prerelease format and should be backed up before opening it with a compatible older build.
 
-Project packages contain project metadata, project design images, referenced managed assets, and the designer snapshot. They exclude credentials, conversations, diagnostics, trash, and unrelated assets.
+V1 imports compatible project packages containing project metadata, project design images, referenced managed assets, and the designer snapshot. It does not expose project package export. Imported packages must exclude credentials, conversations, diagnostics, trash, and unrelated assets.
 
 V1 retains one built-in `openai-compatible` provider connection with separate conversation and image endpoints, credentials, and models. Production always takes the Electron single-instance lock. Tests isolate `userData` and run native Electron cases serially.
 

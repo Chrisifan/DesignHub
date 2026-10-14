@@ -12,7 +12,7 @@ import { exportProjectDesignChannel } from './ipc/export';
 import { diagnosticsExportChannel } from './ipc/diagnostics';
 import { backupChooseDirectoryChannel, backupCreateChannel, backupRestoreChannel } from './ipc/backup';
 import { projectCanvasLayoutLoadChannel, projectCanvasLayoutSaveChannel, projectDesignsAddChannel, projectDesignsListChannel, projectListTrashChannel, projectTrashChannel, projectRestoreTrashChannel, projectPurgeTrashChannel } from './ipc/projects';
-import { projectPackageExportChannel, projectPackageImportChannel } from './ipc/package';
+import { projectPackageImportChannel } from './ipc/package';
 import { settingsLoadChannel, settingsSaveChannel } from './ipc/settings';
 import { searchQueryChannel, searchRebuildChannel } from './ipc/search';
 import { exportHistoryListChannel } from './ipc/export-history';
@@ -47,7 +47,6 @@ const api: DesktopApi = {
   saveWorkspaceSettings: (libraryId, settings) => ipcRenderer.invoke(settingsSaveChannel, { libraryId, settings }),
   rebuildSearchIndex: (libraryId, records) => ipcRenderer.invoke(searchRebuildChannel, { libraryId, records }),
   searchProjects: (options) => ipcRenderer.invoke(searchQueryChannel, options),
-  exportProjectPackage: (input) => ipcRenderer.invoke(projectPackageExportChannel, input),
   loadDesignerState: (libraryId) => ipcRenderer.invoke(designerLoadChannel, libraryId),
   saveDesignerState: (libraryId, state) => ipcRenderer.invoke(designerSaveChannel, { libraryId, state }),
   readDesignerArtwork: (input) => ipcRenderer.invoke(designerArtworkReadChannel, input),

@@ -21,6 +21,7 @@ test('launches the welcome shell with only the DesignHub bridge', async () => {
     expect(bridgeNames).not.toContain('chooseWorkspaceDirectory');
     expect(bridgeNames).not.toContain('createWorkspace');
     expect(bridgeNames).not.toContain('openWorkspace');
+    expect(bridgeNames).not.toContain('exportProjectPackage');
     expect(bridgeNames).toEqual(expect.arrayContaining([
       'createProjectContainer',
       'duplicateProject',
@@ -37,7 +38,6 @@ test('launches the welcome shell with only the DesignHub bridge', async () => {
       'saveWorkspaceSettings',
       'rebuildSearchIndex',
       'searchProjects',
-      'exportProjectPackage',
       'loadDesignerState',
       'saveDesignerState',
       'readDesignerArtwork',

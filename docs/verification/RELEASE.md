@@ -1,5 +1,13 @@
 # DesignHub V1 Release Verification
 
+> Current scope: [2026-10-14 verification matrix](CURRENT-STATUS-2026-10-14.md). Project package export has been removed from V1; older export entries below are retained only as historical evidence. Package import remains supported.
+
+## 2026-10-14 project package export removal
+
+- Removed the renderer bridge, IPC channel/handler, main-process service, archive writer, encoder, export-only policy, and export performance/integration assumptions. Package import and its trusted writable-library boundary remain.
+- `pnpm release:check` passed focused 172, unit 750 passed/3 skipped, integration 111, browser E2E 50, native source 2 passed/packaged 1 skipped, lint, typecheck, build, documentation links, V1 contracts, diff check, and the package scan.
+- Windows packaging, signed/notarized artifacts, live provider, packaged native, Keychain persistence, and installer upgrade remain explicit external blockers.
+
 ## 2026-10-05 remaining IPC continuation
 
 - project-library lifecycle、credentials、document export IPC 注册已从 main.ts 抽出；对应 handler/registrar 聚焦测试通过。

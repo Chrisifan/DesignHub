@@ -45,7 +45,7 @@ An imported file copied into the project library and addressed by asset ID. Exte
 A persisted conversation, vision, image-generation, or image-editing operation with explicit queued, running, completed, failed, canceled, or unknown-after-restart state. Restart never silently repeats a billable request.
 
 **Project conversation**
-The compact dock within ProjectCanvas. It can reference selected project designs and temporary image attachments, but conversations are not exported in project packages.
+The compact dock within ProjectCanvas. It can reference selected project designs and temporary image attachments. Conversations are not part of supported imported project packages.
 
 **Image tool result**
 A new immutable project design produced from an existing project design. The source is never overwritten.
@@ -53,14 +53,14 @@ A new immutable project design produced from an existing project design. The sou
 **Standalone batch job**
 A non-project job applying background removal, upscale, resize, or format conversion to scanned local files. Items have independent state and may be imported into managed assets after completion.
 
-**Project package**
-A portable archive containing project metadata, project design images, referenced managed assets, and the designer snapshot. It excludes credentials, conversations, diagnostics, trash, and unrelated assets.
+**Imported project package**
+A compatible portable archive containing project metadata, project design images, referenced managed assets, and the designer snapshot. DesignHub V1 can import this archive but does not export project packages. The accepted format excludes credentials, conversations, diagnostics, trash, and unrelated assets.
 
 **OpenAI-compatible connection**
 The single V1 provider type. Conversation and image capabilities use separate endpoint, credential, and model profiles even when they point to the same service.
 
 **Provider credential**
-A secret stored only in the operating-system credential store. It is never returned to the renderer or written to a project, package, backup, task, or diagnostic report.
+A secret stored only in the operating-system credential store. It is never returned to the renderer or written to a project, backup, task, or diagnostic report.
 
 **Local cancellation**
 Stopping local polling or output handling. It is not described as remote cancellation unless the provider confirms remote support and success.
@@ -79,7 +79,7 @@ A user-selected local copy with validated restore. Backup does not imply cloud s
 - All image-producing paths append a `ProjectDesign`; none overwrite an existing record.
 - `ProjectMetadata` contains project properties, brief, designer snapshot, designs, and canvas layout only.
 - Removed prerelease document/revision data fails with `DOCUMENT_SCHEMA_REMOVED` and is never rewritten during detection.
-- Read-only libraries may view and export projects but may not mutate them.
+- Read-only libraries may view projects and export individual design images but may not mutate them.
 - Production always uses the single-instance application lock and one library writer.
-- Logs, tasks, diagnostics, packages, and release reports contain neither credentials nor raw image bytes.
+- Logs, tasks, diagnostics, and release reports contain neither credentials nor raw image bytes.
 - V1 updates are downloaded and installed manually.

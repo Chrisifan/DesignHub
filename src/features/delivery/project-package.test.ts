@@ -2,35 +2,17 @@
 
 import { expect, it } from 'vitest';
 import { zipSync } from 'fflate';
-import { createProjectPackage, decodeProjectPackage, encodeProjectPackage, importProjectPackage } from './project-package';
+import { decodeProjectPackage } from './project-package';
 
-it('creates an importable project package with manifest and source closure', async () => {
-  const pack = await createProjectPackage({
-    packageId: 'pkg-1', projectId: 'project-1', entries: [{ path: 'poster.png', bytes: new Uint8Array([1, 2, 3]), kind: 'output' }],
+it('decodes a project package with a validated manifest', async () => {
+  const encoded = zipSync({
+    'designhub.package.json': new TextEncoder().encode(JSON.stringify({ packageId: 'pkg-zip', projectId: 'project-zip', readOnly: false, entries: ['manifest.json', 'outputs/poster.png'] })),
+    'manifest.json': new TextEncoder().encode('{"ok":true}'),
+    'outputs/poster.png': new Uint8Array([1, 2, 3]),
   });
-  const imported = await importProjectPackage(pack, { existingProjectIds: [] });
-  expect(imported.projectId).not.toBe('');
-  expect(imported.entries).toEqual(['poster.png']);
-});
-
-it('does not overwrite a project with a duplicate package id', async () => {
-  const pack = await createProjectPackage({ packageId: 'pkg-1', projectId: 'project-1', entries: [] });
-  await expect(importProjectPackage(pack, { existingProjectIds: ['project-1'] })).rejects.toThrow('PROJECT_EXISTS');
-});
-
-it('round-trips a project package as a validated ZIP archive', async () => {
-  const pack = await createProjectPackage({
-    packageId: 'pkg-zip', projectId: 'project-zip', readOnly: true, entries: [
-      { path: 'manifest.json', kind: 'manifest', bytes: new TextEncoder().encode('{"ok":true}') },
-      { path: 'outputs/poster.png', kind: 'output', bytes: new Uint8Array([1, 2, 3]) },
-      { path: 'conversation.json', kind: 'conversation', bytes: new Uint8Array([9]) },
-    ],
-  });
-  const encoded = await encodeProjectPackage(pack);
   const decoded = await decodeProjectPackage(encoded);
-  expect(decoded.manifest).toEqual(pack.manifest);
+  expect(decoded.manifest).toEqual({ packageId: 'pkg-zip', projectId: 'project-zip', readOnly: false, entries: ['manifest.json', 'outputs/poster.png'] });
   expect(Array.from(decoded.files['outputs/poster.png'])).toEqual([1, 2, 3]);
-  expect(decoded.files['conversation.json']).toBeUndefined();
 });
 
 it('rejects ZIP entries that are not declared in the package manifest', async () => {
@@ -48,24 +30,4 @@ it('rejects duplicate paths in package manifests', async () => {
     'declared.txt': new Uint8Array([1]),
   });
   await expect(decodeProjectPackage(encoded)).rejects.toThrow('INVALID_PACKAGE');
-  await expect(createProjectPackage({
-    packageId: 'pkg-duplicate-create',
-    projectId: 'project-duplicate-create',
-    entries: [
-      { path: 'declared.txt', kind: 'manifest', bytes: new Uint8Array([1]) },
-      { path: 'declared.txt', kind: 'manifest', bytes: new Uint8Array([2]) },
-    ],
-  })).rejects.toThrow('INVALID_PACKAGE');
-});
-
-it('rejects private and delivery entries that collide on one path', async () => {
-  await expect(createProjectPackage({
-    packageId: 'pkg-collision',
-    projectId: 'project-collision',
-    readOnly: true,
-    entries: [
-      { path: 'exports/result.png', kind: 'output', bytes: new Uint8Array([1]) },
-      { path: 'exports/result.png', kind: 'credential', bytes: new Uint8Array([9]) },
-    ],
-  })).rejects.toThrow('INVALID_PACKAGE');
 });

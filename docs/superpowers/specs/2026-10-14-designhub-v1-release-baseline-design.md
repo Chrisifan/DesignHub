@@ -6,7 +6,7 @@ This specification replaces the 2026-09-08 multi-document baseline. The current 
 
 ## Product scope
 
-V1 includes designers, managed assets, project search, trash, backups, diagnostics, settings, project package handoff, nine project-canvas image tools, and four standalone batch tools. It excludes documents, revisions, finalization, Brand Kit, Workbench, accounts, cloud sync, collaboration, arbitrary provider plugins, and in-app updates.
+V1 includes designers, managed assets, project search, trash, backups, diagnostics, settings, project package import, nine project-canvas image tools, and four standalone batch tools. It excludes project package export, documents, revisions, finalization, Brand Kit, Workbench, accounts, cloud sync, collaboration, arbitrary provider plugins, and in-app updates.
 
 The nine canvas tools are background removal, background replacement, object removal, inpainting, outpainting, smart crop, upscale, resize, and watermark removal. The four batch tools are background removal, upscale, resize, and format conversion.
 
@@ -16,7 +16,7 @@ The nine canvas tools are background removal, background replacement, object rem
 - Import, generation, and image-tool results append immutable `ProjectDesign` values with dimensions, position through layout, source task, and timestamps.
 - `DesignScene` is transient input for an image-tool request or single-image export and is never persisted as a document.
 - Removed document/revision schemas fail with `DOCUMENT_SCHEMA_REMOVED`; reads never rewrite the source.
-- Project packages include only project metadata, project design images, referenced assets, and the designer snapshot.
+- Package import accepts only project metadata, project design images, referenced assets, and the designer snapshot; the app exposes no project package export API.
 
 ## Runtime and provider contract
 

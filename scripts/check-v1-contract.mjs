@@ -15,6 +15,11 @@ const forbiddenProductSymbols = [
   'finalizeRevision',
   'listRevisions',
   'brandSnapshot',
+  'exportProjectPackage',
+  'projectPackageExportChannel',
+  'project:package-export',
+  'createProjectPackageArchive',
+  'encodeProjectPackage',
 ];
 const removedFocusedPatterns = [/(^|\/)Workbench\.test\./u, /(^|\/)scenes?\.test\./u, /(^|\/)revisions?\.test\./u, /(^|\/)brands?\.test\./u];
 

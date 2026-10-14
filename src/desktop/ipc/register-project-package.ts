@@ -1,10 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import {
-  exportProjectPackageHandler,
-  importProjectPackageHandler,
-  projectPackageExportChannel,
-  projectPackageImportChannel,
-} from './package';
+import { importProjectPackageHandler, projectPackageImportChannel } from './package';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 
 type IpcMainLike = {
@@ -18,10 +13,6 @@ export type RegisterProjectPackageOptions = {
   getWindow: () => BrowserWindow | null;
   getTrustedUrl: () => string | null;
   getLibrary: () => ProjectLibraryHandle | null;
-  exportPackage: (
-    workspace: ProjectLibraryHandle,
-    projectId: string,
-  ) => Promise<{ path: string; sha256: string } | null>;
   importPackage: (workspace: ProjectLibraryHandle) => Promise<{ projectId: string } | null>;
 };
 
@@ -30,7 +21,6 @@ export const registerProjectPackageHandlers = ({
   getWindow,
   getTrustedUrl,
   getLibrary,
-  exportPackage,
   importPackage,
 }: RegisterProjectPackageOptions): void => {
   const getContext = () => {
@@ -39,29 +29,18 @@ export const registerProjectPackageHandlers = ({
     return window && trustedUrl ? { window, trustedUrl } : null;
   };
 
-  const getHandlers = (): { exportPackage: PackageHandler; importPackage: PackageHandler } | null => {
+  const getHandler = (): PackageHandler | null => {
     const context = getContext();
     if (!context) return null;
-    return {
-      exportPackage: exportProjectPackageHandler(
-        context.window,
-        context.trustedUrl,
-        getLibrary,
-        exportPackage,
-      ) as PackageHandler,
-      importPackage: importProjectPackageHandler(
-        context.window,
-        context.trustedUrl,
-        getLibrary,
-        importPackage,
-      ) as PackageHandler,
-    };
+    return importProjectPackageHandler(
+      context.window,
+      context.trustedUrl,
+      getLibrary,
+      importPackage,
+    ) as PackageHandler;
   };
 
-  ipc.handle(projectPackageExportChannel, (event, input) => {
-    return getHandlers()?.exportPackage(event, input) ?? null;
-  });
   ipc.handle(projectPackageImportChannel, (event, input) => {
-    return getHandlers()?.importPackage(event, input) ?? null;
+    return getHandler()?.(event, input) ?? null;
   });
 };

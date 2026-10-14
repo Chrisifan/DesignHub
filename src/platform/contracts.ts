@@ -109,7 +109,6 @@ export type DesktopApi = {
   saveWorkspaceSettings?: (libraryId: string, settings: WorkspaceSettings) => Promise<boolean>;
   rebuildSearchIndex?: (libraryId: string, records: readonly SearchRecord[]) => Promise<boolean>;
   searchProjects?: (options: SearchQuery) => Promise<SearchIndexItem[] | null>;
-  exportProjectPackage?: (input: { libraryId: string; projectId: string }) => Promise<{ path: string; sha256: string } | null>;
   loadDesignerState?: (libraryId: string) => Promise<DesignerLibraryState | null>;
   saveDesignerState?: (libraryId: string, state: DesignerLibraryState) => Promise<boolean>;
   readDesignerArtwork?: (input: { libraryId: string; artworkId: string }) => Promise<{ artworkId: string; dataUrl: string } | null>;

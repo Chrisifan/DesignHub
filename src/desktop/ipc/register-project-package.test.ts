@@ -1,8 +1,8 @@
-import { projectPackageExportChannel, projectPackageImportChannel } from './package';
+import { projectPackageImportChannel } from './package';
 import { registerProjectPackageHandlers } from './register-project-package';
 
 describe('registerProjectPackageHandlers', () => {
-  it('registers package export and import channels', () => {
+  it('registers only the package import channel', () => {
     const registrations = new Map<string, (...args: unknown[]) => unknown>();
 
     registerProjectPackageHandlers({
@@ -14,13 +14,9 @@ describe('registerProjectPackageHandlers', () => {
       getWindow: () => ({ webContents: {} } as never),
       getTrustedUrl: () => 'http://localhost:5173',
       getLibrary: () => null,
-      exportPackage: vi.fn(),
       importPackage: vi.fn(),
     });
 
-    expect([...registrations.keys()]).toEqual([
-      projectPackageExportChannel,
-      projectPackageImportChannel,
-    ]);
+    expect([...registrations.keys()]).toEqual([projectPackageImportChannel]);
   });
 });

@@ -204,7 +204,6 @@ if (ownsSingleInstanceLock) void app.whenReady().then(async () => {
   const imageToolService = createImageToolService({ credentialStore, providerConfigPath: providerConfigPath(), generatedImageBytes });
   const projectPackageService = createProjectPackageService({
     getWindow: () => activeWindow,
-    showSaveDialog: (window, options) => dialog.showSaveDialog(window, options),
     showOpenDialog: (window, options) => dialog.showOpenDialog(window, options),
     readArchive: async (path) => new Uint8Array(await readFile(path)),
   });
@@ -267,7 +266,6 @@ if (ownsSingleInstanceLock) void app.whenReady().then(async () => {
     getWindow: () => activeWindow,
     getTrustedUrl: () => activeTrustedUrl,
     getLibrary: () => activeProjectLibraryHandle,
-    exportPackage: projectPackageService.exportPackage,
     importPackage: projectPackageService.importPackage,
   });
   registerContentHandlers({

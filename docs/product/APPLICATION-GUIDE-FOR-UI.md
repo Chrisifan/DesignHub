@@ -6,13 +6,13 @@ Updated: 2026-10-14. Scope: signed macOS arm64/x64 and Windows x64 desktop relea
 
 DesignHub is a local-first desktop tool for producing and processing marketing images. A project opens directly into one ProjectCanvas containing immutable images. There is no document picker, revision browser, finalization state, Brand Kit, or Workbench in V1.
 
-The application works without an account. Offline users can browse and edit local project layout, import images, export images or packages, search metadata, manage trash, and run backups. Provider-dependent controls explain that a connection is required instead of hiding local work.
+The application works without an account. Offline users can browse and edit local project layout, import images or compatible project packages, export individual images, search metadata, manage trash, and run backups. Provider-dependent controls explain that a connection is required instead of hiding local work.
 
 ## Primary navigation
 
 The first screen is the working application, not a marketing page. The global navigation provides projects, designers, assets, provider settings, model tasks, four batch tools, trash/backups, settings, and diagnostics.
 
-Project package import belongs to the global user menu. Project package export belongs to the open project's action menu.
+Project package import belongs to the global user menu. V1 has no project package export action.
 
 ## ProjectCanvas
 
@@ -26,7 +26,7 @@ Tools never overwrite the selected image. A queued placeholder is shown immediat
 
 The compact conversation dock is inside the bottom toolbar. It can attach local images or selected project designs. A conversation response and any requested generation are persisted as model tasks. The dock must not cover the canvas toolbar at supported sizes.
 
-Single-image export is available on the canvas. Project package export is available for writable and read-only libraries. Canceling a save dialog is a neutral outcome; failures show a recoverable message and leave project data unchanged.
+Single-image export is available on the canvas. Canceling its save dialog is a neutral outcome; failures show a recoverable message and leave project data unchanged.
 
 ## Designers
 
