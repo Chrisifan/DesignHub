@@ -1,17 +1,18 @@
 import { isSafePackagePath } from './package-policy';
 import { unzipSync } from 'fflate';
 
+export type ProjectPackageManifest = { packageId: string; projectId: string; readOnly: boolean; entries: string[] };
 export type ProjectPackage = {
-  manifest: { packageId: string; projectId: string; readOnly: boolean; entries: string[] };
+  manifest: ProjectPackageManifest;
   files: Record<string, Uint8Array>;
 };
 
 const hasUniquePaths = (paths: readonly string[]): boolean => new Set(paths).size === paths.length;
 
-const packageManifestPath = 'designhub.package.json';
+export const projectPackageManifestPath = 'designhub.package.json';
 const textDecoder = new TextDecoder();
 
-const isPackageManifest = (value: unknown): value is ProjectPackage['manifest'] => {
+const isPackageManifest = (value: unknown): value is ProjectPackageManifest => {
   if (typeof value !== 'object' || value === null) return false;
   const manifest = value as Record<string, unknown>;
   return typeof manifest.packageId === 'string'
@@ -24,16 +25,21 @@ const isPackageManifest = (value: unknown): value is ProjectPackage['manifest'] 
     && hasUniquePaths(manifest.entries as string[]);
 };
 
+export const decodeProjectPackageManifest = (bytes: Uint8Array): ProjectPackageManifest => {
+  let value: unknown;
+  try { value = JSON.parse(textDecoder.decode(bytes)) as unknown; } catch { throw new Error('INVALID_PACKAGE'); }
+  if (!isPackageManifest(value)) throw new Error('INVALID_PACKAGE');
+  return value;
+};
+
 export const decodeProjectPackage = async (archive: Uint8Array): Promise<ProjectPackage> => {
   let files: Record<string, Uint8Array>;
   try { files = unzipSync(archive); } catch { throw new Error('INVALID_PACKAGE'); }
-  const manifestBytes = files[packageManifestPath];
+  const manifestBytes = files[projectPackageManifestPath];
   if (!manifestBytes) throw new Error('INVALID_PACKAGE');
-  let manifestValue: unknown;
-  try { manifestValue = JSON.parse(textDecoder.decode(manifestBytes)) as unknown; } catch { throw new Error('INVALID_PACKAGE'); }
-  if (!isPackageManifest(manifestValue)) throw new Error('INVALID_PACKAGE');
+  const manifestValue = decodeProjectPackageManifest(manifestBytes);
   const declared = new Set(manifestValue.entries);
-  const archivePaths = Object.keys(files).filter((path) => path !== packageManifestPath);
+  const archivePaths = Object.keys(files).filter((path) => path !== projectPackageManifestPath);
   if (archivePaths.some((path) => !isSafePackagePath(path) || !declared.has(path)) || manifestValue.entries.some((path) => !files[path])) throw new Error('INVALID_PACKAGE');
   const payload: Record<string, Uint8Array> = {};
   manifestValue.entries.forEach((path) => { payload[path] = files[path]; });

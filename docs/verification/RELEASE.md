@@ -2,6 +2,12 @@
 
 > Current scope: [2026-10-14 verification matrix](CURRENT-STATUS-2026-10-14.md). Project package export has been removed from V1; older export entries below are retained only as historical evidence. Package import remains supported.
 
+## 2026-10-14 streaming project package import
+
+- The native dialog now hands an archive path to the storage importer. The importer reads 64 KiB chunks, extracts only safe unique paths into an isolated temporary directory, enforces entry/expanded-size/compression limits, and validates the exact project content closure plus managed-asset SHA-256 before atomic publication.
+- Declared private or unreferenced files and over-limit archives fail without publishing a project. The production-path performance test imports a 16.8 MiB package below the `2x` additional-memory budget.
+- `pnpm release:check` passed focused 172, unit 751 passed/3 skipped, integration 115, browser E2E 50, native source 2 passed/packaged 1 skipped, lint, typecheck, build, documentation links, V1 contracts, diff check, and package scan. External blockers are unchanged.
+
 ## 2026-10-14 project package export removal
 
 - Removed the renderer bridge, IPC channel/handler, main-process service, archive writer, encoder, export-only policy, and export performance/integration assumptions. Package import and its trusted writable-library boundary remain.

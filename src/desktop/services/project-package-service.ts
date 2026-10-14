@@ -1,14 +1,14 @@
 import type { BrowserWindow } from 'electron';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
-import { createProjectStore } from '../storage/project-store';
 import { randomUUID } from 'node:crypto';
+import type { ProjectPackageArchiveImportInput } from '../storage/project-package-import';
 
 type OpenDialog = (window: BrowserWindow, options: { properties: Array<'openFile'>; filters: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled: boolean; filePaths: string[] }>;
 
 export type ProjectPackageServiceDependencies = {
   getWindow: () => BrowserWindow | null;
   showOpenDialog: OpenDialog;
-  readArchive: (path: string) => Promise<Uint8Array>;
+  importArchive: (workspace: ProjectLibraryHandle, input: ProjectPackageArchiveImportInput) => Promise<{ projectId: string }>;
 };
 
 export const createProjectPackageService = (dependencies: ProjectPackageServiceDependencies) => ({
@@ -20,11 +20,10 @@ export const createProjectPackageService = (dependencies: ProjectPackageServiceD
       filters: [{ name: 'DesignHub package', extensions: ['zip'] }],
     });
     if (result.canceled || !result.filePaths[0]) return null;
-    const archive = await dependencies.readArchive(result.filePaths[0]);
-    return createProjectStore(workspace).importProjectPackage({
+    return dependencies.importArchive(workspace, {
       libraryId: workspace.library.libraryId,
       operationId: randomUUID(),
-      archive,
+      archivePath: result.filePaths[0],
     });
   },
 });

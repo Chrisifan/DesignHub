@@ -49,6 +49,7 @@ import { registerImageToolIpcHandlers } from './ipc/register-image-tools';
 import { createAgentTaskServiceForLibrary } from './services/task-service-factory';
 import { createImageToolService } from './services/image-tool-service';
 import { createProjectPackageService } from './services/project-package-service';
+import { importProjectPackageArchive } from './storage/project-package-import';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -205,7 +206,7 @@ if (ownsSingleInstanceLock) void app.whenReady().then(async () => {
   const projectPackageService = createProjectPackageService({
     getWindow: () => activeWindow,
     showOpenDialog: (window, options) => dialog.showOpenDialog(window, options),
-    readArchive: async (path) => new Uint8Array(await readFile(path)),
+    importArchive: importProjectPackageArchive,
   });
   const imageToolHandlers = createImageToolIpcHandlers({
     window: { webContents: activeWindow!.webContents },
