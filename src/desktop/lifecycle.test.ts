@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import { openProjectLibraryForActivation, recreateWindowOnActivate } from './lifecycle';
+import { focusExistingWindow, openProjectLibraryForActivation, recreateWindowOnActivate } from './lifecycle';
 import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 
 it('recreates a window on macOS activation only after all windows are closed', () => {
@@ -10,6 +10,36 @@ it('recreates a window on macOS activation only after all windows are closed', (
   recreateWindowOnActivate(() => true, createWindow);
 
   expect(createWindow).toHaveBeenCalledOnce();
+});
+
+it('restores and focuses the existing window when another app instance starts', () => {
+  const window = {
+    isMinimized: vi.fn(() => true),
+    restore: vi.fn(),
+    show: vi.fn(),
+    focus: vi.fn(),
+  };
+
+  focusExistingWindow(window);
+
+  expect(window.restore).toHaveBeenCalledOnce();
+  expect(window.show).toHaveBeenCalledOnce();
+  expect(window.focus).toHaveBeenCalledOnce();
+});
+
+it('does not restore a visible existing window before focusing it', () => {
+  const window = {
+    isMinimized: vi.fn(() => false),
+    restore: vi.fn(),
+    show: vi.fn(),
+    focus: vi.fn(),
+  };
+
+  focusExistingWindow(window);
+
+  expect(window.restore).not.toHaveBeenCalled();
+  expect(window.show).toHaveBeenCalledOnce();
+  expect(window.focus).toHaveBeenCalledOnce();
 });
 
 it('reuses the active project library when a renderer reload restores the same directory', async () => {

@@ -6,7 +6,7 @@ import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createContentSecurityPolicy } from './csp';
 import { createDesignerArtworkProtocolHandler, designerArtworkScheme } from './artwork-protocol';
 import { registerCredentialHandlers } from './ipc/register-credentials';
-import { recreateWindowOnActivate } from './lifecycle';
+import { focusExistingWindow, recreateWindowOnActivate } from './lifecycle';
 import { createProjectStore, resolveProjectDirectory } from './storage/project-store';
 import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 import { registerProjectHandlers } from './ipc/register-projects';
@@ -59,6 +59,7 @@ protocol.registerSchemesAsPrivileged([
 
 const testUserDataDirectory = process.env.DESIGNHUB_TEST_USER_DATA;
 if (testUserDataDirectory) app.setPath('userData', testUserDataDirectory);
+const ownsSingleInstanceLock = app.requestSingleInstanceLock();
 
 let activeWindow: BrowserWindow | null = null;
 let activeTrustedUrl: string | null = null;
@@ -178,7 +179,10 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
   return taskServicePromise;
 };
 
-app.whenReady().then(async () => {
+if (!ownsSingleInstanceLock) app.quit();
+else app.on('second-instance', () => { focusExistingWindow(activeWindow); });
+
+if (ownsSingleInstanceLock) void app.whenReady().then(async () => {
   credentialStore = await createSystemCredentialStore();
   credentialBoundary = createCredentialBoundary(credentialStore);
   await migrateLegacyProviderCredential(credentialStore, 'openai-compatible');
@@ -514,14 +518,14 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
+if (ownsSingleInstanceLock) app.on('window-all-closed', () => {
   closeActiveProjectLibrary();
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', closeActiveProjectLibrary);
+if (ownsSingleInstanceLock) app.on('before-quit', closeActiveProjectLibrary);
 
-app.on('activate', () => {
+if (ownsSingleInstanceLock) app.on('activate', () => {
   recreateWindowOnActivate(() => BrowserWindow.getAllWindows().length > 0, () => {
     createWindow();
   });
