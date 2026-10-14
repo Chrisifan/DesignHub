@@ -1,5 +1,7 @@
 # DesignHub 首版架构与功能基线
 
+> **Superseded by the [2026-10-14 V1 release baseline](2026-10-14-designhub-v1-release-baseline-design.md).** 本文仅保留历史决策，不再作为实现依据。
+
 创建：2026-09-08；更新：2026-09-09。状态：Q1–Q66 已确认并冻结为 V1 实施基线。依据：开发守则、ADR 0001–0024、[UI 基础规范](../../product/UI-FOUNDATIONS.md)，以及用户批准的“基础契约优先、按可交付能力推进”与切换 Electron 的决定。
 
 这是供实施计划引用的技术设计。业务完整说明见 [UI 应用说明书](../../product/APPLICATION-GUIDE-FOR-UI.md)，视觉、窗口和交互约束见 [UI 基础规范](../../product/UI-FOUNDATIONS.md)。Electron 已选并完成部分官方资料核验；具体接口/目录仍为待实施计划，Electron 平台实验与正式应用均未实现。

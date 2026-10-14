@@ -1,293 +1,85 @@
-# 平面设计 Agent
+# DesignHub V1 domain context
 
-面向个人与小型创意团队的本地优先平面物料创作产品。它将可配置的设计师身份、图像生成与图像处理组织为可追溯的设计项目。
+Updated: 2026-10-14. This vocabulary follows the [V1 release baseline](docs/superpowers/specs/2026-10-14-designhub-v1-release-baseline-design.md) and [ADR 0029](docs/adr/0029-project-canvas-v1-baseline.md).
 
-## 工作组织
+## Product boundary
 
-**工作区**:
-一个长期存在的创作边界，承载本地根目录、品牌上下文与素材上下文。
-_Avoid_: 工作区间、会话
+DesignHub is an offline-first desktop application for individual designers and small creative teams. It organizes managed images, model work, and direct image tools around a project-level image canvas.
 
-**设计项目**:
-工作区内独立文件夹形式存在的一项设计工作及其交付物。
-_Avoid_: 设计工作、任务、会话
+V1 does not contain design documents, revision history, finalization, Brand Kit, Workbench, accounts, cloud sync, collaboration, arbitrary provider plugins, or an in-app updater. Those terms may appear in superseded historical documents but are not current product concepts.
 
-**设计简报**:
-创建设计项目时的结构化创作意图，包含交付物、目标、文案、尺寸、品牌包、设计师和参考素材等可选信息。它可由手动新建或对话形成，并在项目创建后保留为快照。
-_Avoid_: 临时提示词、项目描述
+## Core terms
 
-**对话创建项目**:
-通过对话形成设计简报草稿、经用户明确确认后才创建设计项目的入口。
-_Avoid_: 聊天即建项目、隐式项目
+**Project library**
+A user-selected local root containing projects, shared managed assets, designers, task history, trash, and backup metadata. One writer may own it at a time.
+_Avoid_: workspace account, cloud space.
 
-**设计会话**:
-设计项目内与设计师进行创作和修改的可追溯对话记录。
-_Avoid_: 项目、工作区
+**Design project**
+A local project directory containing its metadata and referenced managed content. Opening it goes directly to ProjectCanvas.
+_Avoid_: document collection, session.
 
-**可携带工作区**:
-包含项目、原始素材、会话、版本和所需设计师快照的自包含工作区目录，可被备份、移动和恢复。
-_Avoid_: 应用专属资料库、仅云端项目
+**Design brief**
+The project-level creative intent and constraints saved in project metadata.
+_Avoid_: temporary prompt, document brief.
 
-**设计修订版**:
-由一次有意义的创作或编辑操作产生的不可变设计状态。
-_Avoid_: 覆盖保存、当前图
+**Project design (`ProjectDesign`)**
+An immutable managed image on the project canvas. Imports, model generations, and image-tool outputs use the same record shape: identity, asset identity, source task, dimensions, title, and creation time.
+_Avoid_: document, revision, mutable current image.
 
-**设计变体**:
-从一个设计修订版分叉出的候选创作方向。
-_Avoid_: 副本、临时文件
+**Canvas layout (`canvasLayout`)**
+The persisted project-level viewport and position of each project design. It contains no image bytes or document scene graph.
 
-**定稿**:
-被用户明确选定为交付依据的设计修订版。
-_Avoid_: 最新版本
+**Transient design scene (`DesignScene`)**
+A temporary request value used only to describe one selected image for an image tool or single-image export. It is not persisted or exposed as a project document.
 
-**设计图片**:
-项目中可被预览、处理、比较和导出的受管图片。图像工具直接作用于设计图片，不要求先创建额外的画布或文档对象。
-_Avoid_: 文档、画板、必须先打开的编辑器
+**Designer profile**
+A reusable creative identity with name, visual traits, rules, prohibited traits, portfolio references, and optional generated portrait. Publication creates a versioned profile snapshot; projects retain the snapshot selected at creation.
 
-**图片结果**:
-对设计图片执行工具后生成的独立结果。结果先保留为候选或任务输出，用户确认后才进入项目历史或被导入素材库。
-_Avoid_: 覆盖原图、隐藏替换
+**Authorized portfolio source**
+Images or a public portfolio page the user confirms they own or may use for analysis. Rights confirmation is mandatory and page images are selected explicitly before analysis.
 
-**项目时间线**:
-按时间记录设计项目中用户消息、设计师消息、工具操作、交接摘要和设计修订版的统一活动历史。
-_Avoid_: 设计师私有聊天
+**Managed asset**
+An imported file copied into the project library and addressed by asset ID. External source paths are not durable dependencies.
 
-**项目上下文边界**:
-设计师默认可读取的范围：当前项目设计简报、当前项目图片、用户明确附加的素材、项目品牌包和活跃设计师档案。工作区中的其他项目必须被用户明确附加。
-_Avoid_: 全工作区记忆、隐式跨项目读取
+**Model task**
+A persisted conversation, vision, image-generation, or image-editing operation with explicit queued, running, completed, failed, canceled, or unknown-after-restart state. Restart never silently repeats a billable request.
 
-**视觉上下文计划**:
-设计会话对相关图片在当前创作意图中的职责所形成的可追溯判断；对话理解与后续图像生成共享同一份计划，不在生成阶段独立重判。
-_Avoid_: 图片列表、附件顺序猜测
+**Project conversation**
+The compact dock within ProjectCanvas. It can reference selected project designs and temporary image attachments, but conversations are not exported in project packages.
 
-**编辑目标**:
-视觉上下文计划中本轮需要被修改或继续迭代的图片；新的设计变体可以成为编辑目标，但不会自动取代视觉锚点。
-_Avoid_: 最新图片、唯一参考图
+**Image tool result**
+A new immutable project design produced from an existing project design. The source is never overwritten.
 
-**视觉锚点**:
-视觉上下文计划中用于持续保持人物、商品、文字、Logo 或其他关键身份与细节的原始视觉依据。
-_Avoid_: 普通参考图、上一轮生成稿
+**Standalone batch job**
+A non-project job applying background removal, upscale, resize, or format conversion to scanned local files. Items have independent state and may be imported into managed assets after completion.
 
-**内容来源**:
-视觉上下文计划中提供待移入编辑目标的人物、商品或其他视觉内容的图片。
-_Avoid_: 编辑目标、纯风格参考
+**Project package**
+A portable archive containing project metadata, project design images, referenced managed assets, and the designer snapshot. It excludes credentials, conversations, diagnostics, trash, and unrelated assets.
 
-**创作约束优先级**:
-解决创作指令冲突的固定顺序：本次用户明确指令、项目覆盖、项目品牌包快照、活跃设计师档案、全局默认值。
-_Avoid_: 隐式覆盖、随机优先级
+**OpenAI-compatible connection**
+The single V1 provider type. Conversation and image capabilities use separate endpoint, credential, and model profiles even when they point to the same service.
 
-**候选变体**:
-设计师针对一次明确创作意图生成的、可供比较和继续编辑的一组设计变体。
-_Avoid_: 覆盖结果、预览图
+**Provider credential**
+A secret stored only in the operating-system credential store. It is never returned to the renderer or written to a project, package, backup, task, or diagnostic report.
 
-**项目元数据存储**:
-随设计项目独立保存、记录项目时间线、图片结果、修订版和导出记录的元数据数据库。工作区只保留可重建的索引和共享资源。
-_Avoid_: 唯一工作区数据库
+**Local cancellation**
+Stopping local polling or output handling. It is not described as remote cancellation unless the provider confirms remote support and success.
 
-**本地设计索引**:
-为工作区内项目和设计图片提供分类筛选与全文检索的可重建本地索引；它只索引设计简报和用户可见元数据，不上传内容或执行视觉语义搜索。
-_Avoid_: 云端资产索引、视觉追踪
+**Unavailable provider data**
+Cost, remote cancellation, or other provider facts not returned by the backend. The UI displays unavailable rather than inventing a value.
 
-**品牌包**:
-工作区中可选的品牌创作上下文，包含品牌名、Logo、色板、字体、语气、固定文案和尺寸预设。项目可继承其快照并显式覆盖。
-_Avoid_: 强制模板、全局设置
+**Trash**
+Recoverable library-local storage for deleted projects and assets. Permanent deletion requires an explicit user action.
 
-**受管素材**:
-默认复制到工作区、以完整分辨率保存并在工作区内按内容去重的导入素材。它不依赖工作区外的原始路径。
-_Avoid_: 外部文件引用、隐藏共享素材库
+**Backup**
+A user-selected local copy with validated restore. Backup does not imply cloud synchronization.
 
-**字体需求**:
-项目图片或品牌包对特定字体的声明。它不默认携带字体文件；目标设备缺少字体时必须提示并允许用户选择替代字体。
-_Avoid_: 静默字体替换、默认嵌入字体
+## Invariants
 
-**导出记录**:
-与一次导出关联的设计修订版、导出参数和目标位置记录。输出可按用户选择额外归档到项目的 exports 目录。
-_Avoid_: 无来源文件、自动重复归档
-
-**尺寸预设**:
-用于快速建立设计简报或设计图片的常用物料尺寸定义。首版不包含模板市场或第三方图库。
-_Avoid_: 社区模板、在线素材市场
-
-**单写者工作区**:
-同一时刻只允许一个写入者修改的工作区。首版以项目包和只读交付包实现交接，而不支持并发编辑同一目录。
-_Avoid_: 文件夹协同编辑、实时多人协作
-
-**增量备份**:
-向用户选择的本地或外接位置写入工作区变化副本的可选过程，不隐式上传云端。
-_Avoid_: 自动云同步
-
-**显式同步**:
-未来移动端或协作同步时，由用户主动启用、选择提供方并能查看状态的复制过程。
-_Avoid_: 隐式云端同步
-
-**本地废纸篓**:
-工作区内保存已删除项目、设计图片、素材或未引用设计师档案的可恢复区域，只有用户主动清空后才永久移除。
-_Avoid_: 自动过期清理
-
-## 创作身份
-
-**本机操作者档案**:
-当前设备上可选的显示身份，用于标注手工编辑和直接工具操作；相关操作把当时的显示名称快照写入项目历史，但它不代表账号、权限、工作区所有权或法律作者认证。
-_Avoid_: 本机所有者资料、用户账号、权限身份
-
-**设计师档案**:
-可版本化的创作身份，包含署名、风格画像、参考作品、创作规则、禁用项及工具和模型偏好；它可以参与对话，但只在用户明确保存时发生永久变更。
-_Avoid_: 风格、人格、机器人
-
-**作品集导入**:
-用户确认拥有或获授权使用的图片、压缩包或公开作品集链接，被用于提炼可编辑视觉特征并建立设计师档案的过程。
-_Avoid_: 任意链接抓取、风格复制
-
-**默认设计师**:
-创建设计项目时自动选用的设计师档案。它可在全局设置，并可由工作区覆盖；新项目保存其当时的档案版本。
-_Avoid_: 唯一设计师、项目历史的动态引用
-
-**创作贡献记录**:
-将一名设计师档案的具体版本、贡献角色与一项设计修订版关联的不可变记录。
-_Avoid_: 图片水印、普通标签
-
-**参考资料归档**:
-用户明确选择后，在工作区中保存用于作品集导入的原始参考资料。
-_Avoid_: 默认抓取缓存
-
-**已归档设计师**:
-不再可供新项目选用、但因既有设计项目的贡献记录而被保留的设计师档案。
-_Avoid_: 已删除设计师
-
-**原创设计师身份**:
-由用户为设计师档案指定的原创名称、品牌角色或中性风格描述，不冒充或复刻真实在世设计师身份。
-_Avoid_: 某设计师的复制品、在世设计师模仿
-
-**设计师草稿**:
-尚未发布到设计师库的可编辑设计师档案候选，呈现从描述或作品集分析得到的视觉特征和禁用项，并可包含可选样张。
-_Avoid_: 自动创建的设计师
-
-**设计师版本**:
-发布设计师档案修改后产生的不可变档案状态。既有项目继续引用其原有快照，除非用户主动切换。
-_Avoid_: 原地修改设计师
-
-## 模型与交付
-
-**模型提供方**:
-执行图像生成或处理的本地或云端能力来源。云端提供方在首版由用户自行连接和授权。
-_Avoid_: 平台托管算力
-
-**图像优先编辑**:
-以生成图和导入图作为栅格素材进行组合编辑，而非将 AI 图像承诺还原为完整的语义化源文件。
-_Avoid_: 全矢量重建
-
-**图像处理工具**:
-直接作用于图像目标并产生非覆盖式结果的操作，包括背景移除或替换、局部重绘、对象增删、画面延展、主体补全、智能裁切、修复、放大及尺寸或格式转换。它既可在设计项目中产生新设计修订版，也可由独立图像处理作业直接生成文件结果。
-_Avoid_: 覆盖编辑、独立工具应用
-
-**独立图像处理作业**:
-不依附于设计项目、以一种图像处理工具配置处理一张或一组来源图像的工作单元；结果默认作为文件交付，只有用户明确导入时才进入素材库或设计项目。
-_Avoid_: 设计项目、设计图片、模型任务
-
-**图像处理项**:
-独立图像处理作业中与一张来源图像对应的处理单位，拥有独立的运行状态和结果；单项失败不使同一作业中的其他结果失效。
-_Avoid_: 独立作业、设计修订版
-
-**画面延展**:
-扩大设计画布边界并为新增区域补充画面的图像处理工具，包含延续既有场景的“原景延展”和依据原图视觉氛围生成背景的“氛围延展”两种模式。
-_Avoid_: 扩图、主体补全、尺寸转换
-
-**主体补全**:
-在明确区域内补足人物、物品或其他主体缺失部分的局部图像处理工具。
-_Avoid_: 扩图、画面延展、对象添加
-
-**保护区域**:
-图像处理时被明确排除在生成或修改范围之外、其原始像素必须保留的图像区域。不同工具模式可以具有不同的保护区域。
-_Avoid_: 提示词保留、尽量不变、视觉近似
-
-**去除水印**:
-在用户确认有权处理的图像上，通过明确选区移除水印并修复局部内容的画布修复预设。
-_Avoid_: 自动全图清除、批量去水印、对象移除工具
-
-**智能编排**:
-根据用户明确提供的核心物料、文案、参考图和创作约束生成设计图片候选的创作过程；结果可以保留可编辑信息，但不要求用户理解或维护图层/文档模型。
-_Avoid_: 自动排版、一键出图、扁平图片生成
-
-**核心物料**:
-智能编排结果中必须出现、并保持为独立可编辑图层的用户输入，例如主商品、Logo、IP 形象或指定文案。
-_Avoid_: 视觉参考、可选物料、生成装饰
-
-**视觉参考**:
-仅用于引导构图、色彩、材质或氛围的输入，不是结果中必须复制或直接使用的内容。
-_Avoid_: 核心物料、模板、待导入素材
-
-**样机模板**:
-定义一个展示场景及其中可放置设计资产的表面、遮挡和视觉关系的可复用场景资源。
-_Avoid_: 视觉参考、生成提示词、扁平背景图
-
-**样机效果图**:
-将用户提供的 Logo、符号、IP 形象或其他设计资产按样机模板合成到展示场景中的结果；用户资产本身不由模型重新绘制。
-_Avoid_: 生成式场景、智能编排、普通图片合成
-
-**工具检查器**:
-与设计师对话并列的直接操作界面，提供图像处理工具的目标选择、参数和预览；它与对话共享相同的修订版记录。
-_Avoid_: 仅聊天式工具
-
-**作品集页面选择**:
-解析公开作品集页面后，由用户明确勾选待分析图片的步骤；系统不登录网站、不携带 Cookie，也不进行站点级爬取或持续同步。
-_Avoid_: 自动全站抓取
-
-**移动伴侣**:
-后续的移动端产品，用于浏览、审阅、评论、分享和导出桌面端设计项目，不承担完整设计画布编辑。
-_Avoid_: 手机版完整编辑器
-
-**内置模型适配器**:
-由应用维护并验证的模型提供方连接，不执行第三方脚本或任意插件。
-_Avoid_: 任意模型插件
-
-**本地推理服务**:
-由用户自行安装和运行、并由应用连接检测的本地图像模型服务。应用首版不负责下载或管理模型权重。
-_Avoid_: 应用内模型商店
-
-**提供方凭据**:
-用户用于连接云端模型提供方的机密，只保存在当前设备的操作系统安全存储中，绝不进入工作区、项目包或备份。
-_Avoid_: 项目配置中的 API Key
-
-**提供方连接配置**:
-当前设备上某个内置模型连接的非敏感描述，包含经过校验的服务端点及各项能力所选模型。它保存在应用数据目录而非工作区；API Key 始终属于提供方凭据，不能写入此配置。
-_Avoid_: 工作区模型设置、API Key 配置文件
-
-**云端任务告知**:
-在首次连接提供方或首次上传原图时，对将离开本机的数据范围进行确认；每次云端任务持续显示所用提供方和上传范围。
-_Avoid_: 每次重复弹窗、静默上传
-
-**模型任务**:
-项目时间线中持久化的模型工作项，具有排队、处理中、完成、失败或已取消状态。只有完成并收到结果才生成设计修订版。
-_Avoid_: 未记录的后台请求
-
-**对话提供方**:
-为设计师对话、设计简报理解和工具编排提供文本推理能力的本地或云端连接。它是与图像能力并列的提供方能力，可与图像提供方共用或单独配置。
-_Avoid_: 固定聊天模型
-
-**生成记录**:
-可供用户查看和复用的模型任务配方，包含创作指令、提供方、模型、参数、参考素材标识、结果和时间，但不包含凭据或隐藏系统提示词。
-_Avoid_: 黑箱生成、凭据日志
-
-**显式模型替代**:
-当首选模型不可用或不具备所需能力时，由用户确认替代模型的行为。
-_Avoid_: 静默降级
-
-**离线工作**:
-断网时仍可进行项目浏览、画布编辑、版本管理、本地检索、导出和本地备份的工作方式。云端模型任务不执行且不被静默上传；可用的本地推理服务不受影响。
-_Avoid_: 必须联网、离线任务自动上传
-
-**授权内容**:
-用户确认拥有或有权处理、导入、导出或发送给模型提供方的素材、作品集、品牌资产和肖像内容。
-_Avoid_: 默认已授权内容
-
-**只读兼容模式**:
-当前应用遇到由更高格式版本创建的工作区或项目时，保持内容可查看但禁止写入的打开方式。
-_Avoid_: 破坏性降级、强制迁移
-
-**本地诊断包**:
-由用户预览并主动导出的脱敏运行与错误资料；首版应用不自动发送诊断，也不包含素材、项目结构、创作内容、提示词或凭据。
-_Avoid_: 选择加入诊断、自动遥测、内容采集
-
-**本地优先**:
-设计项目数据和原始素材默认由用户保存在当前设备；创作模型可由用户选择云端或本地提供方。
-_Avoid_: 纯离线、纯云端
+- All image-producing paths append a `ProjectDesign`; none overwrite an existing record.
+- `ProjectMetadata` contains project properties, brief, designer snapshot, designs, and canvas layout only.
+- Removed prerelease document/revision data fails with `DOCUMENT_SCHEMA_REMOVED` and is never rewritten during detection.
+- Read-only libraries may view and export projects but may not mutate them.
+- Production always uses the single-instance application lock and one library writer.
+- Logs, tasks, diagnostics, packages, and release reports contain neither credentials nor raw image bytes.
+- V1 updates are downloaded and installed manually.

@@ -1,5 +1,13 @@
 # 模块测试、checklist 与回归登记
 
+> **2026-10-14 V1 状态入口：** [当前验证状态](CURRENT-STATUS-2026-10-14.md)。以下旧记录保留为历史证据；其中 document、revision、Brand Kit 与 Workbench 范围已由 [ADR 0029](../adr/0029-project-canvas-v1-baseline.md) 替代。
+
+| 模块 | 当前 V1 状态 |
+| --- | --- |
+| M01–M05 | 实现已存在，等待当前基线完整回归与对应原生/人工证据 |
+| M06 | 离线实现已存在；真实兼容后端仍为外部门禁 |
+| M07–M08 | 实现已存在，等待流式项目包、性能安全、安装升级和签名发布证据 |
+
 ## 2026-10-05 剩余 IPC 注册边界
 
 - project-library lifecycle、credentials、document export 注册抽为独立 registrar，保持 trusted sender、active library、keyring 和导出归档行为。
