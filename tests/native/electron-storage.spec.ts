@@ -15,10 +15,11 @@ const readSmokeResult = async (path: string): Promise<{ projectId: string } | nu
 const runStorageSmoke = async (executablePath?: string): Promise<void> => {
   const directory = await mkdtemp(join(tmpdir(), 'designhub-electron-storage-'));
   const resultPath = join(directory, 'storage-result.json');
+  const userData = join(directory, 'user-data');
   const electronApp = await _electron.launch({
     args: executablePath ? [] : ['.'],
     executablePath,
-    env: { ...process.env, DESIGNHUB_STORAGE_SMOKE_RESULT: resultPath },
+    env: { ...process.env, DESIGNHUB_STORAGE_SMOKE_RESULT: resultPath, DESIGNHUB_TEST_USER_DATA: userData },
   });
 
   try {
