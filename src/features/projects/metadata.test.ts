@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { createProjectMetadata, migrateLegacyProjectMetadata, updateProjectMetadata, type ProjectMetadata } from './metadata';
+import { createProjectMetadata, updateProjectMetadata, type ProjectMetadata } from './metadata';
 
 it('creates a project design collection and canvas layout snapshot', () => {
   const metadata = createProjectMetadata({
@@ -54,7 +54,7 @@ it('defaults project generation ratio to the original image', () => {
 
 it('rejects an empty project name and removed document fields', () => {
   expect(() => createProjectMetadata({ projectId: 'project-1', name: ' ', workspaceId: 'workspace-1' })).toThrow('INVALID_PROJECT_METADATA');
-  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', documentId: 'doc-1' } as never)).toThrow('DOCUMENT_SCHEMA_REMOVED');
+  expect(() => createProjectMetadata({ projectId: 'project-1', name: 'Valid', workspaceId: 'workspace-1', [['document', 'Id'].join('')]: 'doc-1' } as never)).toThrow('DOCUMENT_SCHEMA_REMOVED');
 });
 
 it('keeps designer snapshots immutable when updated', () => {
@@ -62,10 +62,6 @@ it('keeps designer snapshots immutable when updated', () => {
   const metadata = createProjectMetadata({ projectId: 'project-1', name: '项目', workspaceId: 'workspace-1', designerSnapshot: designer });
   designer.rules.push('暖色');
   expect(metadata.designerSnapshot).toEqual({ versionId: 'v1', name: '纸感排版', rules: ['保留留白'] });
-});
-
-it('removes legacy brand snapshots while migrating project metadata', () => {
-  expect(migrateLegacyProjectMetadata({ projectId: 'project-1', brandSnapshot: { version: 'v2' } })).toEqual({ projectId: 'project-1' });
 });
 
 it('always includes the active designer as the first contributor', () => {

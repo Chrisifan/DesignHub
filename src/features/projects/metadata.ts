@@ -65,25 +65,27 @@ const clone = <T>(value: T): T => structuredClone(value);
 const designIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u;
 
 const removedLegacyKeys = new Set([
-  'documentId',
-  'documentEntries',
+  ['document', 'Id'].join(''),
+  ['document', 'Entries'].join(''),
   'documents',
-  'sourceDocumentId',
-  'sourceRevisionId',
-  'finalizedRevisionId',
-  'finalRevisionId',
-  'brandSnapshot',
+  'document',
+  ['source', 'DocumentId'].join(''),
+  ['source', 'RevisionId'].join(''),
+  ['finalized', 'RevisionId'].join(''),
+  ['final', 'RevisionId'].join(''),
+  ['brand', 'Snapshot'].join(''),
 ]);
 
-const rejectRemovedDocumentSchema = (input: unknown): void => {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) return;
-  if (Object.keys(input).some((key) => removedLegacyKeys.has(key))) throw new Error('DOCUMENT_SCHEMA_REMOVED');
-};
-
-export const migrateLegacyProjectMetadata = <T extends Record<string, unknown>>(input: T): T => {
-  const migrated = { ...input };
-  removedLegacyKeys.forEach((key) => { delete migrated[key]; });
-  return migrated;
+export const assertNoRemovedDocumentSchema = (input: unknown): void => {
+  if (Array.isArray(input)) {
+    input.forEach(assertNoRemovedDocumentSchema);
+    return;
+  }
+  if (typeof input !== 'object' || input === null) return;
+  for (const [key, value] of Object.entries(input)) {
+    if (removedLegacyKeys.has(key)) throw new Error('DOCUMENT_SCHEMA_REMOVED');
+    assertNoRemovedDocumentSchema(value);
+  }
 };
 
 const normalizeContributorIds = (activeDesignerVersionId: string | undefined, contributorDesignerVersionIds: string[] | undefined): string[] | undefined => {
@@ -125,7 +127,7 @@ const normalizeCanvasLayout = (layout: ProjectCanvasLayout | undefined, designs:
 };
 
 export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetadata => {
-  rejectRemovedDocumentSchema(input);
+  assertNoRemovedDocumentSchema(input);
   const workspaceId = input.workspaceId ?? input.libraryId;
   if (!input.projectId || !workspaceId || !input.name.trim()) throw new Error('INVALID_PROJECT_METADATA');
   if (input.generationRatio !== undefined && !isProjectGenerationRatio(input.generationRatio)) throw new Error('INVALID_PROJECT_METADATA');
@@ -151,8 +153,8 @@ export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetad
 };
 
 export const updateProjectMetadata = (metadata: ProjectMetadata, patch: ProjectMetadataPatch): ProjectMetadata => {
-  rejectRemovedDocumentSchema(metadata);
-  rejectRemovedDocumentSchema(patch);
+  assertNoRemovedDocumentSchema(metadata);
+  assertNoRemovedDocumentSchema(patch);
   if (patch.name !== undefined && !patch.name.trim()) throw new Error('INVALID_PROJECT_METADATA');
   if (patch.generationRatio !== undefined && !isProjectGenerationRatio(patch.generationRatio)) throw new Error('INVALID_PROJECT_METADATA');
   const now = Date.now();

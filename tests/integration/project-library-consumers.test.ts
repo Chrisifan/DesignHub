@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -67,50 +67,18 @@ it('stores isolated projects and shared task history and trash in one library', 
   }
 });
 
-it('migrates legacy document-bound task records when loading task history', async () => {
+it('rejects legacy document-bound task records without modifying task history', async () => {
   const library = await createTemporaryLibrary();
   const libraryId = library.library.libraryId;
   const tasksPath = join(library.library.directory, '.designhub', 'tasks.json');
-  const legacyTask = {
-    id: 'legacy-task',
-    requestId: 'legacy-request',
-    documentId: 'legacy-document',
-    state: 'completed',
-    cancelRequested: false,
-    attempt: 1,
-    source: { kind: 'project', id: 'project-one' },
-    capability: 'conversation',
-    designContext: {
-      version: 1,
-      workspaceId: libraryId,
-      projectId: 'project-one',
-      documentId: 'legacy-document',
-      brief: 'Legacy brief',
-      document: { width: 1080, height: 1440, currentImageAssetIds: ['asset-current'] },
-      attachmentAssetIds: ['asset-reference'],
-      userMessage: 'Legacy request',
-      baseRevisionId: null,
-    },
-  };
+  const fixture = await readFile(new URL('../fixtures/migrations/legacy-document-task.json', import.meta.url), 'utf8');
+  const legacyTask = JSON.parse(fixture.replaceAll('__LIBRARY_ID__', libraryId)) as Record<string, unknown>;
   await writeFile(tasksPath, `${JSON.stringify([legacyTask])}\n`, 'utf8');
 
   try {
-    await expect(loadTaskState(library, libraryId)).resolves.toEqual([expect.objectContaining({
-      id: 'legacy-task',
-      designContext: {
-        version: 1,
-        libraryId,
-        projectId: 'project-one',
-        brief: 'Legacy brief',
-        canvas: { width: 1080, height: 1440, currentImageAssetIds: ['asset-current'] },
-        attachmentAssetIds: ['asset-reference'],
-        userMessage: 'Legacy request',
-        baseRevisionId: null,
-      },
-    })]);
-    const loaded = await loadTaskState(library, libraryId);
-    expect(loaded[0]).not.toHaveProperty('documentId');
-    expect(loaded[0]?.designContext).not.toHaveProperty('documentId');
+    const before = await readFile(tasksPath);
+    await expect(loadTaskState(library, libraryId)).rejects.toThrow('DOCUMENT_SCHEMA_REMOVED');
+    expect(await readFile(tasksPath)).toEqual(before);
   } finally {
     library.close();
   }

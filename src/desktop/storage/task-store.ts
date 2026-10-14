@@ -20,6 +20,7 @@ import {
 import { isVisualContextPlan } from '../../features/agent/visual-context';
 import { imageTools, validateToolParams } from '../../features/image-tools/target';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
+import { assertNoRemovedDocumentSchema } from '../../features/projects/metadata';
 import { getWritableProjectLibraryLease } from './project-library-store';
 import { isScene } from '../../features/canvas/scene';
 
@@ -174,37 +175,6 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.analysisDiagnostic === undefined || isPortfolioAnalysisDiagnostic(value.analysisDiagnostic))
   && (value.result === undefined || isResult(value.result));
 
-const migrateLegacyTaskRecord = (value: unknown): unknown => {
-  if (!isRecord(value)) return value;
-
-  const { designContext, ...task } = value;
-  delete task.documentId;
-  if (!isRecord(designContext)) return task;
-
-  const context = { ...designContext };
-  const workspaceId = context.workspaceId;
-  const document = context.document;
-  const canvas = context.canvas;
-  delete context.workspaceId;
-  delete context.documentId;
-  delete context.document;
-  delete context.canvas;
-  const legacyCanvas = isRecord(canvas) ? canvas : isRecord(document) ? document : undefined;
-
-  return {
-    ...task,
-    designContext: {
-      ...context,
-      ...(typeof context.libraryId === 'string' && context.libraryId.trim().length > 0
-        ? { libraryId: context.libraryId }
-        : typeof workspaceId === 'string' && workspaceId.trim().length > 0
-          ? { libraryId: workspaceId }
-          : {}),
-      ...(legacyCanvas ? { canvas: legacyCanvas } : {}),
-    },
-  };
-};
-
 const validateWorkspace = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
   if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   if (writable && !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
@@ -242,9 +212,9 @@ export const loadTaskState = async (handle: ProjectLibraryHandle, workspaceId: s
   } catch {
     throw new Error('INVALID_TASK_STATE');
   }
-  const migrated = Array.isArray(parsed) ? parsed.map(migrateLegacyTaskRecord) : parsed;
-  if (!Array.isArray(migrated) || !migrated.every(isTaskRecord)) throw new Error('INVALID_TASK_STATE');
-  return structuredClone(migrated);
+  assertNoRemovedDocumentSchema(parsed);
+  if (!Array.isArray(parsed) || !parsed.every(isTaskRecord)) throw new Error('INVALID_TASK_STATE');
+  return structuredClone(parsed);
 };
 
 export const saveTaskState = async (handle: ProjectLibraryHandle, workspaceId: string, tasks: readonly TaskRecord[]): Promise<boolean> => {

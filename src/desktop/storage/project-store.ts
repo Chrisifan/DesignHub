@@ -18,7 +18,7 @@ import type {
   TrashProjectInput,
   UpdateProjectMetadataInput,
 } from '../../features/workspace/project-store';
-import { createProjectMetadata, migrateLegacyProjectMetadata, updateProjectMetadata, type ProjectCanvasLayout, type ProjectDesign, type ProjectMetadata, type ProjectMetadataInput } from '../../features/projects/metadata';
+import { createProjectMetadata, updateProjectMetadata, type ProjectCanvasLayout, type ProjectDesign, type ProjectMetadata, type ProjectMetadataInput } from '../../features/projects/metadata';
 import { canPurge } from '../../features/workspace/trash-policy';
 import { decodeProjectPackage } from '../../features/delivery/project-package';
 import { isSafePackagePath } from '../../features/delivery/package-policy';
@@ -681,7 +681,7 @@ const toActiveProject = (manifest: ProjectManifest): ActiveProject => {
 };
 
 const readProjectMetadata = (manifest: ProjectManifest, workspaceId: string): ProjectMetadata => manifest.metadata
-  ? migrateLegacyProjectMetadata(structuredClone(manifest.metadata))
+  ? createProjectMetadata(structuredClone(manifest.metadata) as ProjectMetadataInput)
   : createProjectMetadata({ projectId: manifest.projectId, workspaceId, name: manifest.name, createdAt: manifest.createdAt, updatedAt: manifest.createdAt });
 
 const getProjectManifestForId = (handle: ProjectLibraryHandle, projectId: string): { manifest: ProjectManifest; directory: string } | null => {

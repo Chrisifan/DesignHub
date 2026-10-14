@@ -91,7 +91,7 @@ it('duplicates a project with a new identity while retaining designs and managed
   }
 });
 
-it('migrates removed document metadata before adding canvas designs', async () => {
+it('rejects removed document metadata without modifying the project manifest', async () => {
   const { workspace, store } = await createWritableStore();
   const libraryId = workspace.library.libraryId;
   try {
@@ -104,23 +104,14 @@ it('migrates removed document metadata before adding canvas designs', async () =
     };
     await writeFile(projectManifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 
-    const designs = await store.addProjectDesigns({
+    const before = await readFile(projectManifestPath);
+    await expect(store.getProjectMetadata(project.projectId)).rejects.toThrow('DOCUMENT_SCHEMA_REMOVED');
+    await expect(store.addProjectDesigns({
       libraryId,
       projectId: project.projectId,
-      designs: [{
-        id: 'design-imported',
-        assetId: 'asset-imported',
-        sourceTaskId: 'canvas-import-task',
-        width: 1080,
-        height: 1440,
-        title: 'Imported image',
-        createdAt: '2026-10-12T00:00:00.000Z',
-      }],
-    });
-
-    expect(designs).toHaveLength(1);
-    const persisted = JSON.parse(await readFile(projectManifestPath, 'utf8')) as Record<string, unknown>;
-    expect(persisted.metadata).not.toHaveProperty('documents');
+      designs: [],
+    })).rejects.toThrow('DOCUMENT_SCHEMA_REMOVED');
+    expect(await readFile(projectManifestPath)).toEqual(before);
   } finally {
     workspace.close();
   }
