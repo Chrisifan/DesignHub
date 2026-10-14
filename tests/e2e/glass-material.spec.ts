@@ -9,13 +9,8 @@ for (const theme of ['dark', 'light'] as const) {
       document.documentElement.dataset.theme = mode;
       document.body.innerHTML = `
         <div class="conversation-dock" data-material="shell">Conversation</div>
-        <div class="workbench">
-          <div class="workbench-body--canvas-first">
-            <div class="workbench-toolstrip" data-material="workbench">Tools</div>
-          </div>
-          <div class="workbench-properties-float" data-material="workbench-strong">Properties</div>
-        </div>
-        <div class="project-canvas-toolbar__selection" data-material="project-canvas">Selection</div>
+        <div class="project-canvas-toolbar__actions" data-material="project-canvas-tools">Tools</div>
+        <div class="project-canvas-toolbar__selection" data-material="project-canvas-selection">Selection</div>
       `;
     }, theme);
 
@@ -43,19 +38,17 @@ for (const theme of ['dark', 'light'] as const) {
     });
 
     const shell = await sample('shell');
-    const workbench = await sample('workbench');
-    const strong = await sample('workbench-strong');
-    const projectCanvas = await sample('project-canvas');
+    const projectCanvasTools = await sample('project-canvas-tools');
+    const projectCanvasSelection = await sample('project-canvas-selection');
 
     expect(shell.backgroundAlpha).toBeGreaterThanOrEqual(0.76);
     expect(shell.borderAlpha).toBeGreaterThanOrEqual(theme === 'dark' ? 0.13 : 0.25);
     expect(shell.blurRadius).toBeGreaterThanOrEqual(28);
-    expect(workbench.backgroundAlpha).toBeGreaterThanOrEqual(0.62);
-    expect(strong.backgroundAlpha).toBeGreaterThanOrEqual(0.72);
-    expect(workbench.blurRadius).toBeGreaterThanOrEqual(28);
-    expect(strong.blurRadius).toBeGreaterThanOrEqual(28);
-    expect(projectCanvas.backgroundAlpha).toBeGreaterThanOrEqual(0.76);
-    expect(projectCanvas.borderAlpha).toBeGreaterThanOrEqual(theme === 'dark' ? 0.13 : 0.25);
-    expect(projectCanvas.blurRadius).toBeGreaterThanOrEqual(28);
+    expect(projectCanvasTools.backgroundAlpha).toBeGreaterThanOrEqual(0.76);
+    expect(projectCanvasTools.borderAlpha).toBeGreaterThanOrEqual(theme === 'dark' ? 0.13 : 0.25);
+    expect(projectCanvasTools.blurRadius).toBeGreaterThanOrEqual(28);
+    expect(projectCanvasSelection.backgroundAlpha).toBeGreaterThanOrEqual(0.76);
+    expect(projectCanvasSelection.borderAlpha).toBeGreaterThanOrEqual(theme === 'dark' ? 0.13 : 0.25);
+    expect(projectCanvasSelection.blurRadius).toBeGreaterThanOrEqual(28);
   });
 }

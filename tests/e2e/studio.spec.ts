@@ -1,22 +1,24 @@
 import { expect, test } from 'playwright/test';
 import { gotoTestWorkspace, navigateFromUserMenu } from './test-workspace';
 
-test('long floating layers remain scrollable within a compact canvas', async ({ page }) => {
+test('project canvas persists layout and returns home through project actions', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 });
-  await gotoTestWorkspace(page, {
-    version: 1, id: 'many-layers', width: 1080, height: 1440,
-    layers: Array.from({ length: 30 }, (_, index) => ({
-      id: `layer-${index}`, type: 'text' as const, text: `Layer ${index}`, fontFamily: 'sans-serif', fontSize: 24, fontWeight: 'normal', align: 'left' as const, color: '#24262b', x: 100, y: 100 + index * 30, width: 800, height: 30, rotation: 0, opacity: 1, visible: true, locked: false,
-    })),
-  });
+  await gotoTestWorkspace(page);
   await page.getByRole('button', { name: '春间市集', exact: true }).click();
-  await page.getByRole('button', { name: '图层', exact: true }).click();
   const canvas = page.getByRole('region', { name: '设计画布', exact: true });
-  const panel = canvas.locator('.canvas-layer-float');
-  const [canvasBox, panelBox] = await Promise.all([canvas.boundingBox(), panel.boundingBox()]);
-  expect(Boolean(canvasBox && panelBox && panelBox.y + panelBox.height <= canvasBox.y + canvasBox.height)).toBe(true);
-  await panel.getByRole('button', { name: 'Layer 0', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: '文字内容', exact: true })).toHaveValue('Layer 0');
+  const stage = canvas.locator('.project-canvas-stage canvas');
+  await expect(stage).toBeVisible();
+  await stage.click({ position: { x: 300, y: 200 } });
+  await expect(canvas.getByRole('button', { name: '导出所选设计稿', exact: true })).toBeEnabled();
+  await stage.hover();
+  await page.mouse.wheel(0, -120);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('designhub.e2e.canvas-layout.project-e2e'))).not.toBeNull();
+  const savedZoom = await page.evaluate(() => JSON.parse(localStorage.getItem('designhub.e2e.canvas-layout.project-e2e') ?? '{}').viewport?.zoom as number | undefined);
+  expect(savedZoom).toBeGreaterThan(0.2);
+  expect(savedZoom).not.toBe(1);
+  await canvas.getByRole('button', { name: '项目操作', exact: true }).click();
+  await canvas.getByRole('menuitem', { name: '返回首页', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '创作中心', exact: true })).toBeAttached();
 });
 
 for (const width of [1280, 1024]) {
@@ -36,13 +38,7 @@ for (const width of [1280, 1024]) {
           },
           { mode: theme, language: locale },
         );
-        await gotoTestWorkspace(page, {
-          version: 1, id: 'layout-scene', width: 1080, height: 1440,
-          layers: [
-            { id: 'layout-shape', type: 'shape', kind: 'rect', fill: '#b8ddd0', stroke: '#b8ddd0', strokeWidth: 0, x: 100, y: 420, width: 880, height: 720, rotation: 0, opacity: 1, visible: true, locked: false },
-            { id: 'layout-title', type: 'text', text: 'Spring Market', fontFamily: 'sans-serif', fontSize: 76, fontWeight: 'bold', align: 'left', color: '#24262b', x: 100, y: 180, width: 880, height: 120, rotation: 0, opacity: 1, visible: true, locked: false },
-          ],
-        });
+        await gotoTestWorkspace(page);
         const english = locale === 'en';
         await expect(
           page.getByRole('heading', {
@@ -80,78 +76,30 @@ for (const width of [1280, 1024]) {
           name: english ? 'Design canvas' : '设计画布',
           exact: true,
         });
-        await expect(canvas.locator('.workbench-ruler--horizontal')).toBeVisible();
-        await expect(canvas.locator('.workbench-ruler--vertical')).toBeVisible();
-        await expect(page.getByRole('toolbar', { name: english ? 'Canvas tools' : '画布工具' })).toBeVisible();
-        await expect(page.getByRole('toolbar', { name: english ? 'Context tools' : '上下文工具' })).toBeVisible();
+        await expect(canvas.locator('.project-canvas-stage canvas')).toBeVisible();
+        await expect(canvas.getByRole('button', { name: english ? 'Project actions' : '项目操作', exact: true })).toBeVisible();
+        await expect(canvas.getByRole('toolbar', { name: english ? 'Image tools' : '图片工具', exact: true })).toBeVisible();
         await expect(page.getByRole('form', { name: english ? 'AI command dock' : 'AI 操作坞' })).toBeVisible();
-        await expect(canvas.locator('.conversation-dock--compact')).toHaveCSS('position', 'absolute');
-        await expect(
-          page.getByRole('button', {
-            name: english ? 'Back to project' : '返回项目',
-            exact: true,
-          }),
-        ).toBeInViewport();
-        await expect(
-          page.getByRole('button', {
-            name: english ? 'Zoom in' : '放大',
-            exact: true,
-          }),
-        ).toBeVisible();
-        const gridButton = page.getByRole('button', {
-          name: english ? 'Grid' : '网格',
-          exact: true,
-        });
-        await expect(gridButton).toBeVisible();
-        await gridButton.hover();
-        const gridTooltip = page.getByRole('tooltip');
-        await expect(gridTooltip).toHaveText(english ? 'Grid' : '网格');
-        const [gridButtonBox, gridTooltipBox] = await Promise.all([gridButton.boundingBox(), gridTooltip.boundingBox()]);
-        expect(gridButtonBox).not.toBeNull();
-        expect(gridTooltipBox).not.toBeNull();
-        expect(gridTooltipBox!.y + gridTooltipBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
-        await page.getByRole('button', { name: english ? 'Layers' : '图层', exact: true }).click();
-        const layersPanel = page.getByRole('complementary', { name: english ? 'Layers' : '图层', exact: true });
-        await expect(layersPanel).toBeVisible();
-        await layersPanel.getByRole('button', { name: 'Spring Market', exact: true }).click();
-        const inspector = page.getByRole('complementary', { name: english ? 'Inspector' : '检查器', exact: true });
-        await expect(inspector).toBeVisible();
-        await expect(inspector.getByRole('textbox', { name: english ? 'Text content' : '文字内容', exact: true })).toHaveValue('Spring Market');
-        const [stageBox, inspectorBox] = await Promise.all([canvas.boundingBox(), canvas.locator('.canvas-inspector-float').boundingBox()]);
-        expect(Boolean(stageBox && inspectorBox
-          && inspectorBox.x >= stageBox.x
-          && inspectorBox.x + inspectorBox.width <= stageBox.x + stageBox.width
-          && inspectorBox.y >= stageBox.y
-          && inspectorBox.y + inspectorBox.height <= stageBox.y + stageBox.height)).toBe(true);
+        await expect(canvas.locator('.conversation-dock--compact')).toHaveCSS('position', 'relative');
+        await expect(canvas.locator('.workbench-ruler--horizontal, .workbench-ruler--vertical, .canvas-layer-float, .canvas-inspector-float')).toHaveCount(0);
+        await canvas.locator('.project-canvas-stage canvas').click({ position: { x: 300, y: 200 } });
+        await expect(canvas.getByRole('button', { name: english ? 'Export selected design' : '导出所选设计稿', exact: true })).toBeEnabled();
         expect(await canvas.locator('canvas').evaluate((element: HTMLCanvasElement) => {
           const context = element.getContext('2d');
           if (!context) return false;
           const pixels = context.getImageData(0, 0, element.width, element.height).data;
           return pixels.some((value, index) => index % 4 === 3 && value > 0);
         })).toBe(true);
-        await page.getByRole('button', { name: english ? 'Conversation' : '对话', exact: true }).click();
-        await expect(page.getByRole('textbox', { name: english ? /Edit request|Design request/ : /修改说明|设计需求/ })).toBeFocused();
-        const [canvasBox, layersBox] = await Promise.all([canvas.boundingBox(), layersPanel.boundingBox()]);
-        const overlaysInsideCanvas = Boolean(canvasBox && layersBox
-          && layersBox.x >= canvasBox.x
-          && layersBox.x + layersBox.width <= canvasBox.x + canvasBox.width
-          && layersBox.y >= canvasBox.y
-          && layersBox.y + layersBox.height <= canvasBox.y + canvasBox.height);
-        expect(overlaysInsideCanvas).toBe(true);
         const overflow = await page.evaluate(
           () => document.documentElement.scrollWidth > window.innerWidth,
         );
         expect(overflow).toBe(false);
         await page.screenshot({
-          path: testInfo.outputPath('workbench.png'),
+          path: testInfo.outputPath('project-canvas.png'),
           fullPage: true,
         });
-        await page
-          .getByRole('button', {
-            name: english ? 'Back to project' : '返回项目',
-            exact: true,
-          })
-          .click();
+        await canvas.getByRole('button', { name: english ? 'Project actions' : '项目操作', exact: true }).click();
+        await canvas.getByRole('menuitem', { name: english ? 'Back to home' : '返回首页', exact: true }).click();
         for (const name of english
           ? [
               'Designers',
@@ -251,11 +199,16 @@ for (const theme of ['dark', 'light'] as const) {
 
     await page.getByRole('button', { name: /春间市集|Spring in bloom/ }).click();
     await expect(page.locator('.studio-sidebar')).toHaveCount(0);
+    const toolbarStyle = await page.locator('.project-canvas-toolbar--bottom').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { bottom: style.bottom };
+    });
     const dockStyle = await page.locator('.conversation-dock--compact').evaluate((element) => {
       const style = getComputedStyle(element);
-      return { bottom: style.bottom, backdropFilter: style.backdropFilter };
+      return { position: style.position, backdropFilter: style.backdropFilter };
     });
-    expect(dockStyle.bottom).toBe('8px');
+    expect(toolbarStyle.bottom).toBe('18px');
+    expect(dockStyle.position).toBe('relative');
     expect(dockStyle.backdropFilter === 'none' || dockStyle.backdropFilter.includes('blur(')).toBe(true);
   });
 }
@@ -753,7 +706,7 @@ test('compact project rows keep cover, title, and metadata aligned', async ({ pa
   expect(metrics.every(({ cover }) => cover.height === 48)).toBe(true);
 });
 
-test('project detail uses the cover-led responsive document layout', async ({ page }, testInfo) => {
+test('project detail uses the cover-led responsive project layout', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await gotoTestWorkspace(page);
   await page.getByRole('button', { name: '春间市集', exact: true }).click();

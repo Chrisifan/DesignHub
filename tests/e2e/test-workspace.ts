@@ -155,6 +155,14 @@ export const gotoTestWorkspace = async (
       submitPortfolioSelection: async () => ({ id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'running', cancelRequested: false, attempt: 1 }),
       listAssets: async () => [],
       listProjectDesigns: async () => [structuredClone(projectDesign)],
+      loadProjectCanvasLayout: async () => {
+        const stored = localStorage.getItem(`designhub.e2e.canvas-layout.${project.projectId}`);
+        return stored ? JSON.parse(stored) : null;
+      },
+      saveProjectCanvasLayout: async (input: { projectId: string; layout: unknown }) => {
+        localStorage.setItem(`designhub.e2e.canvas-layout.${input.projectId}`, JSON.stringify(input.layout));
+        return input.layout;
+      },
       readAsset: async (input: { assetId: string }) => input.assetId === projectCoverAssetId
         ? projectCoverBytes ?? null
         : input.assetId === sourceImageAssetId ? sourceImageBytes.slice() : null,
@@ -200,6 +208,7 @@ export const gotoTestWorkspace = async (
         submittedTasks.splice(0, submittedTasks.length, task);
         return task;
       },
+      exportProjectDesign: async () => ({ path: '/tmp/designhub-e2e-export.png', sha256: '0'.repeat(64) }),
       importProjectPackage: async () => {
         projectPackageImportAttempts += 1;
         if (fixtureOptions.failProjectPackageImportOnce && projectPackageImportAttempts === 1) {

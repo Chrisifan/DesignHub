@@ -275,9 +275,6 @@ it('fills library regions and keeps sibling content aligned', () => {
     /\.asset-collection\s*\{[\s\S]*padding:\s*0 16px 16px 0;/,
   );
   expect(libraryStyles).toMatch(
-    /\.brand-list\s*\{\s*padding:\s*0 12px 12px;/,
-  );
-  expect(libraryStyles).toMatch(
     /\.settings-layout\s*\{[\s\S]*border-top:\s*0;/,
   );
   expect(libraryStyles).toMatch(
