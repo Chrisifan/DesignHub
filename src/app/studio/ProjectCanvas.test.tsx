@@ -251,6 +251,45 @@ describe('image tool layout references', () => {
 });
 
 describe('ProjectCanvas design references', () => {
+  it('does not notify historical image tool failures when the canvas first loads', async () => {
+    const notify = vi.fn();
+    const historicalFailure: TaskRecord = {
+      id: 'task-historical-failure', requestId: 'request-historical-failure', state: 'failed', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'image-editing', sourceAssetId: 'asset-source',
+      tool: 'expand', toolParams: { mode: 'original-scene', top: 100, right: 100, bottom: 100, left: 100 },
+      errorCode: 'RESULT_DIMENSIONS_INVALID',
+    };
+    const analysis: TaskRecord = {
+      ...conversation({ id: 'analysis-loaded', createdAt: '2026-10-14T00:00:00.000Z' }),
+      source: { kind: 'project', id: 'project-1' },
+      result: { text: '历史任务已加载' },
+    };
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => []),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => [historicalFailure, analysis]),
+    };
+
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={notify}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(await screen.findByText('历史任务已加载')).toBeVisible();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
   it('shows an image tool placeholder as soon as the task is queued', async () => {
     const design: ProjectDesign = {
       id: 'design-tool-placeholder', projectId: 'project-1', assetId: 'asset-tool-placeholder', sourceTaskId: 'generation-1',

@@ -197,6 +197,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const [menuOpen, setMenuOpen] = useState(false);
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
   const imageTaskStatesRef = useRef<Map<string, TaskRecord['state']>>(new Map());
+  const imageTaskStatesInitializedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!libraryId) return;
@@ -212,6 +213,12 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     if (nextLayout) setLayout(nextLayout);
     if (nextTasks) {
       const projectTasks = nextTasks.filter((task) => task.source?.kind === 'project' && task.source.id === project.id);
+      if (!imageTaskStatesInitializedRef.current) {
+        imageTaskStatesRef.current = new Map(projectTasks
+          .filter(isImageToolTask)
+          .map((task) => [task.id, task.state]));
+        imageTaskStatesInitializedRef.current = true;
+      }
       const persistedLatest = getLatestConversationTask(projectTasks);
       setTasks(projectTasks);
       setLatestConversation((current) => current ?? persistedLatest);
@@ -226,6 +233,8 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setAnalysisAttachments([]);
     setSelectedDesignIds([]);
     setAnalysisCollapsed(false);
+    imageTaskStatesRef.current.clear();
+    imageTaskStatesInitializedRef.current = false;
   }, [project.id]);
   useEffect(() => {
     const previous = imageTaskStatesRef.current;
