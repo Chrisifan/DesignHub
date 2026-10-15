@@ -23,7 +23,7 @@
     "test:perf": "vitest run --config vitest.config.ts tests/perf/core.bench.ts",
     "test:perf:package": "vitest run --config vitest.config.ts tests/perf/project-package.bench.ts",
     "test:perf:image-tools": "vitest run --config vitest.config.ts tests/perf/image-tools.bench.ts",
-    "provider:live-smoke": "node scripts/provider-live-smoke.mjs",
+    "provider:live-smoke": "vite build --config vite.live-smoke.config.ts && node scripts/provider-live-smoke.mjs",
     "release:check": "node scripts/release-check.mjs",
     "diff": "git diff",
     "lint": "eslint src tests *.config.ts *.config.mjs forge.config.ts --max-warnings=0",
