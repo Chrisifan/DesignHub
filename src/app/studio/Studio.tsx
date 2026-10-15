@@ -32,6 +32,7 @@ import { getProviderProfileStatus } from '../../features/providers/status';
 import type { ProviderConfigMap } from '../../features/providers/config';
 import { rasterizeMask } from '../../features/image-tools/mask-rasterizer';
 import { buildSearchIndex, searchIndex } from '../../features/library/indexer';
+import { taskSubmissionErrorMessage } from './task-errors';
 import '../styles/studio.css';
 
 const navigation: { view: View; icon: string; zh: string; en: string }[] = [
@@ -590,8 +591,8 @@ export const Studio = ({
       }
       notify(t(locale, '任务已排队。', 'Task queued.'));
       return task;
-    } catch {
-      notify(t(locale, '任务提交失败，请检查连接。', 'Task submission failed. Check the connection.'));
+    } catch (error) {
+      notify(taskSubmissionErrorMessage(locale, error));
       return null;
     }
   };

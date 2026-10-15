@@ -107,6 +107,107 @@ it('retains image-tool project design output metadata for retry after restart', 
   }
 });
 
+it('keeps the design context library identity across repeated task-state saves', async () => {
+  const library = await createTemporaryLibrary();
+  const libraryId = library.library.libraryId;
+  const task: TaskRecord = {
+    id: 'task-conversation',
+    requestId: 'request-conversation',
+    state: 'completed',
+    cancelRequested: false,
+    attempt: 1,
+    source: { kind: 'project', id: 'project-one' },
+    capability: 'conversation',
+    designContext: {
+      version: 1,
+      libraryId,
+      projectId: 'project-one',
+      brief: 'Launch poster',
+      canvas: { width: 1080, height: 1440, currentImageAssetIds: [] },
+      attachmentAssetIds: [],
+      userMessage: 'Create a launch poster',
+      baseRevisionId: null,
+    },
+  };
+
+  try {
+    await saveTaskState(library, libraryId, [task]);
+    const firstLoad = await loadTaskState(library, libraryId);
+    expect(firstLoad[0]?.designContext?.libraryId).toBe(libraryId);
+    await saveTaskState(library, libraryId, firstLoad);
+    await expect(loadTaskState(library, libraryId)).resolves.toEqual([task]);
+  } finally {
+    library.close();
+  }
+});
+
+it('recovers task contexts affected by the missing-library-identity persistence bug without rewriting the source file', async () => {
+  const library = await createTemporaryLibrary();
+  const libraryId = library.library.libraryId;
+  const tasksPath = join(library.library.directory, '.designhub', 'tasks.json');
+  const affectedTask = {
+    id: 'task-affected',
+    requestId: 'request-affected',
+    state: 'failed',
+    cancelRequested: false,
+    attempt: 1,
+    source: { kind: 'project', id: 'project-one' },
+    capability: 'conversation',
+    errorCode: 'PROVIDER_REQUEST_FAILED',
+    designContext: {
+      version: 1,
+      projectId: 'project-one',
+      brief: 'Launch poster',
+      canvas: { width: 1080, height: 1440, currentImageAssetIds: [] },
+      attachmentAssetIds: [],
+      userMessage: 'Create a launch poster',
+      baseRevisionId: null,
+    },
+  };
+  await writeFile(tasksPath, `${JSON.stringify([affectedTask], null, 2)}\n`, 'utf8');
+
+  try {
+    const before = await readFile(tasksPath);
+    await expect(loadTaskState(library, libraryId)).resolves.toEqual([{
+      ...affectedTask,
+      designContext: { ...affectedTask.designContext, libraryId },
+    }]);
+    expect(await readFile(tasksPath)).toEqual(before);
+  } finally {
+    library.close();
+  }
+});
+
+it('rejects a task context bound to a different project library', async () => {
+  const library = await createTemporaryLibrary();
+  const libraryId = library.library.libraryId;
+  const tasksPath = join(library.library.directory, '.designhub', 'tasks.json');
+  const mismatchedTask = {
+    id: 'task-mismatched',
+    requestId: 'request-mismatched',
+    state: 'failed',
+    cancelRequested: false,
+    attempt: 1,
+    designContext: {
+      version: 1,
+      workspaceId: 'different-library',
+      projectId: 'project-one',
+      brief: '',
+      canvas: { width: 1080, height: 1440, currentImageAssetIds: [] },
+      attachmentAssetIds: [],
+      userMessage: 'Create a launch poster',
+      baseRevisionId: null,
+    },
+  };
+  await writeFile(tasksPath, `${JSON.stringify([mismatchedTask], null, 2)}\n`, 'utf8');
+
+  try {
+    await expect(loadTaskState(library, libraryId)).rejects.toThrow('INVALID_TASK_STATE');
+  } finally {
+    library.close();
+  }
+});
+
 it('rejects legacy document-bound task records without modifying task history', async () => {
   const library = await createTemporaryLibrary();
   const libraryId = library.library.libraryId;

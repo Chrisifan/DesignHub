@@ -419,7 +419,6 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     try {
       const task = await onSubmitConversation(currentMessage, userAttachments, context);
       if (task) { setThreadId(task.analysisThreadId); setLatestConversation(task); setSelectedAnalysisTaskId(task.id); setAnalysisCollapsed(false); void refresh(); }
-      else notify(t(locale, '分析任务提交失败，可重试。', 'Analysis could not be submitted; retry it.'));
     } finally {
       setConversationSubmitting(false);
     }

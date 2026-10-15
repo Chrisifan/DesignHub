@@ -488,6 +488,25 @@ it('hydrates persisted model tasks in the task view', async () => {
   expect(screen.getByText('2 张图')).toHaveAttribute('title', '2 张图 · 费用 0.04');
 });
 
+it('shows a stable task-load error and retries without hiding the stored history', async () => {
+  let shouldFail = true;
+  const storedTask = taskRecord({ id: 'task-recovered', requestText: 'Recovered history' });
+  const listTasks = vi.fn(async () => {
+    if (shouldFail) throw new Error("Error invoking remote method 'task:list': Error: INVALID_TASK_STATE");
+    return [storedTask];
+  });
+  window.designhub = { listTasks };
+  render(<TaskHarness />);
+
+  expect(await screen.findByRole('heading', { name: '任务读取失败' })).toBeInTheDocument();
+  expect(screen.getByText(/INVALID_TASK_STATE/u)).toBeInTheDocument();
+  shouldFail = false;
+  fireEvent.click(screen.getByRole('button', { name: '重试读取' }));
+
+  expect(await screen.findByRole('article', { name: 'task-recovered' })).toBeInTheDocument();
+  expect(screen.getByText('Recovered history')).toBeInTheDocument();
+});
+
 it('sorts model tasks newest first and formats time for the active locale and local time zone', async () => {
   const olderTime = '2026-10-12T06:30:00.000Z';
   const newerTime = '2026-10-13T06:30:00.000Z';
@@ -608,7 +627,7 @@ it('filters model tasks from the breadcrumb toolbar and keeps rows compact', asy
   expect(within(failedTask).getByText('失败')).toHaveClass('badge--error');
   expect(within(cancelledTask).getByText('已取消')).toHaveClass('badge--warning');
   expect(screen.queryByRole('article', { name: 'task-completed' })).not.toBeInTheDocument();
-  expect(screen.getByText('失败请求')).toHaveClass('task-row__summary');
+  expect(screen.getByText('失败请求 · 模型服务不可用（PROVIDER_UNAVAILABLE）')).toHaveClass('task-row__summary');
 
   fireEvent.click(within(toolbar).getByRole('button', { name: '全部5' }));
   expect(screen.getByText(longRequest)).toHaveClass('task-row__summary');
@@ -711,6 +730,6 @@ it('does not offer an implicit retry for image edits without a recoverable sourc
   render(<Harness initialView="tasks" libraryId="workspace-1" />);
   await screen.findByText('失败');
   expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
-  expect(screen.getByTitle('去除背景 · 请重新选择原图')).toBeInTheDocument();
+  expect(screen.getByTitle('去除背景 · 模型请求失败（PROVIDER_REQUEST_FAILED） · 请重新选择原图')).toBeInTheDocument();
   expect(retryTask).not.toHaveBeenCalled();
 });

@@ -182,6 +182,22 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.analysisDiagnostic === undefined || isPortfolioAnalysisDiagnostic(value.analysisDiagnostic))
   && (value.result === undefined || isResult(value.result));
 
+const normalizeLoadedTaskRecord = (value: unknown, libraryId: string): TaskRecord | null => {
+  if (!isRecord(value)) return null;
+  if (value.designContext === undefined) return isTaskRecord(value) ? value : null;
+  if (!isRecord(value.designContext)) return null;
+
+  const persistedLibraryIds = [value.designContext.libraryId, value.designContext.workspaceId]
+    .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
+  if (persistedLibraryIds.some((candidate) => candidate !== libraryId)) return null;
+
+  const context = { ...value.designContext };
+  delete context.libraryId;
+  delete context.workspaceId;
+  const normalized = { ...value, designContext: { ...context, libraryId } };
+  return isTaskRecord(normalized) ? normalized : null;
+};
+
 const validateWorkspace = (handle: ProjectLibraryHandle, workspaceId: string, writable: boolean): string => {
   if (handle.library.libraryId !== workspaceId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
   if (writable && !getWritableProjectLibraryLease(handle)) throw new Error('WORKSPACE_NOT_WRITABLE');
@@ -220,8 +236,14 @@ export const loadTaskState = async (handle: ProjectLibraryHandle, workspaceId: s
     throw new Error('INVALID_TASK_STATE');
   }
   assertNoRemovedDocumentSchema(parsed);
-  if (!Array.isArray(parsed) || !parsed.every(isTaskRecord)) throw new Error('INVALID_TASK_STATE');
-  return structuredClone(parsed);
+  if (!Array.isArray(parsed)) throw new Error('INVALID_TASK_STATE');
+  const tasks: TaskRecord[] = [];
+  for (const value of parsed) {
+    const task = normalizeLoadedTaskRecord(value, workspaceId);
+    if (!task) throw new Error('INVALID_TASK_STATE');
+    tasks.push(task);
+  }
+  return structuredClone(tasks);
 };
 
 export const saveTaskState = async (handle: ProjectLibraryHandle, workspaceId: string, tasks: readonly TaskRecord[]): Promise<boolean> => {

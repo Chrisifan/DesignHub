@@ -39,7 +39,7 @@ it('renders expanded and compact variants from the same dock', () => {
   const expanded = screen.getByRole('form', { name: 'AI 操作坞' });
   expect(expanded).toHaveClass('conversation-dock--expanded');
   expect(within(expanded).queryByRole('button', { name: '模型任务' })).toBeNull();
-  expect(within(expanded).getByText('对话模型已连接')).toBeVisible();
+  expect(within(expanded).getByText('最近连接测试通过')).toBeVisible();
 
   rerender(
     <ConversationDock
@@ -56,7 +56,7 @@ it('renders expanded and compact variants from the same dock', () => {
   expect(within(compact).getByRole('button', { name: '模型任务' })).toBeVisible();
   expect(within(compact).getByRole('button', { name: '版本历史' })).toBeVisible();
   expect(within(compact).getByRole('button', { name: '生成' })).toBeVisible();
-  expect(within(compact).getByText('对话模型已连接')).toBeVisible();
+  expect(within(compact).getByText('最近连接测试通过')).toBeVisible();
   expect(within(compact).queryByText('/')).toBeNull();
 
   rerender(

@@ -5,6 +5,7 @@ import type { ConversationImageAttachment } from '../../features/agent/task-serv
 import type { TaskRecord } from '../../features/tasks/state';
 import { normalizeAnalysisText } from '../../features/agent/visual-context';
 import { Button, Icon, IconButton } from './ui';
+import { taskFailureMessage } from './task-errors';
 
 export type AnalysisPanelAttachment = ConversationImageAttachment & {
   assetId?: string;
@@ -150,6 +151,7 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
   const progress = normalizeAnalysisText(task?.progressText || task?.result?.text || '');
   const [visibleProgress, setVisibleProgress] = useState(progress);
   const failed = task?.state === 'failed';
+  const failureMessage = task ? taskFailureMessage(locale, task) : undefined;
   const running = task?.state === 'queued' || task?.state === 'running';
   const smoothing = visibleProgress !== progress;
   const enhancedRequest = Boolean(onCopyRequest);
@@ -245,7 +247,7 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
         {task?.state === 'completed' && <p className="workbench-analysis-panel__state" role="status">{locale === 'zh-CN' ? '对话理解完成，可以生成设计稿。' : 'Conversation analysis complete. The design draft is ready to generate.'}</p>}
         {running && !visibleProgress && <div className="workbench-analysis-panel__streaming"><span /><span /><span /></div>}
         {visibleProgress ? <div className="workbench-analysis-panel__markdown">{blocks.map(renderAnalysisBlock)}{streaming && <span className="workbench-analysis-panel__streaming-caret" aria-hidden="true">▍</span>}</div> : !running && <p className="workbench-analysis-panel__empty">{locale === 'zh-CN' ? '发送需求后，这里会显示设计分析。' : 'Send a request to see the design analysis here.'}</p>}
-        {failed && <div className="workbench-analysis-panel__error"><Icon name="circle-alert" size={15} /><span>{locale === 'zh-CN' ? '分析失败，当前线程仍可重试。' : 'Analysis failed. This thread can be retried.'}</span>{onRetry && <Button variant="ghost" icon="rotate-ccw" onClick={onRetry}>{locale === 'zh-CN' ? '重试' : 'Retry'}</Button>}</div>}
+        {failed && <div className="workbench-analysis-panel__error"><Icon name="circle-alert" size={15} /><span>{failureMessage ?? (locale === 'zh-CN' ? '分析失败，当前线程仍可重试。' : 'Analysis failed. This thread can be retried.')}</span>{onRetry && <Button variant="ghost" icon="rotate-ccw" onClick={onRetry}>{locale === 'zh-CN' ? '重试' : 'Retry'}</Button>}</div>}
         <div ref={bottomRef} aria-hidden="true" />
       </div>
       <div className="workbench-analysis-panel__footer">

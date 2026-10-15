@@ -41,6 +41,7 @@ import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from 
 import type { WorkspaceSettings } from '../../features/workspace/settings';
 import type { BatchImageTool, ImageToolJob, ImageToolItem } from '../../features/image-tools/jobs';
 import { TaskResultDrawer } from './TaskResultDrawer';
+import { taskFailureMessage, taskLoadErrorMessage } from './task-errors';
 import './library.css';
 
 const ImageToolsPage = lazy(async () => {
@@ -669,13 +670,14 @@ const TasksPage = ({
   active,
 }: Pick<PageProps, 'locale' | 'navigate'> & { libraryId?: string; active: boolean }) => {
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loadRequest, setLoadRequest] = useState(0);
   const [category, setCategory] = useState<TaskCategory>('all');
   const [selectedResultTaskId, setSelectedResultTaskId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     let loading = false;
-    setLoadFailed(false);
+    setLoadError(null);
     if (!libraryId || !active) {
       setTasks([]);
       return () => { cancelled = true; };
@@ -687,13 +689,13 @@ const TasksPage = ({
         const stored = await getDesktopApi().listTasks?.(libraryId);
         if (cancelled) return;
         if (!stored) {
-          setLoadFailed(true);
+          setLoadError(new Error('TASK_LIST_UNAVAILABLE'));
           return;
         }
-        setLoadFailed(false);
+        setLoadError(null);
         setTasks(stored);
-      } catch {
-        if (!cancelled) setLoadFailed(true);
+      } catch (error) {
+        if (!cancelled) setLoadError(error);
       } finally {
         loading = false;
       }
@@ -704,7 +706,7 @@ const TasksPage = ({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [active, libraryId]);
+  }, [active, libraryId, loadRequest]);
   const matchesCategory = (task: TaskRecord, value: TaskCategory): boolean => {
     if (value === 'all') return true;
     if (value === 'failed') return task.state === 'failed' || task.state === 'cancelled' || task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART';
@@ -783,21 +785,6 @@ const TasksPage = ({
     'local-transform': t(locale, '本地转换', 'Local transform'),
     'vision-analysis': t(locale, '作品集分析', 'Portfolio analysis'),
   })[task.capability ?? ''] ?? task.capability ?? t(locale, '模型任务', 'Model task');
-  const failureDescription = (task: TaskRecord): string | undefined => {
-    const failure = task.providerFailure;
-    if (!failure) return undefined;
-    const details = [
-      failure.status === undefined ? undefined : `HTTP ${failure.status}`,
-      failure.providerCode,
-    ].filter((value): value is string => Boolean(value)).join('，');
-    const suffix = details ? `（${details}）` : '';
-    if (failure.kind === 'rate_limited') {
-      return t(locale, `服务请求受限${suffix}${failure.retryAfterSeconds === undefined ? '' : `，${failure.retryAfterSeconds} 秒后可重试`}`, `Provider rate limit${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}${failure.retryAfterSeconds === undefined ? '' : `; retry in ${failure.retryAfterSeconds}s`}`);
-    }
-    if (failure.kind === 'invalid_response') return t(locale, `服务返回了无法解析的结果${suffix}`, `Provider returned an unreadable result${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}`);
-    if (failure.kind === 'cancelled') return t(locale, '服务请求已取消', 'Provider request was cancelled');
-    return t(locale, `服务请求被拒绝${suffix}`, `Provider request was rejected${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}`);
-  };
   const taskStateLabel = (task: TaskRecord): string => task.state === 'queued'
     ? t(locale, '排队', 'Queued')
     : task.state === 'running'
@@ -826,7 +813,7 @@ const TasksPage = ({
           ? t(locale, '请重新选择原图', 'Select the source image again')
           : undefined
       : undefined;
-    return [task.requestText, failureDescription(task), guidance].filter(Boolean).join(' · ')
+    return [task.requestText, taskFailureMessage(locale, task), guidance].filter(Boolean).join(' · ')
       || task.source?.id
       || task.requestId
       || t(locale, '模型任务', 'Model task');
@@ -885,11 +872,15 @@ const TasksPage = ({
         ))}
       </div>
     </PageToolbarSlot>
-    {loadFailed ? <div className="page-empty-state"><EmptyState
+    {loadError ? <div className="page-empty-state"><EmptyState
       icon="circle-alert"
       title={t(locale, '任务读取失败', 'Could not load tasks')}
-      description={t(locale, '请重试，原有任务不会被覆盖。', 'Retry without overwriting existing task records.')}
-    /></div> : tasks.length > 0 && visibleTasks.length > 0 ? <div className="task-list" role="list" aria-label={t(locale, '任务列表', 'Task list')}>
+      description={taskLoadErrorMessage(locale, loadError)}
+    >
+      <Button variant="secondary" icon="rotate-ccw" onClick={() => setLoadRequest((value) => value + 1)}>
+        {t(locale, '重试读取', 'Retry loading')}
+      </Button>
+    </EmptyState></div> : tasks.length > 0 && visibleTasks.length > 0 ? <div className="task-list" role="list" aria-label={t(locale, '任务列表', 'Task list')}>
       <div className="task-row task-row--header" role="listitem" aria-label={t(locale, '表头', 'Header')}>
         <span className="task-row__cell task-row__type">{t(locale, '任务类型', 'Task type')}</span>
         <span className="task-row__cell task-row__state">{t(locale, '状态', 'Status')}</span>

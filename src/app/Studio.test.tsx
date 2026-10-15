@@ -352,7 +352,7 @@ it('reports a connected conversation model in the home composer', async () => {
   render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-connected', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
 
   await waitFor(() => expect(hasCredential).toHaveBeenCalledWith('openai-compatible:conversation'));
-  expect(screen.getByText('对话模型已连接')).toBeInTheDocument();
+  expect(screen.getByText('最近连接测试通过')).toBeInTheDocument();
   expect(document.querySelector('.studio-status')).not.toBeInTheDocument();
 });
 
@@ -438,6 +438,22 @@ it('submits project conversation through the desktop task bridge', async () => {
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '调整标题' } });
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   await waitFor(() => expect(submitConversation).toHaveBeenCalledWith(expect.objectContaining({ libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'openai-compatible', message: '调整标题' })));
+});
+
+it('explains a task-state submission failure instead of blaming a healthy model connection', async () => {
+  const listActiveProjects = vi.fn(async () => [{ projectId: 'project-1', name: 'Persisted project', designs: [] }]);
+  const submitConversation = vi.fn(async () => {
+    throw new Error("Error invoking remote method 'agent:conversation-submit': Error: INVALID_TASK_STATE");
+  });
+  const hasCredential = vi.fn(async (account: string) => account === 'openai-compatible:conversation');
+  window.designhub = { listActiveProjects, submitConversation, hasCredential };
+  render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Persisted project' }));
+  fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '调整标题' } });
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+  expect(await screen.findByRole('status')).toHaveTextContent('任务历史格式异常（INVALID_TASK_STATE），本次请求尚未发送到模型。');
 });
 
 it('binds design generation to the project canvas so polling can return the task', async () => {
@@ -726,7 +742,7 @@ it('creates a localized project and opens its workbench from the first home prom
   window.designhub = { listActiveProjects, createProjectContainer, submitConversation, hasCredential };
   render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={vi.fn()} onThemeChange={vi.fn()} onExit={vi.fn()} />);
 
-  await screen.findByText('对话模型已连接');
+  await screen.findByText('最近连接测试通过');
   fireEvent.change(await screen.findByRole('textbox', { name: '设计需求' }), { target: { value: '设计一张发布海报' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
 
@@ -825,7 +841,7 @@ it('keeps project-library identity fixed during automatic project creation', asy
   const workspaceA = { libraryId: 'workspace-a', name: 'A', directory: '/tmp/a', formatVersion: 1, openMode: 'writable' as const };
   const props = { locale: 'zh-CN' as const, theme: 'system' as const, onLocaleChange: vi.fn(), onThemeChange: vi.fn(), onExit: vi.fn() };
   render(<Studio {...props} library={workspaceA} />);
-  await screen.findByText('对话模型已连接');
+  await screen.findByText('最近连接测试通过');
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '工作区切换测试' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
   await waitFor(() => expect(createProjectContainer).toHaveBeenCalledOnce());

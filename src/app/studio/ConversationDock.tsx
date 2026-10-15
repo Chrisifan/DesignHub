@@ -216,7 +216,7 @@ export const ConversationDock = ({
               {busy && busyLabel
                 ? busyLabel
                 : conversationConnected
-                ? t(locale, '对话模型已连接', 'Conversation model connected')
+                ? t(locale, '最近连接测试通过', 'Latest connection test passed')
                 : t(locale, '对话模型未连接', 'Conversation model disconnected')}
             </div>
           </div>
