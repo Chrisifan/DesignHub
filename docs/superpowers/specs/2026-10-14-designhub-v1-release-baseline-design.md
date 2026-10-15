@@ -12,7 +12,7 @@ The nine canvas tools are background removal, background replacement, object rem
 
 ## Data contract
 
-- `ProjectMetadata` stores project properties, the brief, designer snapshot, `ProjectDesign[]`, and `canvasLayout`.
+- `ProjectMetadata` stores project properties, the brief, designer snapshot, `ProjectDesign[]`, and `canvasLayout`; the layout keeps viewport, node positions, and selected design identities.
 - Import, generation, and image-tool results append immutable `ProjectDesign` values with dimensions, position through layout, source task, and timestamps.
 - `DesignScene` is transient input for an image-tool request or single-image export and is never persisted as a document.
 - Removed document/revision schemas fail with `DOCUMENT_SCHEMA_REMOVED`; reads never rewrite the source.

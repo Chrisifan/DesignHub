@@ -15,6 +15,7 @@ export type ProjectDesign = {
 export type ProjectCanvasLayout = {
   viewport: { zoom: number; offsetX: number; offsetY: number };
   nodes: Record<string, { x: number; y: number }>;
+  selectedDesignIds: string[];
 };
 
 export type ProjectMetadata = {
@@ -113,17 +114,22 @@ const normalizeDesigns = (designs: ProjectDesign[] | undefined, projectId: strin
 
 const normalizeCanvasLayout = (layout: ProjectCanvasLayout | undefined, designs: ProjectDesign[]): ProjectCanvasLayout | undefined => {
   if (!layout) return undefined;
-  const { viewport, nodes } = layout;
+  const { viewport, nodes, selectedDesignIds = [] } = layout;
   if (!viewport || !Number.isFinite(viewport.zoom) || viewport.zoom <= 0 || !Number.isFinite(viewport.offsetX) || !Number.isFinite(viewport.offsetY) || !nodes || typeof nodes !== 'object') {
     throw new Error('INVALID_PROJECT_CANVAS_LAYOUT');
   }
+  if (!Array.isArray(selectedDesignIds) || !selectedDesignIds.every((id) => typeof id === 'string')) throw new Error('INVALID_PROJECT_CANVAS_LAYOUT');
   const designIds = new Set(designs.map((design) => design.id));
   const normalizedNodes: Record<string, { x: number; y: number }> = {};
   for (const [id, position] of Object.entries(nodes)) {
     if (!designIds.has(id) || !Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error('INVALID_PROJECT_CANVAS_LAYOUT');
     normalizedNodes[id] = { x: position.x, y: position.y };
   }
-  return { viewport: { zoom: viewport.zoom, offsetX: viewport.offsetX, offsetY: viewport.offsetY }, nodes: normalizedNodes };
+  return {
+    viewport: { zoom: viewport.zoom, offsetX: viewport.offsetX, offsetY: viewport.offsetY },
+    nodes: normalizedNodes,
+    selectedDesignIds: [...new Set(selectedDesignIds.filter((id) => designIds.has(id)))],
+  };
 };
 
 export const createProjectMetadata = (input: ProjectMetadataInput): ProjectMetadata => {

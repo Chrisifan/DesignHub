@@ -8,12 +8,29 @@ it('creates a project design collection and canvas layout snapshot', () => {
     name: 'Canvas project',
     workspaceId: 'workspace-1',
     designs: [{ id: 'design-1', assetId: 'asset-123', sourceTaskId: 'task-1', width: 1080, height: 1440, title: 'Poster', createdAt: '2026-09-21T00:00:00.000Z' }],
-    canvasLayout: { viewport: { zoom: 1, offsetX: 0, offsetY: 0 }, nodes: { 'design-1': { x: 40, y: 60 } } },
+    canvasLayout: { viewport: { zoom: 1, offsetX: 0, offsetY: 0 }, nodes: { 'design-1': { x: 40, y: 60 } } } as never,
   });
 
   expect(metadata.designs).toHaveLength(1);
   expect(metadata.designs?.[0]).toMatchObject({ id: 'design-1', assetId: 'asset-123', width: 1080, height: 1440 });
   expect(metadata.canvasLayout?.nodes['design-1']).toEqual({ x: 40, y: 60 });
+  expect(metadata.canvasLayout?.selectedDesignIds).toEqual([]);
+});
+
+it('deduplicates canvas selection and drops designs that no longer exist', () => {
+  const metadata = createProjectMetadata({
+    projectId: 'project-1',
+    name: 'Canvas project',
+    workspaceId: 'workspace-1',
+    designs: [{ id: 'design-1', assetId: 'asset-123', sourceTaskId: 'task-1', width: 1080, height: 1440, title: 'Poster', createdAt: '2026-09-21T00:00:00.000Z' }],
+    canvasLayout: {
+      viewport: { zoom: 1, offsetX: 0, offsetY: 0 },
+      nodes: { 'design-1': { x: 40, y: 60 } },
+      selectedDesignIds: ['design-1', 'removed-design', 'design-1'],
+    },
+  });
+
+  expect(metadata.canvasLayout?.selectedDesignIds).toEqual(['design-1']);
 });
 
 it('rejects invalid or duplicate project designs', () => {

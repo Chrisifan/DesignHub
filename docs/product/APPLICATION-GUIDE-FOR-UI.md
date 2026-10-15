@@ -16,9 +16,9 @@ Project package import belongs to the global user menu. V1 has no project packag
 
 ## ProjectCanvas
 
-Opening a project displays its design images as stable canvas nodes. Users can pan, zoom, move nodes, select one or more images, and return Home through project actions. Layout changes persist at project level.
+Opening a project displays its design images as stable canvas nodes. Users can pan, zoom, move nodes, select one or more images, and return Home through project actions. Viewport, node positions, and image selection persist together at project level.
 
-Images enter the project through drag and drop, paste, file selection, model generation, or an image tool. Every path creates the same `ProjectDesign` record and appears in the same canvas, selection, export, and conversation-reference flows.
+Images enter the project canvas through drag and drop, paste, model generation, or an image tool. Every path creates the same `ProjectDesign` record and appears in the same canvas, selection, export, and conversation-reference flows. Pasting into the conversation input creates a conversation attachment instead of a project design.
 
 A selected image exposes direct actions and nine tools: remove background, replace background, remove object, inpaint, outpaint, smart crop, upscale, resize, and remove watermark.
 

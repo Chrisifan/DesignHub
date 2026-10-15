@@ -13,12 +13,18 @@ test('project canvas persists layout and returns home through project actions', 
   await stage.hover();
   await page.mouse.wheel(0, -120);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('designhub.e2e.canvas-layout.project-e2e'))).not.toBeNull();
-  const savedZoom = await page.evaluate(() => JSON.parse(localStorage.getItem('designhub.e2e.canvas-layout.project-e2e') ?? '{}').viewport?.zoom as number | undefined);
-  expect(savedZoom).toBeGreaterThan(0.2);
-  expect(savedZoom).not.toBe(1);
+  const savedLayout = await page.evaluate(() => JSON.parse(localStorage.getItem('designhub.e2e.canvas-layout.project-e2e') ?? '{}') as {
+    viewport?: { zoom?: number };
+    selectedDesignIds?: string[];
+  });
+  expect(savedLayout.viewport?.zoom).toBeGreaterThan(0.2);
+  expect(savedLayout.viewport?.zoom).not.toBe(1);
+  expect(savedLayout.selectedDesignIds).toEqual(['design-e2e-source']);
   await canvas.getByRole('button', { name: '项目操作', exact: true }).click();
   await canvas.getByRole('menuitem', { name: '返回首页', exact: true }).click();
   await expect(page.getByRole('heading', { name: '创作中心', exact: true })).toBeAttached();
+  await page.getByRole('button', { name: '春间市集', exact: true }).click();
+  await expect(page.getByRole('region', { name: '设计画布', exact: true }).getByRole('button', { name: '导出所选设计稿', exact: true })).toBeEnabled();
 });
 
 for (const width of [1280, 1024]) {

@@ -117,6 +117,42 @@ it('rejects removed document metadata without modifying the project manifest', a
   }
 });
 
+it('retains the selected canvas designs after reopening the project library', async () => {
+  const { workspace, store } = await createWritableStore();
+  let activeWorkspace = workspace;
+  try {
+    const project = await store.createProjectContainer({
+      libraryId: workspace.library.libraryId,
+      operationId: 'canvas-selection-roundtrip',
+      name: 'Canvas project',
+      designs: [{ id: 'design-1', assetId: 'asset-1', sourceTaskId: 'task-1', title: 'Poster', width: 800, height: 600, createdAt: '2026-10-14T00:00:00.000Z' }],
+    });
+    await store.saveProjectCanvasLayout({
+      libraryId: workspace.library.libraryId,
+      projectId: project.projectId,
+      layout: {
+        viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+        nodes: { 'design-1': { x: 120, y: 80 } },
+        selectedDesignIds: ['design-1'],
+      },
+    });
+
+    activeWorkspace.close();
+    activeWorkspace = await openProjectLibrary(workspace.library.directory);
+
+    await expect(createProjectStore(activeWorkspace).loadProjectCanvasLayout({
+      libraryId: activeWorkspace.library.libraryId,
+      projectId: project.projectId,
+    })).resolves.toEqual({
+      viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+      nodes: { 'design-1': { x: 120, y: 80 } },
+      selectedDesignIds: ['design-1'],
+    });
+  } finally {
+    activeWorkspace.close();
+  }
+});
+
 it('retains a managed project cover across restart and duplication', async () => {
   const { workspace, store } = await createWritableStore();
   let activeWorkspace = workspace;

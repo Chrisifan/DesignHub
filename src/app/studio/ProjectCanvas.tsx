@@ -13,7 +13,7 @@ import type { PersonaProfile } from './personas';
 import type { Project } from './types';
 import { ConversationDock, type ConversationDockAttachment } from './ConversationDock';
 import { AnalysisPanel, type AnalysisPanelRequest } from './AnalysisPanel';
-import { ProjectCanvasStage } from './ProjectCanvasStage';
+import { layoutProjectDesigns, ProjectCanvasStage } from './ProjectCanvasStage';
 import { Icon, IconButton, Modal, t } from './ui';
 import { Tooltip } from './Tooltip';
 import './workbench.css';
@@ -54,6 +54,27 @@ const imageToolCopy: Record<ImageTool, { zh: string; en: string; icon: string; p
   resize: { zh: '调整尺寸', en: 'Resize', icon: 'maximize-2', prompt: 'Resize the image' },
   'remove-watermark': { zh: '移除水印', en: 'Remove watermark', icon: 'layout-grid', prompt: 'Remove a watermark only from an explicitly selected region' },
 };
+
+const canvasLayoutSaveDelayMs = 250;
+
+type PendingCanvasLayoutSave = {
+  libraryId: string;
+  projectId: string;
+  layout: ProjectCanvasLayout;
+};
+
+type QueuedCanvasLayoutSave = {
+  input: PendingCanvasLayoutSave;
+  ready: boolean;
+};
+
+const canvasLayoutSaveKey = (libraryId: string, projectId: string): string => `${libraryId}\0${projectId}`;
+
+const isLayoutSaveForProject = (
+  save: PendingCanvasLayoutSave | null,
+  libraryId: string,
+  projectId: string,
+): boolean => save?.libraryId === libraryId && save.projectId === projectId;
 
 const imageToolResultSize = (task: TaskRecord, source: ProjectDesign): { width: number; height: number } => {
   const params = task.toolParams ?? {};
@@ -178,7 +199,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const onDesignsChangeRef = useRef(onDesignsChange);
   onDesignsChangeRef.current = onDesignsChange;
   const [layout, setLayout] = useState<ProjectCanvasLayout | undefined>(project.canvasLayout);
-  const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
+  const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>(project.canvasLayout?.selectedDesignIds ?? []);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [conversationSubmitting, setConversationSubmitting] = useState(false);
   const [activeTool, setActiveTool] = useState<ImageTool | null>(null);
@@ -198,19 +219,108 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
   const imageTaskStatesRef = useRef<Map<string, TaskRecord['state']>>(new Map());
   const imageTaskStatesInitializedRef = useRef(false);
+  const layoutSaveTimersRef = useRef<Map<string, number>>(new Map());
+  const queuedLayoutSavesRef = useRef<Map<string, QueuedCanvasLayoutSave>>(new Map());
+  const inFlightLayoutSaveRef = useRef<PendingCanvasLayoutSave | null>(null);
+  const drainLayoutSavesRef = useRef<() => void>(() => undefined);
+  const localLayoutAuthorityRef = useRef<Set<string>>(new Set());
+  const layoutMutationVersionRef = useRef(0);
+  const projectScopeRef = useRef({ libraryId, projectId: project.id });
+  if (projectScopeRef.current.libraryId !== libraryId || projectScopeRef.current.projectId !== project.id) {
+    projectScopeRef.current = { libraryId, projectId: project.id };
+  }
+
+  const drainLayoutSaves = useCallback((): void => {
+    if (inFlightLayoutSaveRef.current) return;
+    const readyEntry = [...queuedLayoutSavesRef.current.entries()].find(([, queued]) => queued.ready);
+    if (!readyEntry) return;
+    const [key, queued] = readyEntry;
+    queuedLayoutSavesRef.current.delete(key);
+    const pending = queued.input;
+    const save = getDesktopApi().saveProjectCanvasLayout;
+    if (!save) {
+      drainLayoutSavesRef.current();
+      return;
+    }
+    inFlightLayoutSaveRef.current = pending;
+    const finish = (): void => {
+      if (inFlightLayoutSaveRef.current === pending) inFlightLayoutSaveRef.current = null;
+      drainLayoutSavesRef.current();
+    };
+    try {
+      void save(pending).then(finish, finish);
+    } catch {
+      finish();
+    }
+  }, []);
+  drainLayoutSavesRef.current = drainLayoutSaves;
+
+  const flushLayoutSave = useCallback((targetLibraryId: string, targetProjectId: string): void => {
+    const key = canvasLayoutSaveKey(targetLibraryId, targetProjectId);
+    const timer = layoutSaveTimersRef.current.get(key);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      layoutSaveTimersRef.current.delete(key);
+    }
+    const queued = queuedLayoutSavesRef.current.get(key);
+    if (!queued) return;
+    queued.ready = true;
+    drainLayoutSavesRef.current();
+  }, []);
+
+  const queueLayoutSave = useCallback((next: ProjectCanvasLayout): void => {
+    setLayout(next);
+    layoutMutationVersionRef.current += 1;
+    if (!libraryId) return;
+    const key = canvasLayoutSaveKey(libraryId, project.id);
+    if (readOnly || !getDesktopApi().saveProjectCanvasLayout) {
+      localLayoutAuthorityRef.current.add(key);
+      return;
+    }
+    localLayoutAuthorityRef.current.delete(key);
+    queuedLayoutSavesRef.current.set(key, {
+      input: { libraryId, projectId: project.id, layout: next },
+      ready: false,
+    });
+    const currentTimer = layoutSaveTimersRef.current.get(key);
+    if (currentTimer !== undefined) window.clearTimeout(currentTimer);
+    const timer = window.setTimeout(() => {
+      if (layoutSaveTimersRef.current.get(key) === timer) layoutSaveTimersRef.current.delete(key);
+      const queued = queuedLayoutSavesRef.current.get(key);
+      if (!queued) return;
+      queued.ready = true;
+      drainLayoutSavesRef.current();
+    }, canvasLayoutSaveDelayMs);
+    layoutSaveTimersRef.current.set(key, timer);
+  }, [libraryId, project.id, readOnly]);
+
+  useEffect(() => () => {
+    if (libraryId) flushLayoutSave(libraryId, project.id);
+  }, [flushLayoutSave, libraryId, project.id]);
 
   const refresh = useCallback(async () => {
     if (!libraryId) return;
+    const scope = projectScopeRef.current;
+    const mutationVersion = layoutMutationVersionRef.current;
+    const key = canvasLayoutSaveKey(libraryId, project.id);
+    const hadLayoutWrite = localLayoutAuthorityRef.current.has(key)
+      || queuedLayoutSavesRef.current.has(key)
+      || isLayoutSaveForProject(inFlightLayoutSaveRef.current, libraryId, project.id);
     const [nextDesigns, nextLayout, nextTasks] = await Promise.all([
       getDesktopApi().listProjectDesigns?.({ libraryId, projectId: project.id }),
       getDesktopApi().loadProjectCanvasLayout?.({ libraryId, projectId: project.id }),
       getDesktopApi().listTasks?.(libraryId),
     ]);
+    if (projectScopeRef.current !== scope) return;
     if (nextDesigns) {
       setDesigns(nextDesigns);
       onDesignsChangeRef.current?.(nextDesigns);
+      setSelectedDesignIds((current) => current.filter((id) => nextDesigns.some((design) => design.id === id)));
     }
-    if (nextLayout) setLayout(nextLayout);
+    if (nextLayout && layoutMutationVersionRef.current === mutationVersion && !hadLayoutWrite) {
+      setLayout(nextLayout);
+      setSelectedDesignIds(nextLayout.selectedDesignIds);
+    }
     if (nextTasks) {
       const projectTasks = nextTasks.filter((task) => task.source?.kind === 'project' && task.source.id === project.id);
       if (!imageTaskStatesInitializedRef.current) {
@@ -231,11 +341,14 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setLatestConversation(undefined);
     setSelectedAnalysisTaskId(undefined);
     setAnalysisAttachments([]);
-    setSelectedDesignIds([]);
+    setDesigns(project.designs ?? []);
+    setLayout(project.canvasLayout);
+    setSelectedDesignIds(project.canvasLayout?.selectedDesignIds ?? []);
+    if (libraryId) localLayoutAuthorityRef.current.delete(canvasLayoutSaveKey(libraryId, project.id));
     setAnalysisCollapsed(false);
     imageTaskStatesRef.current.clear();
     imageTaskStatesInitializedRef.current = false;
-  }, [project.id]);
+  }, [libraryId, project.id]);
   useEffect(() => {
     const previous = imageTaskStatesRef.current;
     tasks.forEach((task) => {
@@ -354,16 +467,28 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
       setImageToolSubmitting(false);
     }
   };
+  const layoutForSelection = (nextSelectedDesignIds: string[]): ProjectCanvasLayout => ({
+    viewport: layout?.viewport ?? { zoom: 0.65, offsetX: 40, offsetY: 40 },
+    nodes: layout?.nodes ?? layoutProjectDesigns(designs.map((design) => ({
+      ...design,
+      rowKey: designRowKeys[design.id] ?? design.sourceTaskId,
+      anchorId: designAnchors[design.id],
+    })), { centerRows: true }),
+    selectedDesignIds: nextSelectedDesignIds,
+  });
+  const selectDesigns = (nextSelectedDesignIds: string[]): void => {
+    setSelectedDesignIds(nextSelectedDesignIds);
+    queueLayoutSave(layoutForSelection(nextSelectedDesignIds));
+  };
   const selectAnalysis = (taskId: string): void => {
     setSelectedAnalysisTaskId(taskId);
-    setSelectedDesignIds(designs.filter((design) => design.sourceConversationTaskId === taskId).map((design) => design.id));
+    selectDesigns(designs.filter((design) => design.sourceConversationTaskId === taskId).map((design) => design.id));
     setAnalysisCollapsed(false);
   };
-  const saveLayout = async (next: ProjectCanvasLayout): Promise<void> => {
-    setLayout(next);
-    if (libraryId && !readOnly) await getDesktopApi().saveProjectCanvasLayout?.({ libraryId, projectId: project.id, layout: next });
+  const saveLayout = (next: Pick<ProjectCanvasLayout, 'viewport' | 'nodes'>): void => {
+    queueLayoutSave({ ...next, selectedDesignIds });
   };
-  const importImages = async (files: readonly File[]): Promise<void> => {
+  const importImages = useCallback(async (files: readonly File[]): Promise<void> => {
     if (readOnly || !libraryId || !getDesktopApi().importAssets || !getDesktopApi().addProjectDesigns) return;
     const images = files.filter((file) => file.type.startsWith('image/'));
     if (!images.length) return;
@@ -409,7 +534,19 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     } catch {
       notify(t(locale, '图片导入失败。', 'Image import failed.'));
     }
-  };
+  }, [libraryId, locale, notify, project.id, readOnly]);
+  useEffect(() => {
+    const pasteImages = (event: ClipboardEvent): void => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
+      const images = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith('image/'));
+      if (readOnly || images.length === 0) return;
+      event.preventDefault();
+      void importImages(images);
+    };
+    window.addEventListener('paste', pasteImages);
+    return () => window.removeEventListener('paste', pasteImages);
+  }, [importImages, readOnly]);
   const exportSelected = async (): Promise<void> => {
     if (selectedDesigns.length === 0 || !libraryId) return;
     let exported = 0;
@@ -500,7 +637,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
         designAnchors={designAnchors}
         pendingDesigns={pendingDesigns}
         readOnly={readOnly}
-        onSelect={(designId) => setSelectedDesignIds(designId ? [designId] : [])}
+        onSelect={(designId) => selectDesigns(designId ? [designId] : [])}
         onAddToConversation={(designId) => { void addDesignToConversation(designId); }}
         onCanvasBackground={() => setAnalysisCollapsed(true)}
         onLayoutChange={saveLayout}

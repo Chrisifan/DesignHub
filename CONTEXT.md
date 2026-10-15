@@ -27,7 +27,7 @@ An immutable managed image on the project canvas. Imports, model generations, an
 _Avoid_: document, revision, mutable current image.
 
 **Canvas layout (`canvasLayout`)**
-The persisted project-level viewport and position of each project design. It contains no image bytes or document scene graph.
+The persisted project-level viewport, position of each project design, and selected project-design identities. It contains no image bytes or document scene graph; selection never refers to a design that is absent from the project.
 
 **Transient design scene (`DesignScene`)**
 A temporary request value used only to describe one selected image for an image tool or single-image export. It is not persisted or exposed as a project document.

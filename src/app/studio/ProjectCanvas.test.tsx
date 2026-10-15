@@ -1,9 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProjectCanvas, getAnalysisHistory, getLatestConversationTask, getPendingCanvasDesigns, imageToolDesignAnchors } from './ProjectCanvas';
-import type { ProjectDesign } from '../../features/projects/metadata';
+import type { ProjectCanvasLayout, ProjectDesign } from '../../features/projects/metadata';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { ExportProjectDesignInput } from '../../platform/contracts';
 
@@ -17,7 +17,8 @@ type StageMockProps = {
   children?: ReactNode;
 };
 
-vi.mock('./ProjectCanvasStage', () => ({
+vi.mock('./ProjectCanvasStage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./ProjectCanvasStage')>()),
   ProjectCanvasStage: ({ designs, selectedDesignIds = [], pendingDesigns = [], onSelect, onAddToConversation, onCanvasBackground }: StageMockProps) => (
     <div aria-label="设计画布内容">
       <button type="button" aria-label="画布空白" onClick={onCanvasBackground}>画布空白</button>
@@ -40,7 +41,18 @@ vi.mock('./ProjectCanvasStage', () => ({
 
 const originalDesktopApi = window.designhub;
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
 afterEach(() => {
+  vi.useRealTimers();
   window.designhub = originalDesktopApi;
 });
 
@@ -251,6 +263,668 @@ describe('image tool layout references', () => {
 });
 
 describe('ProjectCanvas design references', () => {
+  it('restores the persisted image selection when the canvas refreshes', async () => {
+    const design: ProjectDesign = {
+      id: 'design-selected', projectId: 'project-1', assetId: 'asset-selected', sourceTaskId: 'task-1',
+      width: 800, height: 600, title: '已选图片', createdAt: '2026-10-14T00:00:00.000Z',
+    };
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => [design]),
+      loadProjectCanvasLayout: vi.fn(async () => ({
+        viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+        nodes: { [design.id]: { x: 120, y: 80 } },
+        selectedDesignIds: [design.id],
+      })),
+      listTasks: vi.fn(async () => []),
+    };
+
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    expect(await screen.findByRole('button', { name: '设计稿 已选图片' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('debounces image selection changes into one complete layout save', async () => {
+    vi.useFakeTimers();
+    const designs: ProjectDesign[] = [
+      { id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'task-1', width: 800, height: 600, title: '图片一', createdAt: '2026-10-14T00:00:00.000Z' },
+      { id: 'design-2', projectId: 'project-1', assetId: 'asset-2', sourceTaskId: 'task-1', width: 800, height: 600, title: '图片二', createdAt: '2026-10-14T00:01:00.000Z' },
+    ];
+    const layout = {
+      viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+      nodes: { 'design-1': { x: 120, y: 80 }, 'design-2': { x: 944, y: 80 } },
+      selectedDesignIds: [] as string[],
+    };
+    const saveProjectCanvasLayout = vi.fn(async ({ layout: savedLayout }: { libraryId: string; projectId: string; layout: ProjectCanvasLayout }) => savedLayout);
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => designs),
+      loadProjectCanvasLayout: vi.fn(async () => layout),
+      saveProjectCanvasLayout,
+      listTasks: vi.fn(async () => []),
+    };
+
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, canvasLayout: layout }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 图片一' }));
+    act(() => { vi.advanceTimersByTime(100); });
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 图片二' }));
+    act(() => { vi.advanceTimersByTime(249); });
+    expect(saveProjectCanvasLayout).not.toHaveBeenCalled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(saveProjectCanvasLayout).toHaveBeenCalledOnce();
+    expect(saveProjectCanvasLayout).toHaveBeenCalledWith({
+      libraryId: 'workspace-1',
+      projectId: 'project-1',
+      layout: { ...layout, selectedDesignIds: ['design-2'] },
+    });
+  });
+
+  it('flushes a pending image selection when the canvas unmounts', async () => {
+    vi.useFakeTimers();
+    const design: ProjectDesign = {
+      id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'task-1',
+      width: 800, height: 600, title: '待保存图片', createdAt: '2026-10-14T00:00:00.000Z',
+    };
+    const layout: ProjectCanvasLayout = {
+      viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+      nodes: { 'design-1': { x: 120, y: 80 } },
+      selectedDesignIds: [],
+    };
+    const saveProjectCanvasLayout = vi.fn(async ({ layout: savedLayout }: { libraryId: string; projectId: string; layout: ProjectCanvasLayout }) => savedLayout);
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => [design]),
+      loadProjectCanvasLayout: vi.fn(async () => layout),
+      saveProjectCanvasLayout,
+      listTasks: vi.fn(async () => []),
+    };
+    const view = render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], canvasLayout: layout }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 待保存图片' }));
+    view.unmount();
+
+    expect(saveProjectCanvasLayout).toHaveBeenCalledWith({
+      libraryId: 'workspace-1',
+      projectId: 'project-1',
+      layout: { ...layout, selectedDesignIds: ['design-1'] },
+    });
+  });
+
+  it('does not let a stale refresh overwrite a selection whose save just completed', async () => {
+    vi.useFakeTimers();
+    const design: ProjectDesign = {
+      id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'task-1',
+      width: 800, height: 600, title: '竞态图片', createdAt: '2026-10-14T00:00:00.000Z',
+    };
+    const oldLayout: ProjectCanvasLayout = {
+      viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+      nodes: { 'design-1': { x: 120, y: 80 } },
+      selectedDesignIds: [],
+    };
+    const staleLayoutRead = deferred<ProjectCanvasLayout | null>();
+    const slowTaskRead = deferred<TaskRecord[] | null>();
+    const saveResult = deferred<ProjectCanvasLayout | null>();
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => [design]),
+      loadProjectCanvasLayout: vi.fn(() => staleLayoutRead.promise),
+      saveProjectCanvasLayout: vi.fn(() => saveResult.promise),
+      listTasks: vi.fn(() => slowTaskRead.promise),
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], canvasLayout: oldLayout }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 竞态图片' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    await act(async () => {
+      saveResult.resolve({ ...oldLayout, selectedDesignIds: ['design-1'] });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      staleLayoutRead.resolve(oldLayout);
+      slowTaskRead.resolve([]);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('button', { name: '设计稿 竞态图片' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('serializes debounced layout saves so an older request cannot finish last', async () => {
+    vi.useFakeTimers();
+    const designs: ProjectDesign[] = [
+      { id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'task-1', width: 800, height: 600, title: '图片一', createdAt: '2026-10-14T00:00:00.000Z' },
+      { id: 'design-2', projectId: 'project-1', assetId: 'asset-2', sourceTaskId: 'task-1', width: 800, height: 600, title: '图片二', createdAt: '2026-10-14T00:01:00.000Z' },
+    ];
+    const layout: ProjectCanvasLayout = {
+      viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+      nodes: { 'design-1': { x: 120, y: 80 }, 'design-2': { x: 944, y: 80 } },
+      selectedDesignIds: [],
+    };
+    const saves: Array<ReturnType<typeof deferred<ProjectCanvasLayout | null>>> = [];
+    const savedInputs: Array<{ libraryId: string; projectId: string; layout: ProjectCanvasLayout }> = [];
+    const saveProjectCanvasLayout = vi.fn((input: { libraryId: string; projectId: string; layout: ProjectCanvasLayout }) => {
+      savedInputs.push(input);
+      const result = deferred<ProjectCanvasLayout | null>();
+      saves.push(result);
+      return result.promise;
+    });
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => designs),
+      loadProjectCanvasLayout: vi.fn(async () => layout),
+      saveProjectCanvasLayout,
+      listTasks: vi.fn(async () => []),
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, canvasLayout: layout }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 图片一' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 图片二' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+    expect(saveProjectCanvasLayout).toHaveBeenCalledOnce();
+    await act(async () => {
+      saves[0]!.resolve({ ...layout, selectedDesignIds: ['design-1'] });
+      await Promise.resolve();
+    });
+    expect(saveProjectCanvasLayout).toHaveBeenCalledTimes(2);
+    expect(savedInputs[1]?.layout.selectedDesignIds).toEqual(['design-2']);
+    saves[1]!.resolve({ ...layout, selectedDesignIds: ['design-2'] });
+  });
+
+  it('keeps the full debounce window for an edit queued behind an in-flight save', async () => {
+    vi.useFakeTimers();
+    const designs: ProjectDesign[] = [
+      { id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'task-1', width: 800, height: 600, title: '图片一', createdAt: '2026-10-14T00:00:00.000Z' },
+      { id: 'design-2', projectId: 'project-1', assetId: 'asset-2', sourceTaskId: 'task-1', width: 800, height: 600, title: '图片二', createdAt: '2026-10-14T00:01:00.000Z' },
+    ];
+    const layout: ProjectCanvasLayout = {
+      viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+      nodes: { 'design-1': { x: 120, y: 80 }, 'design-2': { x: 944, y: 80 } },
+      selectedDesignIds: [],
+    };
+    const saves: Array<ReturnType<typeof deferred<ProjectCanvasLayout | null>>> = [];
+    const saveProjectCanvasLayout = vi.fn((_input: { libraryId: string; projectId: string; layout: ProjectCanvasLayout }) => {
+      void _input;
+      const result = deferred<ProjectCanvasLayout | null>();
+      saves.push(result);
+      return result.promise;
+    });
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => designs),
+      loadProjectCanvasLayout: vi.fn(async () => layout),
+      saveProjectCanvasLayout,
+      listTasks: vi.fn(async () => []),
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs, canvasLayout: layout }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 图片一' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 图片二' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    await act(async () => {
+      saves[0]!.resolve({ ...layout, selectedDesignIds: ['design-1'] });
+      await Promise.resolve();
+    });
+
+    expect(saveProjectCanvasLayout).toHaveBeenCalledOnce();
+    await act(async () => { await vi.advanceTimersByTimeAsync(149); });
+    expect(saveProjectCanvasLayout).toHaveBeenCalledOnce();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(saveProjectCanvasLayout).toHaveBeenCalledTimes(2);
+    saves[1]!.resolve({ ...layout, selectedDesignIds: ['design-2'] });
+  });
+
+  it('does not replace a pending local selection when the same project metadata updates', async () => {
+    vi.useFakeTimers();
+    const design: ProjectDesign = { id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'task-1', width: 800, height: 600, title: '本地选择', createdAt: '2026-10-14T00:00:00.000Z' };
+    const layout: ProjectCanvasLayout = { viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 }, nodes: { 'design-1': { x: 120, y: 80 } }, selectedDesignIds: [] };
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => [design]),
+      loadProjectCanvasLayout: vi.fn(async () => layout),
+      saveProjectCanvasLayout: vi.fn(async ({ layout: savedLayout }) => savedLayout),
+      listTasks: vi.fn(async () => []),
+    };
+    const props = {
+      locale: 'zh-CN' as const,
+      libraryId: 'workspace-1',
+      readOnly: false,
+      conversationConnected: true,
+      designer: null,
+      notify: vi.fn(),
+      onBack: vi.fn(),
+      onConnections: vi.fn(),
+      onSubmitConversation: vi.fn(async () => null),
+      onSubmitDesignGeneration: vi.fn(async () => null),
+    };
+    const view = render(
+      <ProjectCanvas {...props} project={{ id: 'project-1', libraryId: 'workspace-1', name: '原名称', enName: 'Original', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], canvasLayout: layout }} />,
+    );
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 本地选择' }));
+
+    view.rerender(<ProjectCanvas {...props} project={{ id: 'project-1', libraryId: 'workspace-1', name: '新名称', enName: 'Renamed', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], canvasLayout: { ...layout } }} />);
+
+    expect(screen.getByRole('button', { name: '设计稿 本地选择' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('drains the previous project save before a new project can replace it', async () => {
+    vi.useFakeTimers();
+    const designsA: ProjectDesign[] = [
+      { id: 'design-a1', projectId: 'project-a', assetId: 'asset-a1', sourceTaskId: 'task-a', width: 800, height: 600, title: '项目 A 图片一', createdAt: '2026-10-14T00:00:00.000Z' },
+      { id: 'design-a2', projectId: 'project-a', assetId: 'asset-a2', sourceTaskId: 'task-a', width: 800, height: 600, title: '项目 A 图片二', createdAt: '2026-10-14T00:01:00.000Z' },
+    ];
+    const designB: ProjectDesign = { id: 'design-b', projectId: 'project-b', assetId: 'asset-b', sourceTaskId: 'task-b', width: 800, height: 600, title: '项目 B 图片', createdAt: '2026-10-14T00:00:00.000Z' };
+    const layoutA: ProjectCanvasLayout = { viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 }, nodes: { 'design-a1': { x: 120, y: 80 }, 'design-a2': { x: 944, y: 80 } }, selectedDesignIds: [] };
+    const layoutB: ProjectCanvasLayout = { viewport: { zoom: 0.9, offsetX: 30, offsetY: 30 }, nodes: { 'design-b': { x: 40, y: 40 } }, selectedDesignIds: [] };
+    const saves: Array<ReturnType<typeof deferred<ProjectCanvasLayout | null>>> = [];
+    const savedInputs: Array<{ libraryId: string; projectId: string; layout: ProjectCanvasLayout }> = [];
+    const saveProjectCanvasLayout = vi.fn((input: { libraryId: string; projectId: string; layout: ProjectCanvasLayout }) => {
+      savedInputs.push(input);
+      const result = deferred<ProjectCanvasLayout | null>();
+      saves.push(result);
+      return result.promise;
+    });
+    window.designhub = {
+      listProjectDesigns: vi.fn(async ({ projectId }) => projectId === 'project-a' ? designsA : [designB]),
+      loadProjectCanvasLayout: vi.fn(async ({ projectId }) => projectId === 'project-a' ? layoutA : layoutB),
+      saveProjectCanvasLayout,
+      listTasks: vi.fn(async () => []),
+    };
+    const props = {
+      locale: 'zh-CN' as const,
+      libraryId: 'workspace-1',
+      readOnly: false,
+      conversationConnected: true,
+      designer: null,
+      notify: vi.fn(),
+      onBack: vi.fn(),
+      onConnections: vi.fn(),
+      onSubmitConversation: vi.fn(async () => null),
+      onSubmitDesignGeneration: vi.fn(async () => null),
+    };
+    const view = render(
+      <ProjectCanvas {...props} project={{ id: 'project-a', libraryId: 'workspace-1', name: '项目 A', enName: 'A', description: '', enDescription: '', designers: [], artwork: 'blank', designs: designsA, canvasLayout: layoutA }} />,
+    );
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 项目 A 图片一' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 项目 A 图片二' }));
+
+    view.rerender(<ProjectCanvas {...props} project={{ id: 'project-b', libraryId: 'workspace-1', name: '项目 B', enName: 'B', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [designB], canvasLayout: layoutB }} />);
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 项目 B 图片' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(saveProjectCanvasLayout).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      saves[0]!.resolve({ ...layoutA, selectedDesignIds: ['design-a1'] });
+      await Promise.resolve();
+    });
+
+    expect(saveProjectCanvasLayout).toHaveBeenCalledTimes(2);
+    expect(savedInputs[1]).toMatchObject({ projectId: 'project-a', layout: { selectedDesignIds: ['design-a2'] } });
+    await act(async () => {
+      saves[1]!.resolve({ ...layoutA, selectedDesignIds: ['design-a2'] });
+      await Promise.resolve();
+    });
+    expect(saveProjectCanvasLayout).toHaveBeenCalledTimes(3);
+    expect(savedInputs[2]).toMatchObject({ projectId: 'project-b', layout: { selectedDesignIds: ['design-b'] } });
+    saves[2]!.resolve({ ...layoutB, selectedDesignIds: ['design-b'] });
+  });
+
+  it('ignores refresh results from the previously open project', async () => {
+    const designA: ProjectDesign = { id: 'design-a', projectId: 'project-a', assetId: 'asset-a', sourceTaskId: 'task-a', width: 800, height: 600, title: '项目 A 图片', createdAt: '2026-10-14T00:00:00.000Z' };
+    const designB: ProjectDesign = { id: 'design-b', projectId: 'project-b', assetId: 'asset-b', sourceTaskId: 'task-b', width: 800, height: 600, title: '项目 B 图片', createdAt: '2026-10-14T00:00:00.000Z' };
+    const layoutA: ProjectCanvasLayout = { viewport: { zoom: 0.7, offsetX: 10, offsetY: 10 }, nodes: { 'design-a': { x: 20, y: 20 } }, selectedDesignIds: ['design-a'] };
+    const layoutB: ProjectCanvasLayout = { viewport: { zoom: 0.9, offsetX: 30, offsetY: 30 }, nodes: { 'design-b': { x: 40, y: 40 } }, selectedDesignIds: ['design-b'] };
+    const designsA = deferred<ProjectDesign[] | null>();
+    const layoutReadA = deferred<ProjectCanvasLayout | null>();
+    const tasksA = deferred<TaskRecord[] | null>();
+    let taskReadCount = 0;
+    window.designhub = {
+      listProjectDesigns: vi.fn(({ projectId }: { projectId: string }) => projectId === 'project-a' ? designsA.promise : Promise.resolve([designB])),
+      loadProjectCanvasLayout: vi.fn(({ projectId }: { projectId: string }) => projectId === 'project-a' ? layoutReadA.promise : Promise.resolve(layoutB)),
+      listTasks: vi.fn(() => taskReadCount++ === 0 ? tasksA.promise : Promise.resolve([])),
+    };
+    const props = {
+      locale: 'zh-CN' as const,
+      libraryId: 'workspace-1',
+      readOnly: false,
+      conversationConnected: true,
+      designer: null,
+      notify: vi.fn(),
+      onBack: vi.fn(),
+      onConnections: vi.fn(),
+      onSubmitConversation: vi.fn(async () => null),
+      onSubmitDesignGeneration: vi.fn(async () => null),
+    };
+    const view = render(
+      <ProjectCanvas {...props} project={{ id: 'project-a', libraryId: 'workspace-1', name: '项目 A', enName: 'A', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [designA], canvasLayout: layoutA }} />,
+    );
+
+    view.rerender(<ProjectCanvas {...props} project={{ id: 'project-b', libraryId: 'workspace-1', name: '项目 B', enName: 'B', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [designB], canvasLayout: layoutB }} />);
+    expect(await screen.findByRole('button', { name: '设计稿 项目 B 图片' })).toHaveAttribute('aria-pressed', 'true');
+
+    await act(async () => {
+      designsA.resolve([designA]);
+      layoutReadA.resolve(layoutA);
+      tasksA.resolve([]);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('button', { name: '设计稿 项目 B 图片' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '设计稿 项目 A 图片' })).not.toBeInTheDocument();
+  });
+
+  it('shows the next project designs before its refresh completes', async () => {
+    const designA: ProjectDesign = { id: 'design-a', projectId: 'project-a', assetId: 'asset-a', sourceTaskId: 'task-a', width: 800, height: 600, title: '项目 A 即时图片', createdAt: '2026-10-14T00:00:00.000Z' };
+    const designB: ProjectDesign = { id: 'design-b', projectId: 'project-b', assetId: 'asset-b', sourceTaskId: 'task-b', width: 800, height: 600, title: '项目 B 即时图片', createdAt: '2026-10-14T00:00:00.000Z' };
+    const layoutA: ProjectCanvasLayout = { viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 }, nodes: { 'design-a': { x: 120, y: 80 } }, selectedDesignIds: [] };
+    const layoutB: ProjectCanvasLayout = { viewport: { zoom: 0.9, offsetX: 30, offsetY: 30 }, nodes: { 'design-b': { x: 40, y: 40 } }, selectedDesignIds: [] };
+    const designsB = deferred<ProjectDesign[] | null>();
+    const layoutReadB = deferred<ProjectCanvasLayout | null>();
+    window.designhub = {
+      listProjectDesigns: vi.fn(({ projectId }: { projectId: string }) => projectId === 'project-a' ? Promise.resolve([designA]) : designsB.promise),
+      loadProjectCanvasLayout: vi.fn(({ projectId }: { projectId: string }) => projectId === 'project-a' ? Promise.resolve(layoutA) : layoutReadB.promise),
+      listTasks: vi.fn(async () => []),
+    };
+    const props = {
+      locale: 'zh-CN' as const,
+      libraryId: 'workspace-1',
+      readOnly: false,
+      conversationConnected: true,
+      designer: null,
+      notify: vi.fn(),
+      onBack: vi.fn(),
+      onConnections: vi.fn(),
+      onSubmitConversation: vi.fn(async () => null),
+      onSubmitDesignGeneration: vi.fn(async () => null),
+    };
+    const view = render(
+      <ProjectCanvas {...props} project={{ id: 'project-a', libraryId: 'workspace-1', name: '项目 A', enName: 'A', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [designA], canvasLayout: layoutA }} />,
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    view.rerender(<ProjectCanvas {...props} project={{ id: 'project-b', libraryId: 'workspace-1', name: '项目 B', enName: 'B', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [designB], canvasLayout: layoutB }} />);
+
+    expect(screen.getByRole('button', { name: '设计稿 项目 B 即时图片' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: '设计稿 项目 A 即时图片' })).not.toBeInTheDocument();
+  });
+
+  it('imports pasted image files through the project design path and ignores non-images', async () => {
+    const persistedDesign: ProjectDesign = {
+      id: 'design-pasted', projectId: 'project-1', assetId: 'asset-pasted', sourceTaskId: 'canvas-import-task',
+      width: 1080, height: 1440, title: 'pasted.png', createdAt: '2026-10-14T00:00:00.000Z',
+    };
+    const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'asset-pasted', name: 'pasted.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true } }]);
+    const addProjectDesigns = vi.fn(async () => [persistedDesign]);
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => []),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+      importAssets,
+      addProjectDesigns,
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    const image = new File(['png'], 'pasted.png', { type: 'image/png' });
+    const text = new File(['notes'], 'notes.txt', { type: 'text/plain' });
+
+    fireEvent.paste(window, { clipboardData: { files: [text, image] } });
+
+    await waitFor(() => expect(importAssets).toHaveBeenCalledWith(expect.objectContaining({
+      libraryId: 'workspace-1',
+      projectId: 'project-1',
+      items: [expect.objectContaining({ name: 'pasted.png', mimeType: 'image/png', metadata: { purpose: 'project-design', origin: 'canvas-import' } })],
+    })));
+    expect(addProjectDesigns).toHaveBeenCalledWith(expect.objectContaining({
+      libraryId: 'workspace-1',
+      projectId: 'project-1',
+      designs: [expect.objectContaining({ assetId: 'asset-pasted', title: 'pasted.png' })],
+    }));
+    expect(await screen.findByRole('button', { name: '设计稿 pasted.png' })).toBeVisible();
+  });
+
+  it('does not import pasted images into a read-only canvas', async () => {
+    const importAssets = vi.fn();
+    const addProjectDesigns = vi.fn();
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => []),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+      importAssets,
+      addProjectDesigns,
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
+        libraryId="workspace-1"
+        readOnly
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.paste(window, { clipboardData: { files: [new File(['png'], 'pasted.png', { type: 'image/png' })] } });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(importAssets).not.toHaveBeenCalled();
+    expect(addProjectDesigns).not.toHaveBeenCalled();
+  });
+
+  it('keeps a read-only canvas selection stable across polling refreshes', async () => {
+    vi.useFakeTimers();
+    const design: ProjectDesign = { id: 'design-1', projectId: 'project-1', assetId: 'asset-1', sourceTaskId: 'task-1', width: 800, height: 600, title: '只读图片', createdAt: '2026-10-14T00:00:00.000Z' };
+    const refreshedDesign: ProjectDesign = { id: 'design-2', projectId: 'project-1', assetId: 'asset-2', sourceTaskId: 'task-2', width: 800, height: 600, title: '轮询新增图片', createdAt: '2026-10-14T00:01:00.000Z' };
+    const layout: ProjectCanvasLayout = { viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 }, nodes: { 'design-1': { x: 120, y: 80 } }, selectedDesignIds: [] };
+    let designReadCount = 0;
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => designReadCount++ === 0 ? [design] : [design, refreshedDesign]),
+      loadProjectCanvasLayout: vi.fn(async () => layout),
+      listTasks: vi.fn(async () => []),
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '只读项目', enName: 'Read only', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [design], canvasLayout: layout }}
+        libraryId="workspace-1"
+        readOnly
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    await act(async () => { await Promise.resolve(); });
+
+    fireEvent.click(screen.getByRole('button', { name: '设计稿 只读图片' }));
+    expect(screen.getByRole('button', { name: '设计稿 只读图片' })).toHaveAttribute('aria-pressed', 'true');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+
+    expect(screen.getByRole('button', { name: '设计稿 只读图片' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '设计稿 轮询新增图片' })).toBeVisible();
+  });
+
+  it('keeps images pasted into the conversation input out of the canvas import path', async () => {
+    const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'asset-unexpected', name: 'reference.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'a'.repeat(64), managed: true } }]);
+    const addProjectDesigns = vi.fn(async () => []);
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => []),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+      importAssets,
+      addProjectDesigns,
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    const image = new File([new Uint8Array([1, 2, 3])], 'reference.png', { type: 'image/png' });
+    Object.defineProperty(image, 'arrayBuffer', { value: async () => new Uint8Array([1, 2, 3]).buffer });
+
+    fireEvent.paste(screen.getByRole('textbox', { name: '设计需求' }), { clipboardData: { files: [image] } });
+
+    expect(await screen.findByRole('button', { name: '预览 reference.png' })).toBeVisible();
+    expect(importAssets).not.toHaveBeenCalled();
+    expect(addProjectDesigns).not.toHaveBeenCalled();
+  });
+
+  it('keeps images pasted inside a dialog out of the canvas import path', async () => {
+    const importAssets = vi.fn();
+    const addProjectDesigns = vi.fn();
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => []),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+      importAssets,
+      addProjectDesigns,
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    document.body.append(dialog);
+
+    const defaultAllowed = fireEvent.paste(dialog, { clipboardData: { files: [new File(['png'], 'dialog.png', { type: 'image/png' })] } });
+    await act(async () => { await Promise.resolve(); });
+    dialog.remove();
+
+    expect(defaultAllowed).toBe(true);
+    expect(importAssets).not.toHaveBeenCalled();
+    expect(addProjectDesigns).not.toHaveBeenCalled();
+  });
+
   it('does not notify historical image tool failures when the canvas first loads', async () => {
     const notify = vi.fn();
     const historicalFailure: TaskRecord = {
