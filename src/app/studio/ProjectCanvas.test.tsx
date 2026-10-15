@@ -14,13 +14,18 @@ type StageMockProps = {
   onSelect: (designId: string | null) => void;
   onAddToConversation?: (designId: string) => void;
   onCanvasBackground?: () => void;
+  onImportImages?: (files: readonly File[]) => void;
   children?: ReactNode;
 };
 
 vi.mock('./ProjectCanvasStage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./ProjectCanvasStage')>()),
-  ProjectCanvasStage: ({ designs, selectedDesignIds = [], pendingDesigns = [], onSelect, onAddToConversation, onCanvasBackground }: StageMockProps) => (
-    <div aria-label="设计画布内容">
+  ProjectCanvasStage: ({ designs, selectedDesignIds = [], pendingDesigns = [], onSelect, onAddToConversation, onCanvasBackground, onImportImages }: StageMockProps) => (
+    <div
+      aria-label="设计画布内容"
+      data-testid="project-canvas-stage"
+      onDrop={(event) => onImportImages?.(Array.from(event.dataTransfer.files))}
+    >
       <button type="button" aria-label="画布空白" onClick={onCanvasBackground}>画布空白</button>
       {pendingDesigns.map((design) => <span key={design.id} aria-label={`正在处理图片 ${design.id}`}>{design.width} × {design.height}</span>)}
       {designs.map((design) => (
@@ -781,6 +786,52 @@ describe('ProjectCanvas design references', () => {
       designs: [expect.objectContaining({ assetId: 'asset-pasted', title: 'pasted.png' })],
     }));
     expect(await screen.findByRole('button', { name: '设计稿 pasted.png' })).toBeVisible();
+  });
+
+  it('imports dropped image files through the same project design path', async () => {
+    const persistedDesign: ProjectDesign = {
+      id: 'design-dropped', projectId: 'project-1', assetId: 'asset-dropped', sourceTaskId: 'canvas-import-task',
+      width: 1080, height: 1440, title: 'dropped.png', createdAt: '2026-10-14T00:00:00.000Z',
+    };
+    const importAssets = vi.fn(async () => [{ status: 'success' as const, asset: { id: 'asset-dropped', name: 'dropped.png', format: 'PNG' as const, mimeType: 'image/png', contentHash: 'd'.repeat(64), managed: true } }]);
+    const addProjectDesigns = vi.fn(async () => [persistedDesign]);
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => []),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+      importAssets,
+      addProjectDesigns,
+    };
+    render(
+      <ProjectCanvas
+        locale="zh-CN"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: '海报项目', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+    const image = new File(['png'], 'dropped.png', { type: 'image/png' });
+
+    fireEvent.drop(screen.getByTestId('project-canvas-stage'), { dataTransfer: { files: [image] } });
+
+    await waitFor(() => expect(importAssets).toHaveBeenCalledWith(expect.objectContaining({
+      libraryId: 'workspace-1',
+      projectId: 'project-1',
+      items: [expect.objectContaining({ name: 'dropped.png', mimeType: 'image/png', metadata: { purpose: 'project-design', origin: 'canvas-import' } })],
+    })));
+    expect(addProjectDesigns).toHaveBeenCalledWith(expect.objectContaining({
+      libraryId: 'workspace-1',
+      projectId: 'project-1',
+      designs: [expect.objectContaining({ assetId: 'asset-dropped', title: 'dropped.png', width: 1080, height: 1440 })],
+    }));
+    expect(await screen.findByRole('button', { name: '设计稿 dropped.png' })).toBeVisible();
   });
 
   it('does not import pasted images into a read-only canvas', async () => {

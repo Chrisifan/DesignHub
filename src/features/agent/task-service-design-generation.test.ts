@@ -64,3 +64,39 @@ it('keeps the source canvas dimensions for original-image generation', async () 
 it('uses the selected fixed ratio dimensions for design generation', async () => {
   expect(await generatedSize('1:1')).toBe('1080x1080');
 });
+
+it('persists each generated image as a project design linked to its task and conversation', async () => {
+  const persistProjectDesigns = vi.fn(async () => undefined);
+  const service = createAgentTaskService({
+    runtime: createTaskRuntime({ initialTasks: [parentConversation()] }),
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async () => ({ images: [{ base64: 'aW1hZ2U=', mimeType: 'image/png' }], cost: null }),
+    }),
+    persistGeneratedImages: async () => ['asset-generated'],
+    persistProjectDesigns,
+  });
+
+  const task = await service.submitDesignGeneration({
+    libraryId: 'library-1',
+    projectId: 'project-1',
+    conversationTaskId: 'conversation-1',
+    connectionId: 'openai-compatible',
+    generationRatio: '1:1',
+    count: 1,
+  });
+  await service.flush();
+
+  expect(persistProjectDesigns).toHaveBeenCalledOnce();
+  expect(persistProjectDesigns).toHaveBeenCalledWith({
+    projectId: 'project-1',
+    designs: [expect.objectContaining({
+      projectId: 'project-1',
+      assetId: 'asset-generated',
+      sourceTaskId: task.id,
+      sourceConversationTaskId: 'conversation-1',
+      width: 1080,
+      height: 1080,
+    })],
+  });
+});
