@@ -530,6 +530,14 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       ...('count' in input ? { count: input.count } : {}),
       ...('tool' in input ? { tool: input.tool } : {}),
       ...('toolParams' in input ? { toolParams: input.toolParams } : {}),
+      ...('projectDesign' in input && input.projectDesign ? {
+        projectDesignOutput: {
+          ...(input.projectDesign.sourceConversationTaskId ? { sourceConversationTaskId: input.projectDesign.sourceConversationTaskId } : {}),
+          width: input.projectDesign.width,
+          height: input.projectDesign.height,
+          title: input.projectDesign.title,
+        },
+      } : {}),
       ...('region' in input ? { region: input.region } : {}),
       ...('sourceAssetId' in input ? { sourceAssetId: input.sourceAssetId } : {}),
       ...(sourceDesignId ? { sourceDesignId } : {}),
@@ -1029,6 +1037,12 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         ...(previous.size ? { size: previous.size } : {}),
         ...(previous.tool ? { tool: previous.tool } : {}),
         ...(previous.toolParams ? { toolParams: { ...previous.toolParams } } : {}),
+        ...(previous.projectDesignOutput ? {
+          projectDesign: {
+            sourceTaskId: previous.id,
+            ...previous.projectDesignOutput,
+          },
+        } : {}),
         ...(previous.region ? { region: { ...previous.region } } : {}),
       };
       await executeImageTask(running, options.prepareImageEdit ? await options.prepareImageEdit(retryInput) : retryInput, 'edit');

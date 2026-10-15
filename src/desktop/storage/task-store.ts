@@ -101,6 +101,12 @@ const isGenerationSlots = (value: unknown): value is DesignGenerationSlot[] => A
 const isRegion = (value: unknown): boolean => isRecord(value)
   && ['x', 'y', 'width', 'height'].every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0)
   && Number(value.width) > 0 && Number(value.height) > 0;
+const isProjectDesignOutput = (value: unknown): boolean => isRecord(value)
+  && Object.keys(value).every((key) => ['sourceConversationTaskId', 'width', 'height', 'title'].includes(key))
+  && (value.sourceConversationTaskId === undefined || (typeof value.sourceConversationTaskId === 'string' && value.sourceConversationTaskId.trim().length > 0))
+  && typeof value.width === 'number' && Number.isFinite(value.width) && value.width > 0
+  && typeof value.height === 'number' && Number.isFinite(value.height) && value.height > 0
+  && typeof value.title === 'string' && value.title.trim().length > 0;
 const isDesignContext = (value: unknown): boolean => isRecord(value)
   && value.version === 1
   && ((typeof value.libraryId === 'string' && value.libraryId.trim().length > 0) || (typeof value.workspaceId === 'string' && value.workspaceId.trim().length > 0))
@@ -167,6 +173,7 @@ const isTaskRecord = (value: unknown): value is TaskRecord => isRecord(value)
   && (value.tool === undefined
     ? value.toolParams === undefined
     : hasValidPersistedToolParams(value.tool, value.toolParams))
+  && (value.projectDesignOutput === undefined || isProjectDesignOutput(value.projectDesignOutput))
   && (value.region === undefined || isRegion(value.region))
   && (value.createdAt === undefined || typeof value.createdAt === 'string')
   && (value.updatedAt === undefined || typeof value.updatedAt === 'string')

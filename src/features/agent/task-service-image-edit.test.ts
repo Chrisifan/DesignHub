@@ -111,6 +111,56 @@ it('persists an image tool result in the same task row as its placeholder', asyn
   expect(persisted[0]?.sourceTaskId).toBe(task.id);
 });
 
+it('persists the project design output after an explicit image tool retry', async () => {
+  let attempt = 0;
+  const persisted: Array<{ sourceTaskId: string; sourceConversationTaskId?: string; width: number; height: number; title: string }> = [];
+  const service = createAgentTaskService({
+    runtime: createTaskRuntime(),
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage: async () => {
+        attempt += 1;
+        if (attempt === 1) throw new Error('PROVIDER_UNAVAILABLE');
+        return { images: [{ base64: 'cmVzdWx0', mimeType: 'image/png' }], cost: null };
+      },
+    }),
+    loadSourceImage: async () => new Blob(['source'], { type: 'image/png' }),
+    persistGeneratedImages: async () => ['asset-retried'],
+    persistProjectDesigns: async ({ designs }) => { persisted.push(...designs); },
+  });
+
+  const failed = await service.submitImageEdit({
+    projectId: 'project-1',
+    connectionId: 'provider-1',
+    prompt: 'remove background',
+    sourceAssetId: 'asset-source',
+    sourceDesignId: 'design-source',
+    tool: 'remove-background',
+    toolParams: { edgeRefinement: 50 },
+    projectDesign: {
+      sourceTaskId: 'generation-source',
+      sourceConversationTaskId: 'conversation-source',
+      width: 800,
+      height: 600,
+      title: '商品图（去除背景）',
+    },
+  });
+  await service.flush();
+  expect(service.getTask(failed.id)?.state).toBe('failed');
+
+  const retried = await service.retry(failed.id);
+  await service.flush();
+
+  expect(retried).toBeDefined();
+  expect(persisted).toEqual([expect.objectContaining({
+    sourceTaskId: retried!.id,
+    sourceConversationTaskId: 'conversation-source',
+    width: 800,
+    height: 600,
+    title: '商品图（去除背景）',
+  })]);
+});
+
 it('builds an expanded candidate as one full-canvas result image', async () => {
   const service = createAgentTaskService({
     runtime: createTaskRuntime(),

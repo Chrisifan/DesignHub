@@ -53,6 +53,13 @@ export type PortfolioTaskMetadata = {
   rightsConfirmed: boolean;
 };
 
+export type ProjectDesignOutput = {
+  sourceConversationTaskId?: string;
+  width: number;
+  height: number;
+  title: string;
+};
+
 export type TaskProviderFailureKind = 'http' | 'rate_limited' | 'invalid_response' | 'cancelled';
 
 /** Safe, actionable provider metadata. Never include provider messages or request payloads here. */
@@ -117,6 +124,7 @@ export const taskRecordKeys = new Set<keyof TaskRecord>([
   'sourceAssetId', 'maskAssetId', 'hasMask', 'baseRevisionId', 'designerVersionId', 'providerId', 'capability',
   'sourceDesignId',
   'portfolio', 'model', 'size', 'count', 'tool', 'toolParams', 'region', 'createdAt', 'updatedAt',
+  'projectDesignOutput',
   'errorCode', 'providerFailure', 'analysisDiagnostic', 'result', 'parentConversationTaskId', 'contextAssetIds', 'contextVersion', 'designContext',
   'analysisThreadId', 'conversationParentTaskId', 'progressText', 'generationSlots', 'visualContextPlan',
   'remoteRequestId', 'remoteSupportsCancellation', 'remoteSupportsStatusQuery',
@@ -162,6 +170,8 @@ export type TaskRecord = {
   count?: number;
   tool?: ImageTool;
   toolParams?: ToolParams;
+  /** Durable output metadata required to append a retried image-tool result to the project canvas. */
+  projectDesignOutput?: ProjectDesignOutput;
   region?: Region;
   createdAt?: string;
   updatedAt?: string;

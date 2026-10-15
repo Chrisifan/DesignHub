@@ -1,4 +1,4 @@
-import { createTaskState, type TaskRecord, type TaskSource } from '../tasks/state';
+import { createTaskState, type ProjectDesignOutput, type TaskRecord, type TaskSource } from '../tasks/state';
 import type { Region } from '../canvas/selection';
 import { validateToolParams, type ImageTool, type ToolParams } from '../image-tools/target';
 
@@ -17,6 +17,7 @@ export type ImageTaskRecordInput = {
   count?: number;
   tool?: ImageTool;
   toolParams?: ToolParams;
+  projectDesignOutput?: ProjectDesignOutput;
   region?: Region;
   sourceAssetId?: string;
   sourceDesignId?: string;
@@ -47,6 +48,7 @@ export const createImageTaskRecord = (input: ImageTaskRecordInput): TaskRecord =
     ...(input.count === undefined ? {} : { count: input.count }),
     ...(input.tool ? { tool: input.tool } : {}),
     ...(input.toolParams ? { toolParams: { ...input.toolParams } } : {}),
+    ...(input.projectDesignOutput ? { projectDesignOutput: { ...input.projectDesignOutput } } : {}),
     ...(input.region ? { region: { ...input.region } } : {}),
     ...(input.sourceAssetId ? { sourceAssetId: input.sourceAssetId } : {}),
     ...(input.sourceDesignId ? { sourceDesignId: input.sourceDesignId } : {}),

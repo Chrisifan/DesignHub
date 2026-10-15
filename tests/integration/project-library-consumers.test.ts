@@ -67,6 +67,46 @@ it('stores isolated projects and shared task history and trash in one library', 
   }
 });
 
+it('retains image-tool project design output metadata for retry after restart', async () => {
+  const library = await createTemporaryLibrary();
+  const libraryId = library.library.libraryId;
+  const task: TaskRecord = {
+    id: 'task-image-tool',
+    requestId: 'request-image-tool',
+    requestText: 'Remove the background',
+    state: 'failed',
+    cancelRequested: false,
+    attempt: 1,
+    source: { kind: 'project', id: 'project-one' },
+    sourceAssetId: 'asset-source',
+    sourceDesignId: 'design-source',
+    providerId: 'openai-compatible',
+    capability: 'image-editing',
+    tool: 'remove-background',
+    toolParams: { edgeRefinement: 50 },
+    projectDesignOutput: {
+      sourceConversationTaskId: 'conversation-source',
+      width: 800,
+      height: 600,
+      title: 'Background removed',
+    },
+    errorCode: 'PROVIDER_UNAVAILABLE',
+  };
+
+  try {
+    await saveTaskState(library, libraryId, [task]);
+  } finally {
+    library.close();
+  }
+
+  const reopened = await openProjectLibrary(library.library.directory);
+  try {
+    await expect(loadTaskState(reopened, libraryId)).resolves.toEqual([task]);
+  } finally {
+    reopened.close();
+  }
+});
+
 it('rejects legacy document-bound task records without modifying task history', async () => {
   const library = await createTemporaryLibrary();
   const libraryId = library.library.libraryId;
