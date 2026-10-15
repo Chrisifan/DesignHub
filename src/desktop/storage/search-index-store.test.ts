@@ -107,25 +107,3 @@ it('does not follow an index symlink outside the workspace', async () => {
     await rm(externalRoot, { recursive: true, force: true });
   }
 });
-
-it('searches a 100-project workspace within the local performance budget', async () => {
-  const fixture = await openStore();
-  try {
-    const records = Array.from({ length: 100 }, (_, index) => record(
-      fixture.libraryId,
-      `project-${index.toString().padStart(3, '0')}`,
-      index % 2 === 0 ? `Spring Market ${index}` : `Autumn Studio ${index}`,
-      [`designer-${index % 5}`],
-    ));
-    await fixture.store.replace(records);
-    const started = performance.now();
-    const result = await fixture.store.search({ libraryId: fixture.libraryId, query: 'Spring Market', designerId: 'designer-2' });
-    const elapsed = performance.now() - started;
-    expect(result.length).toBeGreaterThan(0);
-    expect(elapsed).toBeLessThan(500);
-  } finally {
-    fixture.store.close();
-    fixture.workspace.close();
-    await rm(fixture.root, { recursive: true, force: true });
-  }
-});

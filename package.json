@@ -20,7 +20,7 @@
     "test:native": "playwright test --config playwright.native.config.ts",
     "test:install-upgrade": "node scripts/install-upgrade-smoke.mjs",
     "test:provider": "vitest run --config vitest.config.ts tests/provider",
-    "test:perf": "vitest run --config vitest.config.ts tests/perf/core.bench.ts",
+    "test:perf": "vitest run --config vitest.config.ts tests/perf/core.bench.ts tests/perf/search.bench.ts",
     "test:perf:package": "vitest run --config vitest.config.ts tests/perf/project-package.bench.ts",
     "test:perf:image-tools": "vitest run --config vitest.config.ts tests/perf/image-tools.bench.ts",
     "provider:live-smoke": "vite build --config vite.live-smoke.config.ts && node scripts/provider-live-smoke.mjs",
