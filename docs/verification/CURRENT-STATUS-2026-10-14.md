@@ -4,7 +4,7 @@ Date: 2026-10-15. Canonical scope: [V1 release baseline](../superpowers/specs/20
 
 No module is marked fully verified until the fresh V1 gates complete. Historical green runs demonstrate implemented behavior but do not satisfy current release evidence.
 
-Latest local gate: `pnpm release:check` passed all local commands after canvas input/output parity, image-tool retry recovery, managed replacement-background transport, and the production-stack live-smoke runner were added (focused 193, unit 781 passed/3 skipped, integration 117, browser E2E 50, native source 2 passed/packaged 1 skipped, lint, typecheck, build, docs, contracts, diff check, and package scan). `pnpm test:perf`, `pnpm test:perf:image-tools`, `pnpm test:perf:package`, and `pnpm test:provider` also pass. External gates below remain open.
+Latest local gate: `pnpm release:check` is `passed-with-blockers` after the reviewed V1 continuation commits (focused 202, unit 802 passed/3 skipped, integration 128, browser E2E 63, native source 3 passed/packaged 1 skipped, lint, typecheck, build, docs, contracts, diff check, and package scan). `pnpm test:perf`, `pnpm test:perf:image-tools`, `pnpm test:perf:package`, and offline `pnpm test:provider` also pass. Only the declared external gates below remain blocked; the uncommitted credential fallback files are not part of this reviewed evidence.
 
 | Module | V1 scope | Current status | Remaining release evidence |
 | --- | --- | --- | --- |
