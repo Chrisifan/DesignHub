@@ -101,6 +101,7 @@ export type ImageEditInput = {
   connectionId: string;
   prompt: string;
   image: Blob;
+  referenceImages?: Blob[];
   sourceAssetId?: string;
   sourceDesignId?: string;
   maskAssetId?: string;
@@ -578,6 +579,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
           : (adapter?.editImage ? await adapter.editImage({
             prompt: input.prompt.trim(),
             image: (input as ImageEditInput).image,
+            ...('referenceImages' in input && input.referenceImages?.length ? { referenceImages: [...input.referenceImages] } : {}),
             ...('mask' in input && input.mask ? { mask: input.mask } : {}),
             ...('model' in input && input.model ? { model: input.model } : {}),
             ...('size' in input && input.size ? { size: input.size } : {}),
@@ -968,7 +970,19 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
       ? await options.loadMaskImage({ projectId: input.projectId, assetId: input.maskAssetId })
       : undefined);
     if (input.maskAssetId && !mask) throw new Error('MASK_ASSET_MISSING');
-    const loadedInput: ImageEditInput = { ...input, image, ...(mask ? { mask } : {}) };
+    const backgroundAssetId = input.tool === 'replace-background' && input.toolParams?.source === 'asset'
+      ? String(input.toolParams.backgroundAssetId ?? '').trim()
+      : '';
+    const background = backgroundAssetId && options.loadSourceImage
+      ? await options.loadSourceImage({ projectId: input.projectId, assetId: backgroundAssetId })
+      : undefined;
+    if (backgroundAssetId && !background) throw new Error('BACKGROUND_ASSET_MISSING');
+    const loadedInput: ImageEditInput = {
+      ...input,
+      image,
+      ...(background ? { referenceImages: [background] } : {}),
+      ...(mask ? { mask } : {}),
+    };
     const resolvedInput = options.prepareImageEdit ? await options.prepareImageEdit(loadedInput) : loadedInput;
     const task = createImageTask(resolvedInput, resolvedInput.tool === 'resize' && !resolvedInput.connectionId.trim() ? 'local-transform' : 'image-editing');
     await options.runtime.flush();
@@ -1018,6 +1032,13 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         ? await options.loadMaskImage({ projectId: previous.source.id, assetId: previous.maskAssetId })
         : undefined;
       if (previous.hasMask && previous.tool !== 'expand' && !mask) return undefined;
+      const backgroundAssetId = previous.tool === 'replace-background' && previous.toolParams?.source === 'asset'
+        ? String(previous.toolParams.backgroundAssetId ?? '').trim()
+        : '';
+      const background = backgroundAssetId
+        ? await options.loadSourceImage({ projectId: previous.source.id, assetId: backgroundAssetId })
+        : undefined;
+      if (backgroundAssetId && !background) return undefined;
       const retried = await recovery.retryExplicitly(taskId);
       if (!retried) return undefined;
       const running = options.runtime.run(retried.id);
@@ -1029,6 +1050,7 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         connectionId: previous.providerId ?? '',
         prompt: previous.requestText,
         image,
+        ...(background ? { referenceImages: [background] } : {}),
         sourceAssetId: previous.sourceAssetId,
         ...(previous.sourceDesignId ? { sourceDesignId: previous.sourceDesignId } : {}),
         ...(previous.maskAssetId ? { maskAssetId: previous.maskAssetId } : {}),

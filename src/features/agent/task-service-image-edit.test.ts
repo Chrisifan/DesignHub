@@ -39,6 +39,41 @@ it('loads a managed source image before executing an image edit', async () => {
   expect(editImage).toHaveBeenCalledWith(expect.objectContaining({ image: source }), expect.any(AbortSignal));
 });
 
+it('loads a managed replacement background as an image reference', async () => {
+  const source = new Blob(['source'], { type: 'image/png' });
+  const background = new Blob(['background'], { type: 'image/jpeg' });
+  const editImage = vi.fn(async () => ({
+    images: [{ base64: 'cmVzdWx0', mimeType: 'image/png' }],
+    cost: null,
+  }));
+  const loadSourceImage = vi.fn(async ({ assetId }: { assetId: string }) => assetId === 'asset-background' ? background : source);
+  const service = createAgentTaskService({
+    runtime: createTaskRuntime(),
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      editImage,
+    }),
+    loadSourceImage,
+    persistGeneratedImages: async () => ['asset-result'],
+  });
+
+  await service.submitImageEdit({
+    projectId: 'project-1',
+    connectionId: 'provider-1',
+    prompt: 'replace background',
+    sourceAssetId: 'asset-source',
+    tool: 'replace-background',
+    toolParams: { source: 'asset', backgroundAssetId: 'asset-background', lighting: 'match-original' },
+  });
+  await service.flush();
+
+  expect(loadSourceImage).toHaveBeenCalledWith({ projectId: 'project-1', assetId: 'asset-background' });
+  expect(editImage).toHaveBeenCalledWith(expect.objectContaining({
+    image: source,
+    referenceImages: [background],
+  }), expect.any(AbortSignal));
+});
+
 it('persists the selected target layer as the source design anchor', async () => {
   const service = createAgentTaskService({
     runtime: createTaskRuntime(),
@@ -113,18 +148,23 @@ it('persists an image tool result in the same task row as its placeholder', asyn
 
 it('persists the project design output after an explicit image tool retry', async () => {
   let attempt = 0;
+  const background = new Blob(['background'], { type: 'image/jpeg' });
+  const editImage = vi.fn(async () => {
+    attempt += 1;
+    if (attempt === 1) throw new Error('PROVIDER_UNAVAILABLE');
+    return { images: [{ base64: 'cmVzdWx0', mimeType: 'image/png' }], cost: null };
+  });
+  const loadSourceImage = vi.fn(async ({ assetId }: { assetId: string }) => assetId === 'asset-background'
+    ? background
+    : new Blob(['source'], { type: 'image/png' }));
   const persisted: Array<{ sourceTaskId: string; sourceConversationTaskId?: string; width: number; height: number; title: string }> = [];
   const service = createAgentTaskService({
     runtime: createTaskRuntime(),
     resolveAdapter: async () => ({
       chat: async () => ({ text: '', cost: null }),
-      editImage: async () => {
-        attempt += 1;
-        if (attempt === 1) throw new Error('PROVIDER_UNAVAILABLE');
-        return { images: [{ base64: 'cmVzdWx0', mimeType: 'image/png' }], cost: null };
-      },
+      editImage,
     }),
-    loadSourceImage: async () => new Blob(['source'], { type: 'image/png' }),
+    loadSourceImage,
     persistGeneratedImages: async () => ['asset-retried'],
     persistProjectDesigns: async ({ designs }) => { persisted.push(...designs); },
   });
@@ -132,11 +172,11 @@ it('persists the project design output after an explicit image tool retry', asyn
   const failed = await service.submitImageEdit({
     projectId: 'project-1',
     connectionId: 'provider-1',
-    prompt: 'remove background',
+    prompt: 'replace background',
     sourceAssetId: 'asset-source',
     sourceDesignId: 'design-source',
-    tool: 'remove-background',
-    toolParams: { edgeRefinement: 50 },
+    tool: 'replace-background',
+    toolParams: { source: 'asset', backgroundAssetId: 'asset-background', lighting: 'match-original' },
     projectDesign: {
       sourceTaskId: 'generation-source',
       sourceConversationTaskId: 'conversation-source',
@@ -152,6 +192,8 @@ it('persists the project design output after an explicit image tool retry', asyn
   await service.flush();
 
   expect(retried).toBeDefined();
+  expect(loadSourceImage.mock.calls.filter(([input]) => input.assetId === 'asset-background')).toHaveLength(2);
+  expect(editImage).toHaveBeenNthCalledWith(2, expect.objectContaining({ referenceImages: [background] }), expect.any(AbortSignal));
   expect(persisted).toEqual([expect.objectContaining({
     sourceTaskId: retried!.id,
     sourceConversationTaskId: 'conversation-source',
