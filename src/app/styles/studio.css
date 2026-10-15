@@ -1690,8 +1690,8 @@ button:disabled {
   left: auto;
   right: 12px;
 }
-/* The toolbar owns the visible page context; keep headings for screen readers. */
-.page-heading {
+/* The batch heading also owns interactive tool/job controls and must stay visible. */
+.page-heading:not(.image-tools-page__header) {
   position: absolute;
   width: 1px;
   height: 1px;
