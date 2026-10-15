@@ -1,14 +1,30 @@
+import { writeFile } from 'node:fs/promises';
 import { expect, test } from 'playwright/test';
 
+import type { PersonaProfile } from '../../src/app/studio/personas';
+import type { DesignerLibraryState } from '../../src/features/designers/persistence';
 import type { TaskRecord } from '../../src/features/tasks/state';
+import type { DesktopApi, PortfolioSelectionInput } from '../../src/platform/contracts';
 import { gotoTestWorkspace, navigateFromUserMenu } from './test-workspace';
+
+type DesignerSaveInput = Parameters<NonNullable<DesktopApi['saveDesignerState']>>;
+type DesignerWorkflowWindow = typeof window & {
+  designhub: DesktopApi;
+  artworkRequests: number;
+  portfolioAnalysisRequests: number;
+  portfolioSubmissions: PortfolioSelectionInput[];
+  designerSaves: DesignerSaveInput[];
+  designerState: DesignerLibraryState;
+  resolvePortfolioAnalysis?: () => void;
+};
 
 const longFilename = 'portfolio-reference-2026-final-approved-editorial-grid-material-lighting-typography-composition-texture-art-direction-presentation-cover-detail-archive-version-18.png';
 const longNegativeRule = '避免使用会破坏安全边距、信息层级与主体识别度的霓虹渐变、高强度装饰效果以及喧宾夺主的复杂背景纹理';
 const avatarPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64');
 
 for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 }]) {
-  test(`portfolio creation drawer adapts to content at ${viewport.width}px`, async ({ page }, testInfo) => {
+  test(`portfolio creation drawer publishes generated artwork at ${viewport.width}px`, async ({ page }, testInfo) => {
+    test.setTimeout(60_000);
     await page.setViewportSize(viewport);
     await page.route('designhub-artwork://**', (route) => route.fulfill({ contentType: 'image/png', body: avatarPng }));
     await page.addInitScript(() => localStorage.setItem('designhub.ui.theme', 'dark'));
@@ -16,9 +32,20 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await navigateFromUserMenu(page, '设计师');
     const initialDrawer = page.getByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' });
     await expect(initialDrawer).toBeVisible();
-    await page.evaluate((longRule) => {
-      const api = (window as typeof window & { designhub: Record<string, unknown> }).designhub;
-      const candidate = {
+    const fixture = await page.evaluate(async (longRule) => {
+      const testHost = window as DesignerWorkflowWindow;
+      const api = testHost.designhub;
+      const initialState = await api.loadDesignerState?.('library-e2e');
+      if (!initialState) throw new Error('DESIGNER_FIXTURE_STATE_REQUIRED');
+      testHost.designerState = structuredClone(initialState);
+      testHost.designerSaves = [];
+      api.loadDesignerState = async () => structuredClone(testHost.designerState);
+      api.saveDesignerState = async (libraryId, state) => {
+        testHost.designerSaves.push(structuredClone([libraryId, state]));
+        testHost.designerState = structuredClone(state);
+        return true;
+      };
+      const candidate: PersonaProfile = {
         id: 'candidate-e2e', name: { zh: '纸间秩序', en: 'Paper Order' }, signature: { zh: '纸张与网格', en: 'Paper and grid' },
         summary: { zh: '以克制留白、编辑网格与温和纸张质感建立清晰层级。', en: 'A restrained editorial system.' },
         principle: { zh: '先建立信息层级，再用材质与光影补充氛围。', en: 'Build hierarchy before atmosphere.' },
@@ -48,13 +75,10 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
         }],
       });
       const completedAnalysis: TaskRecord = { id: 'task-portfolio-e2e', requestId: 'request-portfolio-e2e', state: 'completed', cancelRequested: false, attempt: 1, result: { text: JSON.stringify({ candidates: [candidate] }) } };
-      const testHost = window as typeof window & {
-        artworkRequests: number;
-        portfolioAnalysisRequests: number;
-        resolvePortfolioAnalysis?: () => void;
-      };
       testHost.portfolioAnalysisRequests = 0;
-      api.submitPortfolioSelection = async () => {
+      testHost.portfolioSubmissions = [];
+      api.submitPortfolioSelection = async (input) => {
+        testHost.portfolioSubmissions.push(structuredClone(input));
         testHost.portfolioAnalysisRequests += 1;
         if (testHost.portfolioAnalysisRequests > 1) return completedAnalysis;
         return new Promise((resolve) => {
@@ -63,12 +87,12 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
       };
       testHost.artworkRequests = 0;
       api.submitDesignerArtworkGeneration = async () => {
-        const host = window as typeof window & { artworkRequests: number };
-        host.artworkRequests += 1;
-        const artworkId = `artwork-e2e-${host.artworkRequests}`;
+        testHost.artworkRequests += 1;
+        const artworkId = `artwork-e2e-${testHost.artworkRequests}`;
         return { id: `task-${artworkId}`, requestId: `request-${artworkId}`, state: 'completed', cancelRequested: false, attempt: 1, result: { assetIds: [artworkId], imageCount: 1 } };
       };
-      api.readDesignerArtwork = async ({ artworkId }: { artworkId: string }) => ({ artworkId, dataUrl: 'data:image/png;base64,AQID' });
+      api.readDesignerArtwork = async ({ artworkId }) => ({ artworkId, dataUrl: 'data:image/png;base64,AQID' });
+      return { candidate, initialState };
     }, longNegativeRule);
 
     const drawer = page.getByRole('dialog', { name: '导入作品集分析 · 生成 AI 设计师档案' });
@@ -106,9 +130,23 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     expect(filenameLayout.scrollWidth).toBeGreaterThan(filenameLayout.clientWidth);
     expect(filenameLayout.nameRight).toBeLessThanOrEqual(filenameLayout.rowRight + 1);
     expect(filenameLayout.title).toBe(longFilename);
-    await page.getByRole('checkbox', { name: '我确认拥有分析这些来源的权利' }).check();
+    const rightsConfirmation = drawer.getByRole('checkbox', { name: '我确认拥有分析这些来源的权利' });
+    await expect(rightsConfirmation).not.toBeChecked();
+    await drawer.getByRole('button', { name: '开始分析' }).click();
+    await expect(drawer.getByRole('alert')).toHaveText('请先确认拥有分析这些来源的权利。');
+    expect(await page.evaluate(() => (window as DesignerWorkflowWindow).portfolioSubmissions)).toEqual([]);
+    await expect(drawer.getByTestId('portfolio-analysis-skeleton')).toHaveCount(0);
+    await rightsConfirmation.check();
     await page.screenshot({ path: testInfo.outputPath('portfolio-upload.png'), fullPage: true });
     await page.getByRole('button', { name: '开始分析' }).click();
+    const [submission] = await page.evaluate(() => (window as DesignerWorkflowWindow).portfolioSubmissions);
+    expect(submission).toEqual({
+      libraryId: 'library-e2e',
+      source: { kind: 'designer-draft', id: expect.stringMatching(/^designer-[0-9a-f-]{36}$/u) },
+      connectionId: 'openai-compatible',
+      selections: [{ inspectionId: 'inspection-e2e', sourceIds: ['source-e2e'] }],
+      rightsConfirmed: true,
+    });
 
     await expect(drawer).toHaveClass(/ui-drawer--portfolio/);
     const skeleton = drawer.getByTestId('portfolio-analysis-skeleton');
@@ -265,5 +303,69 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 720, height: 720 
     await expect(avatar).toHaveAttribute('src', 'designhub-artwork://artwork-e2e-2');
     await expect.poll(() => page.evaluate(() => (window as typeof window & { artworkRequests: number }).artworkRequests)).toBe(2);
     await page.screenshot({ path: testInfo.outputPath('portfolio-avatar-regenerated.png'), fullPage: true });
+
+    await drawer.getByRole('button', { name: '下一步：预览发布' }).click();
+    await expect(dossier.getByRole('img', { name: '纸间秩序的人物形象' })).toHaveAttribute('src', 'designhub-artwork://artwork-e2e-2');
+    expect(await page.evaluate(() => (window as DesignerWorkflowWindow).designerSaves)).toEqual([]);
+    const publish = drawer.getByRole('button', { name: '发布预览' });
+    await publish.click();
+    await expect(drawer.getByText('已发布。', { exact: true })).toBeVisible();
+    await expect(publish).toBeDisabled();
+    await expect(page.getByRole('status')).toHaveText('设计师已发布并保存到当前工作区。');
+    // Publishing keeps the review open; closing it exposes the updated home rail.
+    await expect(drawer).toBeVisible();
+    const saves = await page.evaluate(() => (window as DesignerWorkflowWindow).designerSaves);
+    expect(saves).toEqual([['library-e2e', {
+      profiles: [{
+        ...fixture.candidate,
+        id: expect.stringMatching(/^custom-[0-9a-f-]{36}$/u),
+        status: 'published',
+        referenceCount: 0,
+        artworkAssetId: 'artwork-e2e-2',
+        artworkUrl: 'designhub-artwork://artwork-e2e-2',
+      }, ...fixture.initialState.profiles],
+      defaultId: fixture.initialState.defaultId,
+      drafts: {
+        newDraft: {
+          name: '', signature: '', summary: '', principle: '', personaCode: 'CUSTOM-A', version: 'v0.1',
+          tags: '', palette: '#E8E4DC, #252525, #6C7A70', typography: '', composition: '', texture: '',
+          negativeRules: '', contrast: '', darkAiriness: '', whitespace: '', grain: '', diffuseLight: '',
+          typeFamily: '', typeWeight: '', tracking: '', compositionTopology: '', rendering: '',
+        },
+        editDrafts: {},
+      },
+    }]]);
+    const publishedState = saves[0][1];
+    const publishedProfile = publishedState.profiles[0];
+    expect(publishedProfile.id).not.toBe(fixture.candidate.id);
+    expect(await page.evaluate(() => (window as DesignerWorkflowWindow).designerState)).toEqual(publishedState);
+    const saveEvidencePath = testInfo.outputPath('published-designer-save.json');
+    await writeFile(saveEvidencePath, JSON.stringify(saves, null, 2));
+    await testInfo.attach('published-designer-save.json', { path: saveEvidencePath, contentType: 'application/json' });
+    await page.screenshot({ path: testInfo.outputPath('portfolio-published.png'), fullPage: true });
+    await drawer.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(drawer).toHaveCount(0);
+
+    const home = page.getByRole('main');
+    const publishedCard = home.getByRole('button', { name: '查看设计师档案：纸间秩序', exact: true });
+    await expect(publishedCard).toBeVisible();
+    await expect(publishedCard.getByRole('img', { name: '纸间秩序的人物形象' })).toHaveAttribute('src', 'designhub-artwork://artwork-e2e-2');
+    await publishedCard.click();
+    const inspector = page.getByRole('dialog', { name: '设计师信息', exact: true });
+    await expect(inspector.getByRole('region', { name: '纸间秩序设计师档案' })).toBeVisible();
+    await expect(inspector.getByText('已发布', { exact: true })).toBeVisible();
+    await expect(inspector.getByRole('img', { name: '纸间秩序的人物形象' })).toHaveAttribute('src', 'designhub-artwork://artwork-e2e-2');
+    await inspector.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(inspector).toHaveCount(0);
+
+    // The current shell requires an explicit choice for the next project.
+    const designerSelect = home.getByRole('combobox', { name: '设计师', exact: true });
+    await expect(designerSelect).toHaveValue('');
+    await designerSelect.click();
+    await home.getByRole('option', { name: '纸间秩序的人物形象 纸间秩序', exact: true }).click();
+    await expect(designerSelect).toHaveValue(publishedProfile.id);
+    await expect(publishedCard).toHaveClass(/is-selected/u);
+    await page.screenshot({ path: testInfo.outputPath('published-designer-selected.png'), fullPage: true });
+    expect(await page.evaluate(() => (window as DesignerWorkflowWindow).designerSaves)).toEqual(saves);
   });
 }
