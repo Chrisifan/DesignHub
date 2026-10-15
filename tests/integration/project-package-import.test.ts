@@ -1,14 +1,16 @@
 // @vitest-environment node
 
 import { createHash } from 'node:crypto';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { zipSync } from 'fflate';
 import { expect, it } from 'vitest';
 
+import { createAssetStore } from '../../src/desktop/storage/asset-store';
 import { importProjectPackageArchive } from '../../src/desktop/storage/project-package-import';
 import { openProjectLibrary } from '../../src/desktop/storage/project-library-store';
-import { createProjectStore, resolveProjectDirectory } from '../../src/desktop/storage/project-store';
+import { createProjectStore } from '../../src/desktop/storage/project-store';
+import type { ManagedAsset } from '../../src/features/assets/import-assets';
 import type { ProjectCanvasLayout, ProjectDesign, ProjectMetadataInput } from '../../src/features/projects/metadata';
 import { createTemporaryProjectLibrary } from '../fixtures/project-library';
 
@@ -49,10 +51,28 @@ const createArchive = ({
   });
 };
 
+const managedAssetFixture = () => {
+  const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=', 'base64');
+  const contentHash = createHash('sha256').update(bytes).digest('hex');
+  const storagePath = `assets/${contentHash}`;
+  const entry: ManagedAsset & { storagePath: string } = {
+    id: `asset-${contentHash.slice(0, 16)}`,
+    name: 'packaged.png',
+    format: 'PNG',
+    mimeType: 'image/png',
+    contentHash,
+    managed: true,
+    storagePath,
+  };
+  return { bytes, entry, entries: { [storagePath]: bytes }, assets: [entry] };
+};
+
+const packagedAssetId = managedAssetFixture().entry.id;
+
 const packagedDesign: ProjectDesign = {
   id: 'packaged-design',
   projectId: sourceProjectId,
-  assetId: 'asset-1',
+  assetId: packagedAssetId,
   sourceTaskId: 'source-image-task',
   sourceConversationTaskId: 'source-conversation-task',
   width: 1,
@@ -76,21 +96,9 @@ const packagedMetadata: ProjectMetadataInput = {
   activeDesignerVersionId: 'designer-v1',
   contributorDesignerVersionIds: ['designer-v1', 'designer-v2'],
   designerSnapshot: { name: 'Packaged designer', versionId: 'designer-v1' },
-  coverAssetId: 'asset-1',
+  coverAssetId: packagedAssetId,
   designs: [packagedDesign],
   canvasLayout: packagedLayout,
-};
-
-const managedAssetFixture = () => {
-  const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII=', 'base64');
-  const contentHash = createHash('sha256').update(bytes).digest('hex');
-  const storagePath = `assets/${contentHash}`;
-  return {
-    bytes,
-    storagePath,
-    entries: { [storagePath]: bytes },
-    assets: [{ assetId: 'asset-1', managed: true, contentHash, storagePath }],
-  };
 };
 
 for (const mode of ['streamed', 'in-memory'] as const) {
@@ -122,12 +130,15 @@ for (const mode of ['streamed', 'in-memory'] as const) {
         activeDesignerVersionId: 'designer-v1',
         contributorDesignerVersionIds: ['designer-v1', 'designer-v2'],
         designerSnapshot: { name: 'Packaged designer', versionId: 'designer-v1' },
-        coverAssetId: 'asset-1',
+        coverAssetId: packagedAssetId,
       });
+      const importedAssets = createAssetStore(fixture.workspace);
+      await expect(importedAssets.listAssets(identity)).resolves.toEqual([asset.entry]);
+      await expect(importedAssets.readAsset({ ...identity, assetId: packagedAssetId })).resolves.toEqual(new Uint8Array(asset.bytes));
 
       await store.updateProjectMetadata({ ...identity, patch: { name: 'Edited imported project', brief: 'Edited brief' } });
       const appendedDesign: ProjectDesign = {
-        id: 'appended-design', projectId: imported.projectId, assetId: 'asset-1',
+        id: 'appended-design', projectId: imported.projectId, assetId: packagedAssetId,
         sourceTaskId: 'local-image-task', width: 1, height: 1, title: 'Appended design',
         createdAt: '2026-10-15T00:00:00.000Z',
       };
@@ -147,9 +158,9 @@ for (const mode of ['streamed', 'in-memory'] as const) {
       ]);
       await expect(reopenedStore.listProjectDesigns(identity)).resolves.toEqual([importedDesign, appendedDesign]);
       await expect(reopenedStore.loadProjectCanvasLayout(identity)).resolves.toEqual(editedLayout);
-      const projectDirectory = resolveProjectDirectory(reopened, imported.projectId);
-      expect(projectDirectory).not.toBeNull();
-      await expect(readFile(join(projectDirectory as string, asset.storagePath))).resolves.toEqual(asset.bytes);
+      const reopenedAssets = createAssetStore(reopened);
+      await expect(reopenedAssets.listAssets(identity)).resolves.toEqual([asset.entry]);
+      await expect(reopenedAssets.readAsset({ ...identity, assetId: packagedAssetId })).resolves.toEqual(new Uint8Array(asset.bytes));
     } finally {
       reopened?.close();
       await fixture.cleanup();
@@ -165,12 +176,18 @@ for (const mode of ['streamed', 'in-memory'] as const) {
     const fixture = await createTemporaryProjectLibrary('designhub-package-broken-reference-');
     try {
       const asset = managedAssetFixture();
+      const unreferencedContentHash = '0'.repeat(64);
+      const undeclaredAssetId = 'asset-0000000000000000';
+      const unmanagedEntry: ManagedAsset & { storagePath: string } = {
+        id: undeclaredAssetId, name: 'external.png', format: 'PNG', mimeType: 'image/png',
+        contentHash: unreferencedContentHash, managed: false, storagePath: `assets/${unreferencedContentHash}`,
+      };
       const metadata: ProjectMetadataInput = reference === 'design'
-        ? { ...packagedMetadata, designs: [{ ...packagedDesign, assetId: 'undeclared-asset' }] }
-        : { ...packagedMetadata, coverAssetId: 'undeclared-asset' };
+        ? { ...packagedMetadata, designs: [{ ...packagedDesign, assetId: undeclaredAssetId }] }
+        : { ...packagedMetadata, coverAssetId: undeclaredAssetId };
       const archive = createArchive({
         ...asset,
-        assets: [...asset.assets, ...(managed === undefined ? [] : [{ assetId: 'undeclared-asset', managed }])],
+        assets: [...asset.assets, ...(managed === undefined ? [] : [unmanagedEntry])],
         metadata,
       });
       const archivePath = join(fixture.directory, 'broken.designhub.zip');
@@ -231,14 +248,9 @@ it('rejects declared files outside the project content closure without publishin
 it('validates and copies managed asset bytes without materializing the archive in the service', async () => {
   const fixture = await createTemporaryProjectLibrary('designhub-package-asset-');
   try {
-    const assetBytes = new Uint8Array([1, 2, 3, 4, 5]);
-    const contentHash = createHash('sha256').update(assetBytes).digest('hex');
-    const storagePath = `assets/${contentHash}`;
+    const asset = managedAssetFixture();
     const archivePath = join(fixture.directory, 'project.designhub.zip');
-    await writeFile(archivePath, createArchive({
-      entries: { [storagePath]: assetBytes },
-      assets: [{ assetId: 'asset-1', managed: true, contentHash, storagePath }],
-    }));
+    await writeFile(archivePath, createArchive(asset));
 
     const imported = await importProjectPackageArchive(fixture.workspace, {
       libraryId: fixture.workspace.library.libraryId,
@@ -246,9 +258,10 @@ it('validates and copies managed asset bytes without materializing the archive i
       archivePath,
     });
 
-    const projectDirectory = resolveProjectDirectory(fixture.workspace, imported.projectId);
-    expect(projectDirectory).not.toBeNull();
-    await expect(readFile(join(projectDirectory as string, storagePath))).resolves.toEqual(Buffer.from(assetBytes));
+    const assets = createAssetStore(fixture.workspace);
+    const identity = { libraryId: fixture.workspace.library.libraryId, projectId: imported.projectId };
+    await expect(assets.listAssets(identity)).resolves.toEqual([asset.entry]);
+    await expect(assets.readAsset({ ...identity, assetId: asset.entry.id })).resolves.toEqual(new Uint8Array(asset.bytes));
   } finally {
     await fixture.cleanup();
   }

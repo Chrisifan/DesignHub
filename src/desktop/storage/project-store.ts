@@ -855,7 +855,7 @@ const importedProjectCreateInput = (
   sourceContent: ProjectContentManifest,
 ): CreateProjectContainerInput => {
   const metadata = validateImportedMetadata(sourceManifest.metadata, sourceManifest.projectId);
-  const managedAssetIds = new Set(sourceContent.assets.flatMap((asset) => isRecord(asset) && asset.managed === true && typeof asset.assetId === 'string' ? [asset.assetId] : []));
+  const managedAssetIds = new Set(sourceContent.assets.flatMap((asset) => isRecord(asset) && asset.managed === true && typeof asset.id === 'string' ? [asset.id] : []));
   if (metadata?.designs?.some((design) => !managedAssetIds.has(design.assetId))
     || (metadata?.coverAssetId !== undefined && !managedAssetIds.has(metadata.coverAssetId))) throw new Error('INVALID_PACKAGE');
   return {
