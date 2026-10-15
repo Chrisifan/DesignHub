@@ -849,6 +849,34 @@ const validateImportedMetadata = (metadata: unknown, sourceProjectId: string): P
   }
 };
 
+const importedProjectCreateInput = (
+  input: Pick<CreateProjectContainerInput, 'libraryId' | 'operationId'>,
+  sourceManifest: ProjectManifest,
+  sourceContent: ProjectContentManifest,
+): CreateProjectContainerInput => {
+  const metadata = validateImportedMetadata(sourceManifest.metadata, sourceManifest.projectId);
+  const managedAssetIds = new Set(sourceContent.assets.flatMap((asset) => isRecord(asset) && asset.managed === true && typeof asset.assetId === 'string' ? [asset.assetId] : []));
+  if (metadata?.designs?.some((design) => !managedAssetIds.has(design.assetId))
+    || (metadata?.coverAssetId !== undefined && !managedAssetIds.has(metadata.coverAssetId))) throw new Error('INVALID_PACKAGE');
+  return {
+    libraryId: input.libraryId,
+    operationId: input.operationId,
+    name: sourceManifest.name,
+    generationRatio: metadata?.generationRatio,
+    brief: metadata?.brief,
+    activeDesignerVersionId: metadata?.activeDesignerVersionId,
+    contributorDesignerVersionIds: metadata?.contributorDesignerVersionIds,
+    designerSnapshot: metadata?.designerSnapshot,
+    coverAssetId: metadata?.coverAssetId,
+    designs: metadata?.designs?.map((design) => {
+      const { projectId: _sourceProjectId, ...importedDesign } = design;
+      void _sourceProjectId;
+      return importedDesign;
+    }),
+    canvasLayout: metadata?.canvasLayout,
+  };
+};
+
 const validateImportedContentClosure = (content: ProjectContentManifest, pack: Awaited<ReturnType<typeof decodeProjectPackage>>): void => {
   const seenHashes = new Set<string>();
   const allowedEntries = new Set([projectManifestName, projectContentManifestName, projectDatabaseName]);
@@ -935,7 +963,7 @@ export const importProjectPackageToWorkspace = async (
     if (!bytes) throw new Error('INVALID_PACKAGE');
   });
   if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === pack.manifest.packageId)) throw new Error('PACKAGE_ALREADY_IMPORTED');
-  const sourceMetadata = validateImportedMetadata(sourceManifest.metadata, sourceManifest.projectId);
+  const createInput = importedProjectCreateInput(input, sourceManifest, sourceContent);
   const created = createProject(handle, {
     ...options,
     prepareProject: (temporaryDirectory, projectId) => {
@@ -960,16 +988,7 @@ export const importProjectPackageToWorkspace = async (
       writeFileSync(generatedManifestPath, `${JSON.stringify({ ...generatedManifest, importedPackageId: pack.manifest.packageId }, null, 2)}\n`, { encoding: 'utf8' });
       writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ ...sourceContent, projectId }, null, 2)}\n`, { encoding: 'utf8' });
     },
-  }, {
-    libraryId: input.libraryId,
-    operationId: input.operationId,
-    name: sourceManifest.name,
-    brief: sourceMetadata?.brief,
-    activeDesignerVersionId: sourceMetadata?.activeDesignerVersionId,
-    contributorDesignerVersionIds: sourceMetadata?.contributorDesignerVersionIds,
-    designerSnapshot: sourceMetadata?.designerSnapshot,
-    coverAssetId: sourceMetadata?.coverAssetId,
-  });
+  }, createInput);
   return created;
 };
 
@@ -998,7 +1017,7 @@ export const importExtractedProjectPackageToWorkspace = async (
   if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === input.packageId)) {
     throw new Error('PACKAGE_ALREADY_IMPORTED');
   }
-  const sourceMetadata = validateImportedMetadata(sourceManifest.metadata, sourceManifest.projectId);
+  const createInput = importedProjectCreateInput(input, sourceManifest, sourceContent);
   return createProject(handle, {
     ...options,
     prepareProject: (temporaryDirectory, projectId) => {
@@ -1022,16 +1041,7 @@ export const importExtractedProjectPackageToWorkspace = async (
       writeFileSync(generatedManifestPath, `${JSON.stringify({ ...generatedManifest, importedPackageId: input.packageId }, null, 2)}\n`, { encoding: 'utf8' });
       writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ ...sourceContent, projectId }, null, 2)}\n`, { encoding: 'utf8' });
     },
-  }, {
-    libraryId: input.libraryId,
-    operationId: input.operationId,
-    name: sourceManifest.name,
-    brief: sourceMetadata?.brief,
-    activeDesignerVersionId: sourceMetadata?.activeDesignerVersionId,
-    contributorDesignerVersionIds: sourceMetadata?.contributorDesignerVersionIds,
-    designerSnapshot: sourceMetadata?.designerSnapshot,
-    coverAssetId: sourceMetadata?.coverAssetId,
-  });
+  }, createInput);
 };
 
 const listTrashedProjects = (handle: ProjectLibraryHandle): TrashedProject[] => {
