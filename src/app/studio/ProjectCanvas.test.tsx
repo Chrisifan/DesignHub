@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +6,7 @@ import { ProjectCanvas, getAnalysisHistory, getLatestConversationTask, getPendin
 import type { ProjectCanvasLayout, ProjectDesign } from '../../features/projects/metadata';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { ExportProjectDesignInput } from '../../platform/contracts';
+import { imageTools, type ImageTool, type ToolParams } from '../../features/image-tools/target';
 
 type StageMockProps = {
   designs: readonly ProjectDesign[];
@@ -1116,6 +1117,85 @@ describe('ProjectCanvas design references', () => {
         layers: [expect.objectContaining({ assetId: 'asset-tool-target' })],
       }),
     })));
+  });
+
+  // Each declared toolbar tool must submit its own valid contract and selected source.
+  // Regional tools additionally protect against dropping the mask entered in the UI.
+  const submissionCases: Record<ImageTool, { label: string; params: ToolParams; prompt?: string; regional?: boolean }> = {
+    'remove-background': { label: 'Remove background', params: { edgeRefinement: 50 } },
+    'replace-background': { label: 'Replace background', prompt: 'A sunlit studio', params: { source: 'description', prompt: 'A sunlit studio', lighting: 'match-original' } },
+    'remove-object': { label: 'Remove object', params: { feather: 10 }, regional: true },
+    inpaint: { label: 'Inpaint', prompt: 'A small green plant', params: { prompt: 'A small green plant', strength: 0.5 }, regional: true },
+    expand: { label: 'Expand image', params: { mode: 'original-scene', top: 75, right: 75, bottom: 75, left: 75 } },
+    'smart-crop': { label: 'Smart crop', params: { width: 800, height: 600, focus: 'subject' } },
+    upscale: { label: 'Upscale image', params: { scale: 2, preserveDetails: 'balanced' } },
+    resize: { label: 'Resize', params: { width: 800, height: 600, fit: 'contain', format: 'png' } },
+    'remove-watermark': { label: 'Remove watermark', params: { rightsConfirmed: 'confirmed', feather: 10 }, regional: true },
+  };
+
+  it.each(imageTools)('submits %s from its toolbar UI with the selected design and exact parameters/region', async (tool) => {
+    const testCase = submissionCases[tool];
+    expect(testCase, `Missing submission case for declared tool: ${tool}`).toBeDefined();
+    const otherDesign: ProjectDesign = {
+      id: 'design-unselected', projectId: 'project-1', assetId: 'asset-unselected', sourceTaskId: 'generation-1',
+      width: 320, height: 240, title: 'Other image', createdAt: '2026-10-10T00:00:00.000Z',
+    };
+    const selectedDesign: ProjectDesign = {
+      id: 'design-matrix-selected', projectId: 'project-1', assetId: 'asset-matrix-selected', sourceTaskId: 'generation-2',
+      width: 800, height: 600, title: 'Selected image', createdAt: '2026-10-10T00:01:00.000Z',
+    };
+    const onSubmitImageTask = vi.fn(async () => undefined);
+    window.designhub = {
+      listProjectDesigns: vi.fn(async () => [otherDesign, selectedDesign]),
+      loadProjectCanvasLayout: vi.fn(async () => null),
+      listTasks: vi.fn(async () => []),
+    };
+    render(
+      <ProjectCanvas
+        locale="en"
+        project={{ id: 'project-1', libraryId: 'workspace-1', name: 'Poster', enName: 'Poster', description: '', enDescription: '', designers: [], artwork: 'blank', designs: [otherDesign, selectedDesign] }}
+        libraryId="workspace-1"
+        readOnly={false}
+        conversationConnected
+        designer={null}
+        notify={vi.fn()}
+        onBack={vi.fn()}
+        onConnections={vi.fn()}
+        onSubmitImageTask={onSubmitImageTask}
+        onSubmitConversation={vi.fn(async () => null)}
+        onSubmitDesignGeneration={vi.fn(async () => null)}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '设计稿 Selected image' }));
+    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Image tools' })).getByRole('button', { name: testCase.label }));
+    const dialog = within(screen.getByRole('dialog', { name: testCase.label }));
+    if (testCase.prompt) fireEvent.change(dialog.getByRole('textbox', { name: 'Prompt' }), { target: { value: testCase.prompt } });
+    if (testCase.regional) {
+      expect(dialog.getByRole('button', { name: 'Apply mask' })).toBeDisabled();
+      const mask = within(dialog.getByRole('form', { name: 'Mask editor' }));
+      fireEvent.change(mask.getByRole('spinbutton', { name: 'X' }), { target: { value: '20' } });
+      fireEvent.change(mask.getByRole('spinbutton', { name: 'Y' }), { target: { value: '30' } });
+      fireEvent.change(mask.getByRole('spinbutton', { name: 'Width' }), { target: { value: '120' } });
+      fireEvent.change(mask.getByRole('spinbutton', { name: 'Height' }), { target: { value: '90' } });
+      fireEvent.click(dialog.getByRole('button', { name: 'Apply mask' }));
+    } else {
+      fireEvent.click(dialog.getByRole('button', { name: 'Run' }));
+    }
+
+    await waitFor(() => expect(onSubmitImageTask).toHaveBeenCalledExactlyOnceWith({
+      tool,
+      prompt: expect.any(String),
+      params: testCase.params,
+      baseRevisionId: null,
+      targetLayerId: 'design-matrix-selected',
+      ...(testCase.regional ? { region: { x: 20, y: 30, width: 120, height: 90 } } : {}),
+      beforeScene: expect.objectContaining({
+        width: 800,
+        height: 600,
+        layers: [expect.objectContaining({ id: 'design-matrix-selected', type: 'image', assetId: 'asset-matrix-selected', width: 800, height: 600 })],
+      }),
+    }));
   });
 
   it('keeps image tools on the project canvas without opening a document', async () => {
