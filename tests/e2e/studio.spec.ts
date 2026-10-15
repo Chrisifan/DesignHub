@@ -9,7 +9,10 @@ test('project canvas persists layout and returns home through project actions', 
   const stage = canvas.locator('.project-canvas-stage canvas');
   await expect(stage).toBeVisible();
   await stage.click({ position: { x: 300, y: 200 } });
-  await expect(canvas.getByRole('button', { name: '导出所选设计稿', exact: true })).toBeEnabled();
+  const exportButton = canvas.getByRole('button', { name: '导出所选设计稿', exact: true });
+  await expect(exportButton).toBeEnabled();
+  await exportButton.click();
+  await expect(page.getByRole('status')).toHaveText('设计稿已导出。');
   await stage.hover();
   await page.mouse.wheel(0, -120);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('designhub.e2e.canvas-layout.project-e2e'))).not.toBeNull();

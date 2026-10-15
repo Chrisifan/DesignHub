@@ -188,6 +188,7 @@
   width: 44px;
   padding: 5px;
   transform: none;
+  pointer-events: auto;
 }
 
 .project-canvas-image-tools > .project-canvas-toolbar__actions .icon-button {
