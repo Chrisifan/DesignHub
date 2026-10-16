@@ -12,7 +12,7 @@ type ProfileStepProps = {
   locale: Locale;
   initialProfile: AppProfile | null;
   onChooseProjectLibrary: () => Promise<ProjectLibraryDescriptor | null>;
-  onSubmit: (input: { displayName: string; avatar: ProfileAvatarInput; library: ProjectLibraryDescriptor }) => Promise<void>;
+  onSubmit: (input: { displayName: string; avatar?: ProfileAvatarInput; library: ProjectLibraryDescriptor }) => Promise<void>;
   busy?: boolean;
   error?: string;
 };
@@ -56,8 +56,8 @@ export const ProfileStep = ({
   }, [previewUrl]);
 
   const canContinue = useMemo(
-    () => Boolean(displayName.trim() && avatar && library && !busy && !choosing),
-    [avatar, busy, choosing, displayName, library],
+    () => Boolean(displayName.trim() && (avatar || initialProfile?.avatarDataUrl) && library && !busy && !choosing),
+    [avatar, busy, choosing, displayName, initialProfile?.avatarDataUrl, library],
   );
 
   const selectAvatar = async (file: File | undefined): Promise<void> => {
@@ -93,8 +93,8 @@ export const ProfileStep = ({
   };
 
   const submit = async (): Promise<void> => {
-    if (!canContinue || !avatar || !library) return;
-    await onSubmit({ displayName: displayName.trim(), avatar, library });
+    if (!canContinue || !library) return;
+    await onSubmit({ displayName: displayName.trim(), ...(avatar ? { avatar } : {}), library });
   };
 
   return (

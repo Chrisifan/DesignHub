@@ -53,3 +53,29 @@ it('keeps the selected fields when directory selection is cancelled', async () =
   expect(screen.getByRole('textbox', { name: '昵称' })).toHaveValue('Sifan');
   expect(screen.getByText('尚未选择存储文件夹')).toBeVisible();
 });
+
+it('reuses the existing avatar when recovering the storage directory', async () => {
+  const onSubmit = vi.fn(async () => undefined);
+  render(
+    <ProfileStep
+      locale="zh-CN"
+      initialProfile={{
+        formatVersion: 1,
+        displayName: 'Sifan',
+        avatarDataUrl: 'data:image/webp;base64,AA==',
+        onboarding: { profileCompleted: true, modelStepCompleted: true },
+      }}
+      onChooseProjectLibrary={vi.fn(async () => library)}
+      onSubmit={onSubmit}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: '选择存储文件夹' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '继续' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({
+    displayName: 'Sifan',
+    library,
+  }));
+});
