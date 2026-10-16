@@ -112,16 +112,11 @@ export const gotoTestWorkspace = async (
     const submittedTasks: Array<Record<string, unknown>> = [];
     let projectPackageImportAttempts = 0;
     let projectPackageImported = false;
-    let selectedLibrary = localStorage.getItem('designhub.e2e.library-selected') === '1';
     (window as typeof window & { designhub?: unknown }).designhub = ({
       loadProfile: async () => structuredClone(profile),
       saveProfile: async () => structuredClone(profile),
-      getProjectLibraryStatus: async () => selectedLibrary ? ({ state: 'ready', library: structuredClone(library) }) : ({ state: 'unselected' }),
-      chooseProjectLibrary: async () => {
-        selectedLibrary = true;
-        localStorage.setItem('designhub.e2e.library-selected', '1');
-        return structuredClone(library);
-      },
+      getProjectLibraryStatus: async () => ({ state: 'ready', library: structuredClone(library) }),
+      chooseProjectLibrary: async () => structuredClone(library),
       listActiveProjects: async () => projectPackageImported
         ? [{ ...structuredClone(project), projectId: 'project-imported', name: '导入项目' }]
         : Array.from(
@@ -238,7 +233,6 @@ export const gotoTestWorkspace = async (
     } as never);
   }, { initialScene: scene, fixtureOptions: options, profile: testProfile, library: testLibrary });
   await page.goto('/');
-  await page.getByRole('button', { name: /选择项目库|Choose project library/ }).click();
   await page.getByRole('textbox', { name: /设计需求|Design request/ }).waitFor();
 };
 
