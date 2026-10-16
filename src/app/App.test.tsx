@@ -281,6 +281,45 @@ it('enters Studio directly after completed onboarding and restores the avatar', 
   expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible();
 });
 
+it('returns a completed profile to profile onboarding when its project library is unavailable', async () => {
+  vi.useFakeTimers();
+  window.designhub = {
+    loadProfile: async () => completedProfile,
+    getProjectLibraryStatus: async () => ({ state: 'needs-location', directory: '/missing/library', reason: 'missing' }),
+  } as never;
+  render(<App />);
+
+  await revealSplash();
+  expect(screen.getByRole('heading', { name: '设置你的资料' })).toBeVisible();
+  expect(screen.getByRole('img', { name: '头像预览' })).toHaveAttribute('src', completedProfile.avatarDataUrl);
+  expect(screen.queryByRole('button', { name: '选择项目库' })).toBeNull();
+});
+
+it('enters Studio directly after a completed profile recovers its project library', async () => {
+  vi.useFakeTimers();
+  const saveProfile = vi.fn(async () => completedProfile);
+  window.designhub = {
+    loadProfile: async () => completedProfile,
+    getProjectLibraryStatus: async () => ({ state: 'needs-location', directory: '/missing/library', reason: 'missing' }),
+    chooseProjectLibrary: vi.fn(async () => library),
+    saveProfile,
+    listActiveProjects: async () => [],
+  } as never;
+  render(<App />);
+
+  await revealSplash();
+  fireEvent.click(screen.getByRole('button', { name: '选择存储文件夹' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '继续' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: '继续' }));
+
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '设计需求' })).toBeVisible());
+  expect(screen.queryByRole('heading', { name: '配置模型连接' })).toBeNull();
+  expect(saveProfile).toHaveBeenCalledWith({
+    displayName: 'Sifan',
+    onboarding: { profileCompleted: true },
+  });
+});
+
 it('keeps the profile step when project-library selection is cancelled', async () => {
   vi.useFakeTimers();
   window.designhub = {

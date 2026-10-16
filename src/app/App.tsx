@@ -21,7 +21,7 @@ const splashDurationMs = 2200;
 const splashCompletionHoldMs = 320;
 const providerCheckTimeoutMs = 15_000;
 const startupCheckIds = ['profile', 'library', 'conversation', 'image', 'workspace'] as const;
-type AppPhase = 'splash' | 'profile' | 'model' | 'library' | 'studio';
+type AppPhase = 'splash' | 'profile' | 'model' | 'studio';
 
 const createStartupChecks = (): StartupCheck[] => startupCheckIds.map((id, index) => ({
   id,
@@ -137,11 +137,11 @@ export const App = () => {
         activeCheckId = 'workspace';
         updateStartupCheck(activeCheckId, 'active');
         updateStartupCheck(activeCheckId, 'complete');
-        const nextPhase: AppPhase = !loadedProfile?.onboarding.profileCompleted
+        const nextPhase: AppPhase = !loadedProfile?.onboarding.profileCompleted || status?.state !== 'ready'
           ? 'profile'
           : !loadedProfile.onboarding.modelStepCompleted
             ? 'model'
-            : status?.state === 'ready' ? 'studio' : 'library';
+            : 'studio';
         const remaining = Math.max(0, splashDurationMs + splashCompletionHoldMs - (Date.now() - startedAt));
         revealTimer = setTimeout(() => {
           if (cancelled) return;
@@ -171,7 +171,6 @@ export const App = () => {
       const library = await chooser();
       if (library) {
         setLibraryStatus({ state: 'ready', library });
-        if (phase === 'library') setPhase('studio');
       }
       return library;
     } catch (cause) {
@@ -183,19 +182,19 @@ export const App = () => {
     }
   };
 
-  const submitProfile = async (input: { displayName: string; avatar: ProfileAvatarInput; library: ProjectLibraryDescriptor }): Promise<void> => {
+  const submitProfile = async (input: { displayName: string; avatar?: ProfileAvatarInput; library: ProjectLibraryDescriptor }): Promise<void> => {
     setBusy(true);
     setError('');
     try {
       const saved = await (getDesktopApi().saveProfile?.({
         displayName: input.displayName,
-        avatar: input.avatar,
+        ...(input.avatar ? { avatar: input.avatar } : {}),
         onboarding: { profileCompleted: true },
       }) ?? null);
       if (!saved) throw new Error('PROFILE_SAVE_FAILED');
       setProfile(saved);
       setLibraryStatus({ state: 'ready', library: input.library });
-      setPhase('model');
+      setPhase(saved.onboarding.modelStepCompleted ? 'studio' : 'model');
     } catch {
       setError(t(locale, '无法保存资料，请重试。', 'Could not save your profile. Try again.'));
     } finally {
@@ -210,7 +209,7 @@ export const App = () => {
       const saved = await (getDesktopApi().saveProfile?.({ onboarding: { modelStepCompleted: true } }) ?? null);
       if (!saved) throw new Error('PROFILE_SAVE_FAILED');
       setProfile(saved);
-      setPhase(libraryStatus.state === 'ready' ? 'studio' : 'library');
+      setPhase(libraryStatus.state === 'ready' ? 'studio' : 'profile');
     } catch {
       setError(t(locale, '无法保存引导状态，请重试。', 'Could not save onboarding state. Try again.'));
     } finally {
@@ -279,10 +278,6 @@ export const App = () => {
             <span>LATENCY: 0.1ms · READY</span>
           </div>
         </section>
-      ) : phase === 'profile' ? (
-        <section className="onboarding-shell">
-          <ProfileStep locale={locale} initialProfile={profile} onChooseProjectLibrary={chooseProjectLibrary} onSubmit={submitProfile} busy={busy} error={error} />
-        </section>
       ) : phase === 'model' ? (
         <section className="onboarding-shell">
           <ModelStep locale={locale} onComplete={finishModelStep} onSkip={finishModelStep} />
@@ -290,16 +285,8 @@ export const App = () => {
       ) : entered ? (
         <Studio locale={locale} theme={theme} library={library} profile={profile} onLocaleChange={changeLocale} onThemeChange={changeTheme} />
       ) : (
-        <section className="welcome" aria-labelledby="welcome-title">
-          <p className="eyebrow">{copy.appName}</p>
-          <h1 id="welcome-title">{copy.welcomeTitle}</h1>
-          <p className="welcome-description">{copy.welcomeDescription}</p>
-          <div className="welcome-actions">
-            <button type="button" className="button button-primary" aria-label={t(locale, '选择项目库', 'Choose project library')} onClick={() => void chooseProjectLibrary()}>
-              {t(locale, '选择项目库', 'Choose project library')}
-            </button>
-          </div>
-          {(error || libraryStatus.state === 'needs-location') && <p role="status" className="inline-notice">{error || t(locale, '项目库位置不可用，请重新选择目录。', 'The project library is unavailable. Choose its location again.')}</p>}
+        <section className="onboarding-shell">
+          <ProfileStep locale={locale} initialProfile={profile} onChooseProjectLibrary={chooseProjectLibrary} onSubmit={submitProfile} busy={busy} error={error} />
         </section>
       )}
     </main>
