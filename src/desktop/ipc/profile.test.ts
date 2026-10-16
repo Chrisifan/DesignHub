@@ -12,10 +12,13 @@ const windowStub = {
   },
 };
 
-const eventFor = (url: string) => ({
-  sender: windowStub.webContents,
-  senderFrame: { url },
-});
+const eventFor = (url: string) => {
+  windowStub.webContents.mainFrame.url = url;
+  return {
+    sender: windowStub.webContents,
+    senderFrame: windowStub.webContents.mainFrame,
+  };
+};
 
 it('exports the profile save channel', () => {
   expect(profileSaveChannel).toBe('profile:save');
@@ -46,11 +49,87 @@ it('rejects an untrusted sender for profile save', async () => {
     avatarDataUrl: null,
     onboarding: { profileCompleted: false, modelStepCompleted: false },
   }));
-  const handler = createProfileSaveHandler(windowStub, trustedUrl, { saveProfile } as never, async () => 'avatar');
+  const handler = createProfileSaveHandler(windowStub, trustedUrl, { saveProfile } as never, async () => 'avatar', () => false);
 
   await expect(handler(eventFor('https://evil.test/'), {
     displayName: 'Sifan',
     avatar: null,
   })).resolves.toBeNull();
   expect(saveProfile).not.toHaveBeenCalled();
+});
+
+it('rejects the first profile completion when no project library is active', async () => {
+  const loadProfile = vi.fn(async () => ({
+    formatVersion: 1 as const,
+    displayName: '',
+    avatarDataUrl: null,
+    onboarding: { profileCompleted: false, modelStepCompleted: false },
+  }));
+  const saveProfile = vi.fn();
+  const handler = createProfileSaveHandler(
+    windowStub,
+    trustedUrl,
+    { loadProfile, saveProfile } as never,
+    async () => 'avatar',
+    () => false,
+  );
+
+  await expect(handler(eventFor(trustedUrl), {
+    displayName: 'Sifan',
+    onboarding: { profileCompleted: true },
+  })).resolves.toBeNull();
+  expect(loadProfile).toHaveBeenCalledOnce();
+  expect(saveProfile).not.toHaveBeenCalled();
+});
+
+it('allows the first profile completion when a project library is active', async () => {
+  const current = {
+    formatVersion: 1 as const,
+    displayName: '',
+    avatarDataUrl: null,
+    onboarding: { profileCompleted: false, modelStepCompleted: false },
+  };
+  const completed = {
+    ...current,
+    displayName: 'Sifan',
+    onboarding: { ...current.onboarding, profileCompleted: true },
+  };
+  const saveProfile = vi.fn(async () => completed);
+  const handler = createProfileSaveHandler(
+    windowStub,
+    trustedUrl,
+    { loadProfile: vi.fn(async () => current), saveProfile },
+    async () => 'avatar',
+    () => true,
+  );
+
+  await expect(handler(eventFor(trustedUrl), {
+    displayName: 'Sifan',
+    onboarding: { profileCompleted: true },
+  })).resolves.toEqual(completed);
+  expect(saveProfile).toHaveBeenCalledWith({
+    displayName: 'Sifan',
+    onboarding: { profileCompleted: true },
+  });
+});
+
+it('does not require an active library for unrelated changes to a completed profile', async () => {
+  const current = {
+    formatVersion: 1 as const,
+    displayName: 'Sifan',
+    avatarDataUrl: null,
+    onboarding: { profileCompleted: true, modelStepCompleted: true },
+  };
+  const updated = { ...current, displayName: 'Chris' };
+  const saveProfile = vi.fn(async () => updated);
+  const handler = createProfileSaveHandler(
+    windowStub,
+    trustedUrl,
+    { loadProfile: vi.fn(async () => current), saveProfile },
+    async () => 'avatar',
+    () => false,
+  );
+
+  await expect(handler(eventFor(trustedUrl), { displayName: 'Chris' })).resolves.toEqual(updated);
+  expect(saveProfile).toHaveBeenCalledWith({ displayName: 'Chris' });
 });

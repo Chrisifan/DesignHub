@@ -241,6 +241,7 @@ app.whenReady().then(async () => {
     getTrustedUrl: () => activeTrustedUrl,
     store: profileStore,
     normalizeAvatar: normalizeProfileAvatar,
+    hasActiveProjectLibrary: () => activeProjectLibraryHandle !== null,
   });
   registerProjectHandlers({
     ipc: ipcMain,

@@ -59,12 +59,17 @@ export const createProfileSaveHandler = (
   trustedUrl: string,
   store: ProfileStore,
   normalizeAvatar: AvatarNormalizer,
+  hasActiveProjectLibrary: () => boolean,
 ) => async (event: ProfileRequest, value: unknown): Promise<AppProfile | null> => {
   if (!isTrustedProjectLibraryRequest(event, window, trustedUrl)) return null;
   const input = normalizeInput(value);
   if (!input) return null;
   const displayName = input.displayName?.trim();
   if (input.onboarding?.profileCompleted && !displayName) return null;
+  if (input.onboarding?.profileCompleted) {
+    const current = await store.loadProfile();
+    if (!current?.onboarding.profileCompleted && !hasActiveProjectLibrary()) return null;
+  }
   const patch: ProfilePatch = {
     ...(displayName === undefined ? {} : { displayName }),
     ...(input.avatar === undefined ? {} : { avatarDataUrl: input.avatar === null ? null : await normalizeAvatar(input.avatar) }),

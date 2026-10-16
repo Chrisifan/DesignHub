@@ -18,6 +18,7 @@ export type RegisterProfileOptions = {
   getTrustedUrl: () => string | null;
   store: ProfileStore;
   normalizeAvatar: (input: ProfileAvatarInput) => Promise<string>;
+  hasActiveProjectLibrary: () => boolean;
 };
 
 export const registerProfileHandlers = ({
@@ -26,6 +27,7 @@ export const registerProfileHandlers = ({
   getTrustedUrl,
   store,
   normalizeAvatar,
+  hasActiveProjectLibrary,
 }: RegisterProfileOptions): void => {
   const getContext = () => {
     const window = getWindow();
@@ -42,7 +44,7 @@ export const registerProfileHandlers = ({
   ipc.handle(profileSaveChannel, (event, input) => {
     const context = getContext();
     return context
-      ? createProfileSaveHandler(context.window, context.trustedUrl, store, normalizeAvatar)(event as never, input)
+      ? createProfileSaveHandler(context.window, context.trustedUrl, store, normalizeAvatar, hasActiveProjectLibrary)(event as never, input)
       : null;
   });
 };

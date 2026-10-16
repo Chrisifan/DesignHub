@@ -10,6 +10,7 @@ describe('registerProfileHandlers', () => {
       getTrustedUrl: () => 'http://localhost:5173',
       store: { loadProfile: vi.fn(), saveProfile: vi.fn() },
       normalizeAvatar: vi.fn(),
+      hasActiveProjectLibrary: () => true,
     });
 
     expect([...registrations.keys()]).toEqual([
