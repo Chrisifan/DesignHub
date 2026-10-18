@@ -20,6 +20,7 @@ import './workbench.css';
 import './project-canvas.css';
 import { readImageFile } from '../../features/assets/image-input';
 import { itemErrorMessage } from '../../features/image-tools/image-tools-copy';
+import { NeuralPresence, type PresenceMode } from '../previews/AgentConstellationPreview';
 
 type ProjectCanvasProps = {
   locale: Locale;
@@ -194,6 +195,8 @@ const getAnalysisStatus = (task: TaskRecord, locale: Locale): { icon: string; ki
   return { icon: 'clock', kind: 'running', label: t(locale, '处理中', 'Processing') };
 };
 
+type AnalysisDockView = 'presence' | 'history' | 'thinking' | 'result';
+
 export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onRename, onDuplicate, onArchive, onConnections, onSubmitImageTask, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
   const onDesignsChangeRef = useRef(onDesignsChange);
@@ -215,10 +218,13 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const analysisOpen = true;
   const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
   const [analysisHistoryOpen, setAnalysisHistoryOpen] = useState(false);
+  const [analysisThinking, setAnalysisThinking] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
   const imageTaskStatesRef = useRef<Map<string, TaskRecord['state']>>(new Map());
   const imageTaskStatesInitializedRef = useRef(false);
+  const analysisPresenceRef = useRef<HTMLButtonElement>(null);
+  const analysisHistoryWasOpenRef = useRef(false);
   const layoutSaveTimersRef = useRef<Map<string, number>>(new Map());
   const queuedLayoutSavesRef = useRef<Map<string, QueuedCanvasLayoutSave>>(new Map());
   const inFlightLayoutSaveRef = useRef<PendingCanvasLayoutSave | null>(null);
@@ -344,6 +350,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setDesigns(project.designs ?? []);
     setLayout(project.canvasLayout);
     setSelectedDesignIds(project.canvasLayout?.selectedDesignIds ?? []);
+    setAnalysisThinking(false);
     if (libraryId) localLayoutAuthorityRef.current.delete(canvasLayoutSaveKey(libraryId, project.id));
     setAnalysisCollapsed(false);
     imageTaskStatesRef.current.clear();
@@ -381,6 +388,15 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const designRowKeys = imageToolDesignRowKeys(tasks, designs);
   const designAnchors = imageToolDesignAnchors(tasks, designs);
   const analysisHistory = getAnalysisHistory(tasks, threadId, analysisTask);
+  const analysisRunning = analysisThinking || analysisTask?.state === 'queued' || analysisTask?.state === 'running';
+  const analysisDockView: AnalysisDockView = analysisRunning
+    ? 'thinking'
+    : analysisCollapsed
+      ? 'presence'
+      : analysisHistoryOpen
+        ? 'history'
+        : 'result';
+  const analysisPresenceMode: PresenceMode = analysisRunning ? 'thinking' : 'idle';
   useEffect(() => {
     let cancelled = false;
     const assetIds = analysisAssetKey ? analysisAssetKey.split('\0') : [];
@@ -402,6 +418,15 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     })();
     return () => { cancelled = true; };
   }, [analysisAssetKey, analysisTask?.id, project.id, libraryId]);
+  useEffect(() => {
+    if (analysisTask && analysisTask.state !== 'queued' && analysisTask.state !== 'running') setAnalysisThinking(false);
+  }, [analysisTask?.id, analysisTask?.state]);
+  useEffect(() => {
+    if (!analysisHistoryOpen && analysisHistoryWasOpenRef.current && !analysisRunning) {
+      window.requestAnimationFrame(() => analysisPresenceRef.current?.focus());
+    }
+    analysisHistoryWasOpenRef.current = analysisHistoryOpen;
+  }, [analysisHistoryOpen, analysisRunning]);
   const submit = async (): Promise<void> => {
     if (readOnly || !message.trim()) return;
     const currentMessage = message;
@@ -410,6 +435,9 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setAttachments([]);
     setReferencedAssetIds([]);
     setAnalysisAttachments(currentAttachments);
+    setAnalysisHistoryOpen(false);
+    setAnalysisCollapsed(false);
+    setAnalysisThinking(true);
     const userAttachments = currentAttachments.filter((attachment) => !attachment.assetId).map(toAttachment);
     const context = {
       ...(threadId ? { analysisThreadId: threadId, conversationParentTaskId: analysisTask?.id } : {}),
@@ -418,7 +446,16 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setConversationSubmitting(true);
     try {
       const task = await onSubmitConversation(currentMessage, userAttachments, context);
-      if (task) { setThreadId(task.analysisThreadId); setLatestConversation(task); setSelectedAnalysisTaskId(task.id); setAnalysisCollapsed(false); void refresh(); }
+      if (task) {
+        setThreadId(task.analysisThreadId);
+        setLatestConversation(task);
+        setSelectedAnalysisTaskId(task.id);
+        setAnalysisCollapsed(false);
+        setAnalysisThinking(task.state === 'queued' || task.state === 'running');
+        void refresh();
+      } else {
+        setAnalysisThinking(false);
+      }
     } finally {
       setConversationSubmitting(false);
     }
@@ -594,7 +631,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setReferencedAssetIds((current) => [...new Set([...current, ...copiedAttachments.flatMap((attachment) => attachment.assetId ? [attachment.assetId] : [])])]);
   };
   return (
-    <section className="project-canvas-surface" data-testid="project-canvas" aria-label={t(locale, '设计画布', 'Design canvas')}>
+    <section className="project-canvas-surface" data-testid="project-canvas" data-analysis-dock-view={analysisDockView} aria-label={t(locale, '设计画布', 'Design canvas')}>
       <div className={`project-canvas-toolbar project-canvas-toolbar--top${menuOpen ? ' project-canvas-toolbar--menu-open' : ''}`}>
         <div className="project-canvas-toolbar__group">
           <div className="project-canvas-menu">
@@ -638,19 +675,37 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
         readOnly={readOnly}
         onSelect={(designId) => selectDesigns(designId ? [designId] : [])}
         onAddToConversation={(designId) => { void addDesignToConversation(designId); }}
-        onCanvasBackground={() => setAnalysisCollapsed(true)}
+        onCanvasBackground={() => {
+          if (analysisRunning) return;
+          setAnalysisHistoryOpen(false);
+          setAnalysisCollapsed(true);
+        }}
         onLayoutChange={saveLayout}
         onImportImages={importImages}
       />
-      {analysisOpen && analysisTask && <div className={`project-canvas-analysis-panel ${analysisCollapsed ? 'is-collapsed project-canvas-analysis-panel--collapsed' : 'project-canvas-analysis-panel--expanded'}`}>
-        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} collapsed={analysisCollapsed} onGenerate={(count) => { void generate(count); }} onCopyRequest={copyAnalysisRequest} onExpand={() => setAnalysisCollapsed(false)} />
+      {analysisOpen && analysisTask && !analysisRunning && !analysisCollapsed && <div className="project-canvas-analysis-panel project-canvas-analysis-panel--expanded">
+        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} onGenerate={(count) => { void generate(count); }} onCopyRequest={copyAnalysisRequest} />
       </div>}
-      {analysisOpen && analysisHistory.length > 0 && <section className={`project-canvas-analysis-history${analysisHistoryOpen ? ' is-open' : ''}`} aria-label={t(locale, '分析历史列表', 'Analysis history')}>
-        {analysisHistoryOpen && <div className="project-canvas-analysis-history__list project-canvas-analysis-history__list-enter">{analysisHistory.map((task) => {
+      {analysisOpen && (analysisRunning || analysisHistory.length > 0) && !analysisHistoryOpen && <div className={`project-canvas-analysis-presence${analysisRunning ? ' project-canvas-analysis-presence--thinking' : ' project-canvas-analysis-presence--idle'}`} data-testid="project-canvas-analysis-presence" data-mode={analysisPresenceMode} aria-live="polite">
+        <button
+          type="button"
+          className="project-canvas-analysis-history__presence"
+          ref={analysisPresenceRef}
+          aria-label={analysisRunning
+            ? t(locale, '正在分析', 'Analyzing')
+            : t(locale, `打开分析历史，${analysisHistory.length} 条记录`, `Open analysis history, ${analysisHistory.length} records`)}
+          disabled={analysisRunning}
+          onClick={() => setAnalysisHistoryOpen(true)}
+        >
+          <NeuralPresence mode={analysisPresenceMode} compact historyCount={analysisHistory.length} />
+        </button>
+      </div>}
+      {analysisOpen && analysisHistory.length > 0 && !analysisRunning && analysisHistoryOpen && <section className="project-canvas-analysis-history is-open" aria-label={t(locale, '分析历史列表', 'Analysis history')}>
+        <div className="project-canvas-analysis-history__list project-canvas-analysis-history__list-enter">{analysisHistory.map((task) => {
           const status = getAnalysisStatus(task, locale);
           return <button type="button" className={`project-canvas-analysis-history__item${task.id === analysisTask?.id ? ' is-selected' : ''}`} key={task.id} onClick={() => selectAnalysis(task.id)}><span className={`project-canvas-analysis-history__status is-${status.kind}`} data-testid={`analysis-status-${status.kind}`}><Icon name={status.icon} size={13} /></span><span className="project-canvas-analysis-history__copy"><strong>{task.requestText || t(locale, '未命名分析', 'Untitled analysis')}</strong><span>{status.label}</span></span></button>;
-        })}</div>}
-        <button type="button" className="project-canvas-analysis-history__trigger" aria-expanded={analysisHistoryOpen} onClick={() => setAnalysisHistoryOpen((open) => !open)}>
+        })}</div>
+        <button type="button" className="project-canvas-analysis-history__trigger" aria-expanded={analysisHistoryOpen} onClick={() => setAnalysisHistoryOpen(false)}>
           <span>{t(locale, '分析历史', 'Analysis history')}</span><span className="project-canvas-analysis-history__count">{analysisHistory.length}</span><Icon name="chevron-down" size={14} />
         </button>
       </section>}

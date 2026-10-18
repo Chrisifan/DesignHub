@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProjectCanvas, getAnalysisHistory, getLatestConversationTask, getPendingCanvasDesigns, imageToolDesignAnchors } from './ProjectCanvas';
+import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { ProjectCanvasLayout, ProjectDesign } from '../../features/projects/metadata';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { ExportProjectDesignInput } from '../../platform/contracts';
@@ -74,7 +75,9 @@ const conversation = (input: Partial<TaskRecord> & Pick<TaskRecord, 'id' | 'crea
   createdAt: input.createdAt,
 });
 
-const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[]) => {
+type SubmitConversation = (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => Promise<TaskRecord | null>;
+
+const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[], onSubmitConversation: SubmitConversation = vi.fn(async () => null)) => {
   window.designhub = {
     listProjectDesigns: vi.fn(async () => []),
     loadProjectCanvasLayout: vi.fn(async () => null),
@@ -91,7 +94,7 @@ const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[]) => {
       notify={vi.fn()}
       onBack={vi.fn()}
       onConnections={vi.fn()}
-      onSubmitConversation={vi.fn(async () => null)}
+      onSubmitConversation={onSubmitConversation}
       onSubmitDesignGeneration={vi.fn(async () => null)}
     />,
   );
@@ -1513,16 +1516,58 @@ describe('ProjectCanvas design references', () => {
     expect(screen.getByRole('button', { name: /第二轮分析/u })).toBeVisible();
   });
 
-  it('collapses on canvas background and expands when the static dots are clicked', async () => {
+  it('renders collapsed history as a counted neural presence and opens history from it', async () => {
+    const tasks: TaskRecord[] = [
+      { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project', id: 'project-1' }, result: { text: '第一轮结果' } },
+      { ...conversation({ id: 'analysis-2', createdAt: '2026-09-21T11:00:00.000Z', requestText: '第二轮分析' }), source: { kind: 'project', id: 'project-1' }, result: { text: '第二轮结果' } },
+    ];
+    renderProjectCanvasWithTasks(tasks);
+
+    const presence = await screen.findByRole('button', { name: /打开分析历史.*2/u });
+    expect(presence).toBeInTheDocument();
+    fireEvent.click(presence);
+    expect(screen.getByLabelText('分析历史列表')).toHaveClass('is-open');
+    expect(screen.getByRole('button', { name: /第一轮分析/u })).toBeVisible();
+  });
+
+  it('keeps the completed result visible while history is expanded', async () => {
+    const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } };
+    renderProjectCanvasWithTasks([analysis]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /打开分析历史/u }));
+
+    expect(screen.getByRole('complementary', { name: '设计分析' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /第一轮分析/u })).toBeVisible();
+  });
+
+  it('closes history before entering thinking and hides the progress analysis panel', async () => {
+    const running = { ...conversation({ id: 'analysis-running', createdAt: '2026-09-21T12:00:00.000Z', requestText: '新需求', state: 'running' }), source: { kind: 'project' as const, id: 'project-1' } };
+    const submitConversation = vi.fn(async () => running);
+    renderProjectCanvasWithTasks([
+      { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } },
+    ], submitConversation);
+
+    fireEvent.click(await screen.findByRole('button', { name: /打开分析历史/u }));
+    fireEvent.change(screen.getByLabelText('设计需求'), { target: { value: '新需求' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(submitConversation).toHaveBeenCalledOnce();
+    expect(screen.queryByLabelText('分析历史列表')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'thinking');
+    expect(screen.queryByRole('complementary', { name: '设计分析' })).not.toBeInTheDocument();
+  });
+
+  it('returns to the counted presence on canvas background and opens history when clicked', async () => {
     const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } };
     renderProjectCanvasWithTasks([analysis]);
 
     fireEvent.click(await screen.findByRole('button', { name: '画布空白' }));
-    expect(document.querySelector('.project-canvas-analysis-panel')).toHaveClass('project-canvas-analysis-panel--collapsed');
-    expect(screen.getByTestId('collapsed-analysis-dots')).toBeInTheDocument();
+    expect(document.querySelector('.project-canvas-analysis-panel')).not.toBeInTheDocument();
+    const presence = screen.getByRole('button', { name: /打开分析历史.*1/u });
+    expect(presence).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '展开本轮分析' }));
-    expect(document.querySelector('.project-canvas-analysis-panel')).toHaveClass('project-canvas-analysis-panel--expanded');
-    expect(screen.queryByTestId('collapsed-analysis-dots')).not.toBeInTheDocument();
+    fireEvent.click(presence);
+    expect(screen.getByLabelText('分析历史列表')).toHaveClass('is-open');
+    expect(screen.getByRole('button', { name: /第一轮分析/u })).toBeVisible();
   });
 });
