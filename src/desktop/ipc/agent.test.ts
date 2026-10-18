@@ -42,9 +42,9 @@ it('accepts design generation only for a writable active workspace', async () =>
     expect(input.conversationTaskId).toBe('conversation-1');
     return task;
   });
-  await expect(submit(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1', baseRevisionId: null })).resolves.toEqual(task);
-  await expect(submit(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1', baseRevisionId: null })).resolves.toEqual(task);
-  await expect(submit(fixture.event, { libraryId: 'workspace-2', projectId: 'project-1', documentId: 'document-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1' })).resolves.toBeNull();
+  await expect(submit(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1', baseRevisionId: null })).resolves.toEqual(task);
+  await expect(submit(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1', baseRevisionId: null })).resolves.toEqual(task);
+  await expect(submit(fixture.event, { libraryId: 'workspace-2', projectId: 'project-1', conversationTaskId: 'conversation-1', connectionId: 'provider-1' })).resolves.toBeNull();
 });
 
 it('retries only a known generation slot in the active writable workspace', async () => {
@@ -120,19 +120,47 @@ it('retries only through the active trusted workspace', async () => {
 
 it('accepts image generation and edit only with validated project bindings', async () => {
   const fixture = makeFixture('http://localhost:5173/?preview=1');
-  const workspace = { library: { libraryId: 'workspace-1' } };
+  const workspace = { library: { libraryId: 'workspace-1', openMode: 'writable' } };
   const generated = createImageGenerationHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
     expect(input.prompt).toBe('poster');
     return task;
   });
-  await expect(generated(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'poster' })).resolves.toEqual(task);
-  await expect(generated(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: ' ' })).resolves.toBeNull();
+  await expect(generated(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: 'poster' })).resolves.toEqual(task);
+  await expect(generated(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: ' ' })).resolves.toBeNull();
   const edited = createImageEditHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
-    expect(input.image).toBeInstanceOf(Blob);
+    expect(input.sourceAssetId).toBe('asset-1');
     return task;
   });
-  await expect(edited(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'remove', image: new Blob(['image']) })).resolves.toEqual(task);
-  await expect(edited(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: 'remove background', image: new Blob(['image']), sourceAssetId: 'asset-1', tool: 'remove-background', toolParams: { edgeRefinement: 50 } })).resolves.toEqual(task);
+  await expect(edited(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: 'remove', sourceAssetId: 'asset-1' })).resolves.toEqual(task);
+  await expect(edited(fixture.event, { libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: 'remove background', sourceAssetId: 'asset-1', tool: 'remove-background', toolParams: { edgeRefinement: 50 } })).resolves.toEqual(task);
+});
+
+it('accepts image edits by managed source asset without renderer blobs', async () => {
+  const fixture = makeFixture('http://localhost:5173/?preview=1');
+  const workspace = { library: { libraryId: 'workspace-1', openMode: 'writable' } };
+  const submit = createImageEditHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
+    expect(input.sourceAssetId).toBe('asset-1');
+    expect(input).not.toHaveProperty('image');
+    return task;
+  });
+
+  await expect(submit(fixture.event, {
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    connectionId: 'provider-1',
+    prompt: 'remove background',
+    sourceAssetId: 'asset-1',
+    tool: 'remove-background',
+    toolParams: { edgeRefinement: 50 },
+  })).resolves.toEqual(task);
+  await expect(submit(fixture.event, {
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    connectionId: 'provider-1',
+    prompt: 'remove background',
+    tool: 'remove-background',
+    toolParams: { edgeRefinement: 50 },
+  })).resolves.toBeNull();
 });
 
 it('accepts image generation connection tests only from the active trusted workspace', async () => {
@@ -153,24 +181,24 @@ it('rejects image-edit tool parameters that do not match the declared tool schem
   const workspace = { library: { libraryId: 'workspace-1' } };
   const submit = createImageEditHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async () => task);
   await expect(submit(fixture.event, {
-    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'crop', image: new Blob(['image']),
+    libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: 'crop', sourceAssetId: 'asset-1',
     tool: 'smart-crop', toolParams: { width: -1, height: 640, focus: 'subject' },
   })).resolves.toBeNull();
 });
 
 it('accepts a managed mask asset id for image-edit tasks', async () => {
   const fixture = makeFixture('http://localhost:5173/?preview=1');
-  const workspace = { library: { libraryId: 'workspace-1' } };
+  const workspace = { library: { libraryId: 'workspace-1', openMode: 'writable' } };
   const submit = createImageEditHandler(fixture.window, 'http://localhost:5173/?preview=1', () => workspace as never, async (_workspace, input) => {
     expect(input.maskAssetId).toBe('asset-mask');
     return task;
   });
   await expect(submit(fixture.event, {
-    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'remove object', image: new Blob(['image']),
+    libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: 'remove object', sourceAssetId: 'asset-1',
     maskAssetId: 'asset-mask', tool: 'remove-object', toolParams: { feather: 10 }, region: { x: 1, y: 1, width: 4, height: 4 },
   })).resolves.toEqual(task);
   await expect(submit(fixture.event, {
-    libraryId: 'workspace-1', projectId: 'project-1', documentId: 'document-1', connectionId: 'provider-1', prompt: 'remove object', image: new Blob(['image']),
+    libraryId: 'workspace-1', projectId: 'project-1', connectionId: 'provider-1', prompt: 'remove object', sourceAssetId: 'asset-1',
     maskAssetId: ' ', tool: 'remove-object', toolParams: { feather: 10 }, region: { x: 1, y: 1, width: 4, height: 4 },
   })).resolves.toBeNull();
 });

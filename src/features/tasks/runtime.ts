@@ -1,4 +1,3 @@
-import type { RevisionStore } from '../revisions/commit-revision';
 import {
   type DesignGenerationSlot,
   type DesignGenerationSlotId,
@@ -15,9 +14,8 @@ import {
 
 import type { TaskCandidate, ToolCandidate } from './state';
 import type { VisualContextPlan } from '../agent/visual-context';
-import type { DesignSceneCandidate } from '../composition/design-scene-candidate';
 
-export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null; candidate?: TaskCandidate; candidates?: TaskCandidate[]; toolCandidate?: ToolCandidate; compositionCandidate?: DesignSceneCandidate };
+export type TaskResult = { sceneAssetId?: string; assetIds?: string[]; text?: string; imageCount?: number; cost?: number | null; candidate?: TaskCandidate; candidates?: TaskCandidate[]; toolCandidate?: ToolCandidate };
 
 export type TaskRuntime = {
   get: (taskId: string) => TaskRecord | undefined;
@@ -38,11 +36,8 @@ export type TaskRuntime = {
   ) => TaskRecord | undefined;
   retryGenerationSlot: (taskId: string, slotId: DesignGenerationSlotId) => TaskRecord | undefined;
   settleGenerationBatch: (taskId: string) => Promise<TaskRecord>;
-  publishCompositionCandidate: (task: Omit<TaskRecord, 'state' | 'cancelRequested' | 'attempt' | 'candidateResolution'>) => Promise<TaskRecord>;
-  resolveCompositionCandidate: (taskId: string, resolution: 'confirmed' | 'discarded') => Promise<TaskRecord>;
   retry: (taskId: string) => TaskRecord | undefined;
   markUnknown: (taskId: string, errorCode?: string) => TaskRecord | undefined;
-  finish: (taskId: string, result: TaskResult, revisionStore: RevisionStore) => Promise<TaskRecord>;
   flush: () => Promise<void>;
 };
 
@@ -53,7 +48,6 @@ export type TaskRuntimeOptions = {
 
 export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime => {
   const tasks = new Map<string, TaskRecord>();
-  const results = new Map<string, string>();
   let recoveredInterruptedTask = false;
   options.initialTasks?.forEach((task) => {
     if (task.capability === 'conversation' && task.state === 'completed' && !task.result?.text?.trim()) {
@@ -266,33 +260,6 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     await persistence;
     return structuredClone(settled);
   };
-  const publishCompositionCandidate: TaskRuntime['publishCompositionCandidate'] = async (input) => {
-    const existing = tasks.get(input.id);
-    if (existing) {
-      if (existing.result?.compositionCandidate) return structuredClone(existing);
-      throw new Error('TASK_ALREADY_EXISTS');
-    }
-    if (!input.result?.compositionCandidate) throw new Error('COMPOSITION_CANDIDATE_REQUIRED');
-    const completed = completeTask(createTaskState({ ...input, candidateResolution: undefined, updatedAt: new Date().toISOString() }));
-    tasks.set(completed.id, completed);
-    schedulePersistence();
-    await persistence;
-    return structuredClone(completed);
-  };
-  const resolveCompositionCandidate: TaskRuntime['resolveCompositionCandidate'] = async (taskId, resolution) => {
-    const task = tasks.get(taskId);
-    if (!task) throw new Error('TASK_NOT_FOUND');
-    if (task.state !== 'completed' || !task.result?.compositionCandidate) throw new Error('COMPOSITION_CANDIDATE_REQUIRED');
-    if (task.candidateResolution) {
-      if (task.candidateResolution !== resolution) throw new Error('CANDIDATE_ALREADY_RESOLVED');
-      return structuredClone(task);
-    }
-    const resolved: TaskRecord = { ...task, candidateResolution: resolution, updatedAt: new Date().toISOString() };
-    tasks.set(taskId, resolved);
-    schedulePersistence();
-    await persistence;
-    return structuredClone(resolved);
-  };
   const retry = (taskId: string): TaskRecord | undefined => {
     const task = tasks.get(taskId);
     if (!task) return undefined;
@@ -319,36 +286,6 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     schedulePersistence();
     return structuredClone(unknown);
   };
-  const finish = async (taskId: string, result: TaskResult, revisionStore: RevisionStore): Promise<TaskRecord> => {
-    const task = tasks.get(taskId);
-    if (!task) throw new Error('TASK_NOT_FOUND');
-    const existingRevision = results.get(taskId);
-    if (existingRevision) return structuredClone({ ...task, state: 'completed' });
-    if (task.state === 'completed' || task.state === 'failed' || task.state === 'cancelled' || task.state === 'unknown') return structuredClone(task);
-    if (task.cancelRequested) {
-      const cancelled = completeTask({ ...task, result: { ...result }, updatedAt: new Date().toISOString() });
-      tasks.set(taskId, cancelled);
-      schedulePersistence();
-      await persistence;
-      return structuredClone(cancelled);
-    }
-    if (!task.documentId || !task.source?.id || !result.sceneAssetId) throw new Error('TASK_BINDING_REQUIRED');
-    const revision = await revisionStore.commitRevision({
-      projectId: task.source.id,
-      documentId: task.documentId,
-      baseRevisionId: task.baseRevisionId ?? null,
-      operationId: task.requestId,
-      sceneAssetId: result.sceneAssetId,
-      assetIds: result.assetIds ?? [],
-      contributions: task.designerVersionId ? [{ designerVersionId: task.designerVersionId, role: 'revision' }] : [],
-    });
-    results.set(taskId, revision.revisionId);
-    const completed = completeTask({ ...task, result: { ...result }, updatedAt: new Date().toISOString() });
-    tasks.set(taskId, completed);
-    schedulePersistence();
-    await persistence;
-    return structuredClone(completed);
-  };
   const flush = async (): Promise<void> => {
     if (progressTimer) {
       clearTimeout(progressTimer);
@@ -360,5 +297,5 @@ export const createTaskRuntime = (options: TaskRuntimeOptions = {}): TaskRuntime
     }
     await persistence;
   };
-  return { get, list, start, run, cancel, complete, fail, updateProgress, updateRemoteMetadata, updateVisualContextPlan, updateGenerationSlot, retryGenerationSlot, settleGenerationBatch, publishCompositionCandidate, resolveCompositionCandidate, retry, markUnknown, finish, flush };
+  return { get, list, start, run, cancel, complete, fail, updateProgress, updateRemoteMetadata, updateVisualContextPlan, updateGenerationSlot, retryGenerationSlot, settleGenerationBatch, retry, markUnknown, flush };
 };

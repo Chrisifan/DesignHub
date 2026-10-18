@@ -45,6 +45,10 @@
   justify-content: flex-start;
 }
 
+.project-canvas-toolbar--top.project-canvas-toolbar--menu-open {
+  z-index: 5;
+}
+
 .project-canvas-toolbar--bottom {
   top: auto;
   bottom: 18px;
@@ -144,13 +148,6 @@
 
 .project-canvas-toolbar__group { align-self: flex-start; }
 
-.project-canvas-toolbar__documents {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 8px;
-}
-
 .project-canvas-image-tools {
   position: absolute;
   z-index: 4;
@@ -191,6 +188,7 @@
   width: 44px;
   padding: 5px;
   transform: none;
+  pointer-events: auto;
 }
 
 .project-canvas-image-tools > .project-canvas-toolbar__actions .icon-button {
@@ -293,6 +291,65 @@
   background: transparent;
 }
 
+.project-canvas-analysis-presence {
+  position: absolute;
+  z-index: 10;
+  top: max(78px, calc(100% - 130px));
+  right: 16px;
+  width: 112px;
+  height: 112px;
+  transition: top 520ms cubic-bezier(.2, .8, .2, 1), opacity 180ms ease;
+  pointer-events: none;
+}
+
+.project-canvas-analysis-presence--thinking {
+  top: 78px;
+}
+
+.project-canvas-analysis-history__presence {
+  display: grid;
+  width: 112px;
+  height: 112px;
+  padding: 0;
+  border: 1px solid var(--shell-glass-border);
+  border-radius: 50%;
+  color: var(--on-surface);
+  background: var(--project-canvas-panel-background);
+  box-shadow: var(--project-canvas-panel-shadow);
+  -webkit-backdrop-filter: var(--shell-backdrop);
+  backdrop-filter: var(--shell-backdrop);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.project-canvas-analysis-history__presence:hover {
+  border-color: color-mix(in srgb, var(--primary) 56%, var(--shell-glass-border));
+}
+
+.project-canvas-analysis-history__presence:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+
+.project-canvas-analysis-presence .neural-presence {
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  height: 112px;
+}
+
+.project-canvas-analysis-presence .neural-presence__canvas {
+  pointer-events: none;
+}
+
+.project-canvas-analysis-presence .neural-presence__status {
+  pointer-events: none;
+}
+
+.project-canvas-analysis-presence[aria-live] {
+  border-radius: 50%;
+}
+
 .project-canvas-analysis-history {
   position: absolute;
   z-index: 9;
@@ -385,4 +442,13 @@
 @keyframes project-analysis-history-enter {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-canvas-analysis-presence {
+    transition: opacity 160ms ease;
+  }
+
+  .project-canvas-analysis-presence { top: max(78px, calc(100% - 130px)); }
+  .project-canvas-analysis-presence--thinking { top: 78px; }
 }

@@ -58,6 +58,21 @@ const isWithin = (parent: string, child: string): boolean => {
   const relativePath = relative(resolve(parent), resolve(child));
   return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath));
 };
+const resolveRegisteredResult = async (library: ProjectLibraryHandle, input: { jobId: string; path: string }): Promise<{ path: string; mimeType: string } | null> => {
+  try {
+    const stored = await storeFor(library).load(input.jobId);
+    if (!stored || !isWithin(stored.job.outputRoot, input.path) || !stored.items.some((item) => item.resultPath === input.path)) return null;
+    const extension = extname(input.path).toLowerCase();
+    const mimeType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : null;
+    if (!mimeType) return null;
+    const { lstat, realpath } = await import('node:fs/promises');
+    const [stat, realRoot, realResult] = await Promise.all([lstat(input.path), realpath(stored.job.outputRoot), realpath(input.path)]);
+    if (stat.isSymbolicLink() || !stat.isFile() || !isWithin(realRoot, realResult)) return null;
+    return { path: input.path, mimeType };
+  } catch {
+    return null;
+  }
+};
 const outputRootFor = (input: { outputRoot: string; resultFolderName?: string; tool: BatchImageTool }): { outputRoot: string; resultFolderName: string } => {
   const resultFolderName = input.resultFolderName ?? `${input.tool}-${randomUUID().slice(0, 8)}`;
   return { resultFolderName, outputRoot: join(resolve(input.outputRoot), resultFolderName) };
@@ -216,15 +231,12 @@ export const createImageToolIpcHandlers = (deps: ImageToolIpcDeps) => {
     readResult: async (event: Request, input: unknown): Promise<string | null> => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isPathRef(input)) return null;
       const library = active(deps, input.libraryId); if (!library) return null;
-      const stored = await storeFor(library).load(input.jobId);
-      if (!stored || !isWithin(stored.job.outputRoot, input.path) || !stored.items.some((item) => item.resultPath === input.path)) return null;
-      const extension = extname(input.path).toLowerCase();
-      const mimeType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : extension === '.jpg' || extension === '.jpeg' ? 'image/jpeg' : null;
-      if (!mimeType) return null;
+      const result = await resolveRegisteredResult(library, input);
+      if (!result) return null;
       try {
         const { readFile } = await import('node:fs/promises');
-        const bytes = await readFile(input.path);
-        return `data:${mimeType};base64,${bytes.toString('base64')}`;
+        const bytes = await readFile(result.path);
+        return `data:${result.mimeType};base64,${bytes.toString('base64')}`;
       } catch {
         return null;
       }
@@ -232,16 +244,16 @@ export const createImageToolIpcHandlers = (deps: ImageToolIpcDeps) => {
     openResult: async (event: Request, input: unknown) => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isPathRef(input) || !deps.openPath) return false;
       const library = active(deps, input.libraryId); if (!library) return false;
-      const snapshot = await storeFor(library).load(input.jobId); const path = input.path;
-      if (!snapshot || !isWithin(snapshot.job.outputRoot, path) || !snapshot.items.some((item) => item.resultPath === path)) return false;
-      return (await deps.openPath(path)) === '';
+      const result = await resolveRegisteredResult(library, input);
+      if (!result) return false;
+      return (await deps.openPath(result.path)) === '';
     },
     revealResult: async (event: Request, input: unknown) => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isPathRef(input) || !deps.revealPath) return false;
       const library = active(deps, input.libraryId); if (!library) return false;
-      const snapshot = await storeFor(library).load(input.jobId); const path = input.path;
-      if (!snapshot || !isWithin(snapshot.job.outputRoot, path)) return false;
-      deps.revealPath(path); return true;
+      const result = await resolveRegisteredResult(library, input);
+      if (!result) return false;
+      deps.revealPath(result.path); return true;
     },
     openOutput: async (event: Request, input: unknown) => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isPathRef(input) || !deps.openPath) return false;
@@ -254,14 +266,13 @@ export const createImageToolIpcHandlers = (deps: ImageToolIpcDeps) => {
       if (!isTrustedProjectLibraryRequest(event, deps.window, deps.trustedUrl) || !isImportRef(input) || !deps.importAsset) return null;
       const library = active(deps, input.libraryId); if (!library) return null;
       requireWritable(library);
-      const stored = await storeFor(library).load(input.jobId);
-      if (!stored || !isWithin(stored.job.outputRoot, input.path) || !stored.items.some((item) => item.resultPath === input.path)) return null;
+      const result = await resolveRegisteredResult(library, input);
+      if (!result) return null;
       const { readFile } = await import('node:fs/promises');
-      const { basename, extname } = await import('node:path');
-      const bytes = new Uint8Array(await readFile(input.path));
-      const extension = extname(input.path).toLowerCase();
-      const mimeType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg';
-      return deps.importAsset(library, { libraryId: input.libraryId, projectId: input.projectId, items: [{ name: basename(input.path), mimeType, data: bytes }] });
+      const { basename } = await import('node:path');
+      const bytes = await readFile(result.path).catch(() => null);
+      if (!bytes) return null;
+      return deps.importAsset(library, { libraryId: input.libraryId, projectId: input.projectId, items: [{ name: basename(result.path), mimeType: result.mimeType, data: new Uint8Array(bytes) }] });
     },
   };
 };

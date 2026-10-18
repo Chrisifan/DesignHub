@@ -1,23 +1,33 @@
 import { expect, test } from 'playwright/test';
 import { gotoTestWorkspace, navigateFromUserMenu } from './test-workspace';
 
-test('long floating layers remain scrollable within a compact canvas', async ({ page }) => {
+test('project canvas persists layout and returns home through project actions', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 720 });
-  await gotoTestWorkspace(page, {
-    version: 1, id: 'many-layers', width: 1080, height: 1440,
-    layers: Array.from({ length: 30 }, (_, index) => ({
-      id: `layer-${index}`, type: 'text' as const, text: `Layer ${index}`, fontFamily: 'sans-serif', fontSize: 24, fontWeight: 'normal', align: 'left' as const, color: '#24262b', x: 100, y: 100 + index * 30, width: 800, height: 30, rotation: 0, opacity: 1, visible: true, locked: false,
-    })),
-  });
+  await gotoTestWorkspace(page);
   await page.getByRole('button', { name: '春间市集', exact: true }).click();
-  await page.getByRole('button', { name: '打开主海报', exact: true }).click();
-  await page.getByRole('button', { name: '图层', exact: true }).click();
   const canvas = page.getByRole('region', { name: '设计画布', exact: true });
-  const panel = canvas.locator('.canvas-layer-float');
-  const [canvasBox, panelBox] = await Promise.all([canvas.boundingBox(), panel.boundingBox()]);
-  expect(Boolean(canvasBox && panelBox && panelBox.y + panelBox.height <= canvasBox.y + canvasBox.height)).toBe(true);
-  await panel.getByRole('button', { name: 'Layer 0', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: '文字内容', exact: true })).toHaveValue('Layer 0');
+  const stage = canvas.locator('.project-canvas-stage canvas');
+  await expect(stage).toBeVisible();
+  await stage.click({ position: { x: 300, y: 200 } });
+  const exportButton = canvas.getByRole('button', { name: '导出所选设计稿', exact: true });
+  await expect(exportButton).toBeEnabled();
+  await exportButton.click();
+  await expect(page.getByRole('status')).toHaveText('设计稿已导出。');
+  await stage.hover();
+  await page.mouse.wheel(0, -120);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('designhub.e2e.canvas-layout.project-e2e'))).not.toBeNull();
+  const savedLayout = await page.evaluate(() => JSON.parse(localStorage.getItem('designhub.e2e.canvas-layout.project-e2e') ?? '{}') as {
+    viewport?: { zoom?: number };
+    selectedDesignIds?: string[];
+  });
+  expect(savedLayout.viewport?.zoom).toBeGreaterThan(0.2);
+  expect(savedLayout.viewport?.zoom).not.toBe(1);
+  expect(savedLayout.selectedDesignIds).toEqual(['design-e2e-source']);
+  await canvas.getByRole('button', { name: '项目操作', exact: true }).click();
+  await canvas.getByRole('menuitem', { name: '返回首页', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '创作中心', exact: true })).toBeAttached();
+  await page.getByRole('button', { name: '春间市集', exact: true }).click();
+  await expect(page.getByRole('region', { name: '设计画布', exact: true }).getByRole('button', { name: '导出所选设计稿', exact: true })).toBeEnabled();
 });
 
 for (const width of [1280, 1024]) {
@@ -37,13 +47,7 @@ for (const width of [1280, 1024]) {
           },
           { mode: theme, language: locale },
         );
-        await gotoTestWorkspace(page, {
-          version: 1, id: 'layout-scene', width: 1080, height: 1440,
-          layers: [
-            { id: 'layout-shape', type: 'shape', kind: 'rect', fill: '#b8ddd0', stroke: '#b8ddd0', strokeWidth: 0, x: 100, y: 420, width: 880, height: 720, rotation: 0, opacity: 1, visible: true, locked: false },
-            { id: 'layout-title', type: 'text', text: 'Spring Market', fontFamily: 'sans-serif', fontSize: 76, fontWeight: 'bold', align: 'left', color: '#24262b', x: 100, y: 180, width: 880, height: 120, rotation: 0, opacity: 1, visible: true, locked: false },
-          ],
-        });
+        await gotoTestWorkspace(page);
         const english = locale === 'en';
         await expect(
           page.getByRole('heading', {
@@ -71,11 +75,6 @@ for (const width of [1280, 1024]) {
             name: /Spring in bloom|春间市集/,
           })
           .click();
-        await page
-          .getByRole('button', {
-            name: english ? /Open (main poster|主海报)/ : /打开主海报|Open 主海报/,
-          })
-          .click();
         await expect(
           page.getByRole('region', {
             name: english ? 'Design canvas' : '设计画布',
@@ -86,95 +85,43 @@ for (const width of [1280, 1024]) {
           name: english ? 'Design canvas' : '设计画布',
           exact: true,
         });
-        await expect(canvas.locator('.workbench-ruler--horizontal')).toBeVisible();
-        await expect(canvas.locator('.workbench-ruler--vertical')).toBeVisible();
-        await expect(page.getByRole('toolbar', { name: english ? 'Canvas tools' : '画布工具' })).toBeVisible();
-        await expect(page.getByRole('toolbar', { name: english ? 'Context tools' : '上下文工具' })).toBeVisible();
+        await expect(canvas.locator('.project-canvas-stage canvas')).toBeVisible();
+        await expect(canvas.getByRole('button', { name: english ? 'Project actions' : '项目操作', exact: true })).toBeVisible();
+        await expect(canvas.getByRole('toolbar', { name: english ? 'Image tools' : '图片工具', exact: true })).toBeVisible();
         await expect(page.getByRole('form', { name: english ? 'AI command dock' : 'AI 操作坞' })).toBeVisible();
-        await expect(canvas.locator('.conversation-dock--compact')).toHaveCSS('position', 'absolute');
-        await expect(
-          page.getByRole('button', {
-            name: english ? 'Back to project' : '返回项目',
-            exact: true,
-          }),
-        ).toBeInViewport();
-        await expect(
-          page.getByRole('button', {
-            name: english ? 'Zoom in' : '放大',
-            exact: true,
-          }),
-        ).toBeVisible();
-        const gridButton = page.getByRole('button', {
-          name: english ? 'Grid' : '网格',
-          exact: true,
-        });
-        await expect(gridButton).toBeVisible();
-        await gridButton.hover();
-        const gridTooltip = page.getByRole('tooltip');
-        await expect(gridTooltip).toHaveText(english ? 'Grid' : '网格');
-        const [gridButtonBox, gridTooltipBox] = await Promise.all([gridButton.boundingBox(), gridTooltip.boundingBox()]);
-        expect(gridButtonBox).not.toBeNull();
-        expect(gridTooltipBox).not.toBeNull();
-        expect(gridTooltipBox!.y + gridTooltipBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
-        await page.getByRole('button', { name: english ? 'Layers' : '图层', exact: true }).click();
-        const layersPanel = page.getByRole('complementary', { name: english ? 'Layers' : '图层', exact: true });
-        await expect(layersPanel).toBeVisible();
-        await layersPanel.getByRole('button', { name: 'Spring Market', exact: true }).click();
-        const inspector = page.getByRole('complementary', { name: english ? 'Inspector' : '检查器', exact: true });
-        await expect(inspector).toBeVisible();
-        await expect(inspector.getByRole('textbox', { name: english ? 'Text content' : '文字内容', exact: true })).toHaveValue('Spring Market');
-        const [stageBox, inspectorBox] = await Promise.all([canvas.boundingBox(), canvas.locator('.canvas-inspector-float').boundingBox()]);
-        expect(Boolean(stageBox && inspectorBox
-          && inspectorBox.x >= stageBox.x
-          && inspectorBox.x + inspectorBox.width <= stageBox.x + stageBox.width
-          && inspectorBox.y >= stageBox.y
-          && inspectorBox.y + inspectorBox.height <= stageBox.y + stageBox.height)).toBe(true);
+        await expect(canvas.locator('.conversation-dock--compact')).toHaveCSS('position', 'relative');
+        await expect(canvas.locator('.workbench-ruler--horizontal, .workbench-ruler--vertical, .canvas-layer-float, .canvas-inspector-float')).toHaveCount(0);
+        await canvas.locator('.project-canvas-stage canvas').click({ position: { x: 300, y: 200 } });
+        await expect(canvas.getByRole('button', { name: english ? 'Export selected design' : '导出所选设计稿', exact: true })).toBeEnabled();
         expect(await canvas.locator('canvas').evaluate((element: HTMLCanvasElement) => {
           const context = element.getContext('2d');
           if (!context) return false;
           const pixels = context.getImageData(0, 0, element.width, element.height).data;
           return pixels.some((value, index) => index % 4 === 3 && value > 0);
         })).toBe(true);
-        await page.getByRole('button', { name: english ? 'Conversation' : '对话', exact: true }).click();
-        await expect(page.getByRole('textbox', { name: english ? /Edit request|Design request/ : /修改说明|设计需求/ })).toBeFocused();
-        const [canvasBox, layersBox] = await Promise.all([canvas.boundingBox(), layersPanel.boundingBox()]);
-        const overlaysInsideCanvas = Boolean(canvasBox && layersBox
-          && layersBox.x >= canvasBox.x
-          && layersBox.x + layersBox.width <= canvasBox.x + canvasBox.width
-          && layersBox.y >= canvasBox.y
-          && layersBox.y + layersBox.height <= canvasBox.y + canvasBox.height);
-        expect(overlaysInsideCanvas).toBe(true);
         const overflow = await page.evaluate(
           () => document.documentElement.scrollWidth > window.innerWidth,
         );
         expect(overflow).toBe(false);
         await page.screenshot({
-          path: testInfo.outputPath('workbench.png'),
+          path: testInfo.outputPath('project-canvas.png'),
           fullPage: true,
         });
-        await page
-          .getByRole('button', {
-            name: english ? 'Back to project' : '返回项目',
-            exact: true,
-          })
-          .click();
+        await canvas.getByRole('button', { name: english ? 'Project actions' : '项目操作', exact: true }).click();
+        await canvas.getByRole('menuitem', { name: english ? 'Back to home' : '返回首页', exact: true }).click();
         for (const name of english
           ? [
               'Designers',
               'Assets',
-              'Brand kits',
               'Connections',
               'Model tasks',
-              'Delivery',
               'Trash & backups',
             ]
           : [
               '设计师',
               '素材库',
-              '品牌包',
               '模型连接',
               '模型任务',
-              '导出交付',
               '废纸篓与备份',
             ]) {
           await navigateFromUserMenu(page, name);
@@ -260,13 +207,17 @@ for (const theme of ['dark', 'light'] as const) {
     expect(shell.backdrop).toContain('radial-gradient');
 
     await page.getByRole('button', { name: /春间市集|Spring in bloom/ }).click();
-    await page.getByRole('button', { name: '打开主海报', exact: true }).click();
     await expect(page.locator('.studio-sidebar')).toHaveCount(0);
+    const toolbarStyle = await page.locator('.project-canvas-toolbar--bottom').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { bottom: style.bottom };
+    });
     const dockStyle = await page.locator('.conversation-dock--compact').evaluate((element) => {
       const style = getComputedStyle(element);
-      return { bottom: style.bottom, backdropFilter: style.backdropFilter };
+      return { position: style.position, backdropFilter: style.backdropFilter };
     });
-    expect(dockStyle.bottom).toBe('8px');
+    expect(toolbarStyle.bottom).toBe('18px');
+    expect(dockStyle.position).toBe('relative');
     expect(dockStyle.backdropFilter === 'none' || dockStyle.backdropFilter.includes('blur(')).toBe(true);
   });
 }
@@ -364,7 +315,7 @@ test('expanded dock creates a project with an attachment and hands analysis to t
   await expect(page.getByRole('textbox', { name: '设计需求' })).toHaveValue('');
 });
 
-test('submits background removal through the selected image connection', async ({ page }) => {
+test('submits background removal through the selected image connection', async ({ page }, testInfo) => {
   await gotoTestWorkspace(page, {
     version: 1,
     id: 'background-removal-scene',
@@ -393,6 +344,53 @@ test('submits background removal through the selected image connection', async (
   await page.getByRole('dialog', { name: '去除背景', exact: true }).getByRole('button', { name: '执行', exact: true }).click();
 
   await expect(page.locator('.studio-toast')).toContainText('去除背景任务已排队');
+  await expect(page.getByRole('dialog', { name: '去除背景', exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('project-canvas-stage')).toHaveAttribute('data-pending-design-count', '1');
+  await page.screenshot({ path: testInfo.outputPath('image-tool-placeholder.png'), fullPage: true });
+});
+
+test('image tool modal sizes short content without expanding the scroll area', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1200 });
+  await gotoTestWorkspace(page, {
+    version: 1,
+    id: 'replace-background-modal-layout',
+    width: 1080,
+    height: 1440,
+    layers: [{
+      id: 'source-image', type: 'image', assetId: 'asset-source-image', role: 'content',
+      x: 80, y: 80, width: 920, height: 920, rotation: 0, opacity: 1, visible: true, locked: false,
+    }],
+  }, { imageConnected: true });
+
+  await page.getByRole('button', { name: '春间市集', exact: true }).click();
+  await page.locator('.project-canvas-stage canvas').click({ position: { x: 300, y: 200 } });
+  await page.getByRole('button', { name: '替换背景', exact: true }).click();
+
+  const dialog = page.getByRole('dialog', { name: '替换背景', exact: true });
+  const content = dialog.locator('.dialog-content');
+  const footer = dialog.locator('.dialog-footer');
+  await page.waitForTimeout(100);
+  await expect(footer).toBeVisible();
+  const [dialogBox, contentBox, footerBox] = await Promise.all([
+    dialog.boundingBox(),
+    content.boundingBox(),
+    footer.boundingBox(),
+  ]);
+  expect(dialogBox).not.toBeNull();
+  expect(contentBox).not.toBeNull();
+  expect(footerBox).not.toBeNull();
+  const lastFieldBox = await content.locator('.ui-field').last().boundingBox();
+  expect(lastFieldBox).not.toBeNull();
+  expect(contentBox!.height).toBeLessThan(520);
+  expect(Math.abs((contentBox!.y + contentBox!.height) - footerBox!.y)).toBeLessThan(1);
+  expect(footerBox!.y - lastFieldBox!.y - lastFieldBox!.height).toBeLessThanOrEqual(28);
+  await content.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  const scrolledLastFieldBox = await content.locator('.ui-field').last().boundingBox();
+  expect(await content.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
+  expect(scrolledLastFieldBox).not.toBeNull();
+  expect(footerBox!.y - scrolledLastFieldBox!.y - scrolledLastFieldBox!.height).toBeLessThanOrEqual(28);
+  expect(await content.evaluate((element) => element.scrollTop)).toBe(0);
+  expect(await dialog.evaluate((element) => document.activeElement === element)).toBe(true);
 });
 
 for (const width of [1280, 1024]) {
@@ -442,6 +440,18 @@ for (const width of [1280, 1024]) {
     expect(downloadGroupBox).not.toBeNull();
     expect(imageToolsBox).not.toBeNull();
     expect(Math.abs(downloadGroupBox!.width - imageToolsBox!.width)).toBeLessThan(1);
+    const projectActions = topToolbar.getByRole('button', { name: '项目操作', exact: true });
+    await projectActions.click();
+    const projectMenu = projectCanvas.getByRole('menu');
+    await expect(projectMenu).toBeVisible();
+    const downloadButtonBox = await leftToolbar.getByRole('button', { name: '导出所选设计稿', exact: true }).boundingBox();
+    expect(await page.locator('.project-canvas-toolbar--top').evaluate((element) => Number(getComputedStyle(element).zIndex))).toBeGreaterThan(await leftToolbar.evaluate((element) => Number(getComputedStyle(element).zIndex)));
+    expect(downloadButtonBox).not.toBeNull();
+    expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('.project-canvas-menu__popover') !== null, {
+      x: downloadButtonBox!.x + downloadButtonBox!.width / 2,
+      y: downloadButtonBox!.y + downloadButtonBox!.height / 2,
+    })).toBe(true);
+    await projectActions.click();
     const [canvasBox, leftToolbarBox] = await Promise.all([projectCanvas.boundingBox(), leftToolbar.boundingBox()]);
     expect(canvasBox).not.toBeNull();
     expect(leftToolbarBox).not.toBeNull();
@@ -450,6 +460,15 @@ for (const width of [1280, 1024]) {
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeVisible();
       await expect(projectCanvas.getByRole('button', { name: label, exact: true })).toBeEnabled();
     }
+    const removeBackgroundButton = leftToolbar.getByRole('button', { name: '去除背景', exact: true });
+    await removeBackgroundButton.hover();
+    const sideTooltip = page.getByRole('tooltip');
+    await expect(sideTooltip).toHaveText('去除背景');
+    const [removeBackgroundBox, sideTooltipBox] = await Promise.all([removeBackgroundButton.boundingBox(), sideTooltip.boundingBox()]);
+    expect(removeBackgroundBox).not.toBeNull();
+    expect(sideTooltipBox).not.toBeNull();
+    expect(sideTooltipBox!.x).toBeGreaterThanOrEqual(removeBackgroundBox!.x + removeBackgroundBox!.width);
+    expect(sideTooltipBox!.y + sideTooltipBox!.height / 2).toBeCloseTo(removeBackgroundBox!.y + removeBackgroundBox!.height / 2, 0);
     const toolBoxes = await Promise.all(['导出所选设计稿', '去除背景', '替换背景', '移除对象', '局部重绘', '扩展图片', '智能裁切', '放大图像', '调整尺寸', '移除水印']
       .map((label) => leftToolbar.getByRole('button', { name: label, exact: true }).boundingBox()));
     const visibleBoxes = toolBoxes.filter((box): box is NonNullable<typeof box> => box !== null);
@@ -696,7 +715,7 @@ test('compact project rows keep cover, title, and metadata aligned', async ({ pa
   expect(metrics.every(({ cover }) => cover.height === 48)).toBe(true);
 });
 
-test('project detail uses the cover-led responsive document layout', async ({ page }, testInfo) => {
+test('project detail uses the cover-led responsive project layout', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await gotoTestWorkspace(page);
   await page.getByRole('button', { name: '春间市集', exact: true }).click();
@@ -712,8 +731,6 @@ test('project detail uses the cover-led responsive document layout', async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('project-canvas-narrow.png'), fullPage: true });
 
-  const openDocument = canvas.getByRole('button', { name: '打开主海报', exact: true });
-  await openDocument.click();
   await expect(page.getByRole('region', { name: '设计画布', exact: true })).toBeVisible();
 });
 

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { normalizeProviderConfig, normalizeProviderToolCapabilities, providerCredentialAccount, validateProviderToolCapability, type ProviderConfig } from './config';
+import { defaultProviderToolCapabilities, normalizeProviderConfig, normalizeProviderToolCapabilities, providerCredentialAccount, validateProviderToolCapability, type ProviderConfig } from './config';
 
 it('accepts canonical conversation and image profiles with independent model maps', () => {
   expect(normalizeProviderConfig({
@@ -128,4 +128,11 @@ it('validates tool, mask, dimensions, transparency and parameter range requireme
   expect(validateProviderToolCapability({ tool: 'remove-object', width: 2048 }, capabilities)).toMatchObject({ ok: false, reason: 'SIZE_UNSUPPORTED' });
   expect(validateProviderToolCapability({ tool: 'remove-object', params: { feather: 21 } }, capabilities)).toMatchObject({ ok: false, reason: 'PARAMETER_OUT_OF_RANGE' });
   expect(validateProviderToolCapability({ tool: 'inpaint' }, capabilities)).toMatchObject({ ok: false, reason: 'TOOL_UNSUPPORTED' });
+});
+
+it('declares generated outpainting masks for expand in the default capability set', () => {
+  expect(validateProviderToolCapability({ tool: 'expand', hasMask: true }, defaultProviderToolCapabilities)).toMatchObject({
+    ok: true,
+    capability: { tool: 'expand', supportsMask: true },
+  });
 });

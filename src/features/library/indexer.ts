@@ -3,7 +3,6 @@ import { matchesDesigner, matchesSearch, type SearchableItem } from './filter';
 export type SearchRecord = SearchableItem & {
   libraryId: string;
   projectId: string;
-  documentId: string;
   finalized?: boolean;
   contributorIds: string[];
 };
@@ -17,12 +16,12 @@ export type SearchQuery = {
   tag?: string;
 };
 
-const allowedKeys = ['libraryId', 'projectId', 'documentId', 'title', 'brief', 'brand', 'size', 'finalized', 'tags', 'updatedAt', 'contributorIds'] as const;
+const allowedKeys = ['libraryId', 'projectId', 'title', 'brief', 'size', 'finalized', 'tags', 'updatedAt', 'contributorIds'] as const;
 
 export const buildSearchIndex = (records: readonly SearchRecord[]): SearchIndexItem[] => {
   const seen = new Set<string>();
   return records.flatMap((record) => {
-    const key = `${record.libraryId}:${record.projectId}:${record.documentId}`;
+    const key = `${record.libraryId}:${record.projectId}`;
     if (seen.has(key)) return [];
     seen.add(key);
     const clean = Object.fromEntries(allowedKeys.flatMap((field) => {

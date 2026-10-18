@@ -30,6 +30,21 @@ type ParamProps = {
   setFormat: (value: "png" | "jpeg" | "webp") => void;
   setBackground: (value: string) => void;
 };
+
+const parameterHelp = (locale: Locale, key: string): string => {
+  const messages: Record<string, [string, string]> = {
+    connection: ['选择用于远端处理的图片编辑模型连接。', 'Choose the image editing model connection for remote processing.'],
+    scale: ['选择输出图像相对于原图的放大倍率。', 'Choose the output scale relative to the source image.'],
+    preserveDetails: ['选择放大时更优先保留的细节类型。', 'Choose which detail type to prioritize during upscaling.'],
+    width: ['输出图片的目标宽度。', 'Target width of the output image.'],
+    height: ['输出图片的目标高度。', 'Target height of the output image.'],
+    fit: ['选择目标尺寸与原图比例不一致时的适配方式。', 'Choose how to fit the source when aspect ratios differ.'],
+    format: ['选择输出文件格式。', 'Choose the output file format.'],
+    background: ['当透明图片转换为 JPEG 时，作为填充背景色。', 'Fill color used when a transparent image is converted to JPEG.'],
+  };
+  const message = messages[key];
+  return message ? t(locale, message[0], message[1]) : '';
+};
 const ParameterFields = ({
   locale,
   tool,
@@ -55,6 +70,10 @@ const ParameterFields = ({
     {(tool === "remove-background" || tool === "upscale") && (
       <Field
         label={t(locale, "模型连接", "Model connection")}
+        required
+        requiredLabel={t(locale, "必填", "Required")}
+        help={parameterHelp(locale, "connection")}
+        helpLabel={t(locale, "查看模型连接帮助", "Show model connection help")}
         hint={t(
           locale,
           "对应“模型连接 → 图片生成与编辑 → 编辑模型”。",
@@ -81,7 +100,7 @@ const ParameterFields = ({
     )}
     {tool === "upscale" && (
       <>
-        <Field label={t(locale, "倍率", "Scale")}>
+        <Field label={t(locale, "倍率", "Scale")} required requiredLabel={t(locale, "必填", "Required")} help={parameterHelp(locale, "scale")} helpLabel={t(locale, "查看倍率帮助", "Show scale help")}>
           <input
             aria-label={t(locale, "倍率", "Scale")}
             type="number"
@@ -91,7 +110,7 @@ const ParameterFields = ({
             onChange={(event) => setScale(Number(event.target.value))}
           />
         </Field>
-        <Field label={t(locale, "细节模式", "Detail mode")}>
+        <Field label={t(locale, "细节模式", "Detail mode")} help={parameterHelp(locale, "preserveDetails")} helpLabel={t(locale, "查看细节模式帮助", "Show detail mode help")}>
           <Select
             ariaLabel={t(locale, "细节模式", "Detail mode")}
             value={preserveDetails}
@@ -109,7 +128,7 @@ const ParameterFields = ({
     )}
     {tool === "resize" && (
       <>
-        <Field label={t(locale, "宽度", "Width")}>
+        <Field label={t(locale, "宽度", "Width")} required requiredLabel={t(locale, "必填", "Required")} help={parameterHelp(locale, "width")} helpLabel={t(locale, "查看宽度帮助", "Show width help")}>
           <input
             aria-label={t(locale, "宽度", "Width")}
             type="number"
@@ -118,7 +137,7 @@ const ParameterFields = ({
             onChange={(event) => setWidth(Number(event.target.value))}
           />
         </Field>
-        <Field label={t(locale, "高度", "Height")}>
+        <Field label={t(locale, "高度", "Height")} required requiredLabel={t(locale, "必填", "Required")} help={parameterHelp(locale, "height")} helpLabel={t(locale, "查看高度帮助", "Show height help")}>
           <input
             aria-label={t(locale, "高度", "Height")}
             type="number"
@@ -127,7 +146,7 @@ const ParameterFields = ({
             onChange={(event) => setHeight(Number(event.target.value))}
           />
         </Field>
-        <Field label={t(locale, "适配", "Fit")}>
+        <Field label={t(locale, "适配", "Fit")} help={parameterHelp(locale, "fit")} helpLabel={t(locale, "查看适配帮助", "Show fit help")}>
           <Select
             ariaLabel={t(locale, "适配", "Fit")}
             value={fit}
@@ -142,7 +161,7 @@ const ParameterFields = ({
       </>
     )}
     {(tool === "resize" || tool === "format-convert") && (
-      <Field label={t(locale, "输出格式", "Output format")}>
+      <Field label={t(locale, "输出格式", "Output format")} help={parameterHelp(locale, "format")} helpLabel={t(locale, "查看输出格式帮助", "Show output format help")}>
         <Select
           ariaLabel={t(locale, "输出格式", "Output format")}
           value={format}
@@ -156,7 +175,7 @@ const ParameterFields = ({
       </Field>
     )}
     {(tool === "resize" || tool === "format-convert") && (
-      <Field label={t(locale, "JPEG 背景", "JPEG background")}>
+      <Field label={t(locale, "JPEG 背景", "JPEG background")} help={parameterHelp(locale, "background")} helpLabel={t(locale, "查看 JPEG 背景帮助", "Show JPEG background help")}>
         <input
           aria-label={t(locale, "JPEG 背景", "JPEG background")}
           type="color"

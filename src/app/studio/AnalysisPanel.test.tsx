@@ -145,6 +145,40 @@ it('offers explicit single and multi-image generation actions', () => {
   expect(onGenerate).toHaveBeenNthCalledWith(2, 3);
 });
 
+it('shows the stable failure reason for a failed analysis task', () => {
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message="生成一个春季市集主视觉"
+      attachments={[]}
+      task={{ ...task(''), state: 'failed', errorCode: 'EMPTY_PROVIDER_RESPONSE' }}
+      canGenerate={false}
+      onGenerate={vi.fn()}
+      onRetry={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByText('模型返回空响应（EMPTY_PROVIDER_RESPONSE）')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+});
+
+it('does not expose an unknown task error code', () => {
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message="生成一个春季市集主视觉"
+      attachments={[]}
+      task={{ ...task(''), state: 'failed', errorCode: 'UPSTREAM_PRIVATE_DETAIL' }}
+      canGenerate={false}
+      onGenerate={vi.fn()}
+      onRetry={vi.fn()}
+    />,
+  );
+
+  expect(screen.queryByText(/UPSTREAM_PRIVATE_DETAIL/u)).not.toBeInTheDocument();
+  expect(screen.getByText('分析失败，当前线程仍可重试。')).toBeInTheDocument();
+});
+
 it('shows one request line until the user expands its text and images', () => {
   render(
     <AnalysisPanel

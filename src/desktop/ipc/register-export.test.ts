@@ -1,4 +1,4 @@
-import { exportDocumentChannel } from './export';
+import { exportProjectDesignChannel } from './export';
 import { registerExportHandlers } from './register-export';
 
 describe('registerExportHandlers', () => {
@@ -9,9 +9,9 @@ describe('registerExportHandlers', () => {
       getWindow: () => ({ webContents: {} } as never),
       getTrustedUrl: () => 'http://localhost:5173',
       getLibrary: () => null,
-      exportDocument: vi.fn(),
+      exportProjectDesign: vi.fn(),
     });
 
-    expect([...registrations.keys()]).toEqual([exportDocumentChannel]);
+    expect([...registrations.keys()]).toEqual([exportProjectDesignChannel]);
   });
 });

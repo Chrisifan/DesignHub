@@ -116,7 +116,7 @@ export const normalizeProviderToolCapabilities = (value: unknown): readonly Prov
 
 export const defaultProviderToolCapabilities: readonly ProviderToolCapability[] = imageTools.map((tool) => ({
   tool,
-  supportsMask: tool === 'remove-object' || tool === 'inpaint' || tool === 'remove-watermark',
+  supportsMask: tool === 'remove-object' || tool === 'inpaint' || tool === 'remove-watermark' || tool === 'expand',
   supportsTransparency: tool !== 'smart-crop' && tool !== 'resize',
   supportsRemoteCancellation: false,
   supportsStatusQuery: false,

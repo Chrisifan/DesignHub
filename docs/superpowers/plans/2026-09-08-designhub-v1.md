@@ -1,5 +1,7 @@
 # DesignHub V1 Implementation Plan
 
+> **Superseded by the [2026-10-14 V1 completion plan](2026-10-14-designhub-v1-completion.md).** 本文包含已移除的多文档、修订、品牌包与 Workbench 范围，仅保留历史记录。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现已确认的完整桌面首版，使用户从创建设计师与项目走到可编辑物料、工具修改、版本署名、离线管理与可追溯交付。

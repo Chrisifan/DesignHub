@@ -7,9 +7,8 @@ export type DesignGenerationContext = {
   version: 1;
   libraryId: string;
   projectId: string;
-  documentId: string;
   brief: string;
-  document: {
+  canvas: {
     width: number;
     height: number;
     currentImageAssetIds: string[];
@@ -18,7 +17,6 @@ export type DesignGenerationContext = {
   userMessage: string;
   assistantBrief?: string;
   designerSnapshot?: Record<string, unknown>;
-  brandSnapshot?: Record<string, unknown>;
   baseRevisionId: string | null;
 };
 
@@ -29,26 +27,17 @@ const safeDesignerSnapshot = (snapshot: Record<string, unknown> | undefined): Re
   return Object.keys(safe).length > 0 ? safe : undefined;
 };
 
-const safeBrandSnapshot = (snapshot: Record<string, unknown> | undefined): Record<string, unknown> | undefined => {
-  if (!snapshot) return undefined;
-  const allowed = ['id', 'name', 'version', 'colors', 'typography', 'constraints', 'logoUsage'];
-  const safe = Object.fromEntries(allowed.filter((key) => snapshot[key] !== undefined).map((key) => [key, snapshot[key]]));
-  return Object.keys(safe).length > 0 ? safe : undefined;
-};
-
 export const buildDesignContextPrompt = (context: DesignGenerationContext): string => {
   const designer = safeDesignerSnapshot(context.designerSnapshot);
-  const brand = safeBrandSnapshot(context.brandSnapshot);
   const sections = [
     'You are the DesignHub canvas design assistant. Use this immutable project context when interpreting the request.',
     `Project brief: ${context.brief || 'Not specified'}`,
-    `Document: ${context.document.width}x${context.document.height}px`,
+    `Canvas: ${context.canvas.width}x${context.canvas.height}px`,
     `User request: ${context.userMessage}`,
     context.assistantBrief ? `Assistant design brief: ${context.assistantBrief}` : '',
-    `Current canvas image asset ids: ${context.document.currentImageAssetIds.join(', ') || 'none'}`,
+    `Current canvas image asset ids: ${context.canvas.currentImageAssetIds.join(', ') || 'none'}`,
     `Attached reference asset ids: ${context.attachmentAssetIds.join(', ') || 'none'}`,
     designer ? `Designer profile: ${JSON.stringify(designer)}` : '',
-    brand ? `Brand profile: ${JSON.stringify(brand)}` : '',
     designer ? 'Return concise, actionable design direction. Respect all negative rules.' : 'Return concise, actionable design direction based on the project brief and user request.',
   ];
   return sections.filter(Boolean).join('\n');

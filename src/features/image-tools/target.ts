@@ -25,7 +25,10 @@ export const defaultToolParams = (tool: ImageTool, dimensions: { width: number; 
   if (tool === 'replace-background') return { source: 'description', prompt: '', lighting: 'match-original' };
   if (tool === 'remove-object') return { feather: 10 };
   if (tool === 'inpaint') return { prompt: '', strength: 0.5 };
-  if (tool === 'expand') return { mode: 'original-scene', top: 0, right: 0, bottom: 0, left: 0 };
+  if (tool === 'expand') {
+    const margin = Math.max(1, Math.round(Math.min(dimensions.width, dimensions.height) * 0.125));
+    return { mode: 'original-scene', top: margin, right: margin, bottom: margin, left: margin };
+  }
   if (tool === 'smart-crop') return { width: dimensions.width, height: dimensions.height, focus: 'subject' };
   if (tool === 'upscale') return { scale: 2, preserveDetails: 'balanced' };
   if (tool === 'remove-watermark') return { rightsConfirmed: 'confirmed', feather: 10 };
@@ -53,7 +56,10 @@ export const validateToolParams = (tool: ImageTool, params: unknown): ToolParams
   if (['resize', 'smart-crop'].includes(tool) && (!finitePositive(value.width) || !finitePositive(value.height))) return { ok: false, reason: 'INVALID_PARAMS' };
   if ('safeArea' in value && (!finiteNonNegative(value.safeArea) || Number(value.safeArea) > 100)) return { ok: false, reason: 'INVALID_PARAMS' };
   if (tool === 'upscale' && (!finitePositive(value.scale) || (value.scale as number) < 1)) return { ok: false, reason: 'INVALID_PARAMS' };
-  if (tool === 'expand' && ['top', 'right', 'bottom', 'left'].some((key) => !finitePositive(value[key]) && value[key] !== 0)) return { ok: false, reason: 'INVALID_PARAMS' };
+  if (tool === 'expand') {
+    const edges = ['top', 'right', 'bottom', 'left'].map((key) => value[key]);
+    if (edges.some((edge) => !finiteNonNegative(edge) || !Number.isInteger(edge)) || edges.every((edge) => edge === 0)) return { ok: false, reason: 'INVALID_PARAMS' };
+  }
   if ('edgeRefinement' in value && (!finiteNonNegative(value.edgeRefinement) || Number(value.edgeRefinement) > 100)) return { ok: false, reason: 'INVALID_PARAMS' };
   if ('feather' in value && (!finiteNonNegative(value.feather) || Number(value.feather) > 100)) return { ok: false, reason: 'INVALID_PARAMS' };
   if ('strength' in value && (!finiteNonNegative(value.strength) || Number(value.strength) > 1)) return { ok: false, reason: 'INVALID_PARAMS' };

@@ -62,7 +62,7 @@ const isMetadataInput = (value: unknown): value is UpdateProjectMetadataInput =>
   if (typeof value !== 'object' || value === null) return false;
   const input = value as Record<string, unknown>;
   if (!isWorkspaceId(input.libraryId) || !isWorkspaceId(input.projectId) || typeof input.patch !== 'object' || input.patch === null || Array.isArray(input.patch)) return false;
-  return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'generationRatio', 'activeDesignerVersionId', 'contributorDesignerVersionIds', 'designerSnapshot', 'brandSnapshot', 'coverAssetId', 'documents', 'archived'].includes(key))
+  return Object.keys(input.patch as Record<string, unknown>).every((key) => ['name', 'brief', 'generationRatio', 'activeDesignerVersionId', 'contributorDesignerVersionIds', 'designerSnapshot', 'coverAssetId', 'designs', 'canvasLayout', 'archived'].includes(key))
     && ((input.patch as Record<string, unknown>).generationRatio === undefined || isProjectGenerationRatio((input.patch as Record<string, unknown>).generationRatio));
 };
 
@@ -88,9 +88,11 @@ const isCanvasLayoutInput = (value: unknown): value is { libraryId: string; proj
   const layout = (value as Record<string, unknown>).layout;
   if (!layout || typeof layout !== 'object') return false;
   const viewport = (layout as Record<string, unknown>).viewport;
+  const selectedDesignIds = (layout as Record<string, unknown>).selectedDesignIds;
   return Boolean(viewport && typeof viewport === 'object' && typeof (viewport as Record<string, unknown>).zoom === 'number'
     && typeof (viewport as Record<string, unknown>).offsetX === 'number' && typeof (viewport as Record<string, unknown>).offsetY === 'number'
-    && (layout as Record<string, unknown>).nodes && typeof (layout as Record<string, unknown>).nodes === 'object');
+    && (layout as Record<string, unknown>).nodes && typeof (layout as Record<string, unknown>).nodes === 'object'
+    && Array.isArray(selectedDesignIds) && selectedDesignIds.every((id) => typeof id === 'string'));
 };
 
 export const listActiveProjectsHandler = (

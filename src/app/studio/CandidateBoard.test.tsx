@@ -13,7 +13,6 @@ const task = {
   capability: 'design-generation' as const,
   analysisThreadId: 'thread-1',
   source: { kind: 'project' as const, id: 'project-1' },
-  documentId: 'document-1',
   result: {
     imageCount: 1,
     candidate: {

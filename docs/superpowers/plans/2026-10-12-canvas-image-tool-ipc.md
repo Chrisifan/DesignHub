@@ -18,7 +18,7 @@
 - Modify: `src/platform/contracts.ts`
 - Test: `src/desktop/ipc/agent.test.ts`
 
-- [ ] **Step 1: Write the failing IPC regression test**
+- [x] **Step 1: Write the failing IPC regression test**
 
 Replace the same-process `Blob` expectation with a structured-clone-safe source asset payload and assert that payloads without a source asset are rejected:
 
@@ -62,7 +62,7 @@ npx vitest run --config vitest.config.ts src/desktop/ipc/agent.test.ts
 
 Expected: FAIL because `isImageEditInput` still requires a `Blob`.
 
-- [ ] **Step 3: Define and validate the serializable bridge input**
+- [x] **Step 3: Define and validate the serializable bridge input**
 
 Export an input type for submissions that may omit the resolved image:
 
@@ -84,7 +84,7 @@ export type ImageEditBridgeInput = Omit<ImageEditSubmissionInput, 'image' | 'mas
 
 Update `isImageEditInput` to require `sourceAssetId`, remove `isBlobLike` checks, preserve tool/region/scene validation, and require a writable active workspace in `createImageEditHandler`. Update `DesktopApi.submitImageEdit` to accept the same serializable shape.
 
-- [ ] **Step 4: Run the IPC test and verify GREEN**
+- [x] **Step 4: Run the IPC test and verify GREEN**
 
 Run:
 
@@ -107,7 +107,7 @@ git commit -m "fix: make image edit IPC asset based"
 - Create: `src/features/agent/task-service-image-edit.test.ts`
 - Modify: `src/features/agent/task-service.ts`
 
-- [ ] **Step 1: Write failing task-service tests**
+- [x] **Step 1: Write failing task-service tests**
 
 Create a focused test with a real task runtime and adapter spy:
 
@@ -163,7 +163,7 @@ npx vitest run --config vitest.config.ts src/features/agent/task-service-image-e
 
 Expected: FAIL because `submitImageEdit` does not resolve a missing `image`.
 
-- [ ] **Step 3: Resolve source and mask assets into an internal input**
+- [x] **Step 3: Resolve source and mask assets into an internal input**
 
 Update `submitImageEdit` so it resolves the image before task creation and passes only a fully resolved `ImageEditInput` to execution:
 
@@ -185,7 +185,7 @@ const submitImageEdit = async (input: ImageEditSubmissionInput): Promise<TaskRec
 };
 ```
 
-- [ ] **Step 4: Run the service and IPC tests and verify GREEN**
+- [x] **Step 4: Run the service and IPC tests and verify GREEN**
 
 Run:
 
@@ -208,7 +208,7 @@ git commit -m "fix: resolve managed source images for edit tasks"
 - Modify: `src/app/studio/Studio.tsx`
 - Test: `src/app/Studio.test.tsx`
 
-- [ ] **Step 1: Strengthen the Studio regression test**
+- [x] **Step 1: Strengthen the Studio regression test**
 
 Extend the existing background-removal assertion:
 
@@ -234,7 +234,7 @@ npx vitest run --config vitest.config.ts src/app/Studio.test.tsx -t "runs backgr
 
 Expected: FAIL because Studio still reads the asset and sends a `Blob`.
 
-- [ ] **Step 3: Remove renderer asset reads from image-tool submission**
+- [x] **Step 3: Remove renderer asset reads from image-tool submission**
 
 Delete the `readAsset` call and `Blob` construction in `submitProjectImageTask`. Keep `sourceAssetId: imageLayer.assetId` and the remaining task metadata. Change the null-return message to:
 
@@ -244,7 +244,7 @@ notify(t(locale, '图像任务未能提交。', 'The image task could not be sub
 
 Provider execution errors continue to use the existing generic retry message.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run:
 
@@ -267,7 +267,7 @@ git commit -m "fix: submit canvas image tools by asset id"
 **Files:**
 - Verify all files changed in Tasks 1-3
 
-- [ ] **Step 1: Run static checks**
+- [x] **Step 1: Run static checks**
 
 ```bash
 npm run typecheck
@@ -276,7 +276,7 @@ npm run lint
 
 Expected: both commands exit 0 with no warnings.
 
-- [ ] **Step 2: Run the full unit suite**
+- [x] **Step 2: Run the full unit suite**
 
 ```bash
 npm run test:unit
@@ -284,7 +284,7 @@ npm run test:unit
 
 Expected: all non-skipped tests pass.
 
-- [ ] **Step 3: Build production bundles**
+- [x] **Step 3: Build production bundles**
 
 ```bash
 npm run build
@@ -292,7 +292,7 @@ npm run build
 
 Expected: renderer, main, and preload builds exit 0.
 
-- [ ] **Step 4: Check patch integrity**
+- [x] **Step 4: Check patch integrity**
 
 ```bash
 git diff --check HEAD~3..HEAD

@@ -15,12 +15,10 @@ const isSearchRecord = (value: unknown): value is SearchRecord => {
   const record = value as Record<string, unknown>;
   return isWorkspaceId(record.libraryId)
     && isWorkspaceId(record.projectId)
-    && isWorkspaceId(record.documentId)
     && Array.isArray(record.contributorIds)
     && record.contributorIds.every((entry) => typeof entry === 'string')
     && (record.title === undefined || typeof record.title === 'string')
     && (record.brief === undefined || typeof record.brief === 'string')
-    && (record.brand === undefined || typeof record.brand === 'string')
     && (record.size === undefined || typeof record.size === 'string')
     && (record.tags === undefined || (Array.isArray(record.tags) && record.tags.every((entry) => typeof entry === 'string')))
     && (record.finalized === undefined || typeof record.finalized === 'boolean')

@@ -1,0 +1,21 @@
+{
+  "id": "legacy-task",
+  "requestId": "legacy-request",
+  "documentId": "legacy-document",
+  "state": "completed",
+  "cancelRequested": false,
+  "attempt": 1,
+  "source": { "kind": "project", "id": "project-one" },
+  "capability": "conversation",
+  "designContext": {
+    "version": 1,
+    "workspaceId": "__LIBRARY_ID__",
+    "projectId": "project-one",
+    "documentId": "legacy-document",
+    "brief": "Legacy brief",
+    "document": { "width": 1080, "height": 1440, "currentImageAssetIds": ["asset-current"] },
+    "attachmentAssetIds": ["asset-reference"],
+    "userMessage": "Legacy request",
+    "baseRevisionId": null
+  }
+}

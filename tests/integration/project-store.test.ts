@@ -68,13 +68,13 @@ it('publishes a versioned project database and content manifest exactly once per
   }
 });
 
-it('duplicates a project with a new identity while retaining documents and managed assets', async () => {
+it('duplicates a project with a new identity while retaining designs and managed assets', async () => {
   const { workspace, store } = await createWritableStore();
   const project = await store.createProjectContainer({
     libraryId: workspace.library.libraryId,
     operationId: 'duplicate-source',
     name: 'Source project',
-    documents: [{ id: 'doc-1', name: 'Poster', width: 800, height: 600 }],
+    designs: [{ id: 'design-1', assetId: 'asset-1', sourceTaskId: 'task-1', title: 'Poster', width: 800, height: 600, createdAt: '2026-09-12T00:00:00.000Z' }],
   });
   try {
     const duplicate = await store.duplicateProject({
@@ -84,10 +84,72 @@ it('duplicates a project with a new identity while retaining documents and manag
       name: 'Copied project',
     });
     expect(duplicate.projectId).not.toBe(project.projectId);
-    await expect(store.getProjectMetadata(duplicate.projectId)).resolves.toMatchObject({ name: 'Copied project', documents: [{ id: 'doc-1', width: 800, height: 600 }] });
+    await expect(store.getProjectMetadata(duplicate.projectId)).resolves.toMatchObject({ name: 'Copied project', designs: [{ id: 'design-1', width: 800, height: 600 }] });
     await expect(store.listActiveProjects()).resolves.toHaveLength(2);
   } finally {
     workspace.close();
+  }
+});
+
+it('rejects removed document metadata without modifying the project manifest', async () => {
+  const { workspace, store } = await createWritableStore();
+  const libraryId = workspace.library.libraryId;
+  try {
+    const project = await store.createProjectContainer({ libraryId, operationId: 'legacy-document-metadata', name: 'Legacy project', brief: 'Existing project brief' });
+    const projectManifestPath = join(workspace.library.directory, 'projects', project.projectId, projectManifestName);
+    const manifest = JSON.parse(await readFile(projectManifestPath, 'utf8')) as Record<string, unknown>;
+    manifest.metadata = {
+      ...(manifest.metadata as Record<string, unknown>),
+      documents: [{ id: 'legacy-document', name: 'Old poster', width: 1080, height: 1440 }],
+    };
+    await writeFile(projectManifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+    const before = await readFile(projectManifestPath);
+    await expect(store.getProjectMetadata(project.projectId)).rejects.toThrow('DOCUMENT_SCHEMA_REMOVED');
+    await expect(store.addProjectDesigns({
+      libraryId,
+      projectId: project.projectId,
+      designs: [],
+    })).rejects.toThrow('DOCUMENT_SCHEMA_REMOVED');
+    expect(await readFile(projectManifestPath)).toEqual(before);
+  } finally {
+    workspace.close();
+  }
+});
+
+it('retains the selected canvas designs after reopening the project library', async () => {
+  const { workspace, store } = await createWritableStore();
+  let activeWorkspace = workspace;
+  try {
+    const project = await store.createProjectContainer({
+      libraryId: workspace.library.libraryId,
+      operationId: 'canvas-selection-roundtrip',
+      name: 'Canvas project',
+      designs: [{ id: 'design-1', assetId: 'asset-1', sourceTaskId: 'task-1', title: 'Poster', width: 800, height: 600, createdAt: '2026-10-14T00:00:00.000Z' }],
+    });
+    await store.saveProjectCanvasLayout({
+      libraryId: workspace.library.libraryId,
+      projectId: project.projectId,
+      layout: {
+        viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+        nodes: { 'design-1': { x: 120, y: 80 } },
+        selectedDesignIds: ['design-1'],
+      },
+    });
+
+    activeWorkspace.close();
+    activeWorkspace = await openProjectLibrary(workspace.library.directory);
+
+    await expect(createProjectStore(activeWorkspace).loadProjectCanvasLayout({
+      libraryId: activeWorkspace.library.libraryId,
+      projectId: project.projectId,
+    })).resolves.toEqual({
+      viewport: { zoom: 0.8, offsetX: 20, offsetY: 30 },
+      nodes: { 'design-1': { x: 120, y: 80 } },
+      selectedDesignIds: ['design-1'],
+    });
+  } finally {
+    activeWorkspace.close();
   }
 });
 

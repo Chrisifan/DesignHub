@@ -8,9 +8,9 @@ test('REL01 studio opens with an offline-safe project surface', async ({ page })
   await expect(page.locator('.studio')).toBeVisible();
 });
 
-test('REL02 delivery and workspace navigation remain available without a model connection', async ({ page }) => {
+test('REL02 workspace navigation remains available without a model connection', async ({ page }) => {
   await gotoTestWorkspace(page);
-  await navigateFromUserMenu(page, /导出交付|Delivery/);
+  await navigateFromUserMenu(page, /废纸篓与备份|Trash & backups/);
   await expect(page.locator('body')).toBeVisible();
 });
 

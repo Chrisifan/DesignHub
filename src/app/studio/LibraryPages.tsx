@@ -11,7 +11,7 @@ import {
 } from 'react';
 
 import type { Locale } from '../i18n';
-import type { PageProps, Project, Theme, View } from './types';
+import type { PageProps, Theme, View } from './types';
 import { DesignerLibrary } from './DesignerLibrary';
 import { Drawer } from './Drawer';
 import { PageToolbarSlot } from './PageToolbar';
@@ -24,7 +24,6 @@ import {
   Field,
   Icon,
   IconButton,
-  Modal,
   PageHeader,
   Select,
   t,
@@ -32,20 +31,17 @@ import {
 } from './ui';
 import { getDesktopApi } from '../../platform/runtime';
 import type { ManagedAsset } from '../../features/assets/import-assets';
-import type { DesignScene } from '../../features/canvas/scene';
 import { ProviderSettings, type ProviderSettingsActions } from '../../features/providers/ProviderSettings';
-import { BrandEditor } from '../../features/brands/BrandEditor';
-import type { Brand } from '../../features/brands/constraints';
 import type { ProviderConnection } from '../../features/providers/connection';
 import { providerCredentialAccount, providerProfiles, type ProviderConfigMap, type ProviderProfile } from '../../features/providers/config';
 import { getProviderProfileStatus, mergeProviderConnectionStatus, type ProviderConnectionStatusMap } from '../../features/providers/status';
-import type { DesignGenerationSlotId, DesignGenerationSlotState, TaskRecord } from '../../features/tasks/state';
-import type { ExportHistoryRecord } from '../../features/delivery/export-history';
+import type { DesignGenerationSlotId, TaskRecord } from '../../features/tasks/state';
 import type { TrashedProject } from '../../features/workspace/project-store';
 import { shouldRunScheduledBackup, backupIntervalMs, type BackupSchedule } from '../../features/workspace/backup-schedule';
 import type { WorkspaceSettings } from '../../features/workspace/settings';
-import { DeliveryScenePreview } from './DeliveryScenePreview';
 import type { BatchImageTool, ImageToolJob, ImageToolItem } from '../../features/image-tools/jobs';
+import { TaskResultDrawer } from './TaskResultDrawer';
+import { taskFailureMessage, taskLoadErrorMessage } from './task-errors';
 import './library.css';
 
 const ImageToolsPage = lazy(async () => {
@@ -58,7 +54,6 @@ type LibraryPagesProps = PageProps & {
   theme: Theme;
   onThemeChange: (value: Theme) => void;
   onLocaleChange: (value: Locale) => void;
-  deliveryProject?: Project | null;
   onUseForNew?: (personaId: string) => void;
   libraryId?: string;
   readOnly?: boolean;
@@ -68,7 +63,6 @@ type LibraryPagesProps = PageProps & {
   onAssetAction?: (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }) => void;
   preview?: boolean;
   initialAssets?: AssetItem[];
-  initialBrands?: Brand[];
   initialProfiles?: PersonaProfile[];
   active?: boolean;
   connectionsDialogOpen?: boolean;
@@ -90,16 +84,6 @@ type AssetItem = {
   artwork: 'market' | 'objects' | 'type' | 'blank';
   managed?: boolean;
 };
-type BrandKit = {
-  id: string;
-  name: Localized;
-  description: Localized;
-  version: string;
-  tone: Localized;
-  font: Localized;
-  copy: Localized;
-};
-type DeliveryFormat = 'png' | 'jpeg' | 'webp' | 'pdf';
 type StorageTab = 'trash' | 'backup';
 type TaskCategory = 'all' | 'queued' | 'running' | 'completed' | 'failed';
 type BackupPreferences = { destinationParentDirectory: string | null; schedule: BackupSchedule; lastRunAt: string | null; lastArtifactPath: string | null };
@@ -149,16 +133,6 @@ const managedAssetToItem = (asset: ManagedAsset): AssetItem => {
     managed: !asset.externalReference,
   };
 };
-
-const recordToKit = (record: Brand): BrandKit => ({
-  id: record.id,
-  name: { zh: record.name ?? record.id, en: record.name ?? record.id },
-  description: { zh: record.description ?? '工作区品牌规则', en: record.description ?? 'Workspace brand rules' },
-  version: record.version,
-  tone: { zh: record.tone, en: record.tone },
-  font: { zh: record.fonts.join(' / '), en: record.fonts.join(' / ') },
-  copy: { zh: record.fixedCopy, en: record.fixedCopy },
-});
 
 const localize = (locale: Locale, value: Localized): string =>
   t(locale, value.zh, value.en);
@@ -474,182 +448,6 @@ const AssetsPage = ({
   );
 };
 
-const BrandsPage = ({
-  locale,
-  selectedId,
-  onSelect,
-  libraryId,
-  preview = false,
-  initialBrands = [],
-}: {
-  locale: Locale;
-  selectedId: string;
-  onSelect: (id: string) => void;
-  libraryId?: string;
-  preview?: boolean;
-  initialBrands?: Brand[];
-}) => {
-  const [records, setRecords] = useState<Brand[]>(() => libraryId || !preview ? [] : initialBrands);
-  const [editor, setEditor] = useState<Brand | null>(null);
-  const [deletePending, setDeletePending] = useState<Brand | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [loading, setLoading] = useState(Boolean(libraryId));
-  const [loadFailed, setLoadFailed] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    if (!libraryId) { setRecords(preview ? initialBrands : []); setLoading(false); setLoadFailed(false); return () => { cancelled = true; }; }
-    setRecords([]);
-    setLoading(true);
-    setLoadFailed(false);
-    const request = getDesktopApi().loadBrandState?.(libraryId);
-    if (!request) { setLoading(false); setLoadFailed(true); return () => { cancelled = true; }; }
-    void request?.then((state) => {
-      if (cancelled) return;
-      setRecords(state?.brands ?? []);
-      setLoading(false);
-    }).catch(() => { if (!cancelled) { setLoading(false); setLoadFailed(true); } });
-    return () => { cancelled = true; };
-  }, [initialBrands, preview, libraryId]);
-  const kits = records.map(recordToKit);
-  const selected = kits.find((brand) => brand.id === selectedId) ?? kits[0];
-  const selectedRecord = records.find((record) => record.id === selected?.id) ?? records[0];
-  const persist = async (next: Brand[]): Promise<void> => {
-    setRecords(next);
-    if (libraryId) {
-      const saved = await getDesktopApi().saveBrandState?.(libraryId, { brands: next });
-      if (!saved) throw new Error('BRAND_SAVE_FAILED');
-    }
-  };
-  const saveBrand = async (brand: Brand): Promise<void> => {
-    const next = records.some((record) => record.id === brand.id)
-      ? records.map((record) => record.id === brand.id ? brand : record)
-      : [brand, ...records];
-    try { await persist(next); onSelect(brand.id); setEditor(null); }
-    catch { /* keep the editor open so the user can retry */ }
-  };
-  const removeBrand = async (): Promise<void> => {
-    if (!deletePending) return;
-    try { await persist(records.filter((record) => record.id !== deletePending.id)); setDeletePending(null); }
-    catch { /* keep confirmation open so the user can retry */ }
-  };
-  if (loading) return <section className="page-content library-page"><div className="page-empty-state"><EmptyState icon="palette" title={t(locale, '正在加载', 'Loading')} description={t(locale, '正在读取品牌包。', 'Loading brand kits.')} /></div></section>;
-  if (loadFailed) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /><div className="page-empty-state"><EmptyState icon="alert-triangle" title={t(locale, '品牌读取失败', 'Could not load brand kits')} description={t(locale, '请检查工作区权限后重新进入此页面。', 'Check workspace permissions and reopen this page.')} /></div></section>;
-  if (!selected) return <section className="page-content library-page"><PageHeader title={t(locale, '品牌包', 'Brand kits')} eyebrow={t(locale, '工作区约束', 'Workspace constraints')} description={t(locale, '管理当前工作区的品牌规则。', 'Manage brand rules for the current workspace.')} /><div className="page-empty-state"><EmptyState icon="palette" title={t(locale, '暂无品牌包', 'No brand kits yet')} description={t(locale, '创建品牌包后会显示在这里。', 'Create a brand kit to see it here.')} /></div></section>;
-  return (
-    <section className="page-content library-page">
-      <PageHeader
-        title={t(locale, '品牌包', 'Brand kits')}
-        eyebrow={t(locale, '工作区约束', 'Workspace constraints')}
-        description={t(
-          locale,
-          '查看品牌原件、语气与固定文案；项目继续使用创建时的快照。',
-          'Review brand originals, voice and fixed copy; projects continue using their creation-time snapshot.',
-        )}
-      />
-      <div className="library-split library-split--brand">
-        <div
-          className="brand-list"
-          aria-label={t(locale, '品牌包列表', 'Brand kit list')}
-        >
-        {kits.map((brand, index) => (
-            <button
-              type="button"
-              key={brand.id}
-              onClick={() => { onSelect(brand.id); setDrawerOpen(true); }}
-              aria-pressed={brand.id === selected.id}
-              className={`brand-row ${brand.id === selected.id ? 'is-selected' : ''}`}
-            >
-              <span className={`brand-monogram brand-monogram--${index + 1}`}>
-                {localize(locale, brand.name).slice(0, 1)}
-              </span>
-              <span>
-                <strong>{localize(locale, brand.name)}</strong>
-                <small>{localize(locale, brand.description)}</small>
-              </span>
-              <Badge>{brand.version}</Badge>
-              <Icon name="chevron-right" size={17} />
-            </button>
-          ))}
-          <div className="list-footnote">
-            <Icon name="circle-help" size={16} />
-            <p>
-              {t(
-                locale,
-                '品牌包与设计师偏好分别管理，冲突时会显示具体字段。',
-                'Brand rules and designer preferences remain separate; conflicts identify the affected field.',
-              )}
-            </p>
-          </div>
-        </div>
-        <Drawer
-          open={drawerOpen}
-          title={t(locale, '品牌详情', 'Brand details')}
-          locale={locale}
-          onClose={() => setDrawerOpen(false)}
-          footer={libraryId ? (
-            <div className="dialog-actions brand-actions">
-              <Button icon="pencil" onClick={() => { if (selectedRecord) setEditor(selectedRecord); }}>{t(locale, '编辑', 'Edit')}</Button>
-              <Button icon="trash-2" onClick={() => { if (selectedRecord) setDeletePending(selectedRecord); }}>{t(locale, '删除', 'Delete')}</Button>
-            </div>
-          ) : undefined}
-        ><div
-          className="details-panel brand-details"
-        >
-          <div className="brand-lockup">
-            <span className="brand-wordmark">
-              {localize(locale, selected.name)}
-            </span>
-            <small>
-              {selected.version} ·{' '}
-              {t(locale, '当前品牌原件', 'Current brand original')}
-            </small>
-          </div>
-          <h2>{localize(locale, selected.name)}</h2>
-          <p className="details-lede">
-            {localize(locale, selected.description)}
-          </p>
-          <div
-            className="color-row"
-            aria-label={t(locale, '品牌色', 'Brand colors')}
-          >
-            <span className="brand-color brand-color--primary" />
-            <span className="brand-color brand-color--secondary" />
-            <span className="brand-color brand-color--tertiary" />
-            <span className="brand-color brand-color--surface" />
-          </div>
-          <dl className="details-list">
-            <DetailRow label={t(locale, '字体', 'Typography')}>
-              {localize(locale, selected.font)}
-            </DetailRow>
-            <DetailRow label={t(locale, '语气', 'Voice')}>
-              {localize(locale, selected.tone)}
-            </DetailRow>
-            <DetailRow label={t(locale, '固定文案', 'Fixed copy')}>
-              <q>{localize(locale, selected.copy)}</q>
-            </DetailRow>
-            <DetailRow label={t(locale, '项目使用', 'Project usage')}>
-              {selected.id === 'spring'
-                ? t(locale, '1 个项目 · 快照 v2', '1 project · snapshot v2')
-                : t(locale, '1 个项目 · 快照 v1', '1 project · snapshot v1')}
-            </DetailRow>
-          </dl>
-          {!libraryId && preview && <p className="panel-note">
-            <Icon name="history" size={15} />
-            {t(
-              locale,
-              libraryId ? '项目继续使用创建时保存的品牌快照。' : '示例项目不会自动升级到当前品牌版本。',
-              libraryId ? 'Projects continue using their creation-time brand snapshot.' : 'Example projects are not automatically upgraded to the current brand version.',
-            )}
-          </p>}
-        </div></Drawer>
-      </div>
-      {libraryId && <div className="brand-create-row"><Button variant="secondary" icon="plus" onClick={() => setEditor({ id: `brand-${crypto.randomUUID()}`, name: '', version: 'v1', logo: '', colorPalette: [], fonts: [], tone: '', fixedCopy: '', sizes: [] })}>{t(locale, '新建', 'New')}</Button></div>}
-      {editor && <Modal title={editor.name ? t(locale, '编辑品牌', 'Edit brand') : t(locale, '新建品牌', 'New brand')} locale={locale} onClose={() => setEditor(null)}><BrandEditor brand={editor} locale={locale} onSave={(brand) => { void saveBrand(brand); }} /></Modal>}
-      {deletePending && <Modal title={t(locale, '删除品牌', 'Delete brand')} locale={locale} onClose={() => setDeletePending(null)}><p className="muted">{t(locale, `确认删除 ${deletePending.name ?? deletePending.id}？`, `Delete ${deletePending.name ?? deletePending.id}?`)}</p><div className="dialog-actions"><Button onClick={() => setDeletePending(null)}>{t(locale, '取消', 'Cancel')}</Button><Button variant="primary" icon="trash-2" onClick={() => { void removeBrand(); }}>{t(locale, '删除', 'Delete')}</Button></div></Modal>}
-    </section>
-  );
-};
-
 const ConnectionsPage = ({
   locale,
   libraryId,
@@ -739,8 +537,8 @@ const ConnectionsPage = ({
               ? t(locale, '最近一次连接测试失败，请检查地址、密钥和模型。', 'The latest connection test failed. Check the URL, key and model.')
             : !libraryId ? t(
               locale,
-              '当前仍可浏览示例、编辑画布与配置导出。连接模型后即可提交真实任务。',
-              'You can still browse the example, edit the canvas and configure delivery. Connect a model to submit real tasks.',
+              '当前仍可浏览示例和编辑画布。连接模型后即可提交真实任务。',
+              'You can still browse the example and edit the canvas. Connect a model to submit real tasks.',
             ) : ''}
         />
       </div>
@@ -872,12 +670,14 @@ const TasksPage = ({
   active,
 }: Pick<PageProps, 'locale' | 'navigate'> & { libraryId?: string; active: boolean }) => {
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loadRequest, setLoadRequest] = useState(0);
   const [category, setCategory] = useState<TaskCategory>('all');
+  const [selectedResultTaskId, setSelectedResultTaskId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     let loading = false;
-    setLoadFailed(false);
+    setLoadError(null);
     if (!libraryId || !active) {
       setTasks([]);
       return () => { cancelled = true; };
@@ -889,13 +689,13 @@ const TasksPage = ({
         const stored = await getDesktopApi().listTasks?.(libraryId);
         if (cancelled) return;
         if (!stored) {
-          setLoadFailed(true);
+          setLoadError(new Error('TASK_LIST_UNAVAILABLE'));
           return;
         }
-        setLoadFailed(false);
+        setLoadError(null);
         setTasks(stored);
-      } catch {
-        if (!cancelled) setLoadFailed(true);
+      } catch (error) {
+        if (!cancelled) setLoadError(error);
       } finally {
         loading = false;
       }
@@ -906,7 +706,7 @@ const TasksPage = ({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [active, libraryId]);
+  }, [active, libraryId, loadRequest]);
   const matchesCategory = (task: TaskRecord, value: TaskCategory): boolean => {
     if (value === 'all') return true;
     if (value === 'failed') return task.state === 'failed' || task.state === 'cancelled' || task.errorCode === 'RESULT_UNKNOWN_AFTER_RESTART';
@@ -923,7 +723,35 @@ const TasksPage = ({
     counts[option.value] = tasks.filter((task) => matchesCategory(task, option.value)).length;
     return counts;
   }, { all: 0, queued: 0, running: 0, completed: 0, failed: 0 });
-  const visibleTasks = tasks.filter((task) => matchesCategory(task, category));
+  const taskTimestamp = (task: TaskRecord): number => {
+    const value = task.updatedAt ?? task.createdAt;
+    if (!value) return Number.NEGATIVE_INFINITY;
+    const timestamp = Date.parse(value);
+    return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+  };
+  const visibleTasks = tasks
+    .filter((task) => matchesCategory(task, category))
+    .sort((left, right) => taskTimestamp(right) - taskTimestamp(left) || right.id.localeCompare(left.id));
+  const taskTimeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }), [locale]);
+  const taskTimeTitleFormatter = useMemo(() => new Intl.DateTimeFormat(locale, {
+    dateStyle: 'full',
+    timeStyle: 'long',
+  }), [locale]);
+  const taskTime = (task: TaskRecord): { label: string; title?: string } => {
+    const timestamp = taskTimestamp(task);
+    if (!Number.isFinite(timestamp)) return { label: '—' };
+    const date = new Date(timestamp);
+    return {
+      label: taskTimeFormatter.format(date),
+      title: taskTimeTitleFormatter.format(date),
+    };
+  };
   const stopTask = async (taskId: string): Promise<void> => {
     if (!libraryId) return;
     const stopped = await getDesktopApi().cancelTask?.(libraryId, taskId);
@@ -947,35 +775,16 @@ const TasksPage = ({
   const generationProgress = (task: TaskRecord): string | undefined => {
     if (!task.generationSlots?.length) return undefined;
     const completed = task.generationSlots.filter((slot) => slot.state === 'completed').length;
-    return t(locale, `候选生成 ${completed}/${task.generationSlots.length}`, `Candidates ${completed}/${task.generationSlots.length}`);
+    return t(locale, `候选 ${completed}/${task.generationSlots.length}`, `Candidates ${completed}/${task.generationSlots.length}`);
   };
-  const slotLabel = (slotId: DesignGenerationSlotId): string => ({
-    primary: t(locale, '主方案', 'Primary'),
-    composition: t(locale, '构图探索', 'Composition'),
-    expressive: t(locale, '视觉突破', 'Expressive'),
-  })[slotId];
-  const slotStateLabel = (state: DesignGenerationSlotState): string => ({
-    queued: t(locale, '排队', 'Queued'),
-    running: t(locale, '处理中', 'Running'),
-    completed: t(locale, '已完成', 'Completed'),
-    failed: t(locale, '失败', 'Failed'),
-    cancelled: t(locale, '已取消', 'Cancelled'),
-  })[state];
-  const failureDescription = (task: TaskRecord): string | undefined => {
-    const failure = task.providerFailure;
-    if (!failure) return undefined;
-    const details = [
-      failure.status === undefined ? undefined : `HTTP ${failure.status}`,
-      failure.providerCode,
-    ].filter((value): value is string => Boolean(value)).join('，');
-    const suffix = details ? `（${details}）` : '';
-    if (failure.kind === 'rate_limited') {
-      return t(locale, `服务请求受限${suffix}${failure.retryAfterSeconds === undefined ? '' : `，${failure.retryAfterSeconds} 秒后可重试`}`, `Provider rate limit${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}${failure.retryAfterSeconds === undefined ? '' : `; retry in ${failure.retryAfterSeconds}s`}`);
-    }
-    if (failure.kind === 'invalid_response') return t(locale, `服务返回了无法解析的结果${suffix}`, `Provider returned an unreadable result${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}`);
-    if (failure.kind === 'cancelled') return t(locale, '服务请求已取消', 'Provider request was cancelled');
-    return t(locale, `服务请求被拒绝${suffix}`, `Provider request was rejected${failure.status === undefined ? '' : ` (HTTP ${failure.status})`}`);
-  };
+  const taskCapabilityLabel = (task: TaskRecord): string => ({
+    conversation: t(locale, '对话', 'Conversation'),
+    'design-generation': t(locale, '设计生成', 'Design generation'),
+    'image-generation': t(locale, '图片生成', 'Image generation'),
+    'image-editing': t(locale, '图片编辑', 'Image editing'),
+    'local-transform': t(locale, '本地转换', 'Local transform'),
+    'vision-analysis': t(locale, '作品集分析', 'Portfolio analysis'),
+  })[task.capability ?? ''] ?? task.capability ?? t(locale, '模型任务', 'Model task');
   const taskStateLabel = (task: TaskRecord): string => task.state === 'queued'
     ? t(locale, '排队', 'Queued')
     : task.state === 'running'
@@ -1004,17 +813,46 @@ const TasksPage = ({
           ? t(locale, '请重新选择原图', 'Select the source image again')
           : undefined
       : undefined;
-    return [task.requestText, failureDescription(task), guidance].filter(Boolean).join(' · ')
+    return [task.requestText, taskFailureMessage(locale, task), guidance].filter(Boolean).join(' · ')
       || task.source?.id
       || task.requestId
       || t(locale, '模型任务', 'Model task');
   };
-  const taskMetadata = (task: TaskRecord): string => [
-    task.updatedAt ?? task.createdAt,
-    generationProgress(task),
-    task.result?.imageCount === undefined ? undefined : t(locale, `${task.result.imageCount} 张图`, `${task.result.imageCount} images`),
-    task.result?.cost === undefined || task.result.cost === null ? undefined : t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`),
-  ].filter(Boolean).join(' · ') || '—';
+  const taskResult = (task: TaskRecord): { label: string; title: string; inspectable: boolean } => {
+    const progress = generationProgress(task);
+    const candidateCount = task.result?.candidates?.length ?? (task.result?.candidate ? 1 : 0);
+    const candidateSummary = progress || candidateCount === 0
+      ? undefined
+      : t(locale, `候选 ${candidateCount}`, `${candidateCount} ${candidateCount === 1 ? 'candidate' : 'candidates'}`);
+    const resultAssetCount = new Set([
+      ...(task.result?.assetIds ?? []),
+      task.result?.sceneAssetId,
+      task.result?.toolCandidate?.resultAssetId,
+    ].filter((assetId): assetId is string => Boolean(assetId))).size;
+    const resolvedImageCount = task.result?.imageCount ?? (candidateCount === 0 && resultAssetCount > 0 ? resultAssetCount : undefined);
+    const imageCount = resolvedImageCount === undefined
+      ? undefined
+      : t(locale, `${resolvedImageCount} 张图`, `${resolvedImageCount} images`);
+    const cost = task.result?.cost === undefined || task.result.cost === null
+      ? undefined
+      : t(locale, `费用 ${task.result.cost.toFixed(2)}`, `Cost ${task.result.cost.toFixed(2)}`);
+    const details = [progress, candidateSummary, imageCount, cost].filter((value): value is string => Boolean(value));
+    return {
+      label: progress ?? candidateSummary ?? imageCount ?? cost ?? '—',
+      title: details.join(' · ') || '—',
+      inspectable: Boolean(
+        task.generationSlots?.length
+        || task.result?.candidate
+        || task.result?.candidates?.length
+        || task.result?.assetIds?.length
+        || task.result?.sceneAssetId
+        || task.result?.toolCandidate?.resultAssetId
+      ),
+    };
+  };
+  const selectedResultTask = selectedResultTaskId
+    ? tasks.find((task) => task.id === selectedResultTaskId) ?? null
+    : null;
   return <section className="page-content library-page">
     <PageHeader
       title={t(locale, '模型任务', 'Model tasks')}
@@ -1034,46 +872,47 @@ const TasksPage = ({
         ))}
       </div>
     </PageToolbarSlot>
-    {loadFailed ? <div className="page-empty-state"><EmptyState
+    {loadError ? <div className="page-empty-state"><EmptyState
       icon="circle-alert"
       title={t(locale, '任务读取失败', 'Could not load tasks')}
-      description={t(locale, '请重试，原有任务不会被覆盖。', 'Retry without overwriting existing task records.')}
-    /></div> : tasks.length > 0 && visibleTasks.length > 0 ? <div className="task-list" role="list" aria-label={t(locale, '任务列表', 'Task list')}>
+      description={taskLoadErrorMessage(locale, loadError)}
+    >
+      <Button variant="secondary" icon="rotate-ccw" onClick={() => setLoadRequest((value) => value + 1)}>
+        {t(locale, '重试读取', 'Retry loading')}
+      </Button>
+    </EmptyState></div> : tasks.length > 0 && visibleTasks.length > 0 ? <div className="task-list" role="list" aria-label={t(locale, '任务列表', 'Task list')}>
       <div className="task-row task-row--header" role="listitem" aria-label={t(locale, '表头', 'Header')}>
         <span className="task-row__cell task-row__type">{t(locale, '任务类型', 'Task type')}</span>
         <span className="task-row__cell task-row__state">{t(locale, '状态', 'Status')}</span>
         <span className="task-row__cell task-row__summary">{t(locale, '任务摘要', 'Task summary')}</span>
-        <span className="task-row__cell task-row__meta">{t(locale, '时间 / 结果', 'Time / result')}</span>
+        <span className="task-row__cell task-row__result">{t(locale, '结果', 'Result')}</span>
+        <span className="task-row__cell task-row__time">{t(locale, '时间', 'Time')}</span>
         <span className="task-row__actions">{t(locale, '操作', 'Actions')}</span>
       </div>
       {visibleTasks.map((task) => {
         const summary = taskSummary(task);
-        const metadata = taskMetadata(task);
-        const generationBatchActive = task.generationSlots?.some((slot) => slot.state === 'queued' || slot.state === 'running') ?? false;
+        const result = taskResult(task);
+        const time = taskTime(task);
         const canRetry = !task.generationSlots?.length && (task.state === 'failed' || task.state === 'cancelled') && task.capability !== 'vision-analysis' && !(task.capability === 'image-editing' && (!task.sourceAssetId || task.hasMask !== false || task.region));
+        const capabilityLabel = taskCapabilityLabel(task);
         return <article className="task-row" aria-label={task.id} key={task.id}>
-          <strong className="task-row__cell task-row__type" title={task.capability ?? t(locale, '模型任务', 'Model task')}>{task.capability ?? t(locale, '模型任务', 'Model task')}</strong>
+          <strong className="task-row__cell task-row__type" title={capabilityLabel}>{capabilityLabel}</strong>
           <span className="task-row__cell task-row__state"><Badge tone={taskTone(task)}>{taskStateLabel(task)}</Badge></span>
           <span className="task-row__cell task-row__summary" title={summary}>{summary}</span>
-          <span className="task-row__cell task-row__meta" title={metadata}>{metadata}</span>
+          <span className="task-row__cell task-row__result" title={result.title}>{result.inspectable
+            ? <button
+                type="button"
+                className="task-result-button"
+                aria-haspopup="dialog"
+                data-selected={selectedResultTaskId === task.id || undefined}
+                onClick={() => setSelectedResultTaskId(task.id)}
+              >{result.label}</button>
+            : result.label}</span>
+          <time className="task-row__cell task-row__time" dateTime={task.updatedAt ?? task.createdAt} title={time.title}>{time.label}</time>
           <span className="task-row__actions">
             {(task.state === 'queued' || task.state === 'running') && <IconButton name="x" label={t(locale, '停止', 'Stop')} onClick={() => { void stopTask(task.id); }} />}
             {canRetry && <IconButton name="rotate-ccw" label={t(locale, '重试', 'Retry')} onClick={() => { void retryTask(task.id); }} />}
           </span>
-          {task.generationSlots?.length ? <details className="task-generation-details">
-            <summary>{generationProgress(task)}</summary>
-            <ul>
-              {task.generationSlots.map((slot) => <li key={slot.id}>
-                <span>{slotLabel(slot.id)}</span>
-                <Badge tone={slot.state === 'completed' ? 'success' : slot.state === 'failed' ? 'error' : slot.state === 'cancelled' ? 'warning' : ''}>{slotStateLabel(slot.state)}</Badge>
-                {!generationBatchActive && (slot.state === 'failed' || slot.state === 'cancelled') && <IconButton
-                  name="rotate-ccw"
-                  label={t(locale, `重试${slotLabel(slot.id)}`, `Retry ${slotLabel(slot.id)}`)}
-                  onClick={() => { void retryGenerationSlot(task.id, slot.id); }}
-                />}
-              </li>)}
-            </ul>
-          </details> : null}
         </article>;
       })}
     </div> : tasks.length > 0 ? <div className="page-empty-state"><EmptyState
@@ -1097,331 +936,14 @@ const TasksPage = ({
         {t(locale, '连接模型', 'Connect models')}
       </Button>
     </EmptyState></div>}
+    <TaskResultDrawer
+      locale={locale}
+      libraryId={libraryId}
+      task={selectedResultTask}
+      onClose={() => setSelectedResultTaskId(null)}
+      onRetrySlot={(taskId, slotId) => { void retryGenerationSlot(taskId, slotId); }}
+    />
   </section>;
-};
-
-const DeliveryPage = ({
-  locale,
-  project,
-  format,
-  archiveCopy,
-  navigate,
-  onFormatChange,
-  onArchiveCopyChange,
-  notify,
-  active,
-}: {
-  locale: Locale;
-  project?: Project | null;
-  format: DeliveryFormat;
-  archiveCopy: boolean;
-  navigate: PageProps['navigate'];
-  onFormatChange: (format: DeliveryFormat) => void;
-  onArchiveCopyChange: (value: boolean) => void;
-  notify?: (message: string) => void;
-  active: boolean;
-}) => {
-  const [exporting, setExporting] = useState(false);
-  const [exportHistory, setExportHistory] = useState<ExportHistoryRecord[]>([]);
-  const [source, setSource] = useState<'current' | 'final'>('current');
-  const [documentId, setDocumentId] = useState(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
-  const [drawerOpen, setDrawerOpen] = useState(Boolean(project));
-  const [deliveryScene, setDeliveryScene] = useState<DesignScene | null>(null);
-  const [sceneStatus, setSceneStatus] = useState<'idle' | 'loading' | 'ready' | 'empty' | 'error'>('idle');
-  const formatDescription =
-    format === 'jpeg'
-      ? t(
-          locale,
-          'JPEG 不支持透明背景，将使用当前背景色。',
-          'JPEG does not support transparency; the current background color will be used.',
-        )
-      : format === 'pdf'
-        ? t(
-            locale,
-            '普通 PDF 不是 PDF/X，文字外观可能需要栅格化。',
-            'Standard PDF is not PDF/X; type may need rasterization to preserve appearance.',
-          )
-        : t(
-            locale,
-            'PNG 使用 sRGB，并保持当前画布像素尺寸。',
-            'PNG uses sRGB and keeps the current canvas pixel dimensions.',
-          );
-  const projectName = project ? t(locale, project.name, project.enName) : '';
-  const persistedProject = Boolean(project?.libraryId);
-  useEffect(() => {
-    setDrawerOpen(Boolean(project));
-    setDocumentId(project?.documentId ?? project?.documentEntries?.[0]?.id ?? '');
-    setSource('current');
-    setExportHistory([]);
-    if (!project?.libraryId) return;
-    let cancelled = false;
-    const request = getDesktopApi().listExportHistory?.(project.libraryId, project.id);
-    if (!request) return () => { cancelled = true; };
-    void request.then((records) => {
-      if (!cancelled && records) setExportHistory(records);
-    }).catch(() => {
-      if (!cancelled) setExportHistory([]);
-    });
-    return () => { cancelled = true; };
-  }, [project?.documentId, project?.id]);
-  const activeDocumentId = documentId || project?.documentId || project?.documentEntries?.[0]?.id || '';
-  const currentDocument = project?.documentEntries?.find((entry) => entry.id === activeDocumentId) ?? project?.documentEntries?.[0];
-  const finalizedRevisionId = currentDocument?.finalizedRevisionId ?? null;
-  const hasFinalizedRevision = Boolean(project?.libraryId && activeDocumentId && finalizedRevisionId);
-  useEffect(() => {
-    if (!hasFinalizedRevision && source === 'final') setSource('current');
-  }, [hasFinalizedRevision, source]);
-  const loadSelectedScene = useCallback(async (): Promise<DesignScene | null> => {
-    if (!project?.libraryId || !activeDocumentId) return null;
-    const api = getDesktopApi();
-    if (source === 'final' && finalizedRevisionId) {
-      const revisions = await api.loadDocumentRevisions?.(project.libraryId, project.id, activeDocumentId);
-      return revisions?.revisions.find((revision) => revision.revisionId === finalizedRevisionId)?.scene
-        ?? (revisions?.finalRevisionId ? revisions.revisions.find((revision) => revision.revisionId === revisions.finalRevisionId)?.scene : null)
-        ?? null;
-    }
-    return await api.loadDocumentScene?.(project.libraryId, project.id, activeDocumentId) ?? null;
-  }, [activeDocumentId, finalizedRevisionId, project?.id, project?.libraryId, source]);
-  const hasExportableContent = useCallback((scene: DesignScene | null): scene is DesignScene => Boolean(scene?.layers.some((layer) => (
-    layer.visible && !(layer.type === 'image' && (layer.role === 'reference' || layer.assetId === 'placeholder'))
-  ))), []);
-  useEffect(() => {
-    if (!project?.libraryId || !activeDocumentId) {
-      setDeliveryScene(null);
-      setSceneStatus('idle');
-      return;
-    }
-    let cancelled = false;
-    setDeliveryScene(null);
-    setSceneStatus('loading');
-    void loadSelectedScene().then((scene) => {
-      if (cancelled) return;
-      setDeliveryScene(scene);
-      setSceneStatus(hasExportableContent(scene) ? 'ready' : 'empty');
-    }).catch(() => {
-      if (!cancelled) {
-        setDeliveryScene(null);
-        setSceneStatus('error');
-      }
-    });
-    return () => { cancelled = true; };
-  }, [activeDocumentId, hasExportableContent, loadSelectedScene, project?.libraryId]);
-  const exportCurrent = async (): Promise<void> => {
-    if (!project?.libraryId || !activeDocumentId) return;
-    setExporting(true);
-    try {
-      const api = getDesktopApi();
-      const scene = await loadSelectedScene();
-      if (!hasExportableContent(scene)) {
-        setSceneStatus('empty');
-        notify?.(t(locale, '当前图片没有可导出的正式结果，请先在画布中选择候选稿并确认。', 'This image has no formal result to export. Select a candidate on the canvas and confirm it first.'));
-        return;
-      }
-      const result = await api.exportDocument?.({ libraryId: project.libraryId, projectId: project.id, documentId: activeDocumentId, format, scene, ...(format === 'jpeg' ? { background: '#ffffff' } : {}), ...(archiveCopy ? { archiveCopy: true } : {}) });
-      if (result) {
-        if (result.archiveError) {
-          notify?.(t(locale, `已导出到 ${result.path}，归档副本失败（${result.archiveError}），可重试。`, `Exported to ${result.path}; the archive copy failed (${result.archiveError}). Retry when ready.`));
-        } else if (result.archived) {
-          notify?.(t(locale, `已导出并归档到 ${result.path}`, `Exported and archived from ${result.path}`));
-        } else {
-          notify?.(t(locale, `已导出到 ${result.path}`, `Exported to ${result.path}`));
-        }
-      }
-    } catch {
-      notify?.(t(locale, source === 'final' ? '定稿读取失败，请重试。' : '导出失败，请重试。', source === 'final' ? 'Could not read the finalized revision. Try again.' : 'Export failed. Try again.'));
-    } finally { setExporting(false); }
-  };
-  const exportPackage = async (): Promise<void> => {
-    if (!project?.libraryId) return;
-    try {
-      const result = await getDesktopApi().exportProjectPackage?.({ libraryId: project.libraryId, projectId: project.id });
-      if (result) notify?.(t(locale, `项目包已导出到 ${result.path}`, `Project package exported to ${result.path}`));
-    } catch {
-      notify?.(t(locale, '项目包导出失败', 'Project package export failed'));
-    }
-  };
-  const reexport = async (record: ExportHistoryRecord): Promise<void> => {
-    if (!project?.libraryId) return;
-    try {
-      const api = getDesktopApi();
-      const revisions = await api.loadDocumentRevisions?.(project.libraryId, project.id, record.documentId);
-      const revision = revisions?.revisions.find((item) => item.revisionId === record.revisionId);
-      if (!revision?.scene) throw new Error('HISTORY_SCENE_UNAVAILABLE');
-      const result = await api.exportDocument?.({ libraryId: project.libraryId, projectId: project.id, documentId: record.documentId, format: record.format, scene: revision.scene });
-      if (result) notify?.(t(locale, `已重新导出到 ${result.path}`, `Re-exported to ${result.path}`));
-    } catch {
-      notify?.(t(locale, '历史修订不可用，请重新导出当前版本。', 'The historical revision is unavailable; export the current version instead.'));
-    }
-  };
-  return (
-    <section className="page-content library-page">
-      <PageHeader
-        title={t(locale, '导出交付', 'Delivery')}
-        eyebrow={t(locale, persistedProject ? '当前原稿' : '示例原稿', persistedProject ? 'Current source artwork' : 'Example source artwork')}
-        description={
-          project
-            ? t(
-                locale,
-                persistedProject ? `为${project.name}配置输出格式。左侧显示当前图片原稿。` : `为${project.name}配置输出格式。左侧显示项目示例原稿。`,
-                persistedProject ? `Configure output for ${project.enName}. The current image source appears on the left.` : `Configure output for ${project.enName}. The project’s example source artwork appears on the left.`,
-              )
-            : t(
-                locale,
-                '选择项目图片后配置输出格式。',
-                'Select a project image to configure its output format.',
-              )
-        }
-      />
-      {project?.libraryId && <PageToolbarSlot active={active}>
-        <IconButton name="download" label={t(locale, '导出当前设计稿', 'Export current design')} onClick={() => setDrawerOpen(true)} />
-      </PageToolbarSlot>}
-      <div className="delivery-layout">
-        {project ? (
-          <div className="delivery-preview">
-            {persistedProject ? (
-              sceneStatus === 'ready' && deliveryScene
-                ? <DeliveryScenePreview libraryId={project.libraryId!} projectId={project.id} scene={deliveryScene} alt={t(locale, `${currentDocument?.name ?? project.name}导出预览`, `${currentDocument?.name ?? project.enName} export preview`)} />
-                : <div className={`delivery-scene-state delivery-scene-state--${sceneStatus}`}>
-                    <Icon name={sceneStatus === 'error' ? 'circle-alert' : 'file-image'} size={36} />
-                    <span>{sceneStatus === 'loading'
-                      ? t(locale, '正在读取当前设计稿…', 'Loading the current design…')
-                      : sceneStatus === 'error'
-                        ? t(locale, '设计稿读取失败，请重试。', 'Could not load the design. Try again.')
-                        : t(locale, '当前图片没有可导出的正式结果，请先在画布中选择候选稿并确认。', 'This image has no formal result to export. Select a candidate on the canvas and confirm it first.')}</span>
-                  </div>
-            ) : <ArtworkPreview kind={project.artwork} />}
-            <div>
-              <Badge>{t(locale, '原稿', 'Source')}</Badge>
-              <h2>{projectName}</h2>
-              <p>
-                {(() => {
-                  if (!currentDocument && persistedProject) return t(locale, '未设置尺寸', 'Size not set');
-                  const dimensions = `${currentDocument?.width ?? 1080} × ${currentDocument?.height ?? 1440}`;
-                  return t(locale, `${dimensions} 像素 · sRGB`, `${dimensions} px · sRGB`);
-                })()}
-              </p>
-              <small className="source-note">
-                  {t(locale, source === 'final' ? '导出将读取已确认结果。' : '导出将读取当前图片结果。', source === 'final' ? 'Export reads the confirmed result.' : 'Export reads the current image result.')}
-              </small>
-            </div>
-          </div>
-        ) : (
-          <div className="delivery-preview delivery-preview--empty">
-            <EmptyState
-              icon="file-image"
-              title={t(locale, '选择图片', 'Select an image')}
-              description={t(
-                locale,
-                '从项目中选择一张图片，再返回这里配置交付预览。',
-                'Select an image from a project, then return here to configure its delivery preview.',
-              )}
-            >
-              <Button
-                variant="secondary"
-                icon="arrow-left"
-                onClick={() => navigate('projects')}
-              >
-                {t(locale, '返回项目', 'View projects')}
-              </Button>
-            </EmptyState>
-          </div>
-        )}
-        {project && <Drawer
-          open={drawerOpen}
-          title={t(locale, '导出配置', 'Delivery configuration')}
-          locale={locale}
-          onClose={() => setDrawerOpen(false)}
-          footer={(
-            <div className="export-bar">
-              <div>
-                <strong>{t(locale, '尚未选择目标目录', 'No destination selected')}</strong>
-                <span>{t(locale, persistedProject ? '使用桌面保存对话框写出并校验文件。' : '桌面导出能力接入后才可执行。', persistedProject ? 'Use the desktop save dialog to write and validate the file.' : 'Available after desktop export support is connected.')}</span>
-              </div>
-              <Button variant="primary" icon="download" disabled={!project?.libraryId || !activeDocumentId || exporting || sceneStatus === 'empty' || sceneStatus === 'error'} onClick={() => { void exportCurrent(); }}>
-                {exporting ? t(locale, '处理中', 'Working') : t(locale, '导出', 'Export')}
-              </Button>
-            </div>
-          )}
-        ><div className="delivery-config">
-          <div className="config-section">
-            <p className="panel-label">
-              {t(locale, '输出格式', 'Output format')}
-            </p>
-            <div
-              className="format-picker"
-              role="group"
-              aria-label={t(locale, '输出格式', 'Output format')}
-            >
-              {(['png', 'jpeg', 'webp', 'pdf'] as DeliveryFormat[]).map((option) => (
-                <button
-                  type="button"
-                  key={option}
-                  className={format === option ? 'is-selected' : ''}
-                  aria-pressed={format === option}
-                  onClick={() => onFormatChange(option)}
-                >
-                  <Icon
-                    name={option === 'pdf' ? 'file-image' : 'image'}
-                    size={17}
-                  />
-                  {t(locale, option.toUpperCase(), option.toUpperCase())}
-                </button>
-              ))}
-            </div>
-            <p className="format-note">
-              <Icon name="circle-alert" size={15} />
-              {formatDescription}
-            </p>
-          </div>
-          <div className="config-grid">
-            {project?.documentEntries && project.documentEntries.length > 1 && <Field label={t(locale, '图片', 'Image')}>
-              <Select ariaLabel={t(locale, '图片', 'Image')} value={activeDocumentId} onChange={setDocumentId} options={project.documentEntries.map((entry) => ({ value: entry.id, label: entry.name }))} />
-            </Field>}
-            <Field label={t(locale, '来源', 'Source')}>
-              <Select ariaLabel={t(locale, '来源', 'Source')} value={source} onChange={(value) => setSource(value as 'current' | 'final')} options={[{ value: 'current', label: t(locale, persistedProject ? '当前图片' : '示例原稿', persistedProject ? 'Current image' : 'Example source artwork') }, ...(hasFinalizedRevision ? [{ value: 'final', label: t(locale, '已确认结果', 'Confirmed result') }] : [])]} />
-            </Field>
-            <Field label={t(locale, '颜色空间', 'Color space')}>
-              <Select ariaLabel={t(locale, '颜色空间', 'Color space')} value="srgb" disabled onChange={() => undefined} options={[{ value: 'srgb', label: t(locale, 'sRGB（首版）', 'sRGB (first release)') }]} />
-            </Field>
-          </div>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={archiveCopy}
-              onChange={(event) => onArchiveCopyChange(event.target.checked)}
-            />
-            <span>
-              <strong>
-                {t(locale, '同时归档到项目', 'Also archive in project')}
-              </strong>
-              <small>
-                {t(
-                  locale,
-                  persistedProject ? (source === 'final' ? '导出会读取已确认结果，并可选择归档副本。' : '导出会读取当前图片，并可选择归档副本。') : '仅配置选项；示例不会写入 exports 目录。',
-                  persistedProject ? (source === 'final' ? 'Export reads the confirmed result and can archive a copy.' : 'Export reads the current image and can archive a copy.') : 'Configuration only; the example does not write to the exports directory.',
-                )}
-              </small>
-            </span>
-          </label>
-          {persistedProject && <div className="export-history" aria-label={t(locale, '导出历史', 'Export history')}>
-            <p className="panel-label">{t(locale, '导出历史', 'Export history')}</p>
-            {exportHistory.length === 0 ? <small>{t(locale, '暂无导出记录。', 'No export records yet.')}</small> : exportHistory.slice(0, 5).map((record) => (
-              <div className="export-history-row" key={record.id}>
-                <span>{record.format.toUpperCase()} · {record.revisionId}{record.targetAvailable === false ? ` · ${t(locale, '目标已移动', 'Target moved')}` : ''}</span>
-                <span className="export-history-row__actions">
-                  <Badge tone={record.status === 'success' ? 'success' : 'error'}>
-                    {record.status === 'success' ? t(locale, '成功', 'Success') : t(locale, '失败', 'Failed')}
-                  </Badge>
-                  {record.status === 'success' && <IconButton name="rotate-ccw" label={t(locale, '重新导出', 'Re-export')} onClick={() => { void reexport(record); }} />}
-                </span>
-              </div>
-            ))}
-          </div>}
-          {persistedProject && <Button variant="secondary" icon="download" onClick={() => { void exportPackage(); }}>{t(locale, '导出项目包', 'Export project package')}</Button>}
-        </div></Drawer>}
-      </div>
-    </section>
-  );
 };
 
 const StoragePage = ({
@@ -1928,7 +1450,6 @@ export const LibraryPages = ({
   theme,
   onThemeChange,
   onLocaleChange,
-  deliveryProject,
   onUseForNew,
   libraryId,
   preview = false,
@@ -1938,7 +1459,6 @@ export const LibraryPages = ({
   onOperatorNameChange,
   onAssetAction,
   initialAssets = [],
-  initialBrands = [],
   initialProfiles = [],
   active = true,
   connectionsDialogOpen,
@@ -1963,9 +1483,6 @@ export const LibraryPages = ({
   const [assetType, setAssetType] = useState<AssetType>('all');
   const [assetLayout, setAssetLayout] = useState<'grid' | 'list'>('grid');
   const [selectedAsset, setSelectedAsset] = useState('');
-  const [selectedBrand, setSelectedBrand] = useState('');
-  const [deliveryFormat, setDeliveryFormat] = useState<DeliveryFormat>('png');
-  const [archiveCopy, setArchiveCopy] = useState(false);
   const [storageTab, setStorageTab] = useState<StorageTab>('trash');
   const renderImageToolsPage = (tool?: BatchImageTool): ReactNode => !active ? null : (
     <Suspense fallback={<EmptyState icon="loader-circle" title={t(locale, '正在加载图像工具', 'Loading image tools')} description={t(locale, '正在准备批量处理工作台。', 'Preparing the batch image workbench.')} />}>
@@ -2039,16 +1556,6 @@ export const LibraryPages = ({
         active={active}
       />
     ),
-    brands: (
-      <BrandsPage
-        locale={locale}
-        selectedId={selectedBrand}
-        onSelect={setSelectedBrand}
-        libraryId={libraryId}
-        preview={preview}
-        initialBrands={initialBrands}
-      />
-    ),
     connections: <ConnectionsPage
       locale={locale}
       libraryId={libraryId}
@@ -2061,19 +1568,6 @@ export const LibraryPages = ({
     'image-tool-upscale': renderImageToolsPage('upscale'),
     'image-tool-resize': renderImageToolsPage('resize'),
     'image-tool-format-convert': renderImageToolsPage('format-convert'),
-    delivery: (
-      <DeliveryPage
-        locale={locale}
-        project={deliveryProject}
-        format={deliveryFormat}
-        archiveCopy={archiveCopy}
-        navigate={navigate}
-        onFormatChange={setDeliveryFormat}
-        onArchiveCopyChange={setArchiveCopy}
-        notify={notify}
-        active={active}
-      />
-    ),
     storage: (
       <StoragePage
         locale={locale}

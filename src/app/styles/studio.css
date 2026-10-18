@@ -243,8 +243,7 @@ button:disabled {
 }
 /* Main content containers stay unframed; child panels own their dividers. */
 .library-split,
-.connection-layout,
-.delivery-layout {
+.connection-layout {
   background: var(--content-card-background);
   border: 0;
   border-radius: 0;
@@ -692,11 +691,18 @@ button:disabled {
   color: var(--on-surface);
   box-shadow: var(--shadow-overlay);
   font-size: 13px;
-  overflow: auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
   animation: dialog-appear 280ms ease-out;
 }
 .ui-dialog--wide {
   width: min(600px, calc(100vw - 64px));
+}
+.ui-dialog--with-footer {
+  display: grid;
+  grid-template-rows: auto minmax(0, auto) auto;
+  align-content: start;
 }
 .ui-dialog::backdrop {
   background: color-mix(
@@ -783,11 +789,10 @@ button:disabled {
 .ui-drawer__footer .asset-detail-actions,
 .ui-drawer__footer .persona-inspector__actions,
 .ui-drawer__footer .provider-profile-actions-row,
-.ui-drawer__footer .workbench-compose__actions,
-.ui-drawer__footer .export-bar {
+.ui-drawer__footer .workbench-compose__actions {
   margin: 0;
 }
-.ui-drawer__footer > :where(.dialog-actions, .asset-detail-actions, .persona-inspector__actions, .provider-profile-actions-row, .workbench-compose__actions, .export-bar) {
+.ui-drawer__footer > :where(.dialog-actions, .asset-detail-actions, .persona-inspector__actions, .provider-profile-actions-row, .workbench-compose__actions) {
   width: 100%;
 }
 .ui-tooltip-trigger {
@@ -816,13 +821,19 @@ button:disabled {
   white-space: pre-line;
   pointer-events: none;
 }
+.ui-tooltip--right,
+.ui-tooltip--left {
+  color: #fff;
+  background: #11161d;
+  border-color: color-mix(in srgb, #fff 18%, transparent);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 24%);
+}
 .dialog-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  position: sticky;
-  top: 0;
+  position: relative;
   padding: 12px 20px;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-container-low);
@@ -836,42 +847,115 @@ button:disabled {
   margin: 0;
 }
 .dialog-content {
+  min-height: 0;
   padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.ui-dialog--with-footer .dialog-content {
+  min-height: 0;
+  max-height: calc(100dvh - 224px);
 }
 .dialog-content > .muted,
 .dialog-content form > .muted {
   margin-top: 0;
   font-size: 12px;
 }
+.dialog-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-container-low);
+}
+.dialog-footer > .dialog-actions {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  position: static;
+  background: transparent;
+}
 .dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 24px;
+  padding-top: 12px;
+  padding-bottom: 2px;
+  background: var(--surface-container-low);
 }
-.document-create-mode {
+.tool-inspector {
+  min-width: 0;
+}
+.tool-inspector > .ui-field {
+  margin-bottom: 16px;
+}
+.tool-inspector__fields {
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
+  min-width: 0;
+  gap: 16px;
+}
+.tool-inspector__fields .ui-field {
+  min-width: 0;
+  margin: 0;
+}
+.tool-inspector__fields--expand {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 20px;
 }
-.document-create-mode .ui-button {
-  justify-content: flex-start;
-  min-height: 44px;
-  border-color: var(--border-subtle);
-  background: var(--surface-container);
+.canvas-mask-editor {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  margin-top: 20px;
 }
-.document-create-mode .ui-button.is-active {
-  border-color: color-mix(in srgb, var(--primary) 55%, var(--border-subtle));
-  background: color-mix(in srgb, var(--primary) 10%, var(--surface-container));
-  color: var(--primary);
+.canvas-mask-editor > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 12px;
 }
-.document-create-hint {
-  margin: -10px 0 16px;
-  color: var(--on-surface-variant);
+.canvas-mask-editor > label input {
+  width: 100%;
+  min-width: 0;
+}
+.canvas-mask-editor > p {
+  margin: 0;
+  color: var(--error);
   font-size: 11px;
-  line-height: 17px;
+}
+.canvas-mask-editor__actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 12px;
+  padding-bottom: 2px;
+  background: var(--surface-container-low);
+}
+@media (max-width: 420px) {
+  .tool-inspector__fields--expand {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .canvas-mask-editor > label {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
 }
 .ui-field {
   display: flex;
@@ -883,6 +967,27 @@ button:disabled {
 }
 .ui-field > span {
   font-weight: 500;
+}
+.ui-field__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.ui-field__required {
+  color: var(--error);
+  font-weight: 700;
+}
+.ui-field__help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-surface-variant);
+  cursor: help;
+}
+.ui-field__help:hover,
+.ui-field__help:focus-visible {
+  color: var(--primary);
 }
 .ui-field :is(input, textarea, select),
 .ui-input {
@@ -986,6 +1091,7 @@ button:disabled {
   transition: opacity 120ms ease, transform 120ms ease;
 }
 .ui-select__menu.is-closed {
+  display: none;
   pointer-events: none;
   opacity: 0;
   transform: translateY(-4px) scaleY(0.98);
@@ -1149,10 +1255,6 @@ button:disabled {
   line-height: 20px;
   margin-bottom: 24px;
 }
-.project-detail > .ui-button {
-  padding-left: 0;
-  margin: -8px 0 20px;
-}
 .project-context {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1219,60 +1321,6 @@ button:disabled {
 .section-title > span {
   color: var(--on-surface-variant);
   font-size: 11px;
-}
-.document-collection {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
-}
-.document-card {
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-ui);
-  padding: 0;
-  overflow: hidden;
-  text-align: left;
-}
-.document-card:hover {
-  border-color: var(--primary);
-}
-.document-cover {
-  height: 224px;
-  padding: 20px;
-  background: var(--surface-container-lowest);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.document-cover .artwork {
-  width: 128px;
-  height: 180px;
-}
-.document-cover--1 .artwork {
-  width: 172px;
-  height: 172px;
-}
-.document-cover--2 .artwork {
-  width: 208px;
-  height: 120px;
-}
-.document-card-body {
-  padding: 12px 16px;
-}
-.document-card-body h3 {
-  font-size: 13px;
-  font-weight: 500;
-  margin: 0 0 8px;
-}
-.document-card-body > span {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  font:
-    11px/16px 'JetBrains Mono',
-    monospace;
-  color: var(--on-surface-variant);
 }
 .brief-summary {
   border-top: 1px solid var(--border-subtle);
@@ -1642,8 +1690,8 @@ button:disabled {
   left: auto;
   right: 12px;
 }
-/* The toolbar owns the visible page context; keep headings for screen readers. */
-.page-heading {
+/* The batch heading also owns interactive tool/job controls and must stay visible. */
+.page-heading:not(.image-tools-page__header) {
   position: absolute;
   width: 1px;
   height: 1px;

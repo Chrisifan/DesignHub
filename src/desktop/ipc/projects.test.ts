@@ -11,6 +11,7 @@ import {
   projectRestoreTrashChannel,
   projectTrashChannel,
   restoreProjectFromTrashHandler,
+  saveProjectCanvasLayoutHandler,
 } from './projects';
 
 const createFixture = () => {
@@ -68,4 +69,24 @@ it('rejects malformed or untrusted trash requests before storage', async () => {
   await expect(moveProjectToTrashHandler(window as never, trustedUrl, () => workspace, move)(untrustedEvent as never, { libraryId: 'workspace-1', projectId: 'project-1' })).resolves.toBeNull();
   expect(list).not.toHaveBeenCalled();
   expect(move).not.toHaveBeenCalled();
+});
+
+it('passes a complete canvas layout selection through the trusted save boundary', async () => {
+  const { window, event, trustedUrl } = createFixture();
+  const workspace = { library: { libraryId: 'workspace-1', openMode: 'writable' } } as never;
+  const layout = {
+    viewport: { zoom: 0.75, offsetX: 12, offsetY: 24 },
+    nodes: { 'design-1': { x: 40, y: 60 } },
+    selectedDesignIds: ['design-1'],
+  };
+  const save = vi.fn(async () => layout);
+  const handler = saveProjectCanvasLayoutHandler(window as never, trustedUrl, () => workspace, save);
+
+  await expect(handler(event as never, { libraryId: 'workspace-1', projectId: 'project-1', layout })).resolves.toEqual(layout);
+  await expect(handler(event as never, {
+    libraryId: 'workspace-1',
+    projectId: 'project-1',
+    layout: { ...layout, selectedDesignIds: 'design-1' },
+  })).resolves.toBeNull();
+  expect(save).toHaveBeenCalledOnce();
 });

@@ -8,7 +8,7 @@ export type ExportTarget = {
   remove?: (path: string) => Promise<void>;
 };
 
-export type ExportDocumentInput = {
+export type ExportProjectDesignInput = {
   revisionId: string;
   format: ExportFormat;
   targetPath: string;
@@ -34,7 +34,7 @@ const hash = async (bytes: Uint8Array): Promise<string> => {
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
 };
 
-export const exportDocument = async (input: ExportDocumentInput): Promise<ExportResult> => {
+export const exportProjectDesign = async (input: ExportProjectDesignInput): Promise<ExportResult> => {
   if (!input.revisionId.trim() || !input.targetPath.trim()) throw new Error('EXPORT_BINDING_REQUIRED');
   if (await input.target.exists(input.targetPath)) throw new Error('TARGET_EXISTS');
   const rendered = await input.render();

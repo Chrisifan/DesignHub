@@ -3,7 +3,7 @@ import { access, rename, unlink, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 
 import type { DesignScene } from '../features/canvas/scene';
-import { exportDocument, type ExportResult } from '../features/delivery/export-document';
+import { exportProjectDesign, type ExportResult } from '../features/delivery/export-document';
 import { createSharpCodec } from '../features/delivery/node-codec';
 import type { ExportFormat } from '../features/delivery/export-policy';
 
@@ -36,7 +36,7 @@ export const exportSceneToFile = async (input: { scene: DesignScene; format: Exp
   }
   const codec = createSharpCodec();
   const rendered = new Uint8Array(await sharp(Buffer.from(renderSceneSvg(input.scene, imageAssets))).png().toBuffer());
-  return exportDocument({
+  return exportProjectDesign({
     revisionId: input.scene.id,
     format: input.format,
     targetPath: input.targetPath,

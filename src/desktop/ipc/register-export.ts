@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { exportDocumentChannel, exportDocumentHandler, type ExportBridgeInput, type ExportBridgeResult } from './export';
+import { exportProjectDesignChannel, exportProjectDesignHandler, type ExportBridgeInput, type ExportBridgeResult } from './export';
 import type { ProjectLibraryHandle } from '../../features/project-library/open-project-library';
 
 type IpcMainLike = {
@@ -7,11 +7,12 @@ type IpcMainLike = {
 };
 
 export type RegisterExportOptions = {
+  [key: string]: unknown;
   ipc: IpcMainLike;
   getWindow: () => BrowserWindow | null;
   getTrustedUrl: () => string | null;
   getLibrary: () => ProjectLibraryHandle | null;
-  exportDocument: (workspace: ProjectLibraryHandle, input: ExportBridgeInput) => Promise<ExportBridgeResult | null>;
+  exportProjectDesign?: (workspace: ProjectLibraryHandle, input: ExportBridgeInput) => Promise<ExportBridgeResult | null>;
 };
 
 export const registerExportHandlers = ({
@@ -19,12 +20,12 @@ export const registerExportHandlers = ({
   getWindow,
   getTrustedUrl,
   getLibrary,
-  exportDocument,
+  exportProjectDesign,
 }: RegisterExportOptions): void => {
-  ipc.handle(exportDocumentChannel, (event, input) => {
+  ipc.handle(exportProjectDesignChannel, (event, input) => {
     const window = getWindow();
     const trustedUrl = getTrustedUrl();
     if (!window || !trustedUrl) return null;
-    return exportDocumentHandler(window, trustedUrl, getLibrary, exportDocument)(event as never, input);
+    return exportProjectDesignHandler(window, trustedUrl, getLibrary, exportProjectDesign ?? (async () => null))(event as never, input);
   });
 };

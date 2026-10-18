@@ -6,7 +6,10 @@ type TooltipProps = {
   children: ReactNode;
   className?: string;
   asChild?: boolean;
+  placement?: TooltipPlacement;
 };
+
+export type TooltipPlacement = 'auto' | 'top' | 'right' | 'bottom' | 'left';
 
 type TooltipPosition = {
   left: number;
@@ -15,7 +18,7 @@ type TooltipPosition = {
 
 let activeTooltipDismiss: (() => void) | null = null;
 
-export const Tooltip = ({ content, children, className = '', asChild = false }: TooltipProps) => {
+export const Tooltip = ({ content, children, className = '', asChild = false, placement = 'auto' }: TooltipProps) => {
   const id = useId();
   const triggerRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
@@ -46,14 +49,28 @@ export const Tooltip = ({ content, children, className = '', asChild = false }: 
       if (!trigger) return;
       const margin = 8;
       const gap = 8;
-      const left = Math.min(
+      const centeredTop = Math.min(
+        window.innerHeight - tooltipBounds.height - margin,
+        Math.max(margin, trigger.top + trigger.height / 2 - tooltipBounds.height / 2),
+      );
+      const centeredLeft = Math.min(
         window.innerWidth - tooltipBounds.width - margin,
         Math.max(margin, trigger.left + trigger.width / 2 - tooltipBounds.width / 2),
       );
-      const above = trigger.top - tooltipBounds.height - gap;
-      const top = above >= margin
-        ? above
-        : Math.min(window.innerHeight - tooltipBounds.height - margin, trigger.bottom + gap);
+      let left = centeredLeft;
+      let top = centeredTop;
+      if (placement === 'right') {
+        left = Math.min(window.innerWidth - tooltipBounds.width - margin, trigger.right + gap);
+      } else if (placement === 'left') {
+        left = Math.max(margin, trigger.left - tooltipBounds.width - gap);
+      } else if (placement === 'top') {
+        top = Math.max(margin, trigger.top - tooltipBounds.height - gap);
+      } else if (placement === 'bottom') {
+        top = Math.min(window.innerHeight - tooltipBounds.height - margin, trigger.bottom + gap);
+      } else {
+        const above = trigger.top - tooltipBounds.height - gap;
+        top = above >= margin ? above : Math.min(window.innerHeight - tooltipBounds.height - margin, trigger.bottom + gap);
+      }
       setPosition({ left, top });
     };
 
@@ -113,7 +130,7 @@ export const Tooltip = ({ content, children, className = '', asChild = false }: 
         id={id}
         role="tooltip"
         popover="manual"
-        className="ui-tooltip"
+        className={`ui-tooltip ${placement !== 'auto' ? `ui-tooltip--${placement}` : ''}`.trim()}
         style={{
           left: position?.left ?? 0,
           top: position?.top ?? 0,

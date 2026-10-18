@@ -70,7 +70,6 @@ it('defines shared layout tokens for compact toolbar controls and unframed main 
 it('uses one responsive page-content spacing contract across regular pages', () => {
   const tokens = readStyle('../../src/app/styles/tokens.css');
   const studioStyles = readStyle('../../src/app/styles/studio.css');
-  const detailStyles = readStyle('../../src/app/studio/project-detail.css');
   const personaStyles = readStyle('../../src/app/studio/persona.css');
 
   expect(tokens).toMatch(/--page-content-padding-block-start:\s*24px/);
@@ -87,18 +86,13 @@ it('uses one responsive page-content spacing contract across regular pages', () 
   );
 
   const pageContentRule = studioStyles.match(/\.page-content\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
-  const projectDetailRule = detailStyles.match(
-    /\.page-content\.project-detail-page\s*\{([\s\S]*?)\n\}/u,
-  )?.[1] ?? '';
   const designerLibraryRule = personaStyles.match(
     /\.page-content\.designer-library-page\s*\{([\s\S]*?)\n\}/u,
   )?.[1] ?? '';
   expect(pageContentRule).toMatch(
     /padding:\s*var\(--page-content-padding-block-start\)\s+var\(--page-content-padding-inline\)\s+var\(--page-content-padding-block-end\)/,
   );
-  expect(projectDetailRule).not.toMatch(/padding:/u);
   expect(designerLibraryRule).not.toMatch(/padding:/u);
-  expect(detailStyles).not.toMatch(/\.page-content\.project-detail-page\s*\{[^}]*padding:/u);
   expect(personaStyles).not.toMatch(/\.designer-library-page\s*\{[^}]*padding:/u);
 });
 
@@ -123,28 +117,6 @@ it('keeps resource cards at one shared fixed width without stretching the last r
   expect(personaStyles.match(/\.persona-repository__list\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '').toMatch(/justify-content:\s*start/);
   expect(studioStyles).toMatch(/\.project-collection--list\s*\{[\s\S]*grid-template-columns:\s*1fr/);
   expect(libraryStyles).toMatch(/\.asset-collection--list\s*\{[\s\S]*display:\s*flex/);
-});
-
-it('keeps the project detail page responsive without horizontal overflow', () => {
-  const styles = readStyle('../../src/app/studio/project-detail.css');
-
-  expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?grid-auto-rows:\s*max-content/);
-  expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?align-content:\s*start/);
-  expect(styles).toMatch(/\.project-detail-header\s*\{[\s\S]*?overflow:\s*hidden/);
-  expect(styles).toMatch(/\.project-detail-hero\s*\{[\s\S]*?min-height:\s*168px/);
-  expect(styles).toMatch(/\.project-detail-summary__description\s*\{[\s\S]*?-webkit-line-clamp:\s*1/);
-  expect(styles).toMatch(/\.project-detail-layout\s*\{[\s\S]*?display:\s*block/);
-  expect(styles).toMatch(/\.project-detail-documents--full\s*\{[\s\S]*?width:\s*100%/);
-  expect(styles).toMatch(
-    /\.project-detail-document-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(100%,\s*360px\),\s*360px\)\)/,
-  );
-  expect(styles).toMatch(
-    /\.project-detail-document-grid\s*\{[\s\S]*?justify-content:\s*start/,
-  );
-  expect(styles).not.toMatch(/\.project-detail-sidebar/);
-  expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-hero,[\s\S]*?\.project-detail-hero__overlay\s*\{[\s\S]*?min-height:\s*168px/);
-  expect(styles).toMatch(/@media \(max-width:\s*720px\)[\s\S]*?\.project-detail-document-grid[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  expect(styles).toMatch(/\.page-content\.project-detail-page\s*\{[\s\S]*?overflow-x:\s*clip/);
 });
 
 it('reserves two lines for every project description and clamps overflow', () => {
@@ -183,22 +155,16 @@ it('keeps regular studio pages on one scroll owner and styles compact toolbar ac
     /\.toolbar-actions \.ui-button\s*\{[\s\S]*min-height:\s*var\(--toolbar-control-height\)/,
   );
   expect(styles).toMatch(
-    /\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*background:\s*var\(--content-card-background\)/,
+    /\.library-split,[\s\S]*\.connection-layout\s*\{[\s\S]*background:\s*var\(--content-card-background\)/,
   );
   expect(styles).toMatch(
-    /\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*border:\s*0;[\s\S]*border-radius:\s*0;[\s\S]*box-shadow:\s*var\(--content-card-shadow\)/,
+    /\.library-split,[\s\S]*\.connection-layout\s*\{[\s\S]*border:\s*0;[\s\S]*border-radius:\s*0;[\s\S]*box-shadow:\s*var\(--content-card-shadow\)/,
   );
   expect(styles).toMatch(
     /\.project-card\s*\{[\s\S]*background:\s*var\(--surface-container-lowest\)/,
   );
   expect(libraryStyles).toMatch(
     /\.capability-matrix\s*\{[\s\S]*background:\s*transparent/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-preview\s*\{[\s\S]*background:\s*transparent/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-config\s*\{[\s\S]*background:\s*transparent/,
   );
 });
 
@@ -303,22 +269,10 @@ it('fills library regions and keeps sibling content aligned', () => {
     /\.library-page\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*min-height:\s*100%;/,
   );
   expect(libraryStyles).toMatch(
-    /\.library-page\s*>\s*\.library-split,[\s\S]*\.connection-layout,[\s\S]*\.delivery-layout\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;/,
+    /\.library-page\s*>\s*\.library-split,[\s\S]*\.connection-layout\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*min-height:\s*0;/,
   );
   expect(libraryStyles).toMatch(
     /\.asset-collection\s*\{[\s\S]*padding:\s*0 16px 16px 0;/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.brand-list\s*\{\s*padding:\s*0 12px 12px;/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-preview:not\(\.delivery-preview--empty\)\s*>\s*div:last-child/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-preview:not\(\.delivery-preview--empty\)\s+p\s*\{/,
-  );
-  expect(libraryStyles).toMatch(
-    /\.delivery-preview--empty\s*>\s*\.empty-state\s*\{[\s\S]*width:\s*100%;/,
   );
   expect(libraryStyles).toMatch(
     /\.settings-layout\s*\{[\s\S]*border-top:\s*0;/,
@@ -326,6 +280,23 @@ it('fills library regions and keeps sibling content aligned', () => {
   expect(libraryStyles).toMatch(
     /\.settings-section:last-child\s*\{[\s\S]*border-bottom:\s*0;/,
   );
+});
+
+it('keeps model task columns aligned, the header fixed, and the result centered', () => {
+  const libraryStyles = readStyle('../../src/app/studio/library.css');
+  const taskListRule = libraryStyles.match(/\.task-list\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const taskRowRule = libraryStyles.match(/\.task-row\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const taskHeaderRule = libraryStyles.match(/\.task-row--header\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+  const taskResultRule = libraryStyles.match(/\.task-row__result\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+
+  expect(taskListRule).toMatch(/flex:\s*1 1 auto;/u);
+  expect(taskListRule).toMatch(/min-height:\s*0;/u);
+  expect(taskListRule).toMatch(/overflow:\s*auto;/u);
+  expect(taskRowRule).toMatch(/grid-template-columns:[\s\S]*minmax\(112px,\s*0\.8fr\)\s+104px/u);
+  expect(taskHeaderRule).toMatch(/position:\s*sticky;/u);
+  expect(taskHeaderRule).toMatch(/top:\s*0;/u);
+  expect(taskHeaderRule).toMatch(/z-index:\s*2;/u);
+  expect(taskResultRule).toMatch(/text-align:\s*center;/u);
 });
 
 it('fills the model connection status and keeps the capability matrix below it', () => {

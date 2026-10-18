@@ -1,5 +1,13 @@
 # 模块测试、checklist 与回归登记
 
+> **2026-10-14 V1 状态入口：** [当前验证状态](CURRENT-STATUS-2026-10-14.md)。以下旧记录保留为历史证据；其中 document、revision、Brand Kit、Workbench 与项目包导出范围已由 [ADR 0029](../adr/0029-project-canvas-v1-baseline.md) 替代。项目包导入仍受支持。
+
+| 模块 | 当前 V1 状态 |
+| --- | --- |
+| M01–M05 | 实现已存在，等待当前基线完整回归与对应原生/人工证据 |
+| M06 | 离线实现已存在；真实兼容后端仍为外部门禁 |
+| M07–M08 | 实现已存在，等待流式项目包导入、性能安全、安装升级和签名发布证据 |
+
 ## 2026-10-05 剩余 IPC 注册边界
 
 - project-library lifecycle、credentials、document export 注册抽为独立 registrar，保持 trusted sender、active library、keyring 和导出归档行为。
@@ -362,3 +370,5 @@ M07 图像工具：画布候选、mask、provider 能力矩阵、批量 scanner/
 2026-10-07：代码优化增量（变更 ID OPT-20261007-01）。任务 executor/recovery/candidate/runtime adapter、ImageTools 页面分层、批量 scheduler/job-store 恢复边界、Workbench selection/tool-submit controller、task service factory、共享 fixture 和 package/image-tools benchmark 已加入。公共 `libraryId`、typed IPC、TaskRecord 和候选修订协议未改变。renderer bundle、严格 ZIP 固定内存、其余 desktop service 下沉和外部发布门禁仍开放。
 
 2026-10-07：剩余优化本地关账（变更 ID OPT-20261007-02）。新增 `desktop/services/provider-service.ts`、`image-tool-service.ts`、`project-package-service.ts` 并从 `main.ts` 下沉批量 provider、素材导入和项目包对话框业务；Vite 以函数式 `manualChunks` 分离 canvas，入口 chunk 499.19 kB，构建 warning 消失。`pnpm release:check` 实际通过 unit 176/965（8 skipped）、integration 30/131、E2E 47/47、native source 2 passed/packaged 1 skipped、provider 3/3、lint/typecheck/build/diff-check/package scan 435 files。严格 ZIP 固定内存和所有外部发布/人工质量门禁仍为 blocked。
+
+2026-10-14：M04/M05 ProjectCanvas 粘贴与选择持久化（变更 ID M04-M05-20261014-01）。画布在激活期间接收图片剪贴板文件并复用拖放的受管素材/`ProjectDesign` 追加路径；只读、非图片、对话输入框和模态对话框内粘贴不触发画布导入。`canvasLayout` 新增规范化的选中设计 ID，并与视口/节点共用 250 ms 防抖写入、跨项目串行保存、在途本地权威和卸载冲刷；只读会话选择保持本地权威，同时 designs/tasks 继续轮询。先观察 metadata、IPC、ProjectCanvas、真实存储重开及保护边界 Red，再 Green；`pnpm release:check` 为 `passed-with-blockers`：focused 189、unit 768 passed/3 skipped、integration 116、E2E 50、native source 2 passed/packaged 1 skipped，lint/typecheck/build/docs/contracts/diff/package scan 通过。模型生成/工具输出等其余输入闭环、Windows、签名/公证、Keychain、packaged native、真实 provider 和人工质量仍开放。

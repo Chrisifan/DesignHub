@@ -39,7 +39,7 @@ it('renders expanded and compact variants from the same dock', () => {
   const expanded = screen.getByRole('form', { name: 'AI 操作坞' });
   expect(expanded).toHaveClass('conversation-dock--expanded');
   expect(within(expanded).queryByRole('button', { name: '模型任务' })).toBeNull();
-  expect(within(expanded).getByText('对话模型已连接')).toBeVisible();
+  expect(within(expanded).getByText('最近连接测试通过')).toBeVisible();
 
   rerender(
     <ConversationDock
@@ -56,7 +56,7 @@ it('renders expanded and compact variants from the same dock', () => {
   expect(within(compact).getByRole('button', { name: '模型任务' })).toBeVisible();
   expect(within(compact).getByRole('button', { name: '版本历史' })).toBeVisible();
   expect(within(compact).getByRole('button', { name: '生成' })).toBeVisible();
-  expect(within(compact).getByText('对话模型已连接')).toBeVisible();
+  expect(within(compact).getByText('最近连接测试通过')).toBeVisible();
   expect(within(compact).queryByText('/')).toBeNull();
 
   rerender(
@@ -140,6 +140,23 @@ it('reads pasted images into controlled attachments', async () => {
   ]));
 });
 
+it('reads dragged images into controlled attachments and rejects other files', async () => {
+  const props = makeProps();
+  const image = new File([new Uint8Array([4, 5, 6])], 'dragged.webp', { type: 'image/webp' });
+  Object.defineProperty(image, 'arrayBuffer', { value: async () => new Uint8Array([4, 5, 6]).buffer });
+  const text = new File(['text'], 'notes.txt', { type: 'text/plain' });
+  render(<ConversationDock {...props} variant="expanded" />);
+
+  fireEvent.drop(screen.getByRole('form', { name: 'AI 操作坞' }), {
+    dataTransfer: { files: [image, text] },
+  });
+
+  await waitFor(() => expect(props.onAttachmentsChange).toHaveBeenCalledWith([
+    expect.objectContaining({ name: 'dragged.webp', mimeType: 'image/webp' }),
+  ]));
+  expect(props.notify).toHaveBeenCalledWith('只能添加图片文件。');
+});
+
 it('previews and removes a controlled attachment', () => {
   const props = makeProps();
   render(<ConversationDock {...props} variant="expanded" attachments={[attachment]} />);
@@ -185,10 +202,19 @@ it('uses a custom ratio menu without visible field copy', () => {
   expect(screen.queryByText('设计稿比例')).not.toBeInTheDocument();
 
   fireEvent.click(ratio);
+  expect(screen.getByRole('option', { name: '原图' })).toBeVisible();
   expect(screen.getByRole('option', { name: '3 : 4' })).toBeVisible();
   expect(screen.getByRole('option', { name: '1 : 1' })).toBeVisible();
   fireEvent.click(screen.getByRole('option', { name: '1 : 1' }));
   expect(onGenerationRatioChange).toHaveBeenCalledWith('1:1');
+});
+
+it('defaults the generation ratio menu to the original image', () => {
+  render(<ConversationDock {...makeProps()} variant="compact" />);
+
+  const ratio = screen.getByRole('combobox', { name: '设计稿比例' });
+  expect(ratio).toHaveValue('original');
+  expect(ratio).toHaveAttribute('aria-valuetext', '原图');
 });
 
 it('shows only the selected designer avatar until its custom menu opens', () => {

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 
 const styles = readFileSync('src/app/studio/project-canvas.css', 'utf8');
+const neuralStyles = readFileSync('src/app/previews/agent-constellation-preview.css', 'utf8');
 
 it('places analysis panels on the right and the canvas tool rail on the left', () => {
   const analysisPanel = styles.match(/\.project-canvas-analysis-panel\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
@@ -23,4 +24,12 @@ it('keeps the canvas dock and both analysis panels on the frosted glass surface'
   expect(styles).toMatch(/\.project-canvas-toolbar--bottom \.conversation-dock\s*\{[\s\S]*?background:\s*var\(--project-canvas-panel-background\)/u);
   expect(styles).toMatch(/\.project-canvas-analysis-panel \.workbench-analysis-panel\s*\{[\s\S]*?background:\s*var\(--project-canvas-panel-background\)[\s\S]*?backdrop-filter:\s*var\(--shell-backdrop\)/u);
   expect(styles).toMatch(/\.project-canvas-analysis-history\s*\{[\s\S]*?background:\s*var\(--project-canvas-panel-background\)[\s\S]*?backdrop-filter:\s*var\(--shell-backdrop\)/u);
+});
+
+it('defines shared analysis presence anchors and reduced-motion behavior', () => {
+  expect(styles).toMatch(/\.project-canvas-analysis-presence\s*\{[\s\S]*?top:\s*max\(78px,\s*calc\(100% - 130px\)\)[\s\S]*?right:\s*16px[\s\S]*?transition:\s*top/u);
+  expect(styles).toMatch(/\.project-canvas-analysis-presence--thinking\s*\{[\s\S]*?top:\s*78px/u);
+  expect(styles).toMatch(/\.project-canvas-analysis-history__presence\s*\{[\s\S]*?width:\s*112px/u);
+  expect(neuralStyles).toMatch(/\.neural-presence__history-count/u);
+  expect(styles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.project-canvas-analysis-presence/u);
 });

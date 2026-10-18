@@ -4,14 +4,14 @@ import { buildSearchIndex, searchIndex } from '../../src/features/library/indexe
 
 const records = [
   {
-    libraryId: 'workspace-a', projectId: 'project-a', documentId: 'doc-a',
-    title: '春间市集', brief: 'Spring Market campaign', brand: '春间市集',
+    libraryId: 'workspace-a', projectId: 'project-a',
+    title: '春间市集', brief: 'Spring Market campaign',
     size: '1080 x 1440', finalized: true, tags: ['春间', 'market'], updatedAt: '2026-09-01',
     contributorIds: ['designer-archived'], credentials: { apiKey: 'must-not-index' }, hiddenPrompt: 'secret',
   },
   {
-    libraryId: 'workspace-b', projectId: 'project-b', documentId: 'doc-b',
-    title: 'Other project', brief: 'Unrelated', brand: 'Other', size: '1080 x 1080', finalized: false,
+    libraryId: 'workspace-b', projectId: 'project-b',
+    title: 'Other project', brief: 'Unrelated', size: '1080 x 1080', finalized: false,
     tags: ['other'], updatedAt: '2026-09-02', contributorIds: ['designer-current'],
   },
 ];

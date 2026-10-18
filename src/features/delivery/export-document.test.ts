@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { exportDocument } from './export-document';
+import { exportProjectDesign } from './export-document';
 import sharp from 'sharp';
 import { createNodeCodec } from './node-codec';
 
@@ -9,7 +9,7 @@ it('exports the requested revision through a temporary file and records its hash
     exists: async () => false,
     write: async (path: string) => { writes.push(path); },
   };
-  const result = await exportDocument({
+  const result = await exportProjectDesign({
     revisionId: 'revision-1',
     format: 'png',
     targetPath: '/exports/poster.png',
@@ -22,7 +22,7 @@ it('exports the requested revision through a temporary file and records its hash
 });
 
 it('does not overwrite an existing target', async () => {
-  await expect(exportDocument({
+  await expect(exportProjectDesign({
     revisionId: 'revision-1', format: 'png', targetPath: '/exports/poster.png',
     target: { exists: async () => true, write: async () => undefined },
     render: async () => new Uint8Array([137, 80, 78, 71]),
@@ -32,7 +32,7 @@ it('does not overwrite an existing target', async () => {
 it('rechecks the destination after rendering so a late target cannot be overwritten', async () => {
   let checks = 0;
   const writes: string[] = [];
-  await expect(exportDocument({
+  await expect(exportProjectDesign({
     revisionId: 'revision-1', format: 'png', targetPath: '/exports/poster.png',
     target: {
       exists: async () => { checks += 1; return checks > 1; },
@@ -48,7 +48,7 @@ it('rechecks the destination after rendering so a late target cannot be overwrit
 it('publishes atomically and removes the temporary artifact when publishing fails', async () => {
   const writes: string[] = [];
   const removed: string[] = [];
-  await expect(exportDocument({
+  await expect(exportProjectDesign({
     revisionId: 'revision-1', format: 'png', targetPath: '/exports/poster.png',
     target: {
       exists: async () => false,
@@ -63,7 +63,7 @@ it('publishes atomically and removes the temporary artifact when publishing fail
 });
 
 it('rejects an encoded image whose dimensions do not match the requested export', async () => {
-  await expect(exportDocument({
+  await expect(exportProjectDesign({
     revisionId: 'revision-1', format: 'png', targetPath: '/exports/poster.png',
     target: { exists: async () => false, write: async () => undefined },
     render: async () => new Uint8Array([137, 80, 78, 71]),
@@ -77,7 +77,7 @@ it('rejects an encoded image whose dimensions do not match the requested export'
 });
 
 it('rejects an encoded image with a non-sRGB color space', async () => {
-  await expect(exportDocument({
+  await expect(exportProjectDesign({
     revisionId: 'revision-color', format: 'png', targetPath: '/exports/color.png',
     target: { exists: async () => false, write: async () => undefined },
     render: async () => new Uint8Array([137, 80, 78, 71]),
@@ -92,7 +92,7 @@ it('rejects an encoded image with a non-sRGB color space', async () => {
 it('encodes a rendered PNG into the requested JPEG before writing', async () => {
   const source = new Uint8Array(await sharp({ create: { width: 2, height: 1, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } }).png().toBuffer());
   let written: number[] = [];
-  const result = await exportDocument({
+  const result = await exportProjectDesign({
     revisionId: 'revision-1', format: 'jpeg', targetPath: '/exports/poster.jpg',
     target: { exists: async () => false, write: async (_path, bytes) => { written = [...bytes]; } },
     render: async () => source,
@@ -105,7 +105,7 @@ it('encodes a rendered PNG into the requested JPEG before writing', async () => 
 });
 
 it('keeps the external export when an optional archive copy fails', async () => {
-  const result = await exportDocument({
+  const result = await exportProjectDesign({
     revisionId: 'revision-archive',
     format: 'png',
     targetPath: '/exports/poster.png',

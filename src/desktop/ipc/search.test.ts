@@ -15,7 +15,7 @@ it('keeps search rebuild and query behind the active trusted workspace', async (
   const { window, event, trustedUrl } = createFixture();
   const workspace = { library: { libraryId: 'workspace-1' } } as never;
   const rebuild = vi.fn(async () => undefined);
-  const search = vi.fn(async () => [{ libraryId: 'workspace-1', projectId: 'p', documentId: 'd', title: '春间', contributorIds: [] }]);
+  const search = vi.fn(async () => [{ libraryId: 'workspace-1', projectId: 'p', title: '春间', contributorIds: [] }]);
   await expect(rebuildSearchHandler(window as never, trustedUrl, () => workspace, rebuild)(event as never, { libraryId: 'workspace-1', records: [] })).resolves.toBe(true);
   await expect(searchQueryHandler(window as never, trustedUrl, () => workspace, search)(event as never, { libraryId: 'workspace-1', query: '春' })).resolves.toHaveLength(1);
   expect(rebuild).toHaveBeenCalledOnce();

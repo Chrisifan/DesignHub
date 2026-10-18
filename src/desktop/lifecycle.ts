@@ -1,5 +1,19 @@
 import type { ProjectLibraryHandle } from '../features/project-library/open-project-library';
 
+type FocusableWindow = {
+  isMinimized: () => boolean;
+  restore: () => void;
+  show: () => void;
+  focus: () => void;
+};
+
+export const focusExistingWindow = (window: FocusableWindow | null): void => {
+  if (!window) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+};
+
 export const recreateWindowOnActivate = (hasOpenWindow: () => boolean, createWindow: () => void): void => {
   if (!hasOpenWindow()) createWindow();
 };

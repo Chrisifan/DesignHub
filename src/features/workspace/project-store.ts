@@ -1,7 +1,8 @@
-import type { ProjectCanvasLayout, ProjectDesign, ProjectDocumentMetadata, ProjectMetadata, ProjectMetadataPatch } from '../projects/metadata';
+import type { ProjectCanvasLayout, ProjectDesign, ProjectMetadata, ProjectMetadataPatch } from '../projects/metadata';
 import type { ProjectGenerationRatio } from '../projects/size';
 
 export type CreateProjectContainerInput = {
+  [key: string]: unknown;
   libraryId: string;
   operationId: string;
   name: string;
@@ -10,11 +11,9 @@ export type CreateProjectContainerInput = {
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
-  brandSnapshot?: unknown;
   coverAssetId?: string;
   designs?: ProjectDesign[];
   canvasLayout?: ProjectCanvasLayout;
-  documents?: Array<Omit<ProjectDocumentMetadata, 'updatedAt'>>;
 };
 
 export type CreateProjectContainerResult = {
@@ -46,11 +45,9 @@ export type ActiveProject = {
   activeDesignerVersionId?: string;
   contributorDesignerVersionIds?: string[];
   designerSnapshot?: unknown;
-  brandSnapshot?: unknown;
   coverAssetId?: string;
   designs?: ProjectDesign[];
   canvasLayout?: ProjectCanvasLayout;
-  documents?: ProjectDocumentMetadata[];
   archived?: boolean;
   createdAt?: string;
   updatedAt?: string;

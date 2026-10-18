@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { constants, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -58,6 +58,17 @@ type ProjectContentManifest = {
   formatVersion: number;
   projectId: string;
   assets: unknown[];
+};
+
+export type ExtractedProjectPackageInput = {
+  libraryId: string;
+  operationId: string;
+  packageId: string;
+  sourceProjectId: string;
+  readOnly: boolean;
+  entries: string[];
+  directory: string;
+  contentHashes: ReadonlyMap<string, string>;
 };
 
 type ProjectOperation = {
@@ -524,11 +535,9 @@ const initializeProject = (
     activeDesignerVersionId: input.activeDesignerVersionId,
     contributorDesignerVersionIds: input.contributorDesignerVersionIds,
     designerSnapshot: input.designerSnapshot,
-    brandSnapshot: input.brandSnapshot,
     coverAssetId: input.coverAssetId,
     designs: input.designs,
     canvasLayout: input.canvasLayout,
-    documents: input.documents,
     createdAt,
     updatedAt: createdAt,
   });
@@ -553,7 +562,7 @@ const initializeProject = (
     name,
     formatVersion: projectFormatVersion,
     createdAt,
-    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.contributorDesignerVersionIds !== undefined || input.designerSnapshot !== undefined || input.brandSnapshot !== undefined || input.coverAssetId !== undefined || input.designs !== undefined || input.canvasLayout !== undefined || input.documents !== undefined ? { metadata } : {}),
+    ...(input.brief !== undefined || input.activeDesignerVersionId !== undefined || input.contributorDesignerVersionIds !== undefined || input.designerSnapshot !== undefined || input.coverAssetId !== undefined || input.designs !== undefined || input.canvasLayout !== undefined ? { metadata } : {}),
   };
   writeFileSync(join(temporaryDirectory, projectManifestName), `${JSON.stringify(projectManifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
   writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ formatVersion: projectFormatVersion, projectId: operation.projectId, assets: [] }, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
@@ -674,10 +683,8 @@ const toActiveProject = (manifest: ProjectManifest): ActiveProject => {
     ...(metadata.activeDesignerVersionId === undefined ? {} : { activeDesignerVersionId: metadata.activeDesignerVersionId }),
     ...(metadata.contributorDesignerVersionIds === undefined ? {} : { contributorDesignerVersionIds: [...metadata.contributorDesignerVersionIds] }),
     ...(metadata.designerSnapshot === undefined ? {} : { designerSnapshot: structuredClone(metadata.designerSnapshot) }),
-    ...(metadata.brandSnapshot === undefined ? {} : { brandSnapshot: structuredClone(metadata.brandSnapshot) }),
     ...(metadata.designs === undefined ? {} : { designs: structuredClone(metadata.designs) }),
     ...(metadata.canvasLayout === undefined ? {} : { canvasLayout: structuredClone(metadata.canvasLayout) }),
-    documents: structuredClone(metadata.documents),
     archived: metadata.archived,
     createdAt: metadata.createdAt,
     updatedAt: metadata.updatedAt,
@@ -685,7 +692,7 @@ const toActiveProject = (manifest: ProjectManifest): ActiveProject => {
 };
 
 const readProjectMetadata = (manifest: ProjectManifest, workspaceId: string): ProjectMetadata => manifest.metadata
-  ? structuredClone(manifest.metadata)
+  ? createProjectMetadata(structuredClone(manifest.metadata) as ProjectMetadataInput)
   : createProjectMetadata({ projectId: manifest.projectId, workspaceId, name: manifest.name, createdAt: manifest.createdAt, updatedAt: manifest.createdAt });
 
 const getProjectManifestForId = (handle: ProjectLibraryHandle, projectId: string): { manifest: ProjectManifest; directory: string } | null => {
@@ -801,23 +808,17 @@ const duplicateProject = async (handle: ProjectLibraryHandle, input: DuplicatePr
     activeDesignerVersionId: sourceMetadata.activeDesignerVersionId,
     contributorDesignerVersionIds: sourceMetadata.contributorDesignerVersionIds,
     designerSnapshot: sourceMetadata.designerSnapshot,
-    brandSnapshot: sourceMetadata.brandSnapshot,
     coverAssetId: sourceMetadata.coverAssetId,
-    designs: sourceMetadata.designs?.map((design) => ({ ...design })),
+    designs: sourceMetadata.designs?.map((design) => {
+      const { projectId: _ignoredProjectId, ...copy } = design;
+      void _ignoredProjectId;
+      return copy;
+    }),
     canvasLayout: sourceMetadata.canvasLayout,
-    documents: sourceMetadata.documents.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
-      id,
-      name,
-      width,
-      height,
-      ...(sourceDocumentId ? { sourceDocumentId } : {}),
-      ...(sourceRevisionId !== undefined ? { sourceRevisionId } : {}),
-      ...(finalizedRevisionId !== undefined ? { finalizedRevisionId } : {}),
-    })),
   });
   const destinationDirectory = resolveProjectDirectory(handle, created.projectId);
   if (!destinationDirectory) throw new Error('PROJECT_NOT_FOUND');
-  ['assets', 'documents'].forEach((directoryName) => {
+  ['assets'].forEach((directoryName) => {
     const sourcePath = join(sourceDirectory, directoryName);
     if (existsSync(sourcePath)) cpSync(sourcePath, join(destinationDirectory, directoryName), { recursive: true, force: true });
   });
@@ -848,8 +849,37 @@ const validateImportedMetadata = (metadata: unknown, sourceProjectId: string): P
   }
 };
 
+const importedProjectCreateInput = (
+  input: Pick<CreateProjectContainerInput, 'libraryId' | 'operationId'>,
+  sourceManifest: ProjectManifest,
+  sourceContent: ProjectContentManifest,
+): CreateProjectContainerInput => {
+  const metadata = validateImportedMetadata(sourceManifest.metadata, sourceManifest.projectId);
+  const managedAssetIds = new Set(sourceContent.assets.flatMap((asset) => isRecord(asset) && asset.managed === true && typeof asset.id === 'string' ? [asset.id] : []));
+  if (metadata?.designs?.some((design) => !managedAssetIds.has(design.assetId))
+    || (metadata?.coverAssetId !== undefined && !managedAssetIds.has(metadata.coverAssetId))) throw new Error('INVALID_PACKAGE');
+  return {
+    libraryId: input.libraryId,
+    operationId: input.operationId,
+    name: sourceManifest.name,
+    generationRatio: metadata?.generationRatio,
+    brief: metadata?.brief,
+    activeDesignerVersionId: metadata?.activeDesignerVersionId,
+    contributorDesignerVersionIds: metadata?.contributorDesignerVersionIds,
+    designerSnapshot: metadata?.designerSnapshot,
+    coverAssetId: metadata?.coverAssetId,
+    designs: metadata?.designs?.map((design) => {
+      const { projectId: _sourceProjectId, ...importedDesign } = design;
+      void _sourceProjectId;
+      return importedDesign;
+    }),
+    canvasLayout: metadata?.canvasLayout,
+  };
+};
+
 const validateImportedContentClosure = (content: ProjectContentManifest, pack: Awaited<ReturnType<typeof decodeProjectPackage>>): void => {
   const seenHashes = new Set<string>();
+  const allowedEntries = new Set([projectManifestName, projectContentManifestName, projectDatabaseName]);
   content.assets.forEach((asset) => {
     if (!isRecord(asset)) throw new Error('INVALID_PACKAGE');
     const managed = asset.managed === true;
@@ -862,19 +892,52 @@ const validateImportedContentClosure = (content: ProjectContentManifest, pack: A
     const bytes = pack.files[asset.storagePath];
     if (createHash('sha256').update(bytes).digest('hex') !== asset.contentHash) throw new Error('INVALID_PACKAGE');
     seenHashes.add(asset.contentHash);
+    allowedEntries.add(asset.storagePath);
   });
+  if (pack.manifest.entries.some((path) => !allowedEntries.has(path))) throw new Error('INVALID_PACKAGE');
 };
 
-const importedRevisionPathPattern = /^documents\/[^/]+\.revisions\.json$/u;
+const extractedPackageFile = (directory: string, path: string): string => {
+  if (!isSafePackagePath(path)) throw new Error('INVALID_PACKAGE');
+  const target = join(directory, path);
+  const relativeTarget = relative(directory, target);
+  if (!relativeTarget || relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || relativeTarget.includes(`..${sep}`)) {
+    throw new Error('INVALID_PACKAGE');
+  }
+  let status;
+  let realDirectory: string;
+  let realTarget: string;
+  try {
+    status = lstatSync(target);
+    realDirectory = realpathSync(directory);
+    realTarget = realpathSync(target);
+  } catch {
+    throw new Error('INVALID_PACKAGE');
+  }
+  const realRelative = relative(realDirectory, realTarget);
+  if (!status.isFile() || status.isSymbolicLink() || !realRelative || realRelative === '..' || realRelative.startsWith(`..${sep}`)) throw new Error('INVALID_PACKAGE');
+  return target;
+};
 
-const rewriteImportedRevisionState = (bytes: Uint8Array, projectId: string): Uint8Array => {
-  const value = decodePackageJson<Record<string, unknown>>(bytes);
-  if (value.formatVersion !== 1 || !Array.isArray(value.revisions) || !Array.isArray(value.timeline)) throw new Error('INVALID_PACKAGE');
-  const revisions = value.revisions.map((revision) => {
-    if (!isRecord(revision) || typeof revision.projectId !== 'string') throw new Error('INVALID_PACKAGE');
-    return { ...revision, projectId };
-  });
-  return new TextEncoder().encode(`${JSON.stringify({ ...value, revisions }, null, 2)}\n`);
+const validateExtractedContentClosure = (
+  content: ProjectContentManifest,
+  input: ExtractedProjectPackageInput,
+): void => {
+  const seenHashes = new Set<string>();
+  const allowedEntries = new Set([projectManifestName, projectContentManifestName, projectDatabaseName]);
+  for (const asset of content.assets) {
+    if (!isRecord(asset)) throw new Error('INVALID_PACKAGE');
+    if (asset.managed !== true) continue;
+    if (typeof asset.contentHash !== 'string' || !/^[0-9a-f]{64}$/iu.test(asset.contentHash)
+      || asset.storagePath !== `assets/${asset.contentHash}`
+      || seenHashes.has(asset.contentHash)
+      || !input.entries.includes(asset.storagePath)) throw new Error('INVALID_PACKAGE');
+    extractedPackageFile(input.directory, asset.storagePath);
+    if (input.contentHashes.get(asset.storagePath) !== asset.contentHash) throw new Error('INVALID_PACKAGE');
+    seenHashes.add(asset.contentHash);
+    allowedEntries.add(asset.storagePath);
+  }
+  if (input.entries.some((path) => !allowedEntries.has(path))) throw new Error('INVALID_PACKAGE');
 };
 
 export const importProjectPackageToWorkspace = async (
@@ -898,19 +961,9 @@ export const importProjectPackageToWorkspace = async (
     if (!isSafePackagePath(path) || path === projectManifestName || path === projectContentManifestName || path === projectDatabaseName) return;
     const bytes = pack.files[path];
     if (!bytes) throw new Error('INVALID_PACKAGE');
-    if (importedRevisionPathPattern.test(path)) rewriteImportedRevisionState(bytes, sourceManifest.projectId);
   });
   if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === pack.manifest.packageId)) throw new Error('PACKAGE_ALREADY_IMPORTED');
-  const sourceMetadata = validateImportedMetadata(sourceManifest.metadata, sourceManifest.projectId);
-  const documents = sourceMetadata?.documents?.map(({ id, name, width, height, sourceDocumentId, sourceRevisionId, finalizedRevisionId }) => ({
-    id,
-    name,
-    width,
-    height,
-    ...(sourceDocumentId ? { sourceDocumentId } : {}),
-    ...(sourceRevisionId !== undefined ? { sourceRevisionId } : {}),
-    ...(finalizedRevisionId !== undefined ? { finalizedRevisionId } : {}),
-  })) ?? [];
+  const createInput = importedProjectCreateInput(input, sourceManifest, sourceContent);
   const created = createProject(handle, {
     ...options,
     prepareProject: (temporaryDirectory, projectId) => {
@@ -927,8 +980,7 @@ export const importProjectPackageToWorkspace = async (
         const relativeTarget = relative(temporaryDirectory, target);
         if (!relativeTarget || relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || relativeTarget.includes(`..${sep}`)) throw new Error('INVALID_PACKAGE');
         mkdirSync(dirname(target), { recursive: true });
-        const importedBytes = importedRevisionPathPattern.test(path) ? rewriteImportedRevisionState(bytes, projectId) : bytes;
-        writeFileSync(target, importedBytes, { flag: 'wx' });
+        writeFileSync(target, bytes, { flag: 'wx' });
         copiedFiles += 1;
       });
       const generatedManifestPath = join(temporaryDirectory, projectManifestName);
@@ -936,19 +988,60 @@ export const importProjectPackageToWorkspace = async (
       writeFileSync(generatedManifestPath, `${JSON.stringify({ ...generatedManifest, importedPackageId: pack.manifest.packageId }, null, 2)}\n`, { encoding: 'utf8' });
       writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ ...sourceContent, projectId }, null, 2)}\n`, { encoding: 'utf8' });
     },
-  }, {
-    libraryId: input.libraryId,
-    operationId: input.operationId,
-    name: sourceManifest.name,
-    brief: sourceMetadata?.brief,
-    activeDesignerVersionId: sourceMetadata?.activeDesignerVersionId,
-    contributorDesignerVersionIds: sourceMetadata?.contributorDesignerVersionIds,
-    designerSnapshot: sourceMetadata?.designerSnapshot,
-    brandSnapshot: sourceMetadata?.brandSnapshot,
-    coverAssetId: sourceMetadata?.coverAssetId,
-    documents,
-  });
+  }, createInput);
   return created;
+};
+
+export const importExtractedProjectPackageToWorkspace = async (
+  handle: ProjectLibraryHandle,
+  input: ExtractedProjectPackageInput,
+  options: ProjectStoreOptions = {},
+): Promise<ImportProjectPackageResult> => {
+  const workspace = getWritableProjectLibraryLease(handle);
+  if (!workspace) throw new Error('WORKSPACE_NOT_WRITABLE');
+  if (workspace.libraryId !== input.libraryId) throw new Error('WORKSPACE_IDENTITY_MISMATCH');
+  validateOperationId(input.operationId);
+  if (input.readOnly) throw new Error('READ_ONLY_PACKAGE');
+  if (!input.packageId.trim() || !uuidPattern.test(input.sourceProjectId)
+    || !input.entries.includes(projectManifestName)
+    || !input.entries.includes(projectContentManifestName)
+    || new Set(input.entries).size !== input.entries.length) throw new Error('INVALID_PACKAGE');
+  const paths = validateWorkspace(workspace, input.libraryId);
+  const sourceManifest = readJson(extractedPackageFile(input.directory, projectManifestName), 'INVALID_PACKAGE') as ProjectManifest;
+  const sourceContent = readJson(extractedPackageFile(input.directory, projectContentManifestName), 'INVALID_PACKAGE') as ProjectContentManifest;
+  if (!isProjectManifest(sourceManifest) || sourceManifest.projectId !== input.sourceProjectId || !isProjectContentManifest(sourceContent, sourceManifest.projectId)) {
+    throw new Error('INVALID_PACKAGE');
+  }
+  for (const path of input.entries) extractedPackageFile(input.directory, path);
+  validateExtractedContentClosure(sourceContent, input);
+  if (scanPublishedProjects(paths.projectsDirectory).some(({ manifest }) => manifest.importedPackageId === input.packageId)) {
+    throw new Error('PACKAGE_ALREADY_IMPORTED');
+  }
+  const createInput = importedProjectCreateInput(input, sourceManifest, sourceContent);
+  return createProject(handle, {
+    ...options,
+    prepareProject: (temporaryDirectory, projectId) => {
+      let copiedFiles = 0;
+      input.entries.forEach((path) => {
+        if (path === projectManifestName || path === projectContentManifestName || path === projectDatabaseName) return;
+        if (options.failAt === 'import-file-copy' && copiedFiles === 0) {
+          copiedFiles += 1;
+          throw new Error('INJECTED_IMPORT_FILE_COPY_FAILURE');
+        }
+        const source = extractedPackageFile(input.directory, path);
+        const target = join(temporaryDirectory, path);
+        const relativeTarget = relative(temporaryDirectory, target);
+        if (!relativeTarget || relativeTarget === '..' || relativeTarget.startsWith(`..${sep}`) || relativeTarget.includes(`..${sep}`)) throw new Error('INVALID_PACKAGE');
+        mkdirSync(dirname(target), { recursive: true });
+        copyFileSync(source, target, constants.COPYFILE_EXCL);
+        copiedFiles += 1;
+      });
+      const generatedManifestPath = join(temporaryDirectory, projectManifestName);
+      const generatedManifest = readJson(generatedManifestPath, 'INVALID_PROJECT_MANIFEST') as ProjectManifest;
+      writeFileSync(generatedManifestPath, `${JSON.stringify({ ...generatedManifest, importedPackageId: input.packageId }, null, 2)}\n`, { encoding: 'utf8' });
+      writeFileSync(join(temporaryDirectory, projectContentManifestName), `${JSON.stringify({ ...sourceContent, projectId }, null, 2)}\n`, { encoding: 'utf8' });
+    },
+  }, createInput);
 };
 
 const listTrashedProjects = (handle: ProjectLibraryHandle): TrashedProject[] => {

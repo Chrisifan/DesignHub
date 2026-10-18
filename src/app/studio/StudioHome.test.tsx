@@ -31,7 +31,7 @@ it('adds the selected designer to the next home conversation only', async () => 
   expect(screen.queryByLabelText('提示词建议')).toBeNull();
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '设计海报' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
-  await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ message: '设计海报', attachments: [], generationRatio: '3:4', designerId: 'paper-type' }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ message: '设计海报', attachments: [], generationRatio: 'original', designerId: 'paper-type' }));
   expect(screen.getByRole('combobox', { name: '设计师' })).toHaveValue('');
 });
 
@@ -127,7 +127,7 @@ it('hides the designer inspiration rail when no usable designer exists', () => {
   render(
     <StudioHome
       locale="zh-CN"
-      projects={[{ id: 'p1', name: '项目', enName: 'Project', description: '', enDescription: '', designers: [], artwork: 'blank', documents: 1 }]}
+      projects={[{ id: 'p1', name: '项目', enName: 'Project', description: '', enDescription: '', designers: [], artwork: 'blank' }]}
       visibleProjects={[]}
       profiles={[{ ...personaProfiles[0], status: 'archived' }]}
       filter="active"

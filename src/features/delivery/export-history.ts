@@ -1,9 +1,10 @@
 import type { ExportFormat } from './export-policy';
 
 export type ExportHistoryRecord = {
+  [key: string]: unknown;
   id: string;
   projectId: string;
-  documentId: string;
+  designId?: string;
   revisionId: string;
   format: ExportFormat;
   targetPath: string;
@@ -22,7 +23,7 @@ export const isExportHistoryRecord = (value: unknown): value is ExportHistoryRec
   if (!isRecord(value)) return false;
   return typeof value.id === 'string' && value.id.trim().length > 0
     && typeof value.projectId === 'string' && value.projectId.trim().length > 0
-    && typeof value.documentId === 'string' && value.documentId.trim().length > 0
+    && typeof value.designId === 'string' && value.designId.trim().length > 0
     && typeof value.revisionId === 'string' && value.revisionId.trim().length > 0
     && isFormat(value.format)
     && typeof value.targetPath === 'string' && value.targetPath.trim().length > 0
