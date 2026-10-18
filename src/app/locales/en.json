@@ -52,6 +52,7 @@
   ,"splashCheckProfile": "Read local configuration"
   ,"splashCheckLibrary": "Check project library"
   ,"splashCheckConversation": "Test conversation model"
+  ,"splashCheckImage": "Test image model"
   ,"splashCheckWorkspace": "Prepare workspace"
   ,"onboardingProfileStep": "Step 1 of 2"
   ,"onboardingProfileTitle": "Set up your profile"

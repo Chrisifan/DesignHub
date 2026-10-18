@@ -52,6 +52,7 @@
   ,"splashCheckProfile": "读取本地配置"
   ,"splashCheckLibrary": "检查项目库"
   ,"splashCheckConversation": "测试对话模型"
+  ,"splashCheckImage": "测试图像模型"
   ,"splashCheckWorkspace": "准备工作区"
   ,"onboardingProfileStep": "第一步，共两步"
   ,"onboardingProfileTitle": "设置你的资料"

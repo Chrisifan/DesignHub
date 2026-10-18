@@ -80,7 +80,7 @@ it('shows the branded splash before first-launch onboarding', async () => {
   expect(screen.getByRole('heading', { name: '设置你的资料' })).toBeVisible();
 });
 
-it('tests only the conversation model during startup and does not show an image generation check', async () => {
+it('tests both model connections, persists each result, and completes startup after a failure', async () => {
   vi.useFakeTimers();
   const testConversation = vi.fn(async () => ({ cost: null }));
   const testImageGeneration = vi.fn(async () => { throw new Error('offline'); });
@@ -105,19 +105,19 @@ it('tests only the conversation model during startup and does not show an image 
   });
 
   expect(testConversation).toHaveBeenCalledWith({ libraryId: library.libraryId, connectionId: 'openai-compatible', model: 'chat-model', timeoutMs: 15_000 });
-  expect(testImageGeneration).not.toHaveBeenCalled();
+  expect(testImageGeneration).toHaveBeenCalledWith(expect.objectContaining({ libraryId: library.libraryId, connectionId: 'openai-compatible', model: 'image-model', timeoutMs: 15_000 }));
   expect(saveProviderConnectionStatuses).toHaveBeenCalledOnce();
   const saved = saveProviderConnectionStatuses.mock.calls[0]![0];
   expect(getProviderProfileStatus(saved, 'openai-compatible', 'conversation', providerConfigs)).toBe('connected');
-  expect(getProviderProfileStatus(saved, 'openai-compatible', 'image', providerConfigs)).toBe('unknown');
-  expect(screen.queryByText('测试图像模型')).toBeNull();
+  expect(getProviderProfileStatus(saved, 'openai-compatible', 'image', providerConfigs)).toBe('error');
+  expect(screen.getByText('测试图像模型').parentElement).toHaveClass('startup-splash__check--error');
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
 
   await revealSplash();
   expect(await screen.findByRole('textbox', { name: '设计需求' })).toBeVisible();
 });
 
-it('skips the startup conversation test when its matching successful result is less than 30 minutes old', async () => {
+it('skips both startup model tests when matching successful results are less than 30 minutes old', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-08T12:00:00.000Z'));
   const testConversation = vi.fn();
@@ -133,6 +133,11 @@ it('skips the startup conversation test when its matching successful result is l
           testedAt: '2026-10-08T11:45:00.000Z',
           configFingerprint: providerConfigFingerprint(providerConfigs, 'conversation'),
         },
+        image: {
+          status: 'connected',
+          testedAt: '2026-10-08T11:45:00.000Z',
+          configFingerprint: providerConfigFingerprint(providerConfigs, 'image'),
+        },
       },
     }),
     saveProviderConnectionStatuses: async () => true,
@@ -147,11 +152,11 @@ it('skips the startup conversation test when its matching successful result is l
   expect(testConversation).not.toHaveBeenCalled();
   expect(testImageGeneration).not.toHaveBeenCalled();
   expect(screen.getByText('测试对话模型').parentElement).toHaveClass('startup-splash__check--complete');
-  expect(screen.queryByText('测试图像模型')).toBeNull();
+  expect(screen.getByText('测试图像模型').parentElement).toHaveClass('startup-splash__check--complete');
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
 });
 
-it('does not run an image generation test even when its cached success has expired', async () => {
+it('only reruns the startup model test whose cached success has expired', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-08T12:00:00.000Z'));
   const testConversation = vi.fn();
@@ -167,6 +172,11 @@ it('does not run an image generation test even when its cached success has expir
           testedAt: '2026-10-08T11:45:00.000Z',
           configFingerprint: providerConfigFingerprint(providerConfigs, 'conversation'),
         },
+        image: {
+          status: 'connected',
+          testedAt: '2026-10-08T11:29:59.999Z',
+          configFingerprint: providerConfigFingerprint(providerConfigs, 'image'),
+        },
       },
     }),
     saveProviderConnectionStatuses: async () => true,
@@ -179,21 +189,21 @@ it('does not run an image generation test even when its cached success has expir
   await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
 
   expect(testConversation).not.toHaveBeenCalled();
-  expect(testImageGeneration).not.toHaveBeenCalled();
+  expect(testImageGeneration).toHaveBeenCalledOnce();
 });
 
-it('reports progress from completed startup checks while the conversation test is still running', async () => {
+it('reports progress from completed startup checks while a model test is still running', async () => {
   vi.useFakeTimers();
-  let resolveConversationTest: ((result: { cost: null }) => void) | undefined;
-  const conversationTest = new Promise<{ cost: null }>((resolve) => { resolveConversationTest = resolve; });
+  let resolveImageTest: ((result: { image: { base64: string }; cost: null }) => void) | undefined;
+  const imageTest = new Promise<{ image: { base64: string }; cost: null }>((resolve) => { resolveImageTest = resolve; });
   window.designhub = {
     loadProfile: async () => completedProfile,
     getProjectLibraryStatus: async () => ({ state: 'ready', library }),
     loadProviderConfigs: async () => ({}),
     loadProviderConnectionStatuses: async () => ({}),
     saveProviderConnectionStatuses: async () => true,
-    testConversation: async () => conversationTest,
-    testImageGeneration: vi.fn(),
+    testConversation: async () => ({ cost: null }),
+    testImageGeneration: async () => imageTest,
     listActiveProjects: async () => [],
   } as never;
 
@@ -201,11 +211,11 @@ it('reports progress from completed startup checks while the conversation test i
   await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
   await act(async () => { await vi.advanceTimersByTimeAsync(2200); });
 
-  expect(screen.getAllByText('测试对话模型').find((element) => element.parentElement?.classList.contains('startup-splash__check'))?.parentElement).toHaveClass('startup-splash__check--active');
-  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50');
+  expect(screen.getAllByText('测试图像模型').find((element) => element.parentElement?.classList.contains('startup-splash__check'))?.parentElement).toHaveClass('startup-splash__check--active');
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60');
 
   await act(async () => {
-    resolveConversationTest?.({ cost: null });
+    resolveImageTest?.({ image: { base64: 'preview' }, cost: null });
     await Promise.resolve();
     await vi.advanceTimersByTimeAsync(0);
   });
