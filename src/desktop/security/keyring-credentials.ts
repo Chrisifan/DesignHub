@@ -1,4 +1,4 @@
-import type { SystemCredentialStore } from './credentials';
+import { createCredentialStoreError, type SystemCredentialStore } from './credentials';
 import { providerCredentialAccount, providerProfiles, type ProviderProfile } from '../../features/providers/config';
 
 export const designHubKeyringService = 'DesignHub';
@@ -30,7 +30,7 @@ export const createKeyringCredentialStore = (createEntry: KeyringEntryFactory): 
       const secret = await createEntry(designHubKeyringService, connectionId).getPassword();
       return typeof secret === 'string' && secret.length > 0 ? secret : null;
     } catch {
-      return null;
+      throw createCredentialStoreError('SYSTEM_CREDENTIAL_STORE_READ_FAILED');
     }
   },
 });
@@ -42,13 +42,9 @@ export const resolveProviderCredential = async (
   connectionId: string,
   profile: ProviderProfile,
 ): Promise<string | null> => {
-  try {
-    const scoped = await store.getCredential?.(providerCredentialAccount(connectionId, profile));
-    if (scoped) return scoped;
-    return await store.getCredential?.(connectionId) ?? null;
-  } catch {
-    return null;
-  }
+  const scoped = await store.getCredential?.(providerCredentialAccount(connectionId, profile));
+  if (scoped) return scoped;
+  return await store.getCredential?.(connectionId) ?? null;
 };
 
 export const migrateLegacyProviderCredential = async (

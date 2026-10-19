@@ -96,6 +96,38 @@ const profileTitle = (locale: Locale, profile: ProviderProfile): string => profi
   ? t(locale, '对话与视觉', 'Conversation and vision')
   : t(locale, '图片生成与编辑', 'Image generation and editing');
 
+const testErrorMessage = (locale: Locale, error: unknown, profile: ProviderProfile): string => {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  const message = raw.replace(/[\r\n\t]+/gu, ' ').trim().slice(0, 320);
+  const tlsCode = message.match(/\b(?:DEPTH_ZERO_SELF_SIGNED_CERT|SELF_SIGNED_CERT_IN_CHAIN|ERR_TLS_CERT_ALTNAME_INVALID|CERT_HAS_EXPIRED|UNABLE_TO_GET_ISSUER_CERT_LOCALLY|UNABLE_TO_VERIFY_LEAF_SIGNATURE)\b/u)?.[0];
+  if (message.includes('PROVIDER_TLS_ERROR') || tlsCode || /(?:certificate|self[- ]signed|TLS|SSL)/iu.test(message)) {
+    return t(
+      locale,
+      `TLS 证书校验失败，请求尚未发送到服务端的 HTTP 接口。${tlsCode ? `证书错误：${tlsCode}。` : ''}`,
+      `TLS certificate validation failed before an HTTP request was sent.${tlsCode ? ` Certificate error: ${tlsCode}.` : ''}`,
+    );
+  }
+  if (message.includes('PROVIDER_API_KEY_REQUIRED')) {
+    return t(locale, '未找到已保存的 API 密钥，请求尚未发出。请重新保存密钥后再试。', 'No saved API key was available. The request was not sent. Save the key again and retry.');
+  }
+  if (message.includes('SYSTEM_CREDENTIAL_STORE_READ_FAILED')) {
+    return t(locale, '无法从系统安全存储读取 API 密钥，请求尚未发出。请重新保存密钥。', 'The API key could not be read from secure storage. The request was not sent. Save the key again.');
+  }
+  if (message.includes('PROVIDER_BASE_URL_REQUIRED') || message.includes('INVALID_PROVIDER_CONFIG')) {
+    return t(locale, '连接地址配置无效，请求尚未发出。请保存当前配置后重试。', 'The connection URL configuration is invalid. The request was not sent. Save the current configuration and retry.');
+  }
+  if (message.includes('PROVIDER_CONFIG_SAVE_FAILED')) {
+    return t(locale, '当前连接配置未能保存，因此未执行测试。', 'The current connection configuration could not be saved, so the test was not run.');
+  }
+  if (message.includes('PROVIDER_TEST_TIMEOUT')) {
+    return t(locale, '连接测试超时，请检查网络或服务状态。', 'The connection test timed out. Check the network or provider status.');
+  }
+  const label = profile === 'conversation'
+    ? t(locale, '对话连接测试失败', 'Conversation connection test failed')
+    : t(locale, '图片生成连接测试失败', 'Image generation connection test failed');
+  return message ? `${label}: ${message}` : `${label}。`;
+};
+
 export const ProviderSettings = ({
   locale,
   connections,
@@ -154,8 +186,7 @@ export const ProviderSettings = ({
     setMessage('');
   }, [configs, selectedId]);
 
-  const saveConfig = async () => {
-    if (!selected || !onSaveProviderConfig) return;
+  const configFromDraft = (): ProviderConfig | null => {
     const conversationModels: ProviderConfig['conversation']['models'] = {};
     (['conversation', 'vision-analysis'] as const).forEach((capability) => {
       const model = configDraft.conversation.models[capability].trim();
@@ -166,10 +197,15 @@ export const ProviderSettings = ({
       const model = configDraft.image.models[capability].trim();
       if (model) imageModels[capability] = model;
     });
-    const config = normalizeProviderConfig({
+    return normalizeProviderConfig({
       conversation: { baseUrl: configDraft.conversation.baseUrl, models: conversationModels },
       image: { baseUrl: configDraft.image.baseUrl, imageTransport: configDraft.image.imageTransport, models: imageModels },
     });
+  };
+
+  const saveConfig = async () => {
+    if (!selected || !onSaveProviderConfig) return;
+    const config = configFromDraft();
     if (!config) {
       setMessage(t(locale, '请填写有效服务地址。', 'Enter valid service URLs.'));
       return;
@@ -209,12 +245,16 @@ export const ProviderSettings = ({
     if (!selected || !onTestConversation || !configured.conversation || !configDraft.conversation.baseUrl.trim()) return;
     setTestBusy(true);
     try {
+      if (onSaveProviderConfig) {
+        const config = configFromDraft();
+        if (!config || !await onSaveProviderConfig(selected.id, config).catch(() => false)) throw new Error('PROVIDER_CONFIG_SAVE_FAILED');
+      }
       const model = configDraft.conversation.models.conversation.trim();
       const result = await onTestConversation(selected.id, model ? { model } : {});
       if (!result) throw new Error('CONVERSATION_TEST_FAILED');
       setMessage(t(locale, '对话连接测试成功。', 'Conversation connection test succeeded.'));
-    } catch {
-      setMessage(t(locale, '对话连接测试失败，请检查地址、密钥和模型。', 'Conversation connection test failed. Check the URL, key and model.'));
+    } catch (error) {
+      setMessage(testErrorMessage(locale, error, 'conversation'));
     } finally {
       setTestBusy(false);
     }
@@ -226,6 +266,10 @@ export const ProviderSettings = ({
     setTestResult(null);
     const prompt = connectionTestPrompts[Math.floor(Math.random() * connectionTestPrompts.length)] ?? connectionTestPrompts[0];
     try {
+      if (onSaveProviderConfig) {
+        const config = configFromDraft();
+        if (!config || !await onSaveProviderConfig(selected.id, config).catch(() => false)) throw new Error('PROVIDER_CONFIG_SAVE_FAILED');
+      }
       const result = await onTestImageGeneration(selected.id, {
         prompt,
         ...(configDraft.image.models['image-generation'].trim() ? { model: configDraft.image.models['image-generation'].trim() } : {}),
@@ -234,8 +278,8 @@ export const ProviderSettings = ({
       if (!result?.image) throw new Error('IMAGE_RESULT_EMPTY');
       setTestResult(result);
       setMessage(t(locale, '图片生成连接测试成功。', 'Image generation connection test succeeded.'));
-    } catch {
-      setMessage(t(locale, '图片生成连接测试失败，请检查地址、密钥和模型。', 'Image generation connection test failed. Check the URL, key and model.'));
+    } catch (error) {
+      setMessage(testErrorMessage(locale, error, 'image'));
     } finally {
       setTestBusy(false);
     }

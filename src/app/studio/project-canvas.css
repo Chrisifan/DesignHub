@@ -1,6 +1,7 @@
 .project-canvas-surface {
   --project-canvas-panel-background: var(--shell-glass);
   --project-canvas-panel-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent), 0 8px 24px rgb(15 23 42 / 10%);
+  --project-canvas-dock-bottom: 18px;
 
   position: relative;
   display: flex;
@@ -51,7 +52,7 @@
 
 .project-canvas-toolbar--bottom {
   top: auto;
-  bottom: 18px;
+  bottom: var(--project-canvas-dock-bottom);
   height: auto;
   left: 50%;
   right: auto;
@@ -294,36 +295,39 @@
 .project-canvas-analysis-presence {
   position: absolute;
   z-index: 10;
-  top: max(78px, calc(100% - 130px));
+  top: calc(100% - var(--project-canvas-dock-bottom) - 155px);
+  /* The compact field is drawn inside the 208px canvas, so its visual edge sits above the box edge. */
+  bottom: auto;
   right: 16px;
-  width: 112px;
-  height: 112px;
-  transition: top 520ms cubic-bezier(.2, .8, .2, 1), opacity 180ms ease;
+  width: 208px;
+  height: 208px;
+  transition: top 520ms cubic-bezier(.2, .8, .2, 1), opacity 180ms ease, transform 180ms ease;
   pointer-events: none;
+}
+
+.project-canvas-analysis-presence.is-hidden {
+  opacity: 0;
+  transform: translateY(8px) scale(.96);
+  visibility: hidden;
 }
 
 .project-canvas-analysis-presence--thinking {
   top: 78px;
+  bottom: auto;
 }
 
 .project-canvas-analysis-history__presence {
   display: grid;
-  width: 112px;
-  height: 112px;
+  width: 208px;
+  height: 208px;
   padding: 0;
-  border: 1px solid var(--shell-glass-border);
-  border-radius: 50%;
+  border: 0;
+  border-radius: 0;
   color: var(--on-surface);
-  background: var(--project-canvas-panel-background);
-  box-shadow: var(--project-canvas-panel-shadow);
-  -webkit-backdrop-filter: var(--shell-backdrop);
-  backdrop-filter: var(--shell-backdrop);
+  background: transparent;
+  box-shadow: none;
   cursor: pointer;
   pointer-events: auto;
-}
-
-.project-canvas-analysis-history__presence:hover {
-  border-color: color-mix(in srgb, var(--primary) 56%, var(--shell-glass-border));
 }
 
 .project-canvas-analysis-history__presence:focus-visible {
@@ -332,10 +336,10 @@
 }
 
 .project-canvas-analysis-presence .neural-presence {
-  width: 112px;
-  min-width: 112px;
-  max-width: 112px;
-  height: 112px;
+  width: 208px;
+  min-width: 208px;
+  max-width: 208px;
+  height: 208px;
 }
 
 .project-canvas-analysis-presence .neural-presence__canvas {
@@ -346,15 +350,11 @@
   pointer-events: none;
 }
 
-.project-canvas-analysis-presence[aria-live] {
-  border-radius: 50%;
-}
-
 .project-canvas-analysis-history {
   position: absolute;
   z-index: 9;
   right: 16px;
-  bottom: 18px;
+  bottom: var(--project-canvas-dock-bottom);
   width: min(286px, calc(100% - 36px));
   overflow: hidden;
   border: 1px solid var(--shell-glass-border);
@@ -449,6 +449,6 @@
     transition: opacity 160ms ease;
   }
 
-  .project-canvas-analysis-presence { top: max(78px, calc(100% - 130px)); }
+  .project-canvas-analysis-presence { top: calc(100% - var(--project-canvas-dock-bottom) - 155px); bottom: auto; }
   .project-canvas-analysis-presence--thinking { top: 78px; }
 }

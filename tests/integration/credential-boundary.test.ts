@@ -63,3 +63,15 @@ it('returns failure when the system store rejects without exposing the secret', 
 
   await expect(bridge.storeCredential('provider-a', 'secret-value')).resolves.toBe(false);
 });
+
+it('invalidates cached provider services only after a credential change succeeds', async () => {
+  const store = createInMemoryCredentialStore();
+  const changed: string[] = [];
+  const boundary = createCredentialBoundary(store, (connectionId) => { changed.push(connectionId); });
+
+  await expect(boundary.storeCredential('provider-a', 'secret-value')).resolves.toBe(true);
+  await expect(boundary.deleteCredential('provider-a')).resolves.toBe(true);
+  await expect(boundary.storeCredential('', 'invalid')).resolves.toBe(false);
+
+  expect(changed).toEqual(['provider-a', 'provider-a']);
+});

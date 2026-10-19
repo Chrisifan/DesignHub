@@ -1516,18 +1516,30 @@ describe('ProjectCanvas design references', () => {
     expect(screen.getByRole('button', { name: /第二轮分析/u })).toBeVisible();
   });
 
-  it('renders collapsed history as a counted neural presence and opens history from it', async () => {
+  it('renders collapsed history as a neural presence and opens history from it', async () => {
     const tasks: TaskRecord[] = [
       { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project', id: 'project-1' }, result: { text: '第一轮结果' } },
       { ...conversation({ id: 'analysis-2', createdAt: '2026-09-21T11:00:00.000Z', requestText: '第二轮分析' }), source: { kind: 'project', id: 'project-1' }, result: { text: '第二轮结果' } },
     ];
     renderProjectCanvasWithTasks(tasks);
 
-    const presence = await screen.findByRole('button', { name: /打开分析历史.*2/u });
+    const presence = await screen.findByRole('button', { name: '打开分析历史' });
     expect(presence).toBeInTheDocument();
     fireEvent.click(presence);
     expect(screen.getByLabelText('分析历史列表')).toHaveClass('is-open');
+    expect(screen.getByTestId('project-canvas')).toHaveAttribute('data-analysis-dock-view', 'history');
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveClass('is-hidden');
     expect(screen.getByRole('button', { name: /第一轮分析/u })).toBeVisible();
+  });
+
+  it('shows an idle neural presence before the first analysis', async () => {
+    renderProjectCanvasWithTasks([]);
+
+    const presence = await screen.findByRole('button', { name: '神经簇智体待命' });
+    expect(presence).toBeDisabled();
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'idle');
+    expect(screen.getByTestId('project-canvas')).toHaveAttribute('data-analysis-dock-view', 'presence');
+    expect(screen.queryByLabelText('分析历史列表')).not.toBeInTheDocument();
   });
 
   it('keeps the completed result visible while history is expanded', async () => {
@@ -1557,17 +1569,22 @@ describe('ProjectCanvas design references', () => {
     expect(screen.queryByRole('complementary', { name: '设计分析' })).not.toBeInTheDocument();
   });
 
-  it('returns to the counted presence on canvas background and opens history when clicked', async () => {
+  it('returns to the neural presence on canvas background and opens history when clicked', async () => {
     const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } };
     renderProjectCanvasWithTasks([analysis]);
 
     fireEvent.click(await screen.findByRole('button', { name: '画布空白' }));
     expect(document.querySelector('.project-canvas-analysis-panel')).not.toBeInTheDocument();
-    const presence = screen.getByRole('button', { name: /打开分析历史.*1/u });
+    const presence = screen.getByRole('button', { name: '打开分析历史' });
     expect(presence).toBeInTheDocument();
 
     fireEvent.click(presence);
     expect(screen.getByLabelText('分析历史列表')).toHaveClass('is-open');
     expect(screen.getByRole('button', { name: /第一轮分析/u })).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: /分析历史/u }));
+    expect(screen.getByTestId('project-canvas')).toHaveAttribute('data-analysis-dock-view', 'presence');
+    expect(screen.getByTestId('project-canvas-analysis-presence')).not.toHaveClass('is-hidden');
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toBeVisible();
   });
 });

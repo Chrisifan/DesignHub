@@ -27,9 +27,9 @@ it('keeps the canvas dock and both analysis panels on the frosted glass surface'
 });
 
 it('defines shared analysis presence anchors and reduced-motion behavior', () => {
-  expect(styles).toMatch(/\.project-canvas-analysis-presence\s*\{[\s\S]*?top:\s*max\(78px,\s*calc\(100% - 130px\)\)[\s\S]*?right:\s*16px[\s\S]*?transition:\s*top/u);
+  expect(styles).toMatch(/\.project-canvas-analysis-presence\s*\{[\s\S]*?top:\s*calc\(100% - var\(--project-canvas-dock-bottom\) - 155px\)[\s\S]*?right:\s*16px[\s\S]*?transition:\s*top/u);
   expect(styles).toMatch(/\.project-canvas-analysis-presence--thinking\s*\{[\s\S]*?top:\s*78px/u);
-  expect(styles).toMatch(/\.project-canvas-analysis-history__presence\s*\{[\s\S]*?width:\s*112px/u);
-  expect(neuralStyles).toMatch(/\.neural-presence__history-count/u);
+  expect(styles).toMatch(/\.project-canvas-analysis-history__presence\s*\{[\s\S]*?width:\s*208px/u);
+  expect(neuralStyles).toMatch(/\.neural-presence\[data-compact='true'\]\s*\{[\s\S]*?width:\s*208px/u);
   expect(styles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.project-canvas-analysis-presence/u);
 });

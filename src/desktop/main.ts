@@ -17,6 +17,7 @@ import { runStorageSmoke } from './storage/storage-smoke';
 import { createWindowOptions } from './window-options';
 import { createCredentialBoundary, createUnavailableCredentialStore, type SystemCredentialStore, type CredentialBoundary } from './security/credentials';
 import { createKeyringCredentialStore, migrateLegacyCredentials, migrateLegacyProviderCredential } from './security/keyring-credentials';
+import { createEncryptedFileCredentialStore, migrateCredentialAccounts } from './security/durable-credentials';
 import { registerTaskHandlers } from './ipc/register-task-handlers';
 import { loadTaskState } from './storage/task-store';
 import { type AgentTaskService } from '../features/agent/task-service';
@@ -50,6 +51,7 @@ import { createAgentTaskServiceForLibrary } from './services/task-service-factor
 import { createImageToolService } from './services/image-tool-service';
 import { createProjectPackageService } from './services/project-package-service';
 import { importProjectPackageArchive } from './storage/project-package-import';
+import { providerCredentialAccount, providerProfiles } from '../features/providers/config';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -103,12 +105,16 @@ const generatedImageBytes = async (image: GeneratedImage): Promise<{ bytes: Uint
 };
 
 const createSystemCredentialStore = async (): Promise<SystemCredentialStore> => {
+  const durable = createEncryptedFileCredentialStore(join(app.getPath('userData'), 'secure'), safeStorage);
   try {
     const { Entry } = await import('@napi-rs/keyring');
-    return createKeyringCredentialStore((service, account) => new Entry(service, account));
-  } catch {
-    return createUnavailableCredentialStore();
-  }
+    const keyring = createKeyringCredentialStore((service, account) => new Entry(service, account));
+    await migrateCredentialAccounts(keyring, durable, [
+      'openai-compatible',
+      ...providerProfiles.map((profile) => providerCredentialAccount('openai-compatible', profile)),
+    ]);
+  } catch {}
+  return durable;
 };
 
 const migrateLegacyCredentialFile = async (directory: string, store: SystemCredentialStore): Promise<void> => {
@@ -185,7 +191,9 @@ else app.on('second-instance', () => { focusExistingWindow(activeWindow); });
 
 if (ownsSingleInstanceLock) void app.whenReady().then(async () => {
   credentialStore = await createSystemCredentialStore();
-  credentialBoundary = createCredentialBoundary(credentialStore);
+  credentialBoundary = createCredentialBoundary(credentialStore, () => {
+    taskServicePromise = null;
+  });
   await migrateLegacyProviderCredential(credentialStore, 'openai-compatible');
   await migrateLegacyCredentialFile(join(app.getPath('userData'), 'secure'), credentialStore);
   protocol.handle(
@@ -298,7 +306,9 @@ if (ownsSingleInstanceLock) void app.whenReady().then(async () => {
     loadProviderConfigs: () => loadProviderConfigs(providerConfigPath()),
     saveProviderConfig: async (saveInput) => {
       const current = await loadProviderConfigs(providerConfigPath());
-      return saveProviderConfigs(providerConfigPath(), { ...current, [saveInput.connectionId]: saveInput.config });
+      const saved = await saveProviderConfigs(providerConfigPath(), { ...current, [saveInput.connectionId]: saveInput.config });
+      if (saved) taskServicePromise = null;
+      return saved;
     },
     loadProviderStatuses: () => loadProviderConnectionStatuses(join(app.getPath('userData'), 'provider-status.json')),
     saveProviderStatuses: (statuses) => saveProviderConnectionStatuses(join(app.getPath('userData'), 'provider-status.json'), statuses),

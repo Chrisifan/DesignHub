@@ -1,7 +1,14 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron, expect, test } from 'playwright/test';
+
+type CredentialBridge = {
+  storeCredential: (account: string, secret: string) => Promise<boolean>;
+  deleteCredential: (account: string) => Promise<boolean>;
+  hasCredential: (account: string) => Promise<boolean>;
+};
 
 test('launches the welcome shell with only the DesignHub bridge', async () => {
   const userData = await mkdtemp(join(tmpdir(), 'designhub-electron-onboarding-'));
@@ -71,6 +78,41 @@ test('launches the welcome shell with only the DesignHub bridge', async () => {
       'listExportHistory',
       'exportDiagnostics',
     ]));
+  } finally {
+    await electronApp.close();
+    await rm(userData, { recursive: true, force: true });
+  }
+});
+
+test('reads a credential after a full Electron process restart', async () => {
+  const userData = await mkdtemp(join(tmpdir(), 'designhub-electron-credential-restart-'));
+  const account = `restart-smoke-${randomUUID()}`;
+  const secret = `secret-${randomUUID()}`;
+  const launch = () => _electron.launch({ args: ['.'], env: { ...process.env, DESIGNHUB_TEST_USER_DATA: userData } });
+  let electronApp = await launch();
+
+  try {
+    const firstWindow = await electronApp.firstWindow();
+    await expect(firstWindow.getByRole('heading', { name: '设置你的资料', exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(firstWindow.evaluate(
+      ({ account: id, secret: value }) => (globalThis as unknown as { designhub: CredentialBridge }).designhub.storeCredential(id, value),
+      { account, secret },
+    )).resolves.toBe(true);
+    await electronApp.close();
+
+    await expect(access(join(userData, 'secure', 'credentials.v2.json'))).resolves.toBeUndefined();
+
+    electronApp = await launch();
+    const restartedWindow = await electronApp.firstWindow();
+    await expect(restartedWindow.getByRole('heading', { name: '设置你的资料', exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(restartedWindow.evaluate(
+      (id) => (globalThis as unknown as { designhub: CredentialBridge }).designhub.hasCredential(id),
+      account,
+    )).resolves.toBe(true);
+    await restartedWindow.evaluate(
+      (id) => (globalThis as unknown as { designhub: CredentialBridge }).designhub.deleteCredential(id),
+      account,
+    );
   } finally {
     await electronApp.close();
     await rm(userData, { recursive: true, force: true });

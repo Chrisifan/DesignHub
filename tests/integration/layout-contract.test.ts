@@ -47,7 +47,7 @@ it('uses semantic colors for status UI without consuming brand or decorative acc
   expect(studioStyles).toMatch(/\.badge--error\s*\{[\s\S]*?color:\s*var\(--error\)/u);
   expect(studioStyles).toMatch(/\.badge--primary\s*\{[\s\S]*?color:\s*var\(--primary\)/u);
   expect(studioStyles).toMatch(/\.inline-notice\s*>\s*\.ui-icon\s*\{[\s\S]*?color:\s*var\(--info\)/u);
-  expect(conversationDockStyles).toMatch(/\.conversation-dock__status\s*>\s*span\.is-connected\s*\{[\s\S]*?background:\s*var\(--success\)/u);
+  expect(conversationDockStyles).toMatch(/\.conversation-dock__status\s*>\s*\.conversation-dock__indicator\.is-connected\s*\{[\s\S]*?background:\s*var\(--success\)/u);
   expect(libraryStyles).toMatch(/\.portfolio-steps li\.is-complete > span\s*\{[\s\S]*?background:\s*var\(--success\)/u);
   expect(libraryStyles).toMatch(/\.portfolio-analysis-section--texture[\s\S]*?var\(--accent-warm\)/u);
   expect(libraryStyles).toMatch(/\.portfolio-review__published\s*\{[\s\S]*?color:\s*var\(--success\)/u);

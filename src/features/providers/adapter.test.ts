@@ -68,6 +68,21 @@ describe('OpenAI-compatible provider adapter', () => {
     await expect(adapter.chat({ messages: [{ role: 'user', content: 'hi' }] })).resolves.toMatchObject({ text: 'hello', usage: { totalTokens: 4 }, cost: null });
   });
 
+  it('preserves TLS certificate details from a failed fetch', async () => {
+    const tlsCause = Object.assign(new Error('self-signed certificate'), { code: 'DEPTH_ZERO_SELF_SIGNED_CERT' });
+    const fetchError = Object.assign(new TypeError('fetch failed'), { cause: tlsCause });
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://bad-certificate.example/v1',
+      apiKey: 'secret-key',
+      fetch: vi.fn(async () => { throw fetchError; }),
+    });
+
+    await expect(adapter.chat({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toMatchObject({
+      message: 'PROVIDER_TLS_ERROR: self-signed certificate (DEPTH_ZERO_SELF_SIGNED_CERT)',
+      providerCode: 'DEPTH_ZERO_SELF_SIGNED_CERT',
+    });
+  });
+
   it('uses the configured default model for each provider capability', async () => {
     const bodies: Array<Record<string, unknown>> = [];
     const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {

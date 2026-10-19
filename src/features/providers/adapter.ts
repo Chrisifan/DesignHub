@@ -128,6 +128,21 @@ const createHttpError = async (response: Response, redact: (value: string) => st
 };
 
 const networkError = (cause: unknown, redact: (value: string) => string): ProviderAdapterError => {
+  const nestedCause = cause && typeof cause === 'object' && 'cause' in cause
+    ? (cause as { cause?: unknown }).cause
+    : undefined;
+  const detail = nestedCause ?? cause;
+  const detailRecord = detail && typeof detail === 'object' ? detail as { code?: unknown; message?: unknown } : {};
+  const code = typeof detailRecord.code === 'string' ? redact(detailRecord.code) : undefined;
+  const detailMessage = typeof detailRecord.message === 'string' ? redact(detailRecord.message) : undefined;
+  const tlsFailure = Boolean(
+    (code && /(?:CERT|TLS|SSL|SELF_SIGNED|UNABLE_TO_VERIFY)/iu.test(code))
+    || (detailMessage && /(?:certificate|self[- ]signed|TLS|SSL)/iu.test(detailMessage)),
+  );
+  if (tlsFailure) {
+    const description = detailMessage || 'TLS certificate validation failed';
+    return toError(`PROVIDER_TLS_ERROR: ${description}${code ? ` (${code})` : ''}`, 'http', { providerCode: code });
+  }
   const message = cause instanceof Error ? redact(cause.message) : 'Provider network request failed.';
   return toError(message || 'Provider network request failed.', 'http');
 };

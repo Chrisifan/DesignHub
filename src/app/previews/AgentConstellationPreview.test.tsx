@@ -38,12 +38,13 @@ it('presents a single idle neural entity without topology labels', () => {
   expect(screen.queryByText('理解上下文')).toBeNull();
 });
 
-it('embeds a compact neural presence with a visual and exact history count', () => {
-  render(<NeuralPresence mode="idle" compact historyCount={3} />);
+it('embeds a compact neural presence without visible history chrome', () => {
+  render(<NeuralPresence mode="idle" compact />);
 
   expect(screen.getByRole('img', { name: '待命中的神经簇智体' })).toBeVisible();
-  expect(screen.getByTestId('neural-presence-history-count')).toHaveTextContent('3');
-  expect(screen.getByTestId('neural-presence-history-ticks').querySelectorAll('i')).toHaveLength(3);
+  expect(screen.queryByText('待命中')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('neural-presence-history-count')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('neural-presence-history-ticks')).not.toBeInTheDocument();
   expect(screen.getByTestId('neural-presence')).toHaveAttribute('data-compact', 'true');
 });
 

@@ -510,14 +510,12 @@ const drawPresence = (
 type NeuralPresenceProps = {
   mode: PresenceMode;
   compact?: boolean;
-  historyCount?: number;
 };
 
-export const NeuralPresence = ({ mode, compact = false, historyCount = 0 }: NeuralPresenceProps): ReactElement => {
+export const NeuralPresence = ({ mode, compact = false }: NeuralPresenceProps): ReactElement => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointerTarget = useRef({ x: 0, y: 0, active: false });
   const copy = presenceCopy[mode];
-  const tickCount = Math.min(8, Math.max(1, Math.floor(historyCount)));
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -583,17 +581,11 @@ export const NeuralPresence = ({ mode, compact = false, historyCount = 0 }: Neur
         onPointerMove={trackPointer}
         onPointerLeave={() => { pointerTarget.current.active = false; }}
       />
-      <p className="neural-presence__status" aria-live="polite">
+      {!compact && <p className="neural-presence__status" aria-live="polite">
         <i aria-hidden="true" />
         <span>{copy.label}</span>
         <small>{copy.detail}</small>
-      </p>
-      {compact && <>
-        <span className="neural-presence__history-ticks" data-testid="neural-presence-history-ticks" aria-hidden="true">
-          {Array.from({ length: tickCount }, (_, index) => <i key={index} />)}
-        </span>
-        <span className="neural-presence__history-count" data-testid="neural-presence-history-count" aria-hidden="true">{historyCount}</span>
-      </>}
+      </p>}
     </section>
   );
 };

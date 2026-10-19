@@ -352,7 +352,8 @@ it('reports a connected conversation model in the home composer', async () => {
   render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-connected', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={() => undefined} onThemeChange={() => undefined} onExit={() => undefined} />);
 
   await waitFor(() => expect(hasCredential).toHaveBeenCalledWith('openai-compatible:conversation'));
-  expect(screen.getByText('最近连接测试通过')).toBeInTheDocument();
+  expect(screen.queryByText('最近连接测试通过')).not.toBeInTheDocument();
+  expect(screen.getByRole('img', { name: '最近连接测试通过' })).toBeInTheDocument();
   expect(document.querySelector('.studio-status')).not.toBeInTheDocument();
 });
 
@@ -742,7 +743,7 @@ it('creates a localized project and opens its workbench from the first home prom
   window.designhub = { listActiveProjects, createProjectContainer, submitConversation, hasCredential };
   render(<Studio locale="zh-CN" theme="system" library={{ libraryId: 'workspace-1', name: 'Local', directory: '/tmp/local', formatVersion: 1, openMode: 'writable' }} onLocaleChange={vi.fn()} onThemeChange={vi.fn()} onExit={vi.fn()} />);
 
-  await screen.findByText('最近连接测试通过');
+  await screen.findByRole('img', { name: '最近连接测试通过' });
   fireEvent.change(await screen.findByRole('textbox', { name: '设计需求' }), { target: { value: '设计一张发布海报' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
 
@@ -841,7 +842,7 @@ it('keeps project-library identity fixed during automatic project creation', asy
   const workspaceA = { libraryId: 'workspace-a', name: 'A', directory: '/tmp/a', formatVersion: 1, openMode: 'writable' as const };
   const props = { locale: 'zh-CN' as const, theme: 'system' as const, onLocaleChange: vi.fn(), onThemeChange: vi.fn(), onExit: vi.fn() };
   render(<Studio {...props} library={workspaceA} />);
-  await screen.findByText('最近连接测试通过');
+  await screen.findByRole('img', { name: '最近连接测试通过' });
   fireEvent.change(screen.getByRole('textbox', { name: '设计需求' }), { target: { value: '工作区切换测试' } });
   fireEvent.click(screen.getByRole('button', { name: '发送并创建项目' }));
   await waitFor(() => expect(createProjectContainer).toHaveBeenCalledOnce());

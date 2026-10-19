@@ -45,10 +45,22 @@ export const createProviderAdapterResolver = (options: ProviderAdapterResolverOp
 
   const getProfileAdapter = (profile: ProviderProfile): Promise<OpenAICompatibleAdapter> => {
     if (profile === 'conversation') {
-      conversationPromise ??= createProfileAdapter(profile);
+      if (!conversationPromise) {
+        const retryable = createProfileAdapter(profile).catch((error: unknown) => {
+          if (conversationPromise === retryable) conversationPromise = undefined;
+          throw error;
+        });
+        conversationPromise = retryable;
+      }
       return conversationPromise;
     }
-    imagePromise ??= createProfileAdapter(profile);
+    if (!imagePromise) {
+      const retryable = createProfileAdapter(profile).catch((error: unknown) => {
+        if (imagePromise === retryable) imagePromise = undefined;
+        throw error;
+      });
+      imagePromise = retryable;
+    }
     return imagePromise;
   };
 

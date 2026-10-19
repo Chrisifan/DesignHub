@@ -389,9 +389,10 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const designAnchors = imageToolDesignAnchors(tasks, designs);
   const analysisHistory = getAnalysisHistory(tasks, threadId, analysisTask);
   const analysisRunning = analysisThinking || analysisTask?.state === 'queued' || analysisTask?.state === 'running';
+  const hasAnalysisHistory = analysisHistory.length > 0;
   const analysisDockView: AnalysisDockView = analysisRunning
     ? 'thinking'
-    : analysisCollapsed
+    : analysisCollapsed || !hasAnalysisHistory
       ? 'presence'
       : analysisHistoryOpen
         ? 'history'
@@ -686,18 +687,20 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
       {analysisOpen && analysisTask && !analysisRunning && !analysisCollapsed && <div className="project-canvas-analysis-panel project-canvas-analysis-panel--expanded">
         <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} onGenerate={(count) => { void generate(count); }} onCopyRequest={copyAnalysisRequest} />
       </div>}
-      {analysisOpen && (analysisRunning || analysisHistory.length > 0) && !analysisHistoryOpen && <div className={`project-canvas-analysis-presence${analysisRunning ? ' project-canvas-analysis-presence--thinking' : ' project-canvas-analysis-presence--idle'}`} data-testid="project-canvas-analysis-presence" data-mode={analysisPresenceMode} aria-live="polite">
+      {analysisOpen && <div className={`project-canvas-analysis-presence${analysisRunning ? ' project-canvas-analysis-presence--thinking' : ' project-canvas-analysis-presence--idle'}${analysisHistoryOpen && !analysisRunning ? ' is-hidden' : ''}`} data-testid="project-canvas-analysis-presence" data-mode={analysisPresenceMode} aria-live="polite" aria-hidden={analysisHistoryOpen && !analysisRunning ? 'true' : undefined}>
         <button
           type="button"
           className="project-canvas-analysis-history__presence"
           ref={analysisPresenceRef}
           aria-label={analysisRunning
             ? t(locale, '正在分析', 'Analyzing')
-            : t(locale, `打开分析历史，${analysisHistory.length} 条记录`, `Open analysis history, ${analysisHistory.length} records`)}
-          disabled={analysisRunning}
-          onClick={() => setAnalysisHistoryOpen(true)}
+            : hasAnalysisHistory
+              ? t(locale, '打开分析历史', 'Open analysis history')
+              : t(locale, '神经簇智体待命', 'Neural presence idle')}
+          disabled={analysisRunning || !hasAnalysisHistory || (analysisHistoryOpen && !analysisRunning)}
+          onClick={() => { if (hasAnalysisHistory) setAnalysisHistoryOpen(true); }}
         >
-          <NeuralPresence mode={analysisPresenceMode} compact historyCount={analysisHistory.length} />
+          <NeuralPresence mode={analysisPresenceMode} compact />
         </button>
       </div>}
       {analysisOpen && analysisHistory.length > 0 && !analysisRunning && analysisHistoryOpen && <section className="project-canvas-analysis-history is-open" aria-label={t(locale, '分析历史列表', 'Analysis history')}>

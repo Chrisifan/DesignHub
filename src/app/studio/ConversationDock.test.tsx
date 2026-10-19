@@ -39,7 +39,9 @@ it('renders expanded and compact variants from the same dock', () => {
   const expanded = screen.getByRole('form', { name: 'AI 操作坞' });
   expect(expanded).toHaveClass('conversation-dock--expanded');
   expect(within(expanded).queryByRole('button', { name: '模型任务' })).toBeNull();
-  expect(within(expanded).getByText('最近连接测试通过')).toBeVisible();
+  expect(within(expanded).queryByText('最近连接测试通过')).toBeNull();
+  expect(within(expanded).getByRole('img', { name: '最近连接测试通过' })).toBeInTheDocument();
+  expect(expanded.querySelector('.conversation-dock__status > span')).toHaveClass('is-connected');
 
   rerender(
     <ConversationDock
@@ -56,7 +58,8 @@ it('renders expanded and compact variants from the same dock', () => {
   expect(within(compact).getByRole('button', { name: '模型任务' })).toBeVisible();
   expect(within(compact).getByRole('button', { name: '版本历史' })).toBeVisible();
   expect(within(compact).getByRole('button', { name: '生成' })).toBeVisible();
-  expect(within(compact).getByText('最近连接测试通过')).toBeVisible();
+  expect(within(compact).queryByText('最近连接测试通过')).toBeNull();
+  expect(within(compact).getByRole('img', { name: '最近连接测试通过' })).toBeInTheDocument();
   expect(within(compact).queryByText('/')).toBeNull();
 
   rerender(
@@ -66,8 +69,17 @@ it('renders expanded and compact variants from the same dock', () => {
       conversationConnected={false}
     />,
   );
-  expect(within(compact).getByText('对话模型未连接')).toBeVisible();
+  expect(within(compact).queryByText('对话模型未连接')).toBeNull();
+  expect(within(compact).getByRole('img', { name: '对话模型未连接' })).toBeInTheDocument();
   expect(compact.querySelector('.conversation-dock__status > span')).not.toHaveClass('is-connected');
+});
+
+it('keeps busy progress text while hiding idle connection descriptions', () => {
+  const props = makeProps();
+  render(<ConversationDock {...props} variant="expanded" busy busyLabel="创建中" />);
+
+  expect(screen.getByText('创建中')).toBeVisible();
+  expect(screen.queryByText('最近连接测试通过')).toBeNull();
 });
 
 it('uses a vertical up arrow for the expanded send control', () => {
@@ -118,6 +130,9 @@ it('animates the focused border gradient without rotating the dock geometry', ()
   expect(stylesheet).toContain('2.6s cubic-bezier(0.33, 1, 0.68, 1) infinite');
   expect(stylesheet).toContain('--conversation-dock-border-angle: 360deg');
   expect(stylesheet).not.toContain('transform: rotate(360deg)');
+  expect(stylesheet).toContain('@keyframes conversation-dock-status-breathe');
+  expect(stylesheet).toContain('animation: conversation-dock-status-breathe');
+  expect(stylesheet).toContain('.conversation-dock__indicator { animation: none; }');
 });
 
 it('reads pasted images into controlled attachments', async () => {

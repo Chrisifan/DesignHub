@@ -244,3 +244,76 @@ it('tests the conversation connection with its configured model', async () => {
   await waitFor(() => expect(testConversation).toHaveBeenCalledWith('openai-compatible', { model: 'chat-model' }));
   expect(screen.getByRole('status')).toHaveTextContent('Conversation connection test succeeded');
 });
+
+it('saves the current form before testing the conversation connection', async () => {
+  const saveConfig = vi.fn(async () => true);
+  const testConversation = vi.fn(async () => ({ cost: null }));
+  render(
+    <ProviderSettings
+      locale="en"
+      activeProfile="conversation"
+      connections={[{ ...connection, status: 'connected' }]}
+      configs={{ 'openai-compatible': {
+        conversation: { baseUrl: 'https://old.example/v1', models: { conversation: 'old-model' } },
+        image: { baseUrl: '', imageTransport: 'images', models: {} },
+      } }}
+      onSaveProviderConfig={saveConfig}
+      onTestConversation={testConversation}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  fireEvent.change(screen.getByLabelText('Conversation base URL'), { target: { value: 'https://new.example/v1' } });
+  fireEvent.change(screen.getByLabelText('Conversation model'), { target: { value: 'new-model' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+
+  await waitFor(() => expect(testConversation).toHaveBeenCalledWith('openai-compatible', { model: 'new-model' }));
+  expect(saveConfig).toHaveBeenCalledWith('openai-compatible', expect.objectContaining({
+    conversation: { baseUrl: 'https://new.example/v1', models: { conversation: 'new-model' } },
+  }));
+  expect(saveConfig.mock.invocationCallOrder[0]).toBeLessThan(testConversation.mock.invocationCallOrder[0]!);
+});
+
+it('explains that a TLS failure happened before an HTTP request reached the provider', async () => {
+  render(
+    <ProviderSettings
+      locale="en"
+      activeProfile="conversation"
+      connections={[{ ...connection, status: 'connected' }]}
+      configs={{ 'openai-compatible': {
+        conversation: { baseUrl: 'https://bad-certificate.example/v1', models: {} },
+        image: { baseUrl: '', imageTransport: 'images', models: {} },
+      } }}
+      onTestConversation={vi.fn(async () => { throw new Error('PROVIDER_TLS_ERROR: self-signed certificate (DEPTH_ZERO_SELF_SIGNED_CERT)'); })}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+
+  expect(await screen.findByRole('status')).toHaveTextContent('TLS certificate validation failed before an HTTP request was sent');
+  expect(screen.getByRole('status')).toHaveTextContent('DEPTH_ZERO_SELF_SIGNED_CERT');
+});
+
+it('explains when the conversation test was blocked locally by a missing key', async () => {
+  render(
+    <ProviderSettings
+      locale="en"
+      activeProfile="conversation"
+      connections={[{ ...connection, status: 'connected' }]}
+      configs={{ 'openai-compatible': {
+        conversation: { baseUrl: 'https://text.example/v1', models: {} },
+        image: { baseUrl: '', imageTransport: 'images', models: {} },
+      } }}
+      onTestConversation={vi.fn(async () => { throw new Error('PROVIDER_API_KEY_REQUIRED'); })}
+      onStoreCredential={vi.fn(async () => true)}
+      onDeleteCredential={vi.fn(async () => true)}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+
+  expect(await screen.findByRole('status')).toHaveTextContent('No saved API key was available. The request was not sent');
+});

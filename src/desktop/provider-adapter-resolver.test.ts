@@ -96,3 +96,34 @@ it('uses environment fallback when no saved config exists', async () => {
   await expect(combined.generateImage({ prompt: 'a chair' })).resolves.toMatchObject({ images: [{ url: 'https://env.example/v1.png' }] });
   expect(createAdapter).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: 'https://env.example/v1', apiKey: 'env-key', imageTransport: 'images' }));
 });
+
+it('retries credential resolution after a transient read failure', async () => {
+  const getCredential = vi.fn()
+    .mockRejectedValueOnce(new Error('SYSTEM_CREDENTIAL_STORE_READ_FAILED'))
+    .mockResolvedValue('recovered-key');
+  const createAdapter = vi.fn(() => adapter('recovered'));
+  const resolve = createProviderAdapterResolver({
+    connectionId: 'openai-compatible',
+    config,
+    getCredential,
+    createAdapter,
+  });
+  const combined = await resolve();
+
+  await expect(combined.chat({ messages: [{ role: 'user', content: 'first' }] })).rejects.toThrow('SYSTEM_CREDENTIAL_STORE_READ_FAILED');
+  await expect(combined.chat({ messages: [{ role: 'user', content: 'second' }] })).resolves.toMatchObject({ text: 'recovered' });
+
+  expect(getCredential).toHaveBeenCalledTimes(2);
+  expect(createAdapter).toHaveBeenCalledTimes(1);
+});
+
+it('keeps a genuinely missing credential as the provider API key error', async () => {
+  const resolve = createProviderAdapterResolver({
+    connectionId: 'openai-compatible',
+    config,
+    getCredential: async () => null,
+  });
+  const combined = await resolve();
+
+  await expect(combined.chat({ messages: [{ role: 'user', content: 'hello' }] })).rejects.toThrow('PROVIDER_API_KEY_REQUIRED');
+});

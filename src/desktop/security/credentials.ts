@@ -4,6 +4,25 @@ export type SystemCredentialStore = {
   getCredential?: (connectionId: string) => Promise<string | null>;
 };
 
+export type CredentialStoreErrorCode =
+  | 'SYSTEM_CREDENTIAL_STORE_UNAVAILABLE'
+  | 'SYSTEM_CREDENTIAL_STORE_READ_FAILED'
+  | 'SYSTEM_CREDENTIAL_STORE_WRITE_FAILED';
+
+export type CredentialStoreError = Error & { code: CredentialStoreErrorCode };
+
+export const createCredentialStoreError = (code: CredentialStoreErrorCode): CredentialStoreError => Object.assign(
+  new Error(code),
+  { name: 'CredentialStoreError', code },
+);
+
+export const isCredentialStoreError = (error: unknown): error is CredentialStoreError =>
+  error instanceof Error && 'code' in error && [
+    'SYSTEM_CREDENTIAL_STORE_UNAVAILABLE',
+    'SYSTEM_CREDENTIAL_STORE_READ_FAILED',
+    'SYSTEM_CREDENTIAL_STORE_WRITE_FAILED',
+  ].includes(String(error.code));
+
 export type CredentialBoundary = {
   storeCredential: (connectionId: string, secret: string) => Promise<boolean>;
   deleteCredential: (connectionId: string) => Promise<boolean>;
@@ -13,11 +32,15 @@ export type CredentialBoundary = {
 const isCredentialInput = (connectionId: string, secret?: string): boolean =>
   connectionId.trim().length > 0 && (secret === undefined || secret.length > 0);
 
-export const createCredentialBoundary = (store: SystemCredentialStore): CredentialBoundary => ({
+export const createCredentialBoundary = (
+  store: SystemCredentialStore,
+  onCredentialChanged: (connectionId: string) => void = () => undefined,
+): CredentialBoundary => ({
   storeCredential: async (connectionId, secret) => {
     if (!isCredentialInput(connectionId, secret)) return false;
     try {
       await store.setCredential(connectionId, secret);
+      onCredentialChanged(connectionId);
       return true;
     } catch {
       return false;
@@ -27,6 +50,7 @@ export const createCredentialBoundary = (store: SystemCredentialStore): Credenti
     if (!isCredentialInput(connectionId)) return false;
     try {
       await store.deleteCredential(connectionId);
+      onCredentialChanged(connectionId);
       return true;
     } catch {
       return false;
@@ -65,5 +89,8 @@ export const createUnavailableCredentialStore = (): SystemCredentialStore => ({
   },
   deleteCredential: async () => {
     throw new Error('SYSTEM_CREDENTIAL_STORE_UNAVAILABLE');
+  },
+  getCredential: async () => {
+    throw createCredentialStoreError('SYSTEM_CREDENTIAL_STORE_UNAVAILABLE');
   },
 });

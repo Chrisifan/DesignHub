@@ -79,16 +79,33 @@
   white-space: nowrap;
 }
 
-.conversation-dock__status > span {
+.conversation-dock__status > .conversation-dock__indicator {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--warning);
+  color: var(--warning);
+  animation: conversation-dock-status-breathe 1.8s ease-in-out infinite;
+  transform-origin: center;
 }
 
-.conversation-dock__status > span.is-connected { background: var(--success); }
+.conversation-dock__status > .conversation-dock__indicator.is-connected { background: var(--success); color: var(--success); }
+.conversation-dock__busy-label { color: var(--on-surface-variant); }
 .conversation-dock__toolbar-leading > .conversation-dock__status { margin-left: 2px; }
 .conversation-dock__input-wrap { min-width: 0; }
+
+@keyframes conversation-dock-status-breathe {
+  0%, 100% {
+    opacity: .68;
+    transform: scale(.8);
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 20%, transparent);
+  }
+}
 
 .conversation-dock textarea {
   min-width: 0;
@@ -227,4 +244,5 @@
 
 @media (prefers-reduced-motion: reduce) {
   .conversation-dock--input-focused::before { animation: none; }
+  .conversation-dock__indicator { animation: none; }
 }

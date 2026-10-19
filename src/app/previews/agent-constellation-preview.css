@@ -283,73 +283,19 @@
 }
 
 .neural-presence[data-compact='true'] {
-  width: 112px;
-  min-width: 112px;
-  max-width: 112px;
+  width: 208px;
+  min-width: 208px;
+  max-width: 208px;
   animation-duration: 360ms;
 }
 
-.neural-presence[data-compact='true'] .neural-presence__status {
-  right: 4px;
-  bottom: 3px;
-  left: 4px;
-  gap: 4px;
-  font-size: 8px;
-}
-
-.neural-presence[data-compact='true'] .neural-presence__status i {
-  width: 4px;
-  height: 4px;
-}
-
-.neural-presence[data-compact='true'] .neural-presence__status small {
+.neural-presence[data-compact='true']::before,
+.neural-presence[data-compact='true']::after {
   display: none;
 }
 
-.neural-presence__history-ticks {
-  position: absolute;
-  inset: 8%;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 3px;
-  pointer-events: none;
-}
-
-.neural-presence__history-ticks i {
-  width: 3px;
-  height: 7px;
-  border-radius: 2px;
-  background: var(--neural-amber);
-  opacity: .7;
-  transform-origin: 50% 520%;
-  transform: rotate(calc((var(--tick-index, 0) - 3.5) * 12deg));
-}
-
-.neural-presence__history-ticks i:nth-child(1) { --tick-index: 0; }
-.neural-presence__history-ticks i:nth-child(2) { --tick-index: 1; }
-.neural-presence__history-ticks i:nth-child(3) { --tick-index: 2; }
-.neural-presence__history-ticks i:nth-child(4) { --tick-index: 3; }
-.neural-presence__history-ticks i:nth-child(5) { --tick-index: 4; }
-.neural-presence__history-ticks i:nth-child(6) { --tick-index: 5; }
-.neural-presence__history-ticks i:nth-child(7) { --tick-index: 6; }
-.neural-presence__history-ticks i:nth-child(8) { --tick-index: 7; }
-
-.neural-presence__history-count {
-  position: absolute;
-  top: 7%;
-  right: 7%;
-  display: grid;
-  min-width: 18px;
-  height: 18px;
-  place-items: center;
-  padding: 0 4px;
-  border: 1px solid color-mix(in srgb, var(--neural-amber) 55%, var(--neural-line));
-  border-radius: 999px;
-  color: var(--neural-amber);
-  background: color-mix(in srgb, var(--neural-amber) 14%, var(--neural-line));
-  font: 700 9px/1 'JetBrains Mono', monospace;
-  pointer-events: none;
+.neural-presence[data-compact='true'] .neural-presence__status {
+  display: none;
 }
 
 @keyframes neural-presence-enter {

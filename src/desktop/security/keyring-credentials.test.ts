@@ -27,14 +27,14 @@ it('stores each connection in the fixed DesignHub keyring service', async () => 
   await expect(store.getCredential?.('openai-compatible')).resolves.toBe('stored-secret');
 });
 
-it('fails closed when the keyring cannot read an entry', async () => {
+it('preserves a native keyring read failure for the fallback store', async () => {
   const store = createKeyringCredentialStore(() => ({
     setPassword: async () => undefined,
     getPassword: async () => { throw new Error('KEYRING_UNAVAILABLE'); },
     deletePassword: async () => undefined,
   }));
 
-  await expect(store.getCredential?.('openai-compatible')).resolves.toBeNull();
+  await expect(store.getCredential?.('openai-compatible')).rejects.toThrow('SYSTEM_CREDENTIAL_STORE_READ_FAILED');
 });
 
 it('keeps the legacy encrypted file when any keyring migration write fails', async () => {

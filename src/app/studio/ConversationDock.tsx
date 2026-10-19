@@ -140,6 +140,9 @@ export const ConversationDock = ({
       label: <span className="conversation-dock__designer-option">{renderDesignerAvatar(profile)}<span>{localize(locale, profile.name)}</span></span>,
     })),
   ];
+  const connectionStatusLabel = conversationConnected
+      ? t(locale, '最近连接测试通过', 'Latest connection test passed')
+      : t(locale, '对话模型未连接', 'Conversation model disconnected');
 
   return (
     <>
@@ -212,12 +215,8 @@ export const ConversationDock = ({
               onClick={() => attachmentInputRef.current?.click()}
             />
             <div className="conversation-dock__status" aria-live="polite">
-              <span className={conversationConnected ? 'is-connected' : ''} aria-hidden="true" />
-              {busy && busyLabel
-                ? busyLabel
-                : conversationConnected
-                ? t(locale, '最近连接测试通过', 'Latest connection test passed')
-                : t(locale, '对话模型未连接', 'Conversation model disconnected')}
+              <span className={`conversation-dock__indicator${conversationConnected ? ' is-connected' : ''}`} role="img" aria-label={connectionStatusLabel} />
+              {busy && busyLabel && <span className="conversation-dock__busy-label">{busyLabel}</span>}
             </div>
           </div>
           <div className="conversation-dock__toolbar-actions">
