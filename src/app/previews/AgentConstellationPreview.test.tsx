@@ -7,6 +7,7 @@ import {
   NeuralPresencePreview,
   createNeuralField,
   getMembraneRotation,
+  getTerminalFeedbackProfile,
   getNeuralBreathScale,
   getNeuralLayerMotion,
   getThinkingConnections,
@@ -129,6 +130,34 @@ it('accelerates membrane rotation while thinking', () => {
   const thinkingRotation = Math.abs(getMembraneRotation(0, 8_000, 'thinking'));
 
   expect(thinkingRotation).toBeGreaterThan(idleRotation * 1.8);
+});
+
+it('gives design work a distinct faster motion than idle and a slower rotation than thinking', () => {
+  const idleRotation = Math.abs(getMembraneRotation(0, 8_000, 'idle'));
+  const workingRotation = Math.abs(getMembraneRotation(0, 8_000, 'working'));
+  const thinkingRotation = Math.abs(getMembraneRotation(0, 8_000, 'thinking'));
+
+  expect(workingRotation).toBeGreaterThan(idleRotation * 1.4);
+  expect(workingRotation).toBeLessThan(thinkingRotation);
+});
+
+it('uses bounded intrinsic success and failure feedback that settles to neutral', () => {
+  expect(getTerminalFeedbackProfile('success', 420).intensity).toBeGreaterThan(0);
+  expect(getTerminalFeedbackProfile('success', 420).distortion).toBe(0);
+  expect(getTerminalFeedbackProfile('failure', 420).distortion).toBeGreaterThan(0);
+  expect(getTerminalFeedbackProfile('success', 1_500)).toMatchObject({ intensity: 0, distortion: 0 });
+  expect(getTerminalFeedbackProfile('failure', 1_500)).toMatchObject({ intensity: 0, distortion: 0 });
+});
+
+it('renders terminal compact presence without visible outcome labels', () => {
+  const { rerender } = render(<NeuralPresence mode="success" compact />);
+
+  expect(screen.getByTestId('neural-presence')).toHaveAttribute('data-mode', 'success');
+  expect(screen.queryByText(/成功|失败/u)).not.toBeInTheDocument();
+
+  rerender(<NeuralPresence mode="failure" compact />);
+  expect(screen.getByTestId('neural-presence')).toHaveAttribute('data-mode', 'failure');
+  expect(screen.queryByText(/成功|失败/u)).not.toBeInTheDocument();
 });
 
 it('triggers sensing and switches the standalone preview theme', () => {

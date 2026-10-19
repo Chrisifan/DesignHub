@@ -3,7 +3,9 @@ import { useEffect, useRef, useState, type PointerEvent, type ReactElement } fro
 import '../styles/tokens.css';
 import './agent-constellation-preview.css';
 
-export type PresenceMode = 'idle' | 'sensing' | 'thinking';
+export type PresenceMode = 'idle' | 'sensing' | 'thinking' | 'working' | 'success' | 'failure';
+export type TerminalPresenceMode = 'success' | 'failure';
+export type TerminalFeedbackProfile = { intensity: number; distortion: number; tint: number };
 type NeuralTone = 0 | 1 | 2 | 3 | 4;
 type MotionLayer = 'core' | 'energy' | 'membrane';
 
@@ -152,6 +154,22 @@ const presenceCopy: Record<PresenceMode, { label: string; detail: string; awaren
   idle: { label: '待命中', detail: 'IDLE PRESENCE', awareness: 'PASSIVE', footer: 'READY' },
   sensing: { label: '感知中', detail: 'SENSING INPUT', awareness: 'ACTIVE', footer: 'RECEIVING' },
   thinking: { label: '思考中', detail: 'PROCESSING', awareness: 'COMPUTING', footer: 'PROCESSING' },
+  working: { label: '设计运算中', detail: 'DESIGN COMPUTATION', awareness: 'EXECUTING', footer: 'WORKING' },
+  success: { label: '任务已收敛', detail: 'RESOLVED', awareness: 'STABLE', footer: 'RESOLVED' },
+  failure: { label: '结构重整中', detail: 'RECALIBRATING', awareness: 'RECOVERING', footer: 'RECALIBRATING' },
+};
+
+export const getTerminalFeedbackProfile = (
+  mode: TerminalPresenceMode,
+  elapsedMs: number,
+): TerminalFeedbackProfile => {
+  const progress = Math.max(0, Math.min(1, elapsedMs / 1_200));
+  const envelope = progress === 0 || progress === 1 ? 0 : Math.sin(Math.PI * progress);
+  return {
+    intensity: envelope,
+    distortion: mode === 'failure' ? envelope : 0,
+    tint: envelope,
+  };
 };
 
 export const getNeuralBreathScale = (elapsedMs: number): number => {
@@ -168,13 +186,13 @@ export const getNeuralLayerMotion = (
   const seconds = elapsedMs / 1_000;
   const layerCode = { core: 1.7, energy: 3.1, membrane: 5.3 }[layer];
   const seed = layerCode * 4.71 + (index + 1) * 1.61803398875;
-  const modeSpeed = mode === 'thinking' ? 2.35 : mode === 'sensing' ? 1.72 : 1;
+  const modeSpeed = mode === 'thinking' ? 2.35 : mode === 'working' ? 1.82 : mode === 'sensing' ? 1.72 : 1;
   const speed = { core: .24, energy: .47, membrane: .16 }[layer] * modeSpeed;
   const first = Math.sin(seconds * speed + seed);
   const second = Math.sin(seconds * (speed * .43 + .027) - seed * 1.73);
   const third = Math.sin(seconds * (speed * 1.81 + .019) + seed * .37);
   const noise = first * .5 + second * .32 + third * .18;
-  const amplitude = mode === 'thinking' ? 1.48 : mode === 'sensing' ? 1.2 : 1;
+  const amplitude = mode === 'thinking' ? 1.48 : mode === 'working' ? 1.3 : mode === 'sensing' ? 1.2 : 1;
   const angleRange = { core: .022, energy: .16, membrane: .052 }[layer];
   const radiusRange = { core: .045, energy: .2, membrane: .105 }[layer];
   const driftRange = { core: 2.8, energy: 4.5, membrane: 3.4 }[layer];
@@ -198,7 +216,7 @@ export const getMembraneRotation = (
     { direction: 1, speed: .008, wobble: .002, phase: 4.1 },
   ];
   const track = tracks[layerIndex % tracks.length];
-  const speedBoost = mode === 'thinking' ? 2.25 : mode === 'sensing' ? 1.58 : 1;
+  const speedBoost = mode === 'thinking' ? 2.25 : mode === 'working' ? 1.65 : mode === 'sensing' ? 1.58 : 1;
   const wobble = (
     Math.sin(seconds * .11 * speedBoost + track.phase) - Math.sin(track.phase)
   ) * track.wobble;
@@ -275,6 +293,13 @@ const drawPresence = (
   context.clearRect(0, 0, width, height);
   const seconds = elapsedMs / 1_000;
   const isThinking = mode === 'thinking';
+  const isWorking = mode === 'working';
+  const terminalMode = mode === 'success' || mode === 'failure' ? mode : null;
+  const terminalFeedback = terminalMode
+    ? getTerminalFeedbackProfile(terminalMode, elapsedMs)
+    : { intensity: 0, distortion: 0, tint: 0 };
+  const isSuccess = terminalMode === 'success';
+  const feedbackPalette = terminalMode === 'success' ? palette[2] : palette[3];
   const breath = getNeuralBreathScale(elapsedMs);
   const radius = Math.min(width, height) * .285;
   const centerX = width / 2 + pointer.x * width * .016;
@@ -285,7 +310,13 @@ const drawPresence = (
   const coreCenterY = centerY + coreCenterMotion.y * 1.4;
   const core = neuralField.coreBoundary.map((point, index) => {
     const motion = getNeuralLayerMotion('core', index, elapsedMs, mode);
-    return positionPoint(point, radius, coreCenterX, coreCenterY, seconds, coreBreath, pointer, .16, motion);
+    const positioned = positionPoint(point, radius, coreCenterX, coreCenterY, seconds, coreBreath, pointer, .16, motion);
+    const failureOffset = terminalFeedback.distortion * Math.sin(index * 1.7 + seconds * 19) * radius * .045;
+    return {
+      ...positioned,
+      px: coreCenterX + (positioned.px - coreCenterX) * (1 - terminalFeedback.intensity * .14) + failureOffset,
+      py: coreCenterY + (positioned.py - coreCenterY) * (1 - terminalFeedback.intensity * .14) - failureOffset * .6,
+    };
   });
   const membranes = neuralField.membranes.map((membrane, layerIndex) => membrane.map((point, index) => {
     const layerBreath = 1 + (breath - 1) * (1 + layerIndex * .23)
@@ -299,7 +330,13 @@ const drawPresence = (
       x: localMotion.x + layerMotion.x,
       y: localMotion.y + layerMotion.y,
     };
-    return positionPoint(point, radius, centerX, centerY, seconds, layerBreath, pointer, .4 + layerIndex * .2, motion);
+    const positioned = positionPoint(point, radius, centerX, centerY, seconds, layerBreath, pointer, .4 + layerIndex * .2, motion);
+    const failureOffset = terminalFeedback.distortion * Math.sin(index * 2.1 + layerIndex * 3 + seconds * 14) * radius * (.035 + layerIndex * .008);
+    return {
+      ...positioned,
+      px: centerX + (positioned.px - centerX) * (1 + (isSuccess ? terminalFeedback.intensity * .11 : 0)) + failureOffset,
+      py: centerY + (positioned.py - centerY) * (1 + (isSuccess ? terminalFeedback.intensity * .11 : 0)) - failureOffset * .75,
+    };
   }));
   const energySeeds = neuralField.energySeeds.map((point, index) => {
     const motion = getNeuralLayerMotion('energy', index, elapsedMs, mode);
@@ -309,30 +346,32 @@ const drawPresence = (
   // Layered low-opacity halos give the shell volume without turning it into a solid orb.
   [0.76, 0.58, 0.4].forEach((scale, index) => {
     context.save();
-    context.shadowColor = rgba(palette[index === 2 ? 4 : 0], .18);
-    context.shadowBlur = 34 - index * 6;
+    context.shadowColor = terminalMode ? rgba(feedbackPalette, .3 + terminalFeedback.tint * .55) : rgba(palette[index === 2 ? 4 : 0], .18);
+    context.shadowBlur = 34 - index * 6 + terminalFeedback.intensity * (isSuccess ? 28 : 10);
     context.beginPath();
-    context.arc(centerX, centerY, radius * scale * coreBreath, 0, Math.PI * 2);
-    context.fillStyle = rgba(palette[index === 2 ? 4 : 1], .008 + index * .006);
+    const haloScale = scale * (1 + terminalFeedback.intensity * (isSuccess ? .2 : -.08));
+    context.arc(centerX, centerY, radius * haloScale * coreBreath, 0, Math.PI * 2);
+    context.fillStyle = terminalMode ? rgba(feedbackPalette, .012 + terminalFeedback.tint * .05) : rgba(palette[index === 2 ? 4 : 1], .008 + index * .006);
     context.fill();
     context.restore();
   });
 
   // The core stays legible as one circular intelligence while its boundary remains alive.
   context.save();
-  context.shadowColor = rgba(palette[4], isThinking ? .72 : mode === 'sensing' ? .55 : .28);
-  context.shadowBlur = (isThinking ? 54 : 42) + Math.sin(seconds * (isThinking ? 1.65 : .72)) * 9;
+  context.shadowColor = terminalMode ? rgba(feedbackPalette, .45 + terminalFeedback.tint * .5) : rgba(palette[4], isThinking ? .72 : isWorking ? .58 : mode === 'sensing' ? .55 : .28);
+  context.shadowBlur = (isThinking ? 54 : isWorking ? 50 : 42) + Math.sin(seconds * (isThinking ? 1.65 : isWorking ? 1.28 : .72)) * 9 + terminalFeedback.intensity * 24;
   context.beginPath();
-  context.arc(coreCenterX, coreCenterY, radius * .31 * coreBreath * coreCenterMotion.radius, 0, Math.PI * 2);
-  context.fillStyle = rgba(palette[0], isThinking ? .17 : mode === 'sensing' ? .13 : .075);
+  const coreScale = 1 - terminalFeedback.intensity * (isSuccess ? .2 : .12);
+  context.arc(coreCenterX, coreCenterY, radius * .31 * coreBreath * coreCenterMotion.radius * coreScale, 0, Math.PI * 2);
+  context.fillStyle = terminalMode ? rgba(feedbackPalette, .1 + terminalFeedback.tint * .2) : rgba(palette[0], isThinking ? .17 : isWorking ? .15 : mode === 'sensing' ? .13 : .075);
   context.fill();
   context.restore();
 
   traceLoop(context, core);
-  context.fillStyle = rgba(palette[1], isThinking ? .16 : mode === 'sensing' ? .12 : .07);
+  context.fillStyle = terminalMode ? rgba(feedbackPalette, .08 + terminalFeedback.tint * .18) : rgba(palette[1], isThinking ? .16 : isWorking ? .14 : mode === 'sensing' ? .12 : .07);
   context.fill();
   context.lineWidth = .85;
-  context.strokeStyle = rgba(palette[0], isThinking ? .82 : mode === 'sensing' ? .68 : .46);
+  context.strokeStyle = terminalMode ? rgba(feedbackPalette, .45 + terminalFeedback.tint * .5) : rgba(palette[0], isThinking ? .82 : isWorking ? .76 : mode === 'sensing' ? .68 : .46);
   context.stroke();
 
   core.forEach((point, index) => {
@@ -352,7 +391,7 @@ const drawPresence = (
     context.fillStyle = rgba(palette[layerIndex === 1 ? 1 : 0], .012 + layerIndex * .006);
     context.fill();
     context.lineWidth = .38 + layerIndex * .1;
-    context.strokeStyle = rgba(palette[layerIndex === 2 ? 1 : 0], .1 + layerIndex * .035);
+    context.strokeStyle = terminalMode ? rgba(feedbackPalette, .24 + terminalFeedback.tint * .5) : rgba(palette[layerIndex === 2 ? 1 : 0], .1 + layerIndex * .035);
     context.stroke();
 
     membrane.forEach((point, index) => {
@@ -468,7 +507,7 @@ const drawPresence = (
   }
 
   // Small warm energy fragments orbit within the round core and briefly cohere when sensing.
-  const energyGain = isThinking ? 1.28 : mode === 'sensing' ? 1 : .58;
+  const energyGain = isThinking ? 1.28 : isWorking ? 1.42 : mode === 'sensing' ? 1 : terminalMode ? .58 + terminalFeedback.intensity * .8 : .58;
   energySeeds.forEach((point, index) => {
     const next = energySeeds[(index + 1) % energySeeds.length];
     const cross = energySeeds[(index + 3) % energySeeds.length];
@@ -494,13 +533,13 @@ const drawPresence = (
       context.restore();
     }
 
-    const spark = .62 + Math.sin(seconds * point.speed * (isThinking ? 2.4 : 1) + point.phase) * .28;
+    const spark = .62 + Math.sin(seconds * point.speed * (isThinking ? 2.4 : isWorking ? 2 : 1) + point.phase) * .28;
     context.save();
-    context.shadowColor = rgba(palette[point.tone], .92);
+    context.shadowColor = terminalMode ? rgba(feedbackPalette, .7 + terminalFeedback.tint * .3) : rgba(palette[point.tone], .92);
     context.shadowBlur = 7 + spark * 10 + energyGain * 7;
     context.beginPath();
     context.arc(point.px, point.py, point.size * (spark + energyGain * .18), 0, Math.PI * 2);
-    context.fillStyle = rgba(palette[point.tone], (.56 + spark * .34) * energyGain);
+    context.fillStyle = terminalMode ? rgba(feedbackPalette, (.46 + spark * .34) * energyGain) : rgba(palette[point.tone], (.56 + spark * .34) * energyGain);
     context.fill();
     context.restore();
   });
