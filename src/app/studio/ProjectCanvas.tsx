@@ -148,6 +148,28 @@ export const imageToolDesignAnchors = (tasks: readonly TaskRecord[], designs: re
   return anchors;
 };
 
+/** Resolves completed generation outputs to the temporary slot node they replace. */
+export const generationDesignNodeIds = (tasks: readonly TaskRecord[], designs: readonly ProjectDesign[]): Record<string, string> => {
+  const generationTasks = new Map(
+    tasks
+      .filter((task) => task.capability === 'design-generation' && task.generationSlots?.length)
+      .map((task) => [task.id, task] as const),
+  );
+  const nodeIds: Record<string, string> = {};
+  designs.forEach((design) => {
+    const task = generationTasks.get(design.sourceTaskId);
+    const slot = task?.generationSlots?.find((candidate) => (
+      candidate.assetId === design.assetId
+      || (candidate.candidateId && task.result?.candidates?.some((candidateResult) => (
+        candidateResult.id === candidate.candidateId
+        && (candidateResult.sceneAssetId === design.assetId || candidateResult.assetIds.includes(design.assetId))
+      )))
+    ));
+    if (slot) nodeIds[design.id] = `${task!.id}-${slot.id}`;
+  });
+  return nodeIds;
+};
+
 const toAttachment = (attachment: ConversationDockAttachment): ConversationImageAttachment => ({ name: attachment.name, mimeType: attachment.mimeType, bytes: attachment.bytes });
 
 const bytesToDataUrl = (mimeType: string, bytes: Uint8Array): string => {
@@ -387,6 +409,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const selectedDesigns = designs.filter((design) => selectedDesignIds.includes(design.id));
   const designRowKeys = imageToolDesignRowKeys(tasks, designs);
   const designAnchors = imageToolDesignAnchors(tasks, designs);
+  const designNodeIds = generationDesignNodeIds(tasks, designs);
   const analysisHistory = getAnalysisHistory(tasks, threadId, analysisTask);
   const analysisRunning = analysisThinking || analysisTask?.state === 'queued' || analysisTask?.state === 'running';
   const hasAnalysisHistory = analysisHistory.length > 0;
@@ -672,6 +695,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
         selectedDesignIds={selectedDesignIds}
         designRowKeys={designRowKeys}
         designAnchors={designAnchors}
+        designNodeIds={designNodeIds}
         pendingDesigns={pendingDesigns}
         readOnly={readOnly}
         onSelect={(designId) => selectDesigns(designId ? [designId] : [])}

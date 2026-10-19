@@ -153,6 +153,28 @@ describe('project canvas math', () => {
     });
   });
 
+  it('keeps completed generation slots in their original placeholder positions', () => {
+    const currentNodes = {
+      source: { x: 100, y: 20 },
+      'task-generation-primary': { x: 524, y: 20 },
+      'task-generation-composition': { x: 948, y: 20 },
+      'task-generation-expressive': { x: 1372, y: 20 },
+      'result-primary': { x: 999, y: 420 },
+    };
+
+    expect(layoutAnchoredCanvasNodes([
+      { id: 'source', width: 400, height: 300, rowKey: 'source-row' },
+      { id: 'result-expressive', sourceTaskId: 'task-generation', nodeId: 'task-generation-expressive', width: 400, height: 300, rowKey: 'task-generation' },
+      { id: 'result-primary', sourceTaskId: 'task-generation', nodeId: 'task-generation-primary', width: 400, height: 300, rowKey: 'task-generation' },
+      { id: 'result-composition', sourceTaskId: 'task-generation', nodeId: 'task-generation-composition', width: 400, height: 300, rowKey: 'task-generation' },
+    ], [], currentNodes)).toEqual({
+      source: { x: 100, y: 20 },
+      'result-primary': { x: 524, y: 20 },
+      'result-composition': { x: 948, y: 20 },
+      'result-expressive': { x: 1372, y: 20 },
+    });
+  });
+
   it('excludes temporary placeholder nodes from persisted canvas layout', () => {
     expect(persistedCanvasNodes(
       [{ id: 'source', width: 400, height: 300 }, { id: 'sibling', width: 400, height: 300 }],

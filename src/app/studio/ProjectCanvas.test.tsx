@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ProjectCanvas, getAnalysisHistory, getLatestConversationTask, getPendingCanvasDesigns, imageToolDesignAnchors } from './ProjectCanvas';
+import { ProjectCanvas, generationDesignNodeIds, getAnalysisHistory, getLatestConversationTask, getPendingCanvasDesigns, imageToolDesignAnchors } from './ProjectCanvas';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { ProjectCanvasLayout, ProjectDesign } from '../../features/projects/metadata';
 import type { TaskRecord } from '../../features/tasks/state';
@@ -127,6 +127,36 @@ describe('getLatestConversationTask', () => {
     const generation = { ...latest, id: 'generation', capability: 'design-generation' };
 
     expect(getLatestConversationTask([older, generation, latest])?.id).toBe('latest');
+  });
+});
+
+describe('generation design node identity', () => {
+  it('maps completed designs back to their generation slot placeholders', () => {
+    const task: TaskRecord = {
+      id: 'task-generation',
+      requestId: 'request-generation',
+      state: 'completed',
+      cancelRequested: false,
+      attempt: 1,
+      source: { kind: 'project', id: 'project-1' },
+      capability: 'design-generation',
+      generationSlots: [
+        { id: 'primary', direction: 'primary', state: 'completed', attempt: 1, assetId: 'asset-primary' },
+        { id: 'composition', direction: 'composition', state: 'completed', attempt: 1, assetId: 'asset-composition' },
+        { id: 'expressive', direction: 'expressive', state: 'completed', attempt: 1, assetId: 'asset-expressive' },
+      ],
+    };
+    const designs: ProjectDesign[] = [
+      { id: 'design-expressive', projectId: 'project-1', assetId: 'asset-expressive', sourceTaskId: task.id, width: 1080, height: 1440, title: 'Expressive', createdAt: '2026-10-19T00:00:00.000Z' },
+      { id: 'design-primary', projectId: 'project-1', assetId: 'asset-primary', sourceTaskId: task.id, width: 1080, height: 1440, title: 'Primary', createdAt: '2026-10-19T00:01:00.000Z' },
+      { id: 'design-composition', projectId: 'project-1', assetId: 'asset-composition', sourceTaskId: task.id, width: 1080, height: 1440, title: 'Composition', createdAt: '2026-10-19T00:02:00.000Z' },
+    ];
+
+    expect(generationDesignNodeIds([task], designs)).toEqual({
+      'design-expressive': 'task-generation-expressive',
+      'design-primary': 'task-generation-primary',
+      'design-composition': 'task-generation-composition',
+    });
   });
 });
 

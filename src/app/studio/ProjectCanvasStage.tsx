@@ -9,6 +9,7 @@ export type CanvasViewport = ProjectCanvasLayout['viewport'];
 export type CanvasSize = { width: number; height: number };
 export type DesignDimensions = Pick<ProjectDesign, 'id' | 'width' | 'height'> & {
   sourceTaskId?: string;
+  nodeId?: string;
   rowKey?: string;
   anchorId?: string;
   status?: Exclude<TaskState, 'completed'>;
@@ -104,7 +105,9 @@ export const layoutAnchoredCanvasNodes = (
   const pendingIds = new Set(pendingDesigns.map((design) => design.id));
   designs.forEach((design) => {
     items.set(design.id, design);
-    const current = currentNodes[design.id] ?? (design.sourceTaskId ? currentNodes[design.sourceTaskId] : undefined);
+    const current = (design.nodeId ? currentNodes[design.nodeId] : undefined)
+      ?? currentNodes[design.id]
+      ?? (design.sourceTaskId ? currentNodes[design.sourceTaskId] : undefined);
     const fallbackPosition = fallback[design.id];
     positions[design.id] = current
       ? { x: current.x, y: current.y }
@@ -123,7 +126,9 @@ export const layoutAnchoredCanvasNodes = (
   ordered.forEach((item) => {
     const anchor = item.anchorId ? items.get(item.anchorId) : undefined;
     const directCurrent = currentNodes[item.id];
-    const current = directCurrent ?? (item.sourceTaskId ? currentNodes[item.sourceTaskId] : undefined);
+    const current = (item.nodeId ? currentNodes[item.nodeId] : undefined)
+      ?? directCurrent
+      ?? (item.sourceTaskId ? currentNodes[item.sourceTaskId] : undefined);
     const shouldRepairAnchoredRow = Boolean(anchor && directCurrent && !pendingIds.has(item.id) && !sameCanvasRow(item, anchor, positions));
     if (current && !shouldRepairAnchoredRow) return;
     delete positions[item.id];
@@ -197,6 +202,7 @@ type ProjectCanvasStageProps = {
   initialNodes?: Record<string, { x: number; y: number }>;
   designRowKeys?: Record<string, string>;
   designAnchors?: Record<string, string>;
+  designNodeIds?: Record<string, string>;
   selectedDesignIds?: readonly string[];
   pendingDesigns?: readonly DesignDimensions[];
   readOnly?: boolean;
@@ -252,6 +258,7 @@ export const ProjectCanvasStage = ({
   initialNodes,
   designRowKeys,
   designAnchors,
+  designNodeIds,
   selectedDesignIds = [],
   pendingDesigns = [],
   readOnly = false,
@@ -269,7 +276,7 @@ export const ProjectCanvasStage = ({
   const stageRef = useRef<any>(null);
   const [size, setSize] = useState<CanvasSize>({ width: 1200, height: 760 });
   const [viewport, setViewport] = useState<CanvasViewport>(initialViewport ?? { zoom: 0.65, offsetX: 40, offsetY: 40 });
-  const initialLayoutDesigns = designs.map((design) => ({ ...design, rowKey: designRowKeys?.[design.id] ?? design.sourceTaskId, anchorId: designAnchors?.[design.id] }));
+  const initialLayoutDesigns = designs.map((design) => ({ ...design, nodeId: designNodeIds?.[design.id], rowKey: designRowKeys?.[design.id] ?? design.sourceTaskId, anchorId: designAnchors?.[design.id] }));
   const [nodes, setNodes] = useState<Record<string, Point>>(() => layoutAnchoredCanvasNodes(
     initialLayoutDesigns,
     pendingDesigns,
@@ -280,7 +287,7 @@ export const ProjectCanvasStage = ({
   const appliedInitialNodesKey = useRef<string | undefined>(undefined);
   const previousDesignCount = useRef(designs.length);
   const images = useAssetImages(libraryId, projectId, designs);
-  const layoutDesigns = useMemo(() => designs.map((design) => ({ ...design, rowKey: designRowKeys?.[design.id] ?? design.sourceTaskId, anchorId: designAnchors?.[design.id] })), [designAnchors, designRowKeys, designs]);
+  const layoutDesigns = useMemo(() => designs.map((design) => ({ ...design, nodeId: designNodeIds?.[design.id], rowKey: designRowKeys?.[design.id] ?? design.sourceTaskId, anchorId: designAnchors?.[design.id] })), [designAnchors, designNodeIds, designRowKeys, designs]);
   const notifyLayout = useCallback((nextViewport: CanvasViewport, nextNodes: Record<string, Point>): void => {
     onViewportChange?.(nextViewport);
     onLayoutChange?.({ viewport: nextViewport, nodes: persistedCanvasNodes(layoutDesigns, nextNodes) });
@@ -339,7 +346,7 @@ export const ProjectCanvasStage = ({
       notifyLayout(next, displayNodes);
     }
     previousDesignCount.current = designs.length;
-  }, [designAnchors, designRowKeys, designs, displayNodes, notifyLayout, size.height, size.width, viewport.zoom]);
+  }, [designAnchors, designNodeIds, designRowKeys, designs, displayNodes, notifyLayout, size.height, size.width, viewport.zoom]);
 
   useEffect(() => {
     if (!initialNodes) return;
@@ -394,7 +401,8 @@ export const ProjectCanvasStage = ({
 
   const moveDesign = (design: ProjectDesign, position: Point): void => {
     if (readOnly) return;
-    const nextNodes = { ...nodes, [design.id]: position };
+    const nodeId = designNodeIds?.[design.id];
+    const nextNodes = { ...nodes, [design.id]: position, ...(nodeId ? { [nodeId]: position } : {}) };
     setNodes(nextNodes);
     notifyLayout(viewport, nextNodes);
   };
