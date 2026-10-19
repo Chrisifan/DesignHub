@@ -93,7 +93,7 @@ for (const width of [1280, 1024]) {
         await expect(canvas.locator('.workbench-ruler--horizontal, .workbench-ruler--vertical, .canvas-layer-float, .canvas-inspector-float')).toHaveCount(0);
         await canvas.locator('.project-canvas-stage canvas').click({ position: { x: 300, y: 200 } });
         await expect(canvas.getByRole('button', { name: english ? 'Export selected design' : '导出所选设计稿', exact: true })).toBeEnabled();
-        expect(await canvas.locator('canvas').evaluate((element: HTMLCanvasElement) => {
+        expect(await canvas.locator('.project-canvas-stage canvas').evaluate((element: HTMLCanvasElement) => {
           const context = element.getContext('2d');
           if (!context) return false;
           const pixels = context.getImageData(0, 0, element.width, element.height).data;
@@ -200,7 +200,7 @@ for (const theme of ['dark', 'light'] as const) {
       expect(surface.backdropFilter === 'none' || surface.backdropFilter.includes('blur(')).toBe(true);
       expect(surface.backgroundImage !== 'none' || surface.backgroundColor !== 'rgba(0, 0, 0, 0)').toBe(true);
     }
-    expect(shell.projects.boxShadow === 'none' || shell.projects.boxShadow.startsWith('rgba(255, 255, 255')).toBe(true);
+    expect(shell.projects.boxShadow === 'none' || /(?:inset.*1px|1px.*inset)/u.test(shell.projects.boxShadow)).toBe(true);
     expect(shell.composer.boxShadow).not.toContain('14px 34px');
     await expect(page.locator('.studio-sidebar, .studio-toolbar')).toHaveCount(0);
     await expect(page.getByLabel('提示词建议')).toHaveCount(0);
