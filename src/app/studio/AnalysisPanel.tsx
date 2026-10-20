@@ -6,6 +6,7 @@ import type { TaskRecord } from '../../features/tasks/state';
 import { normalizeAnalysisText } from '../../features/agent/visual-context';
 import { Button, Icon, IconButton } from './ui';
 import { taskFailureMessage } from './task-errors';
+import { Tooltip } from './Tooltip';
 
 export type AnalysisPanelAttachment = ConversationImageAttachment & {
   assetId?: string;
@@ -36,6 +37,68 @@ type AnalysisBlock =
   | { type: 'list'; items: string[] }
   | { type: 'rule' }
   | { type: 'code'; language?: string; text: string };
+
+const chineseNumerals: Record<string, number> = {
+  一: 1,
+  二: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+  八: 8,
+  九: 9,
+  十: 10,
+};
+
+const imageReferencePattern = /(?:图片|图)\s*(?:[一二三四五六七八九十]|\d+)(?:\s*[（(]\s*asset-[\w-]+\s*[）)])?|asset-[\w-]+/u;
+
+const imageReferenceParts = (value: string): { label: string; ordinal: number; assetId?: string } | undefined => {
+  const match = /^(图片|图)\s*([一二三四五六七八九十]|\d+)(?:\s*[（(]\s*(asset-[\w-]+)\s*[）)])?$/u.exec(value);
+  if (!match) return undefined;
+  const number = /^\d+$/u.test(match[2]!) ? Number(match[2]) : chineseNumerals[match[2]!];
+  return Number.isFinite(number) ? { label: `${match[1]}${match[2]}`, ordinal: number, ...(match[3] ? { assetId: match[3] } : {}) } : undefined;
+};
+
+const shortAssetId = (assetId: string): string => assetId.length > 22
+  ? `${assetId.slice(0, 13)}…${assetId.slice(-5)}`
+  : assetId;
+
+const findImageAttachment = (value: string, attachments: AnalysisPanelAttachment[]): AnalysisPanelAttachment | undefined => {
+  const parts = imageReferenceParts(value);
+  if (parts?.assetId) return attachments.find((candidate) => candidate.assetId === parts.assetId);
+  if (parts) return attachments[parts.ordinal - 1];
+  return attachments.find((candidate) => candidate.assetId === value);
+};
+
+const renderImageReference = (
+  value: string,
+  attachments: AnalysisPanelAttachment[],
+  key: string,
+): ReactNode => {
+  const parts = imageReferenceParts(value);
+  const attachment = findImageAttachment(value, attachments);
+  if (!attachment) return value;
+
+  const label = parts?.label ?? (attachment.name || shortAssetId(attachment.assetId ?? value));
+  const preview = (
+    <span className="workbench-analysis-panel__image-tooltip">
+      <img src={attachment.previewUrl} alt={attachment.name} />
+      <span>{attachment.name}</span>
+    </span>
+  );
+  return (
+    <Tooltip key={key} asChild content={preview}>
+      <span
+        className="workbench-analysis-panel__image-reference"
+        role="link"
+        tabIndex={0}
+        aria-label={label}
+        title={attachment.name}
+      >{label}</span>
+    </Tooltip>
+  );
+};
 
 const isRule = (line: string): boolean => /^\s*(?:---+|\*\s*\*\s*\*|___+)\s*$/u.test(line);
 
@@ -113,11 +176,20 @@ const parseAnalysisMarkdown = (value: string): AnalysisBlock[] => {
   return blocks;
 };
 
-const renderInlineMarkdown = (value: string): ReactNode[] => {
-  const parts = value.split(/(\*\*[^*]+\*\*|`[^`]+`)/gu);
+const renderInlineMarkdown = (value: string, attachments: AnalysisPanelAttachment[]): ReactNode[] => {
+  const imageTokens = value.match(new RegExp(imageReferencePattern.source, 'gu')) ?? [];
+  const hasResolvedImageReference = imageTokens.some((token) => Boolean(findImageAttachment(token, attachments)));
+  if (!hasResolvedImageReference && !/(?:\*\*[^*]+\*\*|`[^`]+`)/u.test(value)) {
+    return [<span key={`plain-${value}`}>{value}</span>];
+  }
+  const parts = value.split(new RegExp('(\\*\\*[^*]+\\*\\*|`[^`]+`|' + imageReferencePattern.source + ')', 'gu'));
   return parts.map((part, index) => {
+    if (imageReferencePattern.test(part)) {
+      return renderImageReference(part, attachments, `${index}-${part}`);
+    }
     if (/^\*\*[^*]+\*\*$/u.test(part)) {
-      return <strong key={`${index}-${part}`}>{part.slice(2, -2)}</strong>;
+      const inner = part.slice(2, -2);
+      return <strong key={`${index}-${part}`}>{imageReferencePattern.test(inner) ? renderInlineMarkdown(inner, attachments) : inner}</strong>;
     }
     if (/^`[^`]+`$/u.test(part)) {
       return <code key={`${index}-${part}`}>{part.slice(1, -1)}</code>;
@@ -126,13 +198,13 @@ const renderInlineMarkdown = (value: string): ReactNode[] => {
   });
 };
 
-const renderAnalysisBlock = (block: AnalysisBlock, index: number): ReactNode => {
+const renderAnalysisBlock = (block: AnalysisBlock, index: number, attachments: AnalysisPanelAttachment[]): ReactNode => {
   if (block.type === 'heading') {
     const Heading = `h${block.level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
-    return <Heading key={`${block.type}-${index}`}>{renderInlineMarkdown(block.text)}</Heading>;
+    return <Heading key={`${block.type}-${index}`}>{renderInlineMarkdown(block.text, attachments)}</Heading>;
   }
   if (block.type === 'list') {
-    return <ul key={`${block.type}-${index}`}>{block.items.map((item, itemIndex) => <li key={`${itemIndex}-${item}`}>{renderInlineMarkdown(item)}</li>)}</ul>;
+    return <ul key={`${block.type}-${index}`}>{block.items.map((item, itemIndex) => <li key={`${itemIndex}-${item}`}>{renderInlineMarkdown(item, attachments)}</li>)}</ul>;
   }
   if (block.type === 'rule') {
     return <hr key={`${block.type}-${index}`} role="separator" />;
@@ -140,7 +212,7 @@ const renderAnalysisBlock = (block: AnalysisBlock, index: number): ReactNode => 
   if (block.type === 'code') {
     return <pre key={`${block.type}-${index}`} data-language={block.language}><code>{block.text}</code></pre>;
   }
-  return <p key={`${block.type}-${index}`}>{renderInlineMarkdown(block.text)}</p>;
+  return <p key={`${block.type}-${index}`}>{renderInlineMarkdown(block.text, attachments)}</p>;
 };
 
 export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate, collapsed = false, onGenerate, onRetry, onCopyRequest, onExpand }: AnalysisPanelProps) => {
@@ -213,7 +285,11 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
         <div className="workbench-analysis-panel__header">
           <div className="workbench-analysis-panel__request">
             <p>{locale === 'zh-CN' ? '本轮分析' : 'Current analysis'}</p>
-            <strong className="workbench-analysis-panel__request-line" title={message}>{requestSummary || (locale === 'zh-CN' ? '等待输入' : 'Waiting for input')}</strong>
+            <strong className="workbench-analysis-panel__request-line" title={message}>{requestSummary ? (() => {
+              return imageReferencePattern.test(requestSummary) || /(?:\*\*[^*]+\*\*|`[^`]+`)/u.test(requestSummary)
+                ? renderInlineMarkdown(requestSummary, attachments)
+                : requestSummary;
+            })() : (locale === 'zh-CN' ? '等待输入' : 'Waiting for input')}</strong>
           </div>
           {onCopyRequest && <IconButton name="copy" iconSize={12} label={locale === 'zh-CN' ? '复制到对话框' : 'Copy to conversation'} onClick={() => onCopyRequest({ message, attachments })} />}
           <IconButton
@@ -246,7 +322,7 @@ export const AnalysisPanel = ({ locale, message, attachments, task, canGenerate,
       <div ref={bodyRef} className="workbench-analysis-panel__body" aria-live="polite" aria-busy={streaming}>
         {task?.state === 'completed' && <p className="workbench-analysis-panel__state" role="status">{locale === 'zh-CN' ? '对话理解完成，可以生成设计稿。' : 'Conversation analysis complete. The design draft is ready to generate.'}</p>}
         {running && !visibleProgress && <div className="workbench-analysis-panel__streaming"><span /><span /><span /></div>}
-        {visibleProgress ? <div className="workbench-analysis-panel__markdown">{blocks.map(renderAnalysisBlock)}{streaming && <span className="workbench-analysis-panel__streaming-caret" aria-hidden="true">▍</span>}</div> : !running && <p className="workbench-analysis-panel__empty">{locale === 'zh-CN' ? '发送需求后，这里会显示设计分析。' : 'Send a request to see the design analysis here.'}</p>}
+        {visibleProgress ? <div className="workbench-analysis-panel__markdown">{blocks.map((block, index) => renderAnalysisBlock(block, index, attachments))}{streaming && <span className="workbench-analysis-panel__streaming-caret" aria-hidden="true">▍</span>}</div> : !running && <p className="workbench-analysis-panel__empty">{locale === 'zh-CN' ? '发送需求后，这里会显示设计分析。' : 'Send a request to see the design analysis here.'}</p>}
         {failed && <div className="workbench-analysis-panel__error"><Icon name="circle-alert" size={15} /><span>{failureMessage ?? (locale === 'zh-CN' ? '分析失败，当前线程仍可重试。' : 'Analysis failed. This thread can be retried.')}</span>{onRetry && <Button variant="ghost" icon="rotate-ccw" onClick={onRetry}>{locale === 'zh-CN' ? '重试' : 'Retry'}</Button>}</div>}
         <div ref={bottomRef} aria-hidden="true" />
       </div>

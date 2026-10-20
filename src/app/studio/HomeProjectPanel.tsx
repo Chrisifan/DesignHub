@@ -40,6 +40,7 @@ export const HomeProjectPanel = ({
 }: HomeProjectPanelProps) => {
   const projectName = (project: Project): string => locale === 'zh-CN' ? project.name : project.enName;
   const activeCount = allProjects.filter((project) => !project.archived).length;
+  const sortedProjects = [...projects].sort((left, right) => (Date.parse(right.updatedAt ?? '') || 0) - (Date.parse(left.updatedAt ?? '') || 0));
   const formatDate = (value: string): string => new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
@@ -97,7 +98,7 @@ export const HomeProjectPanel = ({
               </button>
             ) : null}
           </div>
-        ) : projects.map((project) => (
+        ) : sortedProjects.map((project) => (
           <button
             type="button"
             className="studio-home-project-row"

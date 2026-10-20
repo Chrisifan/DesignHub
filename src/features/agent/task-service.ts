@@ -787,6 +787,8 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
         if (!slot) throw new Error('GENERATION_SLOT_NOT_FOUND');
         const controller = new AbortController();
         controllersForTask.set(slotId, controller);
+        let failureStage: 'provider' | 'asset-persistence' | 'design-persistence' = 'provider';
+        let remoteRequestId: string | undefined;
         try {
           const prompt = `${task.requestText ?? generationPrompt(prepared.context, prepared.context.assistantBrief)}\n\n${prepared.visualManifest}\n\nCandidate direction\n${slot.direction}`;
           const size = `${prepared.context.canvas.width}x${prepared.context.canvas.height}`;
@@ -795,15 +797,18 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
             : prepared.adapter.generateImage
               ? prepared.adapter.generateImage({ prompt, ...(task.model ? { model: task.model } : {}), ...(prepared.generationReferenceImages.length ? { referenceImages: prepared.generationReferenceImages } : {}), size, count: 1 }, controller.signal)
               : undefined, controller.signal, options.imageRetryDelayMs ?? 2_000);
+          remoteRequestId = response?.remoteRequestId;
           const image = response?.images[0];
           if (!response) throw new Error('IMAGE_CAPABILITY_UNAVAILABLE');
           if (!image) throw new Error('IMAGE_RESULT_EMPTY');
+          failureStage = 'asset-persistence';
           const assetIds = options.persistGeneratedImages
             ? await options.persistGeneratedImages({ projectId: task.source!.id, images: [image] })
             : [];
           const assetId = assetIds[0];
           if (!assetId) throw new Error('IMAGE_ASSET_PERSIST_FAILED');
           if (options.persistProjectDesigns) {
+            failureStage = 'design-persistence';
             await options.persistProjectDesigns({
               projectId: task.source!.id,
               designs: [{
@@ -834,12 +839,24 @@ export const createAgentTaskService = (options: AgentTaskServiceOptions): AgentT
             assetId,
             candidateId: candidate.id,
             cost: response.cost,
+            ...(remoteRequestId ? { remoteRequestId } : {}),
           }, candidate);
         } catch (error) {
           const failure = providerFailure(error);
+          const diagnostic = error && typeof error === 'object' && 'diagnostic' in error
+            ? (error as { diagnostic?: unknown }).diagnostic
+            : undefined;
+          const classifiedErrorCode = classifyTaskErrorCode(error);
+          const errorCode = classifiedErrorCode !== 'PROVIDER_REQUEST_FAILED'
+            ? classifiedErrorCode
+            : failureStage === 'asset-persistence'
+              ? 'IMAGE_ASSET_PERSIST_FAILED'
+              : failureStage === 'design-persistence'
+                ? 'PROJECT_DESIGN_PERSIST_FAILED'
+                : classifiedErrorCode;
           options.runtime.updateGenerationSlot(task.id, slotId, controller.signal.aborted
             ? { state: 'cancelled', errorCode: 'CANCELLED', providerFailure: { kind: 'cancelled' } }
-            : { state: 'failed', errorCode: classifyTaskErrorCode(error), ...(failure ? { providerFailure: failure } : {}) });
+            : { state: 'failed', errorCode, ...(failure ? { providerFailure: failure } : {}), ...(diagnostic ? { diagnostic: diagnostic as NonNullable<typeof slot.diagnostic> } : {}), ...(remoteRequestId ? { remoteRequestId } : {}) });
         } finally {
           controllersForTask.delete(slotId);
         }

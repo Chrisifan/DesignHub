@@ -100,3 +100,94 @@ it('persists each generated image as a project design linked to its task and con
     })],
   });
 });
+
+it('returns the queued task while persisting the completed result asynchronously', async () => {
+  const runtime = createTaskRuntime({ initialTasks: [parentConversation()] });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async () => ({ images: [{ base64: 'aW1hZ2U=', mimeType: 'image/png' }], cost: null }),
+    }),
+    persistGeneratedImages: async () => ['asset-generated'],
+    persistProjectDesigns: async () => undefined,
+  });
+
+  const response = await service.submitDesignGeneration({
+    libraryId: 'library-1',
+    projectId: 'project-1',
+    conversationTaskId: 'conversation-1',
+    connectionId: 'openai-compatible',
+    generationRatio: '1:1',
+    count: 1,
+  });
+
+  expect(response).toMatchObject({ state: 'running', generationSlots: [{ state: 'queued' }] });
+  await service.flush();
+  expect(runtime.get(response.id)).toMatchObject({
+    state: 'completed',
+    result: { assetIds: ['asset-generated'], imageCount: 1 },
+    generationSlots: [{ state: 'completed', assetId: 'asset-generated' }],
+  });
+});
+
+it('records an asset-persistence error separately after the provider returns an image', async () => {
+  const runtime = createTaskRuntime({ initialTasks: [parentConversation()] });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async () => ({ images: [{ base64: 'aW1hZ2U=', mimeType: 'image/png' }], cost: null, remoteRequestId: 'provider-request-42' }),
+    }),
+    persistGeneratedImages: async () => { throw new Error('asset import failed'); },
+  });
+
+  const task = await service.submitDesignGeneration({
+    libraryId: 'library-1',
+    projectId: 'project-1',
+    conversationTaskId: 'conversation-1',
+    connectionId: 'openai-compatible',
+    generationRatio: '1:1',
+    count: 1,
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)?.generationSlots?.[0]).toMatchObject({
+    state: 'failed',
+    errorCode: 'IMAGE_ASSET_PERSIST_FAILED',
+    remoteRequestId: 'provider-request-42',
+  });
+});
+
+it('persists safe image-download diagnostics on the failed generation slot', async () => {
+  const runtime = createTaskRuntime({ initialTasks: [parentConversation()] });
+  const service = createAgentTaskService({
+    runtime,
+    resolveAdapter: async () => ({
+      chat: async () => ({ text: '', cost: null }),
+      generateImage: async () => ({ images: [{ url: 'https://images.example/private?token=secret' }], cost: null }),
+    }),
+    persistGeneratedImages: async () => {
+      throw Object.assign(new Error('GENERATED_IMAGE_URL_FETCH_FAILED'), {
+        diagnostic: { host: 'images.example', causeName: 'TypeError', causeCode: 'ECONNRESET' },
+      });
+    },
+  });
+
+  const task = await service.submitDesignGeneration({
+    libraryId: 'library-1',
+    projectId: 'project-1',
+    conversationTaskId: 'conversation-1',
+    connectionId: 'openai-compatible',
+    generationRatio: '1:1',
+    count: 1,
+  });
+  await service.flush();
+
+  expect(runtime.get(task.id)?.generationSlots?.[0]).toMatchObject({
+    state: 'failed',
+    errorCode: 'GENERATED_IMAGE_URL_FETCH_FAILED',
+    diagnostic: { host: 'images.example', causeName: 'TypeError', causeCode: 'ECONNRESET' },
+  });
+  expect(JSON.stringify(runtime.get(task.id))).not.toContain('secret');
+});

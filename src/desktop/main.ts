@@ -1,8 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, safeStorage, shell } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createContentSecurityPolicy } from './csp';
 import { createDesignerArtworkProtocolHandler, designerArtworkScheme } from './artwork-protocol';
 import { registerCredentialHandlers } from './ipc/register-credentials';
@@ -21,7 +21,8 @@ import { createEncryptedFileCredentialStore, migrateCredentialAccounts } from '.
 import { registerTaskHandlers } from './ipc/register-task-handlers';
 import { loadTaskState } from './storage/task-store';
 import { type AgentTaskService } from '../features/agent/task-service';
-import type { GeneratedImage } from '../features/providers/adapter';
+import { generatedImageBytes } from './generated-image-bytes';
+import { appendImageResponseLog } from './image-generation-log';
 import { bindAgentTaskService } from './ipc/agent';
 import { registerAgentHandlers } from './ipc/register-agent';
 import { createPortfolioSourceInspector } from './portfolio-source-inspector';
@@ -73,6 +74,16 @@ let credentialBoundary: CredentialBoundary = createCredentialBoundary(credential
 const portfolioSourceInspector = createPortfolioSourceInspector();
 
 const providerConfigPath = (): string => join(app.getPath('userData'), 'provider-connections.json');
+const imageGenerationLogDirectory = (): string => join(app.getPath('userData'), 'logs');
+const logImageResponse = (record: import('../features/providers/adapter').ImageResponseLog): Promise<void> => appendImageResponseLog(
+  imageGenerationLogDirectory(),
+  record,
+  { append: appendFile, makeDirectory: mkdir },
+);
+const loadGeneratedImageBytes = (image: import('../features/providers/adapter').GeneratedImage) => generatedImageBytes(
+  image,
+  (input, init) => net.fetch(input instanceof URL ? input.toString() : input, init),
+);
 
 const closeActiveProjectLibrary = (): void => {
   activeProjectLibraryHandle?.close();
@@ -83,25 +94,6 @@ const activateProjectLibrary = (handle: ProjectLibraryHandle): void => {
   closeActiveProjectLibrary();
   activeProjectLibraryHandle = handle;
   taskServicePromise = null;
-};
-
-const generatedImageBytes = async (image: GeneratedImage): Promise<{ bytes: Uint8Array; mimeType: string }> => {
-  if (image.base64) {
-    const dataUrl = image.base64.match(/^data:([^;,]+);base64,(.*)$/su);
-    const encoded = dataUrl ? dataUrl[2].replace(/\s+/gu, '') : image.base64.replace(/\s+/gu, '');
-    const fromBase64 = Buffer.from(encoded, 'base64');
-    if (fromBase64.length > 0) {
-      const mimeType = image.mimeType ?? (dataUrl?.[1].toLowerCase() || 'image/png');
-      return { bytes: new Uint8Array(fromBase64), mimeType };
-    }
-  }
-  if (!image.url) throw new Error('GENERATED_IMAGE_EMPTY');
-  const response = await fetch(image.url);
-  if (!response.ok) throw new Error('GENERATED_IMAGE_DOWNLOAD_FAILED');
-  return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
-    mimeType: response.headers.get('content-type')?.split(';', 1)[0] || 'image/png',
-  };
 };
 
 const createSystemCredentialStore = async (): Promise<SystemCredentialStore> => {
@@ -181,7 +173,8 @@ const getAgentTaskService = (): Promise<AgentTaskService> => {
     workspace: activeProjectLibraryHandle,
     credentialStore,
     providerConfigPath: providerConfigPath(),
-    generatedImageBytes,
+    generatedImageBytes: loadGeneratedImageBytes,
+    onImageResponse: logImageResponse,
   }).then(bindAgentTaskService);
   return taskServicePromise;
 };
@@ -210,7 +203,7 @@ if (ownsSingleInstanceLock) void app.whenReady().then(async () => {
   createWindow();
   const projectLibrarySettings = createProjectLibrarySettingsStore(app.getPath('userData'));
   const profileStore = createProfileStore(app.getPath('userData'));
-  const imageToolService = createImageToolService({ credentialStore, providerConfigPath: providerConfigPath(), generatedImageBytes });
+  const imageToolService = createImageToolService({ credentialStore, providerConfigPath: providerConfigPath(), generatedImageBytes: loadGeneratedImageBytes });
   const projectPackageService = createProjectPackageService({
     getWindow: () => activeWindow,
     showOpenDialog: (window, options) => dialog.showOpenDialog(window, options),
@@ -385,7 +378,7 @@ if (ownsSingleInstanceLock) void app.whenReady().then(async () => {
       const service = await getAgentTaskService();
       const result = await service.testImageGeneration(testInput);
       if (!result.image.url) return result;
-      const generated = await generatedImageBytes(result.image);
+      const generated = await loadGeneratedImageBytes(result.image);
       return {
         image: { base64: Buffer.from(generated.bytes).toString('base64'), mimeType: generated.mimeType },
         cost: result.cost,

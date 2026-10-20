@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { ProjectCanvasStage, centerNodeInViewport, layoutAnchoredCanvasNodes, layoutProjectDesigns, panViewport, persistedCanvasNodes, zoomAroundPointer } from './ProjectCanvasStage';
+import { ProjectCanvasStage, centerNodeInViewport, generationPlaceholderViewport, layoutAnchoredCanvasNodes, layoutProjectDesigns, panViewport, persistedCanvasNodes, zoomAroundPointer } from './ProjectCanvasStage';
 
 type KonvaMockProps = {
   children?: ReactNode;
@@ -18,10 +18,12 @@ type KonvaMockProps = {
   width?: number;
   height?: number;
   draggable?: boolean;
+  scaleX?: number;
+  onWheel?: (event: { evt: { deltaY: number } }) => void;
 };
 
 vi.mock('react-konva', () => ({
-  Stage: ({ children, onMouseDown }: KonvaMockProps) => <div data-testid="konva-stage" onMouseDown={() => onMouseDown?.({ target: { getClassName: () => 'Stage' } })}>{children}</div>,
+  Stage: ({ children, onMouseDown, onWheel, scaleX, x, y }: KonvaMockProps) => <div data-testid="konva-stage" data-zoom={scaleX} data-x={x} data-y={y} onWheel={() => onWheel?.({ evt: { deltaY: 1 } })} onMouseDown={() => onMouseDown?.({ target: { getClassName: () => 'Stage' } })}>{children}</div>,
   Layer: ({ children }: KonvaMockProps) => <div>{children}</div>,
   Rect: ({ x, y, id, width, height }: KonvaMockProps) => <div data-testid="pending-rect" data-id={id} data-x={x} data-y={y} data-width={width} data-height={height} />,
   Text: ({ x, y, fontSize, fontStyle }: KonvaMockProps) => <div data-testid="settled-label" data-x={x} data-y={y} data-font-size={fontSize} data-font-style={fontStyle} />,
@@ -283,9 +285,135 @@ describe('project canvas math', () => {
     expect(panViewport({ zoom: 1, offsetX: 10, offsetY: 20 }, { x: 5, y: -10 })).toEqual({ zoom: 1, offsetX: 15, offsetY: 10 });
     expect(centerNodeInViewport({ x: 400, y: 300, width: 200, height: 100 }, { width: 1000, height: 700 }, 1)).toEqual({ zoom: 1, offsetX: 0, offsetY: 0 });
   });
+
+  it.each([[1080, 1440], [4096, 2048], [2048, 2048]])('uses the same screen size for a %i × %i generation', (width, height) => {
+    const viewport = generationPlaceholderViewport([{ x: 2000, y: 3000, width, height }], { width: 1200, height: 760 });
+    expect(Math.max(width, height) * viewport.zoom).toBeCloseTo(320);
+    expect((2000 + width / 2) * viewport.zoom + viewport.offsetX).toBeCloseTo(600);
+    expect((3000 + height / 2) * viewport.zoom + viewport.offsetY).toBeCloseTo(380);
+  });
+
+  it('fits an entire wide batch inside a small canvas with padding', () => {
+    const viewport = generationPlaceholderViewport([
+      { x: 0, y: 0, width: 2048, height: 1024 },
+      { x: 2072, y: 0, width: 2048, height: 1024 },
+      { x: 4144, y: 0, width: 2048, height: 1024 },
+    ], { width: 600, height: 400 });
+    expect(viewport.offsetX).toBeCloseTo(48);
+    expect(6192 * viewport.zoom + viewport.offsetX).toBeCloseTo(552);
+    expect(512 * viewport.zoom + viewport.offsetY).toBeCloseTo(200);
+  });
+
+  it('does not jump to 20 percent when zooming out from a normalized high-resolution image', () => {
+    expect(zoomAroundPointer({ zoom: 0.078125, offsetX: 0, offsetY: 0 }, { x: 200, y: 100 }, 0.07).zoom).toBe(0.07);
+  });
 });
 
 describe('project canvas design interactions', () => {
+  it.each([undefined, { zoom: 0.2, offsetX: -900, offsetY: 700 }, { zoom: 2, offsetX: 500, offsetY: -300 }])('normalizes and centers a new placeholder regardless of the previous viewport %j', (viewport) => {
+    const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Chrome');
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(760);
+    const { rerender } = render(<ProjectCanvasStage projectId="project-1" designs={[]} viewport={viewport} onSelect={vi.fn()} />);
+    rerender(<ProjectCanvasStage projectId="project-1" designs={[]} viewport={viewport} pendingDesigns={[{ id: 'generation-primary', rowKey: 'generation', width: 1080, height: 1440 }]} onSelect={vi.fn()} />);
+
+    const stage = screen.getByTestId('konva-stage');
+    const rect = screen.getByTestId('pending-rect');
+    const zoom = Number(stage.dataset.zoom);
+    expect(1440 * zoom).toBeCloseTo(320);
+    expect(Number(rect.dataset.x) * zoom + Number(stage.dataset.x) + 1080 * zoom / 2).toBeCloseTo(600);
+    expect(Number(rect.dataset.y) * zoom + Number(stage.dataset.y) + 1440 * zoom / 2).toBeCloseTo(380);
+    width.mockRestore();
+    height.mockRestore();
+    userAgent.mockRestore();
+  });
+
+  it('keeps an active batch centered at its normalized zoom without saving on every task refresh', () => {
+    const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Chrome');
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(760);
+    const pending = ['primary', 'composition', 'expressive'].map((slot) => ({ id: `generation-${slot}`, rowKey: 'generation', width: 1080, height: 1440 }));
+    const onLayoutChange = vi.fn();
+    const { rerender } = render(<ProjectCanvasStage projectId="project-1" designs={[]} pendingDesigns={pending} onSelect={vi.fn()} onLayoutChange={onLayoutChange} />);
+    const stage = screen.getByTestId('konva-stage');
+    const rects = screen.getAllByTestId('pending-rect');
+    const zoom = Number(stage.dataset.zoom);
+    expect(1440 * zoom).toBeCloseTo(320);
+    const left = Number(rects[0]!.dataset.x) * zoom + Number(stage.dataset.x);
+    const right = (Number(rects[2]!.dataset.x) + 1080) * zoom + Number(stage.dataset.x);
+    expect((left + right) / 2).toBeCloseTo(600);
+    expect(onLayoutChange).toHaveBeenCalled();
+
+    onLayoutChange.mockClear();
+    rerender(<ProjectCanvasStage projectId="project-1" designs={[]} pendingDesigns={pending.map((item) => ({ ...item }))} onSelect={vi.fn()} onLayoutChange={onLayoutChange} />);
+    expect(onLayoutChange).not.toHaveBeenCalled();
+    fireEvent.wheel(stage);
+    expect(Number(stage.dataset.zoom)).toBeCloseTo(zoom);
+    rerender(<ProjectCanvasStage projectId="project-1" designs={[]} pendingDesigns={pending.map((item) => ({ ...item }))} onSelect={vi.fn()} onLayoutChange={onLayoutChange} />);
+    expect(Number(stage.dataset.zoom)).toBeCloseTo(zoom);
+
+    rerender(<ProjectCanvasStage projectId="project-1" designs={[]} pendingDesigns={[{ id: 'next-primary', rowKey: 'next', width: 2048, height: 1024 }]} onSelect={vi.fn()} onLayoutChange={onLayoutChange} />);
+    expect(2048 * Number(stage.dataset.zoom)).toBeCloseTo(320);
+    width.mockRestore();
+    height.mockRestore();
+    userAgent.mockRestore();
+  });
+
+  it('recenters the remaining placeholders when one result completes, then releases the viewport after all tasks finish', () => {
+    const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Chrome');
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(760);
+    const pending = ['primary', 'composition', 'expressive'].map((slot) => ({ id: `generation-${slot}`, rowKey: 'generation', width: 1080, height: 1440 }));
+    const { rerender } = render(<ProjectCanvasStage projectId="project-1" designs={[]} pendingDesigns={pending} onSelect={vi.fn()} />);
+    const stage = screen.getByTestId('konva-stage');
+    rerender(<ProjectCanvasStage projectId="project-1" designs={[{
+      id: 'result-primary', assetId: 'asset-primary', sourceTaskId: 'generation', width: 1080, height: 1440, title: 'Primary', createdAt: '2026-10-20T00:00:00.000Z',
+    }]} designNodeIds={{ 'result-primary': 'generation-primary' }} pendingDesigns={pending.slice(1)} onSelect={vi.fn()} />);
+    const rects = screen.getAllByTestId('pending-rect');
+    const zoom = Number(stage.dataset.zoom);
+    expect(((Number(rects[0]!.dataset.x) + Number(rects[1]!.dataset.x) + 1080) / 2) * zoom + Number(stage.dataset.x)).toBeCloseTo(600);
+    expect(Number(rects[0]!.dataset.y) * zoom + 1440 * zoom / 2 + Number(stage.dataset.y)).toBeCloseTo(380);
+    rerender(<ProjectCanvasStage projectId="project-1" designs={[]} pendingDesigns={[]} onSelect={vi.fn()} />);
+    fireEvent.wheel(stage);
+    expect(Number(stage.dataset.zoom)).toBeCloseTo(zoom * 0.92);
+    width.mockRestore();
+    height.mockRestore();
+    userAgent.mockRestore();
+  });
+
+  it('keeps restored tasks from different batches centered after resizing and loading persisted positions', () => {
+    const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Chrome');
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(760);
+    const pending = [
+      { id: 'first-primary', rowKey: 'first', width: 1080, height: 1440 },
+      { id: 'second-primary', rowKey: 'second', width: 1080, height: 1440 },
+    ];
+    const onLayoutChange = vi.fn();
+    const { rerender } = render(<ProjectCanvasStage projectId="project-1" designs={[]} pendingDesigns={pending} onSelect={vi.fn()} onLayoutChange={onLayoutChange} />);
+    const stage = screen.getByTestId('konva-stage');
+    const expectCentered = (centerX: number, centerY: number): void => {
+      const rects = screen.getAllByTestId('pending-rect');
+      const left = Math.min(...rects.map((rect) => Number(rect.dataset.x)));
+      const right = Math.max(...rects.map((rect) => Number(rect.dataset.x) + 1080));
+      const top = Math.min(...rects.map((rect) => Number(rect.dataset.y)));
+      const bottom = Math.max(...rects.map((rect) => Number(rect.dataset.y) + 1440));
+      const zoom = Number(stage.dataset.zoom);
+      expect((left + right) * zoom / 2 + Number(stage.dataset.x)).toBeCloseTo(centerX);
+      expect((top + bottom) * zoom / 2 + Number(stage.dataset.y)).toBeCloseTo(centerY);
+    };
+    expectCentered(600, 380);
+    width.mockReturnValue(900);
+    height.mockReturnValue(600);
+    fireEvent(window, new Event('resize'));
+    expectCentered(450, 300);
+    rerender(<ProjectCanvasStage projectId="project-1" designs={[]} pendingDesigns={pending} initialNodes={{ 'first-primary': { x: 8000, y: 9000 }, 'second-primary': { x: 8000, y: 10464 } }} onSelect={vi.fn()} onLayoutChange={onLayoutChange} />);
+    expectCentered(450, 300);
+    width.mockRestore();
+    height.mockRestore();
+    userAgent.mockRestore();
+  });
+
   it('keeps a pending placeholder fixed after the source receives a new persisted position', async () => {
     const userAgent = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Chrome');
     const interval = vi.spyOn(window, 'setInterval').mockReturnValue({} as ReturnType<typeof window.setInterval>);

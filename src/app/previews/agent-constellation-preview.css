@@ -203,7 +203,7 @@
   --neural-line: var(--border-subtle, rgb(237 241 247 / 14%));
   --neural-green: var(--success, #57d69c);
   --neural-coral: var(--warning, #ff8c73);
-  --neural-amber: var(--primary, #ffd477);
+  --neural-amber: color-mix(in srgb, var(--warning, #fbbf24) 78%, #f59e0b);
   position: relative;
   width: min(560px, 70vmin);
   aspect-ratio: 1;

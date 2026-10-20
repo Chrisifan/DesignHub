@@ -35,15 +35,18 @@ export type ToolCandidate = {
 export const designGenerationSlotIds = ['primary', 'composition', 'expressive'] as const;
 export type DesignGenerationSlotId = typeof designGenerationSlotIds[number];
 export type DesignGenerationSlotState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type TaskDiagnostic = { host?: string; causeName?: string; causeCode?: string };
 
 export type DesignGenerationSlot = {
   id: DesignGenerationSlotId;
   direction: string;
   state: DesignGenerationSlotState;
   attempt: number;
+  remoteRequestId?: string;
   assetId?: string;
   candidateId?: string;
   errorCode?: string;
+  diagnostic?: TaskDiagnostic;
   providerFailure?: TaskProviderFailure;
   cost?: number | null;
 };

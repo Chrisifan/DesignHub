@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { ProjectDesign, ProjectCanvasLayout } from '../../features/projects/metadata';
 import type { TaskState } from '../../features/tasks/state';
@@ -172,7 +172,7 @@ export const persistedCanvasNodes = (
 }));
 
 export const zoomAroundPointer = (viewport: CanvasViewport, pointer: { x: number; y: number }, nextZoom: number): CanvasViewport => {
-  const zoom = Math.min(3, Math.max(0.2, nextZoom));
+  const zoom = Math.min(3, Math.max(0.01, nextZoom));
   const worldX = (pointer.x - viewport.offsetX) / viewport.zoom;
   const worldY = (pointer.y - viewport.offsetY) / viewport.zoom;
   return { zoom, offsetX: pointer.x - worldX * zoom, offsetY: pointer.y - worldY * zoom };
@@ -193,6 +193,20 @@ export const centerNodeInViewport = (
   offsetX: viewport.width / 2 - (node.x + node.width / 2) * zoom,
   offsetY: viewport.height / 2 - (node.y + node.height / 2) * zoom,
 });
+
+/** Normalize screen size independently of image resolution and the previous viewport. */
+export const generationPlaceholderViewport = (
+  placeholders: readonly { x: number; y: number; width: number; height: number }[],
+  size: CanvasSize,
+): CanvasViewport => {
+  const left = Math.min(...placeholders.map((item) => item.x));
+  const top = Math.min(...placeholders.map((item) => item.y));
+  const width = Math.max(...placeholders.map((item) => item.x + item.width)) - left;
+  const height = Math.max(...placeholders.map((item) => item.y + item.height)) - top;
+  const longestEdge = Math.max(...placeholders.map((item) => Math.max(item.width, item.height)));
+  const zoom = Math.min(320 / longestEdge, Math.max(1, size.width - 96) / width, Math.max(1, size.height - 96) / height);
+  return centerNodeInViewport({ x: left, y: top, width, height }, size, zoom);
+};
 
 type ProjectCanvasStageProps = {
   libraryId?: string;
@@ -331,6 +345,20 @@ export const ProjectCanvasStage = ({
   }, [pendingDesigns.length]);
 
   const displayNodes = useMemo(() => layoutAnchoredCanvasNodes(layoutDesigns, pendingDesigns, nodes), [layoutDesigns, nodes, pendingDesigns]);
+  const activePendingDesigns = useMemo(() => pendingDesigns.filter((design) => !design.status || design.status === 'queued' || design.status === 'running'), [pendingDesigns]);
+
+  useLayoutEffect(() => {
+    if (activePendingDesigns.length === 0) return;
+    const host = hostRef.current;
+    if (!host) return;
+    const next = generationPlaceholderViewport(activePendingDesigns.map((design) => ({
+      ...design,
+      ...(displayNodes[design.id] ?? { x: 0, y: 0 }),
+    })), { width: Math.max(320, host.clientWidth), height: Math.max(360, host.clientHeight) });
+    if (next.zoom === viewport.zoom && next.offsetX === viewport.offsetX && next.offsetY === viewport.offsetY) return;
+    setViewport(next);
+    notifyLayout(next, displayNodes);
+  }, [activePendingDesigns, displayNodes, notifyLayout, size.height, size.width, viewport]);
 
   useEffect(() => {
     if (designs.length <= previousDesignCount.current || designs.length === 0) {
@@ -338,6 +366,11 @@ export const ProjectCanvasStage = ({
       return;
     }
     const newest = designs.at(-1)!;
+    // Pending placeholders retain focus while results or imported images arrive.
+    if (activePendingDesigns.length > 0 || designNodeIds?.[newest.id] || designAnchors?.[newest.id]) {
+      previousDesignCount.current = designs.length;
+      return;
+    }
     const position = displayNodes[newest.id] ?? { x: 0, y: 0 };
     const host = hostRef.current;
     if (host) {
@@ -346,7 +379,7 @@ export const ProjectCanvasStage = ({
       notifyLayout(next, displayNodes);
     }
     previousDesignCount.current = designs.length;
-  }, [designAnchors, designNodeIds, designRowKeys, designs, displayNodes, notifyLayout, size.height, size.width, viewport.zoom]);
+  }, [activePendingDesigns.length, designAnchors, designNodeIds, designRowKeys, designs, displayNodes, notifyLayout, size.height, size.width, viewport.zoom]);
 
   useEffect(() => {
     if (!initialNodes) return;
@@ -368,6 +401,7 @@ export const ProjectCanvasStage = ({
   const handleWheel = (rawEvent: unknown): void => {
     const event = rawEvent as StageEvent;
     event.evt.preventDefault?.();
+    if (activePendingDesigns.length > 0) return;
     const stage = stageRef.current;
     const pointer = stage?.getPointerPosition?.() ?? { x: size.width / 2, y: size.height / 2 };
     const next = zoomAroundPointer(viewport, pointer, viewport.zoom * ((event.evt.deltaY ?? 0) > 0 ? 0.92 : 1.08));
@@ -381,12 +415,12 @@ export const ProjectCanvasStage = ({
     if (className !== 'Stage' && className !== 'Layer') return;
     const stage = stageRef.current;
     const pointer = stage?.getPointerPosition?.() ?? { x: 0, y: 0 };
-    dragRef.current = { start: pointer, viewport };
+    dragRef.current = activePendingDesigns.length > 0 ? null : { start: pointer, viewport };
     onSelect(null);
     onCanvasBackground?.();
   };
   const handlePointerMove = (): void => {
-    if (!dragRef.current) return;
+    if (!dragRef.current || activePendingDesigns.length > 0) return;
     const stage = stageRef.current;
     const pointer = stage?.getPointerPosition?.() ?? dragRef.current.start;
     const next = panViewport(dragRef.current.viewport, { x: pointer.x - dragRef.current.start.x, y: pointer.y - dragRef.current.start.y });

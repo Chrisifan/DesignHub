@@ -181,6 +181,41 @@ describe('OpenAI-compatible provider adapter', () => {
     await expect(adapter.editImage({ prompt: 'remove logo', image: new Blob(['image']) })).resolves.toMatchObject({ images: [{ url: 'https://cdn.test/edited.png' }] });
   });
 
+  it('keeps hosted image URLs intact for the asset downloader', async () => {
+    const hostedUrl = 'https://cdn.test/generated.png?token=secret-key';
+    const fetcher = vi.fn(async () => response({ data: [{ url: hostedUrl }] }));
+    const onImageResponse = vi.fn();
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key', fetch: fetcher, onImageResponse });
+
+    await expect(adapter.generateImage({ prompt: 'a poster' })).resolves.toMatchObject({ images: [{ url: hostedUrl }] });
+    expect(onImageResponse).toHaveBeenCalledWith(expect.objectContaining({
+      path: '/images/generations',
+      status: 200,
+      contentType: 'application/json',
+      payloadKeys: ['data'],
+      dataCount: 1,
+      images: [{ keys: ['url'], url: hostedUrl, urlHost: 'cdn.test', hasBase64: false, base64Length: 0 }],
+    }));
+  });
+
+  it('does not fail a successful generation when writing the response diagnostic fails', async () => {
+    const adapter = createOpenAICompatibleAdapter({
+      baseUrl: 'https://example.test/v1',
+      apiKey: 'secret-key',
+      fetch: vi.fn(async () => response({ data: [{ b64_json: 'generated' }] })),
+      onImageResponse: async () => { throw new Error('disk full'); },
+    });
+
+    await expect(adapter.generateImage({ prompt: 'a poster' })).resolves.toMatchObject({ images: [{ base64: 'generated' }] });
+  });
+
+  it('preserves the provider MIME type for base64 image results', async () => {
+    const fetcher = vi.fn(async () => response({ data: [{ b64_json: pngBase64, mime_type: 'image/webp' }] }));
+    const adapter = createOpenAICompatibleAdapter({ baseUrl: 'https://example.test/v1', apiKey: 'secret-key', fetch: fetcher });
+
+    await expect(adapter.generateImage({ prompt: 'a poster' })).resolves.toMatchObject({ images: [{ base64: pngBase64, mimeType: 'image/webp' }] });
+  });
+
   it('uses a custom Responses endpoint and parses hosted image tool output', async () => {
     const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe('https://gateway.example.test/openai/v1/responses');

@@ -33,6 +33,16 @@ export type ImageEditRequest = { prompt: string; image: Blob; referenceImages?: 
 export type GeneratedImage = { url?: string; base64?: string; mimeType?: string };
 export type ImageResponse = { images: GeneratedImage[]; cost: number | null; remoteRequestId?: string; supportsRemoteCancellation?: boolean; supportsStatusQuery?: boolean };
 
+export type ImageResponseLog = {
+  path: string;
+  status: number;
+  contentType?: string;
+  payloadKeys: string[];
+  dataCount: number;
+  images: Array<{ keys: string[]; url?: string; urlHost?: string; hasBase64: boolean; base64Length: number; mimeType?: string }>;
+  outputTypes?: string[];
+};
+
 export type ProviderAdapterErrorKind = 'http' | 'rate_limited' | 'invalid_response' | 'cancelled' | 'capability';
 export type ProviderAdapterError = Error & {
   kind: ProviderAdapterErrorKind;
@@ -49,6 +59,7 @@ export type MainOnlyAdapterOptions = {
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
   fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>;
   toolCapabilities?: readonly ProviderToolCapability[];
+  onImageResponse?: (record: ImageResponseLog) => void | Promise<void>;
 };
 
 export type OpenAICompatibleAdapter = {
@@ -215,7 +226,11 @@ const editInstruction = (request: ImageEditRequest): string => [
 const imageResponse = (payload: Record<string, unknown>): ImageResponse => ({
   images: Array.isArray(payload.data) ? payload.data.map((entry) => {
     const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
-    return { ...(typeof item.url === 'string' ? { url: item.url } : {}), ...(typeof item.b64_json === 'string' ? { base64: item.b64_json } : {}) };
+    return {
+      ...(typeof item.url === 'string' ? { url: item.url } : {}),
+      ...(typeof item.b64_json === 'string' ? { base64: item.b64_json } : {}),
+      ...(typeof item.mime_type === 'string' ? { mimeType: item.mime_type } : {}),
+    };
   }) : [],
   cost: typeof payload.cost === 'number' ? payload.cost : null,
   ...(typeof payload.id === 'string' ? { remoteRequestId: payload.id } : {}),
@@ -341,7 +356,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
   const configuredModel = (capability: ProviderCapability, requested?: string): string | undefined => requested ?? options.models?.[capability];
   const fetcher = options.fetch ?? options.fetchImpl ?? ((input: string, init?: RequestInit): Promise<Response> => globalThis.fetch(input, init));
   const redact = (value: string): string => apiKey ? value.replaceAll(apiKey, '[redacted]') : value;
-  const postJson = async (path: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> => {
+  const postJson = async (path: string, body: Record<string, unknown>, signal?: AbortSignal, logImageResponse = false): Promise<Record<string, unknown>> => {
     let response: Response;
     try {
       response = await fetcher(`${baseUrl}${path}`, {
@@ -355,7 +370,45 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
       throw networkError(cause, redact);
     }
     if (!response.ok) throw await createHttpError(response, redact);
-    return readJson(response);
+    const payload = await readJson(response);
+    if (logImageResponse && options.onImageResponse) {
+      const data = Array.isArray(payload.data) ? payload.data : [];
+      const output = Array.isArray(payload.output) ? payload.output : [];
+      const images = data.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object') return [];
+        const item = entry as Record<string, unknown>;
+        let urlHost: string | undefined;
+        if (typeof item.url === 'string') {
+          try { urlHost = new URL(item.url).hostname.slice(0, 253); } catch {}
+        }
+        const mimeType = typeof item.mime_type === 'string' ? item.mime_type : typeof item.mimeType === 'string' ? item.mimeType : undefined;
+        return [{
+          keys: Object.keys(item).sort(),
+          ...(typeof item.url === 'string' ? { url: item.url } : {}),
+          ...(urlHost ? { urlHost } : {}),
+          hasBase64: typeof item.b64_json === 'string',
+          base64Length: typeof item.b64_json === 'string' ? item.b64_json.length : 0,
+          ...(mimeType ? { mimeType } : {}),
+        }];
+      });
+      const outputTypes = output.flatMap((entry) => entry && typeof entry === 'object' && typeof (entry as Record<string, unknown>).type === 'string'
+        ? [(entry as Record<string, unknown>).type as string]
+        : []);
+      try {
+        await options.onImageResponse({
+          path,
+          status: response.status,
+          ...(response.headers.get('content-type') ? { contentType: response.headers.get('content-type') as string } : {}),
+          payloadKeys: Object.keys(payload).sort(),
+          dataCount: data.length,
+          images,
+          ...(outputTypes.length ? { outputTypes } : {}),
+        });
+      } catch {
+        // Diagnostics must not turn a successful provider response into a failed generation.
+      }
+    }
+    return payload;
   };
   const chatFor = async (capability: 'conversation' | 'vision-analysis', request: ChatRequest, signal?: AbortSignal): Promise<ChatResponse> => {
     const payload = await postJson('/chat/completions', {
@@ -446,7 +499,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
         }],
         tools: [{ type: 'image_generation', ...(request.size ? { size: request.size } : {}) }],
         tool_choice: { type: 'image_generation' },
-      }, signal);
+      }, signal, true);
       const images = responsesImages(payload);
       if (images.length === 0) throw toError('Provider returned no hosted image result.', 'invalid_response');
       return { images, cost: null };
@@ -470,14 +523,8 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
       return imageResponse(await readJson(response));
     }
     const model = configuredModel('image-generation', request.model);
-    const payload = await postJson('/images/generations', { prompt: request.prompt, ...(model ? { model } : {}), ...(request.size ? { size: request.size } : {}), ...(request.count === undefined ? {} : { n: request.count }) }, signal);
-    return imageResponse({
-      ...payload,
-      data: Array.isArray(payload.data) ? payload.data.map((entry) => {
-        const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
-        return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { b64_json: redact(item.b64_json) } : {}) };
-      }) : [],
-    });
+    const payload = await postJson('/images/generations', { prompt: request.prompt, ...(model ? { model } : {}), ...(request.size ? { size: request.size } : {}), ...(request.count === undefined ? {} : { n: request.count }) }, signal, true);
+    return imageResponse(payload);
   };
   const editImage = async (request: ImageEditRequest, signal?: AbortSignal): Promise<ImageResponse> => {
     if (request.tool) {
@@ -531,14 +578,7 @@ export const createOpenAICompatibleAdapter = (options: MainOnlyAdapterOptions): 
       throw networkError(cause, redact);
     }
     if (!response.ok) throw await createHttpError(response, redact);
-    const payload = await readJson(response);
-    return imageResponse({
-      ...payload,
-      data: Array.isArray(payload.data) ? payload.data.map((entry) => {
-        const item = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
-        return { ...(typeof item.url === 'string' ? { url: redact(item.url) } : {}), ...(typeof item.b64_json === 'string' ? { b64_json: redact(item.b64_json) } : {}) };
-      }) : [],
-    });
+    return imageResponse(await readJson(response));
   };
   return { capabilities: providerCapabilities, toolCapabilities, chat, streamChat, analyzeVision, generateImage, editImage };
 };

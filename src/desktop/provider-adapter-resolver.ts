@@ -1,4 +1,4 @@
-import { createOpenAICompatibleAdapter, providerCapabilities, type ChatStreamEvent, type MainOnlyAdapterOptions, type OpenAICompatibleAdapter } from '../features/providers/adapter';
+import { createOpenAICompatibleAdapter, providerCapabilities, type ChatStreamEvent, type ImageResponseLog, type MainOnlyAdapterOptions, type OpenAICompatibleAdapter } from '../features/providers/adapter';
 import { defaultProviderToolCapabilities, type ProviderConfig, type ProviderProfile } from '../features/providers/config';
 import { resolveProviderCredential } from './security/keyring-credentials';
 
@@ -8,6 +8,7 @@ export type ProviderAdapterResolverOptions = {
   environment?: { baseUrl?: string; apiKey?: string };
   getCredential: (account: string) => Promise<string | null>;
   createAdapter?: (options: MainOnlyAdapterOptions) => OpenAICompatibleAdapter;
+  onImageResponse?: (record: ImageResponseLog) => void | Promise<void>;
 };
 
 const profileConfig = (config: ProviderConfig | undefined, profile: ProviderProfile) => profile === 'conversation' ? config?.conversation : config?.image;
@@ -38,6 +39,7 @@ export const createProviderAdapterResolver = (options: ProviderAdapterResolverOp
       apiKey,
       models: configured?.models,
       toolCapabilities: options.config?.toolCapabilities,
+      ...(profile === 'image' && options.onImageResponse ? { onImageResponse: options.onImageResponse } : {}),
       ...(profile === 'image' ? { imageTransport: configured && 'imageTransport' in configured ? configured.imageTransport : 'images' } : {}),
     };
     return createAdapter(adapterOptions);

@@ -59,6 +59,43 @@ it('renders streamed markdown as structured analysis content', () => {
   expect(screen.queryByText('## 设计方向')).not.toBeInTheDocument();
 });
 
+it('renders image references as previewable links and hides raw asset ids', () => {
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message="attachment diagnostic"
+      attachments={[attachment]}
+      task={task('以图一（asset-1）为编辑目标。')}
+      canGenerate={false}
+      onGenerate={vi.fn()}
+    />,
+  );
+
+  const reference = screen.getByRole('link', { name: '图一' });
+  expect(reference).toBeInTheDocument();
+  expect(screen.queryByText('asset-1')).not.toBeInTheDocument();
+
+  fireEvent.mouseEnter(reference);
+  expect(document.querySelector('.ui-tooltip')).toContainElement(document.querySelector('.ui-tooltip img'));
+  expect(document.querySelector('.ui-tooltip img')).toHaveAttribute('alt', 'reference.png');
+});
+
+it('turns a bare asset id into a readable image name reference', () => {
+  render(
+    <AnalysisPanel
+      locale="zh-CN"
+      message="attachment diagnostic"
+      attachments={[attachment]}
+      task={task('参考 asset-1 的构图。')}
+      canGenerate={false}
+      onGenerate={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole('link', { name: 'reference.png' })).toBeInTheDocument();
+  expect(screen.queryByText('asset-1')).not.toBeInTheDocument();
+});
+
 it('renders the brief instead of a persisted structured response envelope', () => {
   renderPanel(JSON.stringify({
     brief: '将人物抠图置于真实、绚丽的极光夜空前。',

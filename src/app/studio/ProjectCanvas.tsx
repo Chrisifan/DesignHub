@@ -21,6 +21,7 @@ import './project-canvas.css';
 import { readImageFile } from '../../features/assets/image-input';
 import { itemErrorMessage } from '../../features/image-tools/image-tools-copy';
 import { NeuralPresence, type PresenceMode } from '../previews/AgentConstellationPreview';
+import { getForegroundPresenceTask, getObservedTerminalOutcome } from './neural-presence-state';
 
 type ProjectCanvasProps = {
   locale: Locale;
@@ -217,7 +218,7 @@ const getAnalysisStatus = (task: TaskRecord, locale: Locale): { icon: string; ki
   return { icon: 'clock', kind: 'running', label: t(locale, '处理中', 'Processing') };
 };
 
-type AnalysisDockView = 'presence' | 'history' | 'thinking' | 'result';
+type AnalysisDockView = 'presence' | 'history' | 'thinking' | 'working' | 'result';
 
 export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversationConnected, designer, designerOptions = [], onDesignerChange, onDesignsChange, onGenerationRatioChange, notify, onBack, onRename, onDuplicate, onArchive, onConnections, onSubmitImageTask, onSubmitConversation, onSubmitDesignGeneration }: ProjectCanvasProps) => {
   const [designs, setDesigns] = useState<ProjectDesign[]>(project.designs ?? []);
@@ -241,12 +242,17 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const [analysisCollapsed, setAnalysisCollapsed] = useState(false);
   const [analysisHistoryOpen, setAnalysisHistoryOpen] = useState(false);
   const [analysisThinking, setAnalysisThinking] = useState(false);
+  const [designGenerationSubmitting, setDesignGenerationSubmitting] = useState(false);
+  const [terminalPresenceFeedback, setTerminalPresenceFeedback] = useState<{ taskId: string; mode: Extract<PresenceMode, 'success' | 'failure'> } | null>(null);
+  const [analysisPanelArrivalTaskId, setAnalysisPanelArrivalTaskId] = useState<string>();
   const [menuOpen, setMenuOpen] = useState(false);
   const [referencedAssetIds, setReferencedAssetIds] = useState<string[]>([]);
   const imageTaskStatesRef = useRef<Map<string, TaskRecord['state']>>(new Map());
   const imageTaskStatesInitializedRef = useRef(false);
-  const analysisPresenceRef = useRef<HTMLButtonElement>(null);
-  const analysisHistoryWasOpenRef = useRef(false);
+  const presenceTaskStatesRef = useRef<Map<string, TaskRecord['state']>>(new Map());
+  const presenceTaskSnapshotReadyRef = useRef(false);
+  const foregroundPresenceTaskIdRef = useRef<string | undefined>(undefined);
+  const terminalPresenceTimerRef = useRef<number | undefined>(undefined);
   const layoutSaveTimersRef = useRef<Map<string, number>>(new Map());
   const queuedLayoutSavesRef = useRef<Map<string, QueuedCanvasLayoutSave>>(new Map());
   const inFlightLayoutSaveRef = useRef<PendingCanvasLayoutSave | null>(null);
@@ -373,6 +379,16 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     setLayout(project.canvasLayout);
     setSelectedDesignIds(project.canvasLayout?.selectedDesignIds ?? []);
     setAnalysisThinking(false);
+    setDesignGenerationSubmitting(false);
+    setTerminalPresenceFeedback(null);
+    setAnalysisPanelArrivalTaskId(undefined);
+    presenceTaskStatesRef.current.clear();
+    presenceTaskSnapshotReadyRef.current = false;
+    foregroundPresenceTaskIdRef.current = undefined;
+    if (terminalPresenceTimerRef.current !== undefined) {
+      window.clearTimeout(terminalPresenceTimerRef.current);
+      terminalPresenceTimerRef.current = undefined;
+    }
     if (libraryId) localLayoutAuthorityRef.current.delete(canvasLayoutSaveKey(libraryId, project.id));
     setAnalysisCollapsed(false);
     imageTaskStatesRef.current.clear();
@@ -401,7 +417,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     && Boolean(analysisTask.result?.text)
     && analysisTask.visualContextPlan?.clarificationRequired !== true
     && !tasks.some((task) => task.capability === 'design-generation' && (task.state === 'queued' || task.state === 'running'));
-  const designTasks = tasks.filter((task) => task.capability === 'design-generation' && task.analysisThreadId === threadId);
+  const designTasks = tasks.filter((task) => task.capability === 'design-generation');
   const pendingDesigns = [
     ...designTasks.flatMap((task) => task.generationSlots?.filter((slot) => slot.state === 'queued' || slot.state === 'running').map((slot) => ({ id: `${task.id}-${slot.id}`, rowKey: task.id, width: task.designContext?.canvas.width ?? 1080, height: task.designContext?.canvas.height ?? 1440 })) ?? []),
     ...getPendingCanvasDesigns(tasks, designs),
@@ -412,15 +428,66 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   const designNodeIds = generationDesignNodeIds(tasks, designs);
   const analysisHistory = getAnalysisHistory(tasks, threadId, analysisTask);
   const analysisRunning = analysisThinking || analysisTask?.state === 'queued' || analysisTask?.state === 'running';
+  const presenceTasks = analysisTask && !tasks.some((task) => task.id === analysisTask.id) ? [...tasks, analysisTask] : tasks;
+  const foregroundPresenceTask = getForegroundPresenceTask(presenceTasks, threadId);
+  const presenceBusy = analysisRunning || designGenerationSubmitting || foregroundPresenceTask?.mode === 'working';
   const hasAnalysisHistory = analysisHistory.length > 0;
-  const analysisDockView: AnalysisDockView = analysisRunning
-    ? 'thinking'
+  const analysisDockView: AnalysisDockView = presenceBusy
+    ? designGenerationSubmitting || foregroundPresenceTask?.mode === 'working' ? 'working' : 'thinking'
     : analysisCollapsed || !hasAnalysisHistory
       ? 'presence'
       : analysisHistoryOpen
         ? 'history'
         : 'result';
-  const analysisPresenceMode: PresenceMode = analysisRunning ? 'thinking' : 'idle';
+  const analysisPresenceMode: PresenceMode = terminalPresenceFeedback?.mode
+    ?? (designGenerationSubmitting ? 'working' : undefined)
+    ?? foregroundPresenceTask?.mode
+    ?? (analysisRunning ? 'thinking' : 'idle');
+  const holdAnalysisResultForSuccessFeedback = terminalPresenceFeedback?.taskId === analysisTask?.id
+    && terminalPresenceFeedback?.mode === 'success';
+
+  useEffect(() => {
+    const previousStates = presenceTaskStatesRef.current;
+    const terminalFeedbacks: Array<{ taskId: string; capability: string | undefined; mode: 'success' | 'failure' }> = [];
+
+    if (!presenceTaskSnapshotReadyRef.current) {
+      tasks.forEach((task) => previousStates.set(task.id, task.state));
+      presenceTaskSnapshotReadyRef.current = true;
+    } else {
+      tasks.forEach((task) => {
+        const outcome = getObservedTerminalOutcome(previousStates.get(task.id), task.state);
+        if (outcome && task.id === foregroundPresenceTaskIdRef.current) {
+          terminalFeedbacks.push({ taskId: task.id, capability: task.capability, mode: outcome });
+        }
+        previousStates.set(task.id, task.state);
+      });
+    }
+
+    const terminalFeedback = terminalFeedbacks[terminalFeedbacks.length - 1];
+    if (foregroundPresenceTask) foregroundPresenceTaskIdRef.current = foregroundPresenceTask.taskId;
+    else if (terminalFeedback) foregroundPresenceTaskIdRef.current = undefined;
+
+    if (terminalFeedback) {
+      setTerminalPresenceFeedback(terminalFeedback);
+      if (terminalFeedback.capability === 'conversation' && terminalFeedback.mode === 'success') {
+        setAnalysisPanelArrivalTaskId(terminalFeedback.taskId);
+      }
+      if (terminalPresenceTimerRef.current !== undefined) window.clearTimeout(terminalPresenceTimerRef.current);
+      terminalPresenceTimerRef.current = window.setTimeout(() => {
+        terminalPresenceTimerRef.current = undefined;
+        setTerminalPresenceFeedback(null);
+      }, 1_200);
+    }
+  }, [foregroundPresenceTask?.taskId, tasks]);
+
+  useEffect(() => {
+    if (presenceBusy && analysisHistoryOpen) setAnalysisHistoryOpen(false);
+  }, [analysisHistoryOpen, presenceBusy]);
+
+  useEffect(() => () => {
+    if (terminalPresenceTimerRef.current !== undefined) window.clearTimeout(terminalPresenceTimerRef.current);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const assetIds = analysisAssetKey ? analysisAssetKey.split('\0') : [];
@@ -445,12 +512,6 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
   useEffect(() => {
     if (analysisTask && analysisTask.state !== 'queued' && analysisTask.state !== 'running') setAnalysisThinking(false);
   }, [analysisTask?.id, analysisTask?.state]);
-  useEffect(() => {
-    if (!analysisHistoryOpen && analysisHistoryWasOpenRef.current && !analysisRunning) {
-      window.requestAnimationFrame(() => analysisPresenceRef.current?.focus());
-    }
-    analysisHistoryWasOpenRef.current = analysisHistoryOpen;
-  }, [analysisHistoryOpen, analysisRunning]);
   const submit = async (): Promise<void> => {
     if (readOnly || !message.trim()) return;
     const currentMessage = message;
@@ -485,9 +546,15 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     }
   };
   const generate = async (count: 1 | 3): Promise<void> => {
-    if (!analysisTask || !canGenerate) return;
-    await onSubmitDesignGeneration(analysisTask.id, project.generationRatio ?? 'original', count);
-    void refresh();
+    if (!analysisTask || !canGenerate || designGenerationSubmitting) return;
+    setDesignGenerationSubmitting(true);
+    try {
+      const task = await onSubmitDesignGeneration(analysisTask.id, project.generationRatio ?? 'original', count);
+      if (task) setTasks((current) => [...current.filter((candidate) => candidate.id !== task.id), task]);
+    } finally {
+      setDesignGenerationSubmitting(false);
+      void refresh();
+    }
   };
   const configureImageTool = (tool: ImageTool): void => {
     const design = selectedDesigns.length === 1 ? selectedDesigns[0] : undefined;
@@ -541,6 +608,7 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
     queueLayoutSave(layoutForSelection(nextSelectedDesignIds));
   };
   const selectAnalysis = (taskId: string): void => {
+    setAnalysisPanelArrivalTaskId(undefined);
     setSelectedAnalysisTaskId(taskId);
     selectDesigns(designs.filter((design) => design.sourceConversationTaskId === taskId).map((design) => design.id));
     setAnalysisCollapsed(false);
@@ -704,30 +772,35 @@ export const ProjectCanvas = ({ locale, project, libraryId, readOnly, conversati
           if (analysisRunning) return;
           setAnalysisHistoryOpen(false);
           setAnalysisCollapsed(true);
+          setAnalysisPanelArrivalTaskId(undefined);
         }}
         onLayoutChange={saveLayout}
         onImportImages={importImages}
       />
-      {analysisOpen && analysisTask && !analysisRunning && !analysisCollapsed && <div className="project-canvas-analysis-panel project-canvas-analysis-panel--expanded">
-        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate)} onGenerate={(count) => { void generate(count); }} onCopyRequest={copyAnalysisRequest} />
+      {analysisOpen && analysisTask && !analysisRunning && !analysisCollapsed && !holdAnalysisResultForSuccessFeedback && <div
+        // Retain the arrival animation's final frame; switching to expanded here replays its fade-in.
+        className={`project-canvas-analysis-panel ${analysisPanelArrivalTaskId === analysisTask.id ? 'project-canvas-analysis-panel--enter-from-presence' : 'project-canvas-analysis-panel--expanded'}`}
+      >
+        <AnalysisPanel locale={locale} message={analysisTask.requestText ?? ''} attachments={analysisAttachments} task={analysisTask} canGenerate={Boolean(canGenerate) && !designGenerationSubmitting} onGenerate={(count) => { void generate(count); }} onCopyRequest={copyAnalysisRequest} />
       </div>}
-      {analysisOpen && <div className={`project-canvas-analysis-presence${analysisRunning ? ' project-canvas-analysis-presence--thinking' : ' project-canvas-analysis-presence--idle'}${analysisHistoryOpen && !analysisRunning ? ' is-hidden' : ''}`} data-testid="project-canvas-analysis-presence" data-mode={analysisPresenceMode} aria-live="polite" aria-hidden={analysisHistoryOpen && !analysisRunning ? 'true' : undefined}>
+      {analysisOpen && <div className={`project-canvas-analysis-presence${analysisHistoryOpen && !presenceBusy ? ' is-hidden' : ''}`} data-testid="project-canvas-analysis-presence" data-mode={analysisPresenceMode} aria-live="polite" aria-hidden={analysisHistoryOpen && !presenceBusy ? 'true' : undefined}>
         <button
           type="button"
           className="project-canvas-analysis-history__presence"
-          ref={analysisPresenceRef}
           aria-label={analysisRunning
             ? t(locale, '正在分析', 'Analyzing')
-            : hasAnalysisHistory
+            : analysisPresenceMode === 'working'
+              ? t(locale, '正在处理设计', 'Working on the design')
+              : hasAnalysisHistory
               ? t(locale, '打开分析历史', 'Open analysis history')
               : t(locale, '神经簇智体待命', 'Neural presence idle')}
-          disabled={analysisRunning || !hasAnalysisHistory || (analysisHistoryOpen && !analysisRunning)}
+          disabled={presenceBusy || !hasAnalysisHistory || (analysisHistoryOpen && !presenceBusy)}
           onClick={() => { if (hasAnalysisHistory) setAnalysisHistoryOpen(true); }}
         >
           <NeuralPresence mode={analysisPresenceMode} compact />
         </button>
       </div>}
-      {analysisOpen && analysisHistory.length > 0 && !analysisRunning && analysisHistoryOpen && <section className="project-canvas-analysis-history is-open" aria-label={t(locale, '分析历史列表', 'Analysis history')}>
+      {analysisOpen && analysisHistory.length > 0 && !presenceBusy && analysisHistoryOpen && <section className="project-canvas-analysis-history is-open" aria-label={t(locale, '分析历史列表', 'Analysis history')}>
         <div className="project-canvas-analysis-history__list project-canvas-analysis-history__list-enter">{analysisHistory.map((task) => {
           const status = getAnalysisStatus(task, locale);
           return <button type="button" className={`project-canvas-analysis-history__item${task.id === analysisTask?.id ? ' is-selected' : ''}`} key={task.id} onClick={() => selectAnalysis(task.id)}><span className={`project-canvas-analysis-history__status is-${status.kind}`} data-testid={`analysis-status-${status.kind}`}><Icon name={status.icon} size={13} /></span><span className="project-canvas-analysis-history__copy"><strong>{task.requestText || t(locale, '未命名分析', 'Untitled analysis')}</strong><span>{status.label}</span></span></button>;

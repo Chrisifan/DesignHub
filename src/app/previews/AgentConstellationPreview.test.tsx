@@ -10,7 +10,9 @@ import {
   getTerminalFeedbackProfile,
   getNeuralBreathScale,
   getNeuralLayerMotion,
+  getPresenceContrast,
   getThinkingConnections,
+  getWorkingPulses,
 } from './AgentConstellationPreview';
 
 beforeEach(() => {
@@ -109,6 +111,46 @@ it('cycles through bounded random point connections while thinking', () => {
   });
 });
 
+it('builds bounded grouped execution pulses only for working mode', () => {
+  const first = getWorkingPulses(900);
+  const sameMoment = getWorkingPulses(900);
+  const pulseSamples = Array.from({ length: 70 }, (_, frame) => getWorkingPulses(frame * 100)).flat();
+  const routeSignatures = new Set(pulseSamples.map((pulse) => pulse.route.join(':')));
+  const layerRouteSignatures = new Set(pulseSamples.map((pulse) => pulse.layers.join(':')));
+
+  expect(pulseSamples.length).toBeGreaterThan(20);
+  expect(sameMoment).toEqual(first);
+  expect(routeSignatures.size).toBeGreaterThan(8);
+  expect(layerRouteSignatures.size).toBeGreaterThan(3);
+  pulseSamples.forEach((pulse) => {
+    expect(pulse.id).toMatch(/^working-/u);
+    expect(pulse.route).toHaveLength(3);
+    expect(pulse.progress).toBeGreaterThanOrEqual(0);
+    expect(pulse.progress).toBeLessThanOrEqual(1);
+    expect(pulse.opacity).toBeGreaterThan(0);
+    expect(pulse.opacity).toBeLessThanOrEqual(1);
+    expect(pulse.tone).toBeGreaterThanOrEqual(0);
+    expect(pulse.tone).toBeLessThanOrEqual(4);
+  });
+  expect(getWorkingPulses(900, 'thinking')).toEqual([]);
+  expect(getWorkingPulses(900, 'idle')).toEqual([]);
+});
+
+it('uses high-contrast drawing values only for the compact presence', () => {
+  const compactIdle = getPresenceContrast('idle', true);
+  const fullIdle = getPresenceContrast('idle', false);
+
+  expect(compactIdle.coreStroke).toBeGreaterThanOrEqual(.75);
+  expect(compactIdle.membraneStroke).toBeGreaterThanOrEqual(.4);
+  expect(compactIdle.membraneLineWidth).toBeGreaterThanOrEqual(1);
+  expect(compactIdle.anchorLineWidth).toBeGreaterThanOrEqual(.6);
+  expect(compactIdle.chordLineWidth).toBeGreaterThanOrEqual(.55);
+  expect(compactIdle.nodeRadiusScale).toBeGreaterThanOrEqual(1);
+  expect(compactIdle.anchorLink).toBeGreaterThanOrEqual(.25);
+  expect(compactIdle.node).toBeGreaterThanOrEqual(.7);
+  expect(fullIdle).toMatchObject({ coreStroke: .46, membraneStroke: .1, anchorLink: .075, node: .32 });
+});
+
 it('rotates membrane layers continuously in alternating directions and speeds', () => {
   const start = [0, 1, 2].map((layer) => getMembraneRotation(layer, 0, 'idle'));
   const later = [0, 1, 2].map((layer) => getMembraneRotation(layer, 10_000, 'idle'));
@@ -160,6 +202,14 @@ it('renders terminal compact presence without visible outcome labels', () => {
   expect(screen.queryByText(/成功|失败/u)).not.toBeInTheDocument();
 });
 
+it('renders working compact presence without adding outcome labels', () => {
+  render(<NeuralPresence mode="working" compact />);
+
+  expect(screen.getByTestId('neural-presence')).toHaveAttribute('data-mode', 'working');
+  expect(screen.getByRole('img', { name: '设计运算中的神经簇智体' })).toBeVisible();
+  expect(screen.queryByText(/成功|失败/u)).not.toBeInTheDocument();
+});
+
 it('triggers sensing and switches the standalone preview theme', () => {
   render(<NeuralPresencePreview />);
 
@@ -185,4 +235,15 @@ it('toggles a persistent thinking state in the standalone preview', () => {
 
   fireEvent.click(screen.getByRole('button', { name: '停止思考' }));
   expect(screen.getByText('待命中')).toBeVisible();
+});
+
+it('previews working motion at compact canvas size', () => {
+  render(<NeuralPresencePreview />);
+
+  fireEvent.click(screen.getByRole('button', { name: '开始工作' }));
+  fireEvent.click(screen.getByRole('button', { name: '预览紧凑画布智体' }));
+
+  expect(screen.getByTestId('neural-presence')).toHaveAttribute('data-mode', 'working');
+  expect(screen.getByTestId('neural-presence')).toHaveAttribute('data-compact', 'true');
+  expect(screen.queryByText('设计运算中')).not.toBeInTheDocument();
 });

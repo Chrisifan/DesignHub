@@ -12,9 +12,9 @@ const isActive = (task: TaskRecord): task is TaskRecord & { state: 'queued' | 'r
 );
 
 const belongsToThread = (task: TaskRecord, threadId: string | undefined): boolean => (
-  task.capability === 'conversation' || task.capability === 'design-generation'
+  task.capability === 'conversation'
     ? Boolean(threadId && task.analysisThreadId === threadId)
-    : task.capability === 'image-editing' || task.capability === 'local-transform'
+    : task.capability === 'design-generation' || task.capability === 'image-editing' || task.capability === 'local-transform'
 );
 
 export const getForegroundPresenceTask = (

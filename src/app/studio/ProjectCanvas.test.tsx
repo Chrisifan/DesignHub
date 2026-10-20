@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectCanvas, generationDesignNodeIds, getAnalysisHistory, getLatestConversationTask, getPendingCanvasDesigns, imageToolDesignAnchors } from './ProjectCanvas';
 import type { ConversationImageAttachment } from '../../features/agent/task-service';
 import type { ProjectCanvasLayout, ProjectDesign } from '../../features/projects/metadata';
+import type { ProjectGenerationRatio } from '../../features/projects/size';
 import type { TaskRecord } from '../../features/tasks/state';
 import type { ExportProjectDesignInput } from '../../platform/contracts';
 import { imageTools, type ImageTool, type ToolParams } from '../../features/image-tools/target';
@@ -76,12 +77,17 @@ const conversation = (input: Partial<TaskRecord> & Pick<TaskRecord, 'id' | 'crea
 });
 
 type SubmitConversation = (message: string, attachments: ConversationImageAttachment[], context?: { analysisThreadId?: string; conversationParentTaskId?: string; referencedAssetIds?: string[] }) => Promise<TaskRecord | null>;
+type SubmitDesignGeneration = (conversationTaskId: string, generationRatio: ProjectGenerationRatio, count: 1 | 3) => Promise<TaskRecord | null>;
 
-const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[], onSubmitConversation: SubmitConversation = vi.fn(async () => null)) => {
+const renderProjectCanvasWithTasks = (
+  taskRecords: TaskRecord[] | (() => TaskRecord[]),
+  onSubmitConversation: SubmitConversation = vi.fn(async () => null),
+  onSubmitDesignGeneration: SubmitDesignGeneration = vi.fn(async () => null),
+) => {
   window.designhub = {
     listProjectDesigns: vi.fn(async () => []),
     loadProjectCanvasLayout: vi.fn(async () => null),
-    listTasks: vi.fn(async () => taskRecords),
+    listTasks: vi.fn(async () => typeof taskRecords === 'function' ? taskRecords() : taskRecords),
   };
   return render(
     <ProjectCanvas
@@ -95,7 +101,7 @@ const renderProjectCanvasWithTasks = (taskRecords: TaskRecord[], onSubmitConvers
       onBack={vi.fn()}
       onConnections={vi.fn()}
       onSubmitConversation={onSubmitConversation}
-      onSubmitDesignGeneration={vi.fn(async () => null)}
+      onSubmitDesignGeneration={onSubmitDesignGeneration}
     />,
   );
 };
@@ -302,6 +308,18 @@ describe('image tool layout references', () => {
 });
 
 describe('ProjectCanvas design references', () => {
+  it('shows active generation slots from every analysis thread in the current project', async () => {
+    const analysis = { ...conversation({ id: 'analysis-current', createdAt: '2026-10-20T00:00:00.000Z' }), source: { kind: 'project' as const, id: 'project-1' } };
+    const generation: TaskRecord = {
+      id: 'generation-other-thread', requestId: 'request-generation', state: 'running', cancelRequested: false, attempt: 1,
+      source: { kind: 'project', id: 'project-1' }, capability: 'design-generation', analysisThreadId: 'thread-other',
+      generationSlots: [{ id: 'primary', direction: 'primary', state: 'running', attempt: 1 }],
+    };
+    renderProjectCanvasWithTasks([analysis, generation, { ...generation, id: 'generation-other-project', source: { kind: 'project', id: 'project-other' } }]);
+    expect(await screen.findByLabelText('正在处理图片 generation-other-thread-primary')).toBeVisible();
+    expect(screen.queryByLabelText('正在处理图片 generation-other-project-primary')).not.toBeInTheDocument();
+  });
+
   it('restores the persisted image selection when the canvas refreshes', async () => {
     const design: ProjectDesign = {
       id: 'design-selected', projectId: 'project-1', assetId: 'asset-selected', sourceTaskId: 'task-1',
@@ -1599,6 +1617,126 @@ describe('ProjectCanvas design references', () => {
     expect(screen.queryByRole('complementary', { name: '设计分析' })).not.toBeInTheDocument();
   });
 
+  it.each(['design-generation', 'image-editing', 'local-transform'] as const)('shows the entity working for %s tasks', async (capability) => {
+    const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-10-19T10:00:00.000Z' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '分析结果' } };
+    const work = {
+      ...conversation({ id: 'work-1', createdAt: '2026-10-19T10:01:00.000Z', state: 'running' }),
+      capability,
+      source: { kind: 'project' as const, id: 'project-1' },
+      analysisThreadId: 'thread-1',
+    };
+
+    renderProjectCanvasWithTasks([analysis, work]);
+
+    expect(await screen.findByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'working');
+    expect(screen.getByTestId('project-canvas-analysis-presence')).not.toHaveClass('project-canvas-analysis-presence--thinking');
+  });
+
+  it('enters working mode as soon as image design generation is requested', async () => {
+    const analysis = {
+      ...conversation({ id: 'analysis-1', createdAt: '2026-10-19T10:00:00.000Z' }),
+      source: { kind: 'project' as const, id: 'project-1' },
+      result: { text: '分析结果' },
+    };
+    const generation = deferred<TaskRecord | null>();
+    const submitGeneration = vi.fn(() => generation.promise);
+
+    renderProjectCanvasWithTasks([analysis], undefined, submitGeneration);
+    fireEvent.click(await screen.findByRole('button', { name: '生成单张' }));
+
+    expect(submitGeneration).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'working');
+    expect(screen.getByTestId('project-canvas')).toHaveAttribute('data-analysis-dock-view', 'working');
+  });
+
+  it.each(['completed', 'failed'] as const)('does not replay terminal feedback for an initially %s task', async (state) => {
+    const terminal = { ...conversation({ id: 'terminal-1', createdAt: '2026-10-19T10:00:00.000Z', state }), source: { kind: 'project' as const, id: 'project-1' }, result: state === 'completed' ? { text: '已完成' } : undefined };
+
+    renderProjectCanvasWithTasks([terminal]);
+
+    expect(await screen.findByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'idle');
+  });
+
+  it('plays one success feedback when the observed analysis task completes', async () => {
+    vi.useFakeTimers();
+    const running = { ...conversation({ id: 'analysis-running', createdAt: '2026-10-19T10:00:00.000Z', state: 'running' }), source: { kind: 'project' as const, id: 'project-1' } };
+    let records: TaskRecord[] = [running];
+
+    renderProjectCanvasWithTasks(() => records);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'thinking');
+
+    records = [{ ...running, state: 'completed', result: { text: '完成的分析结果' } }];
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'success');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'idle');
+  });
+
+  it('shows failure feedback for a failed work task and then returns to idle', async () => {
+    vi.useFakeTimers();
+    const analysis = {
+      ...conversation({ id: 'analysis-context', createdAt: '2026-10-19T09:00:00.000Z', state: 'completed' }),
+      source: { kind: 'project' as const, id: 'project-1' },
+      result: { text: '分析结果' },
+    };
+    const running = {
+      ...conversation({ id: 'work-running', createdAt: '2026-10-19T10:00:00.000Z', state: 'running' }),
+      capability: 'design-generation' as const,
+      source: { kind: 'project' as const, id: 'project-1' },
+      analysisThreadId: 'thread-1',
+    };
+    let records: TaskRecord[] = [analysis, running];
+
+    renderProjectCanvasWithTasks(() => records);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'working');
+
+    records = [analysis, { ...running, state: 'failed' }];
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'failure');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'idle');
+  });
+
+  it.each(['project-analysis-panel-from-presence', 'project-analysis-panel-fade'])('reveals the result once and keeps its final state after %s ends', async (animationName) => {
+    vi.useFakeTimers();
+    const running = { ...conversation({ id: 'analysis-running', createdAt: '2026-10-19T10:00:00.000Z', state: 'running' }), source: { kind: 'project' as const, id: 'project-1' } };
+    let records: TaskRecord[] = [running];
+
+    renderProjectCanvasWithTasks(() => records);
+    await act(async () => { await Promise.resolve(); });
+    expect(document.querySelector('.project-canvas-analysis-panel')).not.toBeInTheDocument();
+
+    records = [{ ...running, state: 'completed', result: { text: '完成的分析结果' } }];
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'success');
+    expect(document.querySelector('.project-canvas-analysis-panel')).not.toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    const panel = document.querySelector('.project-canvas-analysis-panel')!;
+    expect(panel).toHaveClass('project-canvas-analysis-panel--enter-from-presence');
+    expect(screen.getByTestId('project-canvas-analysis-presence')).toHaveAttribute('data-mode', 'idle');
+
+    const end = new Event('animationend', { bubbles: true });
+    Object.defineProperty(end, 'animationName', { value: animationName });
+    fireEvent(panel, end);
+    expect(panel).toHaveClass('project-canvas-analysis-panel--enter-from-presence');
+    expect(panel).not.toHaveClass('project-canvas-analysis-panel--expanded');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_200); });
+    expect(document.querySelector('.project-canvas-analysis-panel')).toBe(panel);
+    expect(panel).toHaveClass('project-canvas-analysis-panel--enter-from-presence');
+
+    fireEvent.click(screen.getByRole('button', { name: '画布空白' }));
+    fireEvent.click(screen.getByRole('button', { name: '打开分析历史' }));
+    fireEvent.click(screen.getByRole('button', { name: /analysis-running/u }));
+    const reopenedPanel = document.querySelector('.project-canvas-analysis-panel');
+    expect(reopenedPanel).toHaveClass('project-canvas-analysis-panel--expanded');
+    expect(reopenedPanel).not.toHaveClass('project-canvas-analysis-panel--enter-from-presence');
+  });
+
   it('returns to the neural presence on canvas background and opens history when clicked', async () => {
     const analysis = { ...conversation({ id: 'analysis-1', createdAt: '2026-09-21T10:00:00.000Z', requestText: '第一轮分析' }), source: { kind: 'project' as const, id: 'project-1' }, result: { text: '第一轮结果' } };
     renderProjectCanvasWithTasks([analysis]);
@@ -1616,5 +1754,6 @@ describe('ProjectCanvas design references', () => {
     expect(screen.getByTestId('project-canvas')).toHaveAttribute('data-analysis-dock-view', 'presence');
     expect(screen.getByTestId('project-canvas-analysis-presence')).not.toHaveClass('is-hidden');
     expect(screen.getByTestId('project-canvas-analysis-presence')).toBeVisible();
+    expect(screen.getByRole('button', { name: '打开分析历史' })).not.toHaveFocus();
   });
 });

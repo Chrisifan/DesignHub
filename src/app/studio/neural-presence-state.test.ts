@@ -33,11 +33,12 @@ describe('getForegroundPresenceTask', () => {
     expect(getForegroundPresenceTask([analysis, edit], 'thread-1')).toMatchObject({ taskId: 'edit', mode: 'working' });
   });
 
-  it('ignores conversations and design generations from another thread', () => {
+  it('keeps design generation visible while another analysis thread is selected', () => {
     const otherThreadAnalysis = task({ id: 'analysis', capability: 'conversation', state: 'running', createdAt: '2026-10-19T10:00:00Z', analysisThreadId: 'thread-2' });
     const otherThreadDesign = task({ id: 'design', capability: 'design-generation', state: 'queued', createdAt: '2026-10-19T10:01:00Z', analysisThreadId: 'thread-2' });
 
-    expect(getForegroundPresenceTask([otherThreadAnalysis, otherThreadDesign], 'thread-1')).toBeNull();
+    expect(getForegroundPresenceTask([otherThreadAnalysis, otherThreadDesign], 'thread-1')).toMatchObject({ taskId: 'design', mode: 'working' });
+    expect(getForegroundPresenceTask([otherThreadAnalysis], 'thread-1')).toBeNull();
   });
 
   it('ignores terminal records when selecting active work', () => {

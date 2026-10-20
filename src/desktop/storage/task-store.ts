@@ -50,6 +50,11 @@ const isProviderFailure = (value: unknown): value is TaskProviderFailure => isRe
   && (value.status === undefined || (Number.isInteger(value.status) && Number(value.status) >= 100 && Number(value.status) <= 599))
   && (value.providerCode === undefined || isSafeProviderCode(value.providerCode))
   && (value.retryAfterSeconds === undefined || (Number.isInteger(value.retryAfterSeconds) && Number(value.retryAfterSeconds) >= 0 && Number(value.retryAfterSeconds) <= 86_400));
+const isTaskDiagnostic = (value: unknown): boolean => isRecord(value)
+  && Object.keys(value).every((key) => ['host', 'causeName', 'causeCode'].includes(key))
+  && (value.host === undefined || (typeof value.host === 'string' && value.host.length <= 253 && /^[a-z0-9.-]+$/iu.test(value.host)))
+  && (value.causeName === undefined || (typeof value.causeName === 'string' && /^[A-Z0-9_-]{1,64}$/u.test(value.causeName)))
+  && (value.causeCode === undefined || (typeof value.causeCode === 'string' && /^[A-Z0-9_-]{1,64}$/u.test(value.causeCode)));
 const isTaskCandidate = (value: unknown): value is TaskCandidate => isRecord(value)
   && Object.keys(value).every((key) => ['id', 'baseRevisionId', 'assetIds', 'sceneAssetId', 'analysisThreadId', 'parentConversationTaskId', 'designerVersionId', 'createdAt'].includes(key))
   && typeof value.id === 'string' && value.id.trim().length > 0
@@ -80,7 +85,7 @@ const isToolCandidate = (value: unknown): value is ToolCandidate => isRecord(val
   && (value.model === undefined || typeof value.model === 'string')
   && (value.remoteRequestId === undefined || typeof value.remoteRequestId === 'string');
 const isGenerationSlot = (value: unknown): value is DesignGenerationSlot => isRecord(value)
-  && Object.keys(value).every((key) => ['id', 'direction', 'state', 'attempt', 'assetId', 'candidateId', 'errorCode', 'providerFailure', 'cost'].includes(key))
+  && Object.keys(value).every((key) => ['id', 'direction', 'state', 'attempt', 'remoteRequestId', 'assetId', 'candidateId', 'errorCode', 'diagnostic', 'providerFailure', 'cost'].includes(key))
   && designGenerationSlotIds.includes(value.id as DesignGenerationSlotId)
   && typeof value.direction === 'string' && value.direction.trim().length > 0
   && (value.state === 'queued' || value.state === 'running' || value.state === 'completed' || value.state === 'failed' || value.state === 'cancelled')
@@ -91,6 +96,7 @@ const isGenerationSlot = (value: unknown): value is DesignGenerationSlot => isRe
   && (value.assetId === undefined || typeof value.assetId === 'string')
   && (value.candidateId === undefined || typeof value.candidateId === 'string')
   && (value.errorCode === undefined || typeof value.errorCode === 'string')
+  && (value.diagnostic === undefined || isTaskDiagnostic(value.diagnostic))
   && (value.providerFailure === undefined || isProviderFailure(value.providerFailure))
   && (value.cost === undefined || value.cost === null || (typeof value.cost === 'number' && Number.isFinite(value.cost) && value.cost >= 0));
 const isGenerationSlots = (value: unknown): value is DesignGenerationSlot[] => Array.isArray(value)

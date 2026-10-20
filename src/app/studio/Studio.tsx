@@ -100,6 +100,7 @@ const mergeProjectMetadata = (current: Project, metadata: ProjectMetadata): Proj
   coverAssetId: metadata.coverAssetId,
   designs: metadata.designs,
   canvasLayout: metadata.canvasLayout,
+  updatedAt: metadata.updatedAt,
 });
 
 type StudioProps = {
@@ -264,6 +265,18 @@ export const Studio = ({
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [initialDesignerOptions, workspace]);
+  const refreshProjectList = async (): Promise<void> => {
+    if (!workspace) return;
+    const libraryId = workspace.libraryId;
+    try {
+      const entries = await getDesktopApi().listActiveProjects?.(libraryId);
+      if (activeWorkspaceRef.current?.libraryId !== libraryId) return;
+      setProjectsLoadFailed(!entries);
+      if (entries) setProjects(entries.map((entry) => toStudioProject(entry, libraryId)));
+    } catch {
+      if (activeWorkspaceRef.current?.libraryId === libraryId) setProjectsLoadFailed(true);
+    }
+  };
   const navigate = (next: View) => {
     if (next === 'designers') {
       setDesignerCreateRequestId((current) => current + 1);
@@ -279,6 +292,7 @@ export const Studio = ({
     setView(next);
     setSurface(next);
     setSelected(null);
+    if (next === 'projects') void refreshProjectList();
   };
   const routeAssetAction = (input: { assetId: string; mode: 'place' | 'reference' | 'replace'; projectId?: string }): void => {
     const project = projects.find((entry) => entry.id === input.projectId) ?? projects[0];
@@ -831,7 +845,7 @@ export const Studio = ({
                 onGenerationRatioChange={(generationRatio) => { void updateProject({ generationRatio }); }}
                 notify={notify}
                 onSubmitImageTask={(input) => submitProjectImageTask(selected, input)}
-              onBack={() => { setTransitionDirection('backward'); setSelected(null); }}
+              onBack={() => { setTransitionDirection('backward'); setSelected(null); void refreshProjectList(); }}
                 onRename={() => { setProjectNameDraft(selected.name); setProjectDialog('rename'); }}
                 onDuplicate={() => { void duplicateSelected(); }}
               onArchive={() => { void updateProject({ archived: true }); setTransitionDirection('backward'); setSelected(null); }}

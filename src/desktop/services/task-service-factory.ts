@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { GeneratedImage } from '../../features/providers/adapter';
+import type { GeneratedImage, ImageResponseLog } from '../../features/providers/adapter';
 import { createProviderAdapterResolver } from '../provider-adapter-resolver';
 import { normalizeProviderImage } from '../provider-image-input';
 import { loadProviderConfigs } from '../security/provider-config';
@@ -21,6 +21,7 @@ export type TaskServiceFactoryDependencies = {
   credentialStore: Pick<SystemCredentialStore, 'getCredential'>;
   providerConfigPath: string;
   generatedImageBytes: (image: GeneratedImage) => Promise<{ bytes: Uint8Array; mimeType: string }>;
+  onImageResponse?: (record: ImageResponseLog) => void | Promise<void>;
 };
 
 type ImageResultDimensionInput = {
@@ -85,6 +86,7 @@ export const createAgentTaskServiceForLibrary = async ({
   credentialStore,
   providerConfigPath,
   generatedImageBytes,
+  onImageResponse,
 }: TaskServiceFactoryDependencies): Promise<AgentTaskService> => {
   const initialTasks = await loadTaskState(workspace, workspace.library.libraryId);
   const runtime: TaskRuntime = createTaskRuntime({
@@ -213,6 +215,7 @@ export const createAgentTaskServiceForLibrary = async ({
         config: savedConfig,
         environment: { baseUrl: process.env.DESIGNHUB_PROVIDER_BASE_URL, apiKey: process.env.DESIGNHUB_PROVIDER_API_KEY },
         getCredential: async (account) => credentialStore.getCredential?.(account) ?? null,
+        onImageResponse,
       })();
     },
   });
